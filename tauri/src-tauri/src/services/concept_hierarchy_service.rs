@@ -14,6 +14,7 @@
 
 use crate::db::DbState;
 use crate::ollama::client::{OllamaClient, OllamaMessage};
+use crate::services::concept_hierarchy::is_valid_parent_pair;
 use crate::services::model_settings::{get_model_for_job, get_string_setting};
 use rusqlite::Connection;
 use serde::Serialize;
@@ -51,20 +52,10 @@ struct Peer {
     hierarchy_level: String,
 }
 
-fn expected_parent_level(child_level: &str) -> Option<&'static str> {
-    match child_level {
-        "concept" => Some("section"),
-        "section" => Some("chapter"),
-        "chapter" => None,
-        _ => None,
-    }
-}
-
-fn is_valid_parent_pair(child_level: &str, parent_level: &str) -> bool {
-    expected_parent_level(child_level)
-        .map(|expected| expected == parent_level)
-        .unwrap_or(false)
-}
+// `expected_parent_level` and `is_valid_parent_pair` come from the shared
+// `concept_hierarchy` module so the chat extractor, the LLM extractor, the
+// background hierarchy job (here) and the read-side tree builder all share
+// the same rules.
 
 /// Resolve the model to use for this job. Falls back to the topic-signature
 /// model first (similar workload, same context-size profile), then to the
@@ -517,6 +508,19 @@ mod tests {
         .unwrap();
     }
 
+    fn insert_node_at_level(conn: &Connection, id: &str, ws: &str, name: &str, level: &str) {
+        conn.execute(
+            "INSERT INTO concept_nodes
+                (id, workspace_id, name, concept_description, concept_type, tags, aliases,
+                 references_json, x_position, y_position, review_count, hierarchy_level,
+                 created_at, updated_at)
+             VALUES (?1, ?2, ?3, '', 'topic', '[]', '[]', '[]', 0.0, 0.0, 0,
+                     ?4, datetime('now'), datetime('now'))",
+            rusqlite::params![id, ws, name, level],
+        )
+        .unwrap();
+    }
+
     fn insert_part_of(conn: &Connection, child: &str, parent: &str) {
         conn.execute(
             "INSERT INTO concept_links (id, source_id, target_id, link_type, strength, context, created_at)
@@ -561,8 +565,8 @@ mod tests {
     #[test]
     fn match_peer_by_name_accepts_case_insensitive_and_none() {
         let peers = vec![
-            Peer { id: "1".into(), name: "Cargo".into() },
-            Peer { id: "2".into(), name: "Rust".into() },
+            Peer { id: "1".into(), name: "Cargo".into(), hierarchy_level: "section".into() },
+            Peer { id: "2".into(), name: "Rust".into(), hierarchy_level: "section".into() },
         ];
         assert_eq!(match_peer_by_name("cargo", &peers).map(|p| p.id), Some("1".into()));
         assert_eq!(match_peer_by_name(" RUST ", &peers).map(|p| p.id), Some("2".into()));
@@ -576,8 +580,10 @@ mod tests {
         let pool = setup_test_db();
         let conn = pool.get().unwrap();
         insert_ws(&conn, "w1");
-        insert_concept(&conn, "child", "w1", "cargo.toml");
-        insert_concept(&conn, "parent", "w1", "cargo");
+        // Child must be a section if parent is a chapter — the level guard
+        // added in `persist_link` enforces the chapter/section/concept rules.
+        insert_node_at_level(&conn, "child", "w1", "cargo.toml", "section");
+        insert_node_at_level(&conn, "parent", "w1", "cargo", "chapter");
 
         assert!(persist_link(&conn, "child", "parent").unwrap());
         // Second call must not insert a duplicate row.

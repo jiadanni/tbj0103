@@ -6,15 +6,11 @@
 //! `source_id = child`, `target_id = parent`.
 
 use crate::models::knowledge_graph::{ConceptLink, ConceptNode};
+use crate::services::concept_hierarchy::is_valid_parent_pair;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 
-fn is_valid_parent_pair(child_level: &str, parent_level: &str) -> bool {
-    matches!(
-        (child_level, parent_level),
-        ("concept", "section") | ("section", "chapter")
-    )
-}
+// Hierarchy invariants live in `services::concept_hierarchy`.
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RoadmapTreeNode {

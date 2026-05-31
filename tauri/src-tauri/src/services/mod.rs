@@ -7,6 +7,7 @@ pub mod chat_conversion;
 pub mod chat_file_store;
 pub mod chat_service;
 pub mod concept_extractor;
+pub mod concept_hierarchy;
 pub mod concept_hierarchy_service;
 pub mod context_assembler;
 pub mod document_processor;

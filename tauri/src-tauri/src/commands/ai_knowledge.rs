@@ -1,5 +1,6 @@
 use crate::db::DbState;
 use crate::ollama::client::{OllamaClient, OllamaMessage};
+use crate::services::concept_hierarchy::{is_valid_parent_pair, normalize_concept_name};
 use crate::services::context_assembler::context_size_for_model;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
@@ -226,17 +227,12 @@ fn is_specific_concept(name: &str) -> bool {
     true
 }
 
-/// Normalize a concept name for deduplication: lowercase, collapse whitespace,
-/// strip trailing 's' for simple plural handling.
-fn normalize_concept_name(name: &str) -> String {
-    let lower = name.trim().to_lowercase();
-    let collapsed: String = lower.split_whitespace().collect::<Vec<_>>().join(" ");
-    // Simple singular form — strip trailing 's' if word is > 4 chars
-    if collapsed.len() > 4 && collapsed.ends_with('s') && !collapsed.ends_with("ss") {
-        collapsed[..collapsed.len() - 1].to_string()
-    } else {
-        collapsed
-    }
+/// Compose a level-scoped dedup key. Allows the LLM extractor to tell
+/// "Python Programming" (chapter) apart from "Python Programming" (section)
+/// when reconciling against existing `concept_nodes` rows. The plain
+/// (level-agnostic) keys are kept in parallel for relationship lookups.
+fn level_dedup_key(level: &str, name_lower: &str) -> String {
+    format!("{level}::{name_lower}")
 }
 
 /// Extract the first complete JSON object `{...}` from `input` by tracking
@@ -636,26 +632,45 @@ fn fuzzy_lookup(
 }
 
 /// Preload existing concept_nodes into name_to_id for dedup.
+///
+/// The map carries both *level-agnostic* keys (`"f-strings"`) — used by
+/// the relationship fuzzy lookup, which doesn't care about
+/// `hierarchy_level` — and *level-scoped* keys (`"chapter::python
+/// programming"`) — used by `upsert_node` so a previously-stored section
+/// of the same name does not get reused as a chapter (or vice versa).
 fn preload_name_to_id(
     conn: &rusqlite::Connection,
     workspace_id: &str,
 ) -> HashMap<String, String> {
     let mut name_to_id: HashMap<String, String> = HashMap::new();
-    if let Ok(mut stmt) =
-        conn.prepare("SELECT id, name, aliases FROM concept_nodes WHERE workspace_id = ?1")
-    {
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT id, name, hierarchy_level, aliases FROM concept_nodes WHERE workspace_id = ?1",
+    ) {
         let _ = stmt
             .query_map(rusqlite::params![workspace_id], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
             })
             .map(|rows| {
-                for (id, name, aliases_json) in rows.flatten() {
-                    name_to_id.insert(name.to_lowercase(), id.clone());
-                    name_to_id.insert(normalize_concept_name(&name), id.clone());
+                for (id, name, level, aliases_json) in rows.flatten() {
+                    let lower = name.to_lowercase();
+                    let normalized = normalize_concept_name(&name);
+                    name_to_id.insert(lower.clone(), id.clone());
+                    name_to_id.insert(normalized.clone(), id.clone());
+                    name_to_id.insert(level_dedup_key(&level, &lower), id.clone());
+                    name_to_id.insert(level_dedup_key(&level, &normalized), id.clone());
                     if let Ok(aliases) = serde_json::from_str::<Vec<String>>(&aliases_json) {
                         for alias in aliases {
-                            name_to_id.insert(alias.to_lowercase(), id.clone());
-                            name_to_id.insert(normalize_concept_name(&alias), id.clone());
+                            let a_lower = alias.to_lowercase();
+                            let a_norm = normalize_concept_name(&alias);
+                            name_to_id.insert(a_lower.clone(), id.clone());
+                            name_to_id.insert(a_norm.clone(), id.clone());
+                            name_to_id.insert(level_dedup_key(&level, &a_lower), id.clone());
+                            name_to_id.insert(level_dedup_key(&level, &a_norm), id.clone());
                         }
                     }
                 }
@@ -766,12 +781,16 @@ Rules:\n\
         if lower.is_empty() {
             return None;
         }
-        if let Some(existing_id) = name_to_id.get(&lower) {
-            return Some(existing_id.clone());
-        }
         let normalized = normalize_concept_name(name);
-        if let Some(existing_id) = name_to_id.get(&normalized).cloned() {
-            name_to_id.insert(lower, existing_id.clone());
+        // Level-scoped lookup first so e.g. an existing section "Python
+        // Programming" does NOT get reused as a chapter.
+        let level_lower = level_dedup_key(hierarchy_level, &lower);
+        let level_norm = level_dedup_key(hierarchy_level, &normalized);
+        if let Some(existing_id) = name_to_id.get(&level_lower).cloned() {
+            return Some(existing_id);
+        }
+        if let Some(existing_id) = name_to_id.get(&level_norm).cloned() {
+            name_to_id.insert(level_lower, existing_id.clone());
             return Some(existing_id);
         }
         let id = uuid::Uuid::new_v4().to_string();
@@ -783,6 +802,8 @@ Rules:\n\
         if result.is_ok() {
             name_to_id.insert(lower, id.clone());
             name_to_id.insert(normalized, id.clone());
+            name_to_id.insert(level_lower, id.clone());
+            name_to_id.insert(level_norm, id.clone());
             Some(id)
         } else {
             None
@@ -790,10 +811,25 @@ Rules:\n\
     };
 
     let upsert_link = |source_id: &str, target_id: &str, link_type: &str, strength: f64, context: &str| {
+        if link_type == "part_of" {
+            let pair: Option<(String, String)> = conn
+                .query_row(
+                    "SELECT
+                        (SELECT hierarchy_level FROM concept_nodes WHERE id = ?1),
+                        (SELECT hierarchy_level FROM concept_nodes WHERE id = ?2)",
+                    rusqlite::params![source_id, target_id],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                )
+                .ok();
+            match pair {
+                Some((child, parent)) if is_valid_parent_pair(&child, &parent) => {}
+                _ => return false,
+            }
+        }
         let exists: bool = conn
             .query_row(
-                "SELECT COUNT(*) FROM concept_links WHERE source_id = ?1 AND target_id = ?2",
-                rusqlite::params![source_id, target_id],
+                "SELECT COUNT(*) FROM concept_links WHERE source_id = ?1 AND target_id = ?2 AND link_type = ?3",
+                rusqlite::params![source_id, target_id, link_type],
                 |row| row.get::<_, i64>(0),
             )
             .unwrap_or(0)
@@ -938,12 +974,14 @@ fn auto_categorize_orphans(
      -> Option<String> {
         let lower = name.trim().to_lowercase();
         if lower.is_empty() { return None; }
-        if let Some(existing_id) = name_to_id.get(&lower) {
-            return Some(existing_id.clone());
-        }
         let normalized = normalize_concept_name(name);
-        if let Some(existing_id) = name_to_id.get(&normalized).cloned() {
-            name_to_id.insert(lower, existing_id.clone());
+        let level_lower = level_dedup_key(hierarchy_level, &lower);
+        let level_norm = level_dedup_key(hierarchy_level, &normalized);
+        if let Some(existing_id) = name_to_id.get(&level_lower).cloned() {
+            return Some(existing_id);
+        }
+        if let Some(existing_id) = name_to_id.get(&level_norm).cloned() {
+            name_to_id.insert(level_lower, existing_id.clone());
             return Some(existing_id);
         }
         let id = uuid::Uuid::new_v4().to_string();
@@ -955,6 +993,8 @@ fn auto_categorize_orphans(
         if result.is_ok() {
             name_to_id.insert(lower, id.clone());
             name_to_id.insert(normalized, id.clone());
+            name_to_id.insert(level_lower, id.clone());
+            name_to_id.insert(level_norm, id.clone());
             Some(id)
         } else {
             None
@@ -962,10 +1002,25 @@ fn auto_categorize_orphans(
     };
 
     let upsert_link = |source_id: &str, target_id: &str, link_type: &str, strength: f64, context: &str| -> bool {
+        if link_type == "part_of" {
+            let pair: Option<(String, String)> = conn
+                .query_row(
+                    "SELECT
+                        (SELECT hierarchy_level FROM concept_nodes WHERE id = ?1),
+                        (SELECT hierarchy_level FROM concept_nodes WHERE id = ?2)",
+                    rusqlite::params![source_id, target_id],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                )
+                .ok();
+            match pair {
+                Some((child, parent)) if is_valid_parent_pair(&child, &parent) => {}
+                _ => return false,
+            }
+        }
         let exists: bool = conn
             .query_row(
-                "SELECT COUNT(*) FROM concept_links WHERE source_id = ?1 AND target_id = ?2",
-                rusqlite::params![source_id, target_id],
+                "SELECT COUNT(*) FROM concept_links WHERE source_id = ?1 AND target_id = ?2 AND link_type = ?3",
+                rusqlite::params![source_id, target_id, link_type],
                 |row| row.get::<_, i64>(0),
             )
             .unwrap_or(0)
@@ -1529,7 +1584,8 @@ pub async fn suggest_learning_goals(
 
 #[cfg(test)]
 mod tests {
-    use super::{pack_into_chunks, repair_truncated_json_object, SourceItem};
+    use super::{level_dedup_key, pack_into_chunks, preload_name_to_id, repair_truncated_json_object, SourceItem};
+    use crate::db::test_utils::tests::setup_test_db;
 
     #[test]
     fn repairs_truncated_concepts_array() {
@@ -1586,5 +1642,46 @@ mod tests {
     fn pack_into_chunks_empty() {
         let chunks = pack_into_chunks(Vec::new(), 6000);
         assert!(chunks.is_empty());
+    }
+
+    #[test]
+    fn preload_name_to_id_yields_level_scoped_keys() {
+        // A workspace containing both a chapter and a section that share the
+        // same human-readable name must produce *distinct* level-scoped
+        // entries in the dedup map, so the chapter row is never re-used as a
+        // section (or vice versa) on the next chunk.
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        conn.execute(
+            "INSERT INTO workspaces (id, name, created_at, updated_at)
+             VALUES ('w1', 'WS', datetime('now'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+
+        let mk_node = |id: &str, name: &str, level: &str| {
+            conn.execute(
+                "INSERT INTO concept_nodes
+                    (id, workspace_id, name, concept_description, concept_type, tags, aliases,
+                     references_json, x_position, y_position, review_count, hierarchy_level,
+                     created_at, updated_at)
+                 VALUES (?1, 'w1', ?2, '', 'topic', '[]', '[]', '[]', 0.0, 0.0, 0, ?3,
+                         datetime('now'), datetime('now'))",
+                rusqlite::params![id, name, level],
+            )
+            .unwrap();
+        };
+        mk_node("ch", "Python Programming", "chapter");
+        mk_node("sec", "Python Programming", "section");
+
+        let map = preload_name_to_id(&conn, "w1");
+        assert_eq!(
+            map.get(&level_dedup_key("chapter", "python programming")).map(|s| s.as_str()),
+            Some("ch")
+        );
+        assert_eq!(
+            map.get(&level_dedup_key("section", "python programming")).map(|s| s.as_str()),
+            Some("sec")
+        );
     }
 }

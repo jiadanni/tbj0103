@@ -75,6 +75,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v61_memories_reinforcement",
     "v62_memories_supersession",
     "v63_concept_hierarchy_job",
+    "v64_cleanup_invalid_part_of",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -1718,6 +1719,36 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // v64: clean up legacy `part_of` rows whose (child, parent) hierarchy
+    // levels violate the chapter → section → concept invariant. These rows
+    // pre-date `concept_hierarchy_service::persist_link`'s level guard and
+    // cause renderers to silently drop edges, which in turn surfaces as
+    // "Uncategorized" appearing as a child of some other chapter's subtree.
+    let applied_v64: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v64_cleanup_invalid_part_of'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v64 == 0 {
+        let _ = conn.execute_batch(
+            "DELETE FROM concept_links
+             WHERE link_type = 'part_of'
+               AND id IN (
+                 SELECT l.id FROM concept_links l
+                 JOIN concept_nodes c ON c.id = l.source_id
+                 JOIN concept_nodes p ON p.id = l.target_id
+                 WHERE l.link_type = 'part_of'
+                   AND NOT (
+                     (c.hierarchy_level = 'concept' AND p.hierarchy_level = 'section')
+                     OR (c.hierarchy_level = 'section' AND p.hierarchy_level = 'chapter')
+                   )
+               );",
+        );
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v64_cleanup_invalid_part_of');",
+        )?;
+    }
+
     Ok(())
 }
 
@@ -2177,5 +2208,91 @@ mod tests {
             )
             .expect("Failed to count source chunks");
         assert_eq!(chunk_count, 1);
+    }
+
+    #[test]
+    fn v64_cleanup_removes_invalid_part_of_rows_and_keeps_valid_ones() {
+        // Build a fresh DB (all migrations applied, including v64), insert a
+        // mix of valid and invalid `part_of` rows directly, then re-run the
+        // cleanup DELETE that v64 issues and assert only invalid rows are
+        // removed.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("v64.db");
+        let pool = initialize_database(&path).expect("init db");
+        let conn = pool.get().expect("conn");
+
+        conn.execute(
+            "INSERT INTO workspaces (id, name, created_at, updated_at)
+             VALUES ('w1', 'WS', datetime('now'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+
+        let mk_node = |id: &str, name: &str, level: &str| {
+            conn.execute(
+                "INSERT INTO concept_nodes
+                    (id, workspace_id, name, concept_description, concept_type, tags, aliases,
+                     references_json, x_position, y_position, review_count, hierarchy_level,
+                     created_at, updated_at)
+                 VALUES (?1, 'w1', ?2, '', 'topic', '[]', '[]', '[]', 0.0, 0.0, 0, ?3,
+                         datetime('now'), datetime('now'))",
+                rusqlite::params![id, name, level],
+            )
+            .unwrap();
+        };
+        mk_node("ch1", "Ch 1", "chapter");
+        mk_node("ch2", "Ch 2", "chapter");
+        mk_node("sec1", "Sec 1", "section");
+        mk_node("con1", "Con 1", "concept");
+
+        let mk_link = |id: &str, src: &str, tgt: &str| {
+            conn.execute(
+                "INSERT INTO concept_links (id, source_id, target_id, link_type, strength, context, created_at)
+                 VALUES (?1, ?2, ?3, 'part_of', 1.0, 'test', datetime('now'))",
+                rusqlite::params![id, src, tgt],
+            )
+            .unwrap();
+        };
+        // Valid: section -> chapter, concept -> section
+        mk_link("l_valid_sec_ch", "sec1", "ch1");
+        mk_link("l_valid_con_sec", "con1", "sec1");
+        // Invalid: chapter -> chapter (the exact pattern from three.json)
+        mk_link("l_bad_ch_ch", "ch2", "ch1");
+        // Invalid: concept -> chapter
+        mk_link("l_bad_con_ch", "con1", "ch1");
+
+        // Re-run the same DELETE statement v64 issues. (v64 already ran during
+        // initialize_database against an empty graph; this exercises the SQL
+        // against the populated graph above.)
+        conn.execute_batch(
+            "DELETE FROM concept_links
+             WHERE link_type = 'part_of'
+               AND id IN (
+                 SELECT l.id FROM concept_links l
+                 JOIN concept_nodes c ON c.id = l.source_id
+                 JOIN concept_nodes p ON p.id = l.target_id
+                 WHERE l.link_type = 'part_of'
+                   AND NOT (
+                     (c.hierarchy_level = 'concept' AND p.hierarchy_level = 'section')
+                     OR (c.hierarchy_level = 'section' AND p.hierarchy_level = 'chapter')
+                   )
+               );",
+        )
+        .unwrap();
+
+        let remaining_ids: Vec<String> = {
+            let mut stmt = conn
+                .prepare("SELECT id FROM concept_links WHERE link_type = 'part_of' ORDER BY id")
+                .unwrap();
+            stmt.query_map([], |r| r.get::<_, String>(0))
+                .unwrap()
+                .filter_map(Result::ok)
+                .collect()
+        };
+        assert_eq!(
+            remaining_ids,
+            vec!["l_valid_con_sec".to_string(), "l_valid_sec_ch".to_string()],
+            "only valid part_of rows should survive"
+        );
     }
 }

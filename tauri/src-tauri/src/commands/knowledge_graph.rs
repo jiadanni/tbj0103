@@ -4,6 +4,7 @@ use crate::models::knowledge_graph::{
     HierarchyLevel,
 };
 use crate::services::concept_extractor;
+use crate::services::concept_hierarchy::normalize_concept_name;
 use crate::services::workspace_hierarchy::workspace_filter_sql;
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -714,10 +715,15 @@ pub fn extract_and_link_concepts(
             })
             .map(|rows| {
                 for (id, lower_name, aliases_json) in rows.flatten() {
+                    let normalized = normalize_concept_name(&lower_name);
                     existing_map.insert(lower_name, id.clone());
+                    existing_map.insert(normalized, id.clone());
                     if let Ok(aliases) = serde_json::from_str::<Vec<String>>(&aliases_json) {
                         for alias in aliases {
-                            existing_map.insert(alias.to_lowercase(), id.clone());
+                            let alias_lower = alias.to_lowercase();
+                            let alias_norm = normalize_concept_name(&alias);
+                            existing_map.insert(alias_lower, id.clone());
+                            existing_map.insert(alias_norm, id.clone());
                         }
                     }
                 }
@@ -731,7 +737,11 @@ pub fn extract_and_link_concepts(
 
     for name in &meaningful {
         let lower = name.to_lowercase();
-        let concept_id = if let Some(id) = existing_map.get(&lower) {
+        let normalized = normalize_concept_name(name);
+        let concept_id = if let Some(id) = existing_map
+            .get(&lower)
+            .or_else(|| existing_map.get(&normalized))
+        {
             existing.push(name.clone());
             // Bump review_count as a lightweight signal of relevance
             let _ = conn.execute(
@@ -749,6 +759,7 @@ pub fn extract_and_link_concepts(
             );
             if result.is_ok() {
                 existing_map.insert(lower, id.clone());
+                existing_map.insert(normalized, id.clone());
                 created.push(name.clone());
                 id
             } else {
