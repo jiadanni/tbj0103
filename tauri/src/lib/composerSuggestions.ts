@@ -77,39 +77,6 @@ function buildWorkspacePrompt(term: string, slot: number, hasDocs: boolean) {
     : `What are the key ideas in ${term}?`;
 }
 
-function latestAssistantQuestion(activeMessages: Message[]) {
-  const latestAssistant = [...activeMessages].reverse().find((message) => message.role === "assistant");
-  if (!latestAssistant) {return null;}
-  const text = latestAssistant.content.trim();
-  if (!text.includes("?")) {return null;}
-  return text;
-}
-
-function shouldOfferBinaryReply(question: string) {
-  const lower = question.toLowerCase();
-  return [
-    "yes or no",
-    "do you want",
-    "would you like",
-    "want me to",
-    "shall i",
-    "shall we",
-    "should i",
-    "should we",
-    "can i",
-    "can we",
-    "okay if i",
-    "ok if i",
-    "is that ok",
-    "is that okay",
-    "does that work",
-    "would that work",
-    "are you sure",
-    "is this ok",
-    "is this okay",
-  ].some((pattern) => lower.includes(pattern));
-}
-
 export function mergeComposerInput(currentInput: string, prompt: string) {
   const nextPrompt = prompt.trim();
   if (!nextPrompt) {return currentInput;}
@@ -125,6 +92,12 @@ export function mergeComposerInput(currentInput: string, prompt: string) {
 }
 
 export function buildWorkspaceSuggestionRow(context: ComposerSuggestionContext): ComposerSuggestionRow | null {
+  // Workspace starters are only meaningful as cold-start prompts; once a real
+  // exchange exists, follow-ups derived from the actual reply take over.
+  if (context.activeMessages.length > 0) {
+    return null;
+  }
+
   // If we have AI-generated starter prompts, use them directly
   if (context.topicSignature?.suggested_prompts && context.topicSignature.suggested_prompts.length > 0) {
     return {
@@ -173,7 +146,6 @@ export function buildWorkspaceSuggestionRow(context: ComposerSuggestionContext):
 }
 
 export function buildChatSuggestionRow(context: ComposerSuggestionContext): ComposerSuggestionRow | null {
-  const assistantQuestion = latestAssistantQuestion(context.activeMessages);
   const followUpSuggestions = context.followUps.slice(0, 3).map((suggestion, index) => ({
     id: `chat-follow-up-${index}`,
     label: suggestion,
@@ -181,21 +153,13 @@ export function buildChatSuggestionRow(context: ComposerSuggestionContext): Comp
     action: "append" as const,
   }));
 
-  const quickReplies = assistantQuestion && shouldOfferBinaryReply(assistantQuestion)
-    ? [
-      { id: "chat-yes", label: "Yes", prompt: "Yes", action: "send_immediately" as const },
-      { id: "chat-no", label: "No", prompt: "No", action: "send_immediately" as const },
-    ]
-    : [];
-
-  const suggestions = [...quickReplies, ...followUpSuggestions];
-  if (suggestions.length === 0) {
+  if (followUpSuggestions.length === 0) {
     return null;
   }
 
   return {
     id: "chat",
     label: "Chat",
-    suggestions,
+    suggestions: followUpSuggestions,
   };
 }
