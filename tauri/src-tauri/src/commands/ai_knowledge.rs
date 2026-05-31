@@ -45,7 +45,12 @@ pub struct AnalyzeWorkspaceRequest {
 #[derive(Debug, Deserialize)]
 pub struct SuggestGoalsRequest {
     pub workspace_id: String,
-    pub model: String,
+    /// Optional explicit model override. When `None` or empty, the backend
+    /// resolves the goal-suggestion model via
+    /// `get_model_for_job("goal_suggestion_model")` (per-job → background →
+    /// preferred chain).
+    #[serde(default)]
+    pub model: Option<String>,
     pub ollama_url: Option<String>,
     pub survey_context: Option<String>,
 }
@@ -1387,9 +1392,21 @@ pub async fn suggest_learning_goals(
     state: State<'_, DbState>,
     req: SuggestGoalsRequest,
 ) -> Result<Vec<SuggestedGoal>, String> {
-    // Gather existing concepts and goals
-    let (concept_names, existing_goal_titles) = {
+    // Gather existing concepts and goals, and resolve the effective model.
+    let (concept_names, existing_goal_titles, resolved_model) = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
+
+        let explicit_model = req
+            .model
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        let resolved_model = explicit_model
+            .or_else(|| crate::services::model_settings::get_model_for_job(&conn, "goal_suggestion_model"))
+            .ok_or_else(|| {
+                "No model configured for goal suggestion. Set a Goal Suggestion model in Preferences > Models > Background Tasks, or a Background / preferred model.".to_string()
+            })?;
 
         let mut concepts: Vec<String> = Vec::new();
         if let Ok(mut stmt) = conn.prepare(
@@ -1415,7 +1432,7 @@ pub async fn suggest_learning_goals(
                 });
         }
 
-        (concepts, goals)
+        (concepts, goals, resolved_model)
     };
 
     if concept_names.is_empty() && req.survey_context.is_none() {
@@ -1472,7 +1489,7 @@ pub async fn suggest_learning_goals(
         role: "user".to_string(),
         content: prompt,
     }];
-    let raw = client.send_message("ai_knowledge", &req.model, messages).await?;
+    let raw = client.send_message("ai_knowledge", &resolved_model, messages).await?;
 
     let trimmed = raw.trim();
     let json_str = match extract_first_json_array(trimmed) {
