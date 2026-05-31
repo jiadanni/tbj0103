@@ -109,8 +109,10 @@ pub fn list_sources(
         (
             format!(
                 "{cte}SELECT s.id, s.workspace_id, s.source_type, s.title, s.filename, s.file_type, s.file_size, s.url, s.content, s.summary, s.favicon_data, s.is_processed, s.folder, s.token_count,
-                    (SELECT COUNT(*) FROM source_chunks WHERE source_id = s.id), s.created_at, s.updated_at
-             FROM sources s WHERE s.workspace_id {ws_cond} AND s.source_type = ?2 ORDER BY s.created_at DESC"
+                    COALESCE(sc.chunk_count, 0), s.created_at, s.updated_at
+             FROM sources s
+             LEFT JOIN (SELECT source_id, COUNT(*) as chunk_count FROM source_chunks GROUP BY source_id) sc ON s.id = sc.source_id
+             WHERE s.workspace_id {ws_cond} AND s.source_type = ?2 ORDER BY s.created_at DESC"
             ),
             vec![Box::new(workspace_id) as Box<dyn rusqlite::types::ToSql>, Box::new(st.clone())],
         )
@@ -118,8 +120,10 @@ pub fn list_sources(
         (
             format!(
                 "{cte}SELECT s.id, s.workspace_id, s.source_type, s.title, s.filename, s.file_type, s.file_size, s.url, s.content, s.summary, s.favicon_data, s.is_processed, s.folder, s.token_count,
-                    (SELECT COUNT(*) FROM source_chunks WHERE source_id = s.id), s.created_at, s.updated_at
-             FROM sources s WHERE s.workspace_id {ws_cond} ORDER BY s.created_at DESC"
+                    COALESCE(sc.chunk_count, 0), s.created_at, s.updated_at
+             FROM sources s
+             LEFT JOIN (SELECT source_id, COUNT(*) as chunk_count FROM source_chunks GROUP BY source_id) sc ON s.id = sc.source_id
+             WHERE s.workspace_id {ws_cond} ORDER BY s.created_at DESC"
             ),
             vec![Box::new(workspace_id) as Box<dyn rusqlite::types::ToSql>],
         )
@@ -139,8 +143,10 @@ pub fn get_source(state: State<DbState>, id: String) -> Result<Option<Source>, S
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let result = conn.query_row(
         "SELECT s.id, s.workspace_id, s.source_type, s.title, s.filename, s.file_type, s.file_size, s.url, s.content, s.summary, s.favicon_data, s.is_processed,
-                s.folder, s.token_count, (SELECT COUNT(*) FROM source_chunks WHERE source_id = s.id), s.created_at, s.updated_at
-         FROM sources s WHERE s.id = ?1",
+                s.folder, s.token_count, COALESCE(sc.chunk_count, 0), s.created_at, s.updated_at
+         FROM sources s
+         LEFT JOIN (SELECT source_id, COUNT(*) as chunk_count FROM source_chunks WHERE source_id = ?1) sc ON s.id = sc.source_id
+         WHERE s.id = ?1",
         rusqlite::params![id],
         row_to_source,
     );
@@ -194,7 +200,7 @@ pub fn delete_source(state: State<DbState>, id: String) -> Result<(), String> {
 /// Chunk source content and mark as processed.
 #[tauri::command]
 pub fn process_source(state: State<DbState>, id: String) -> Result<i64, String> {
-    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let mut conn = state.0.get().map_err(|e| e.to_string())?;
     let content: String = conn
         .query_row(
             "SELECT content FROM sources WHERE id = ?1",
@@ -207,25 +213,34 @@ pub fn process_source(state: State<DbState>, id: String) -> Result<i64, String> 
     let chunk_count = chunks.len() as i64;
     let now = chrono::Utc::now().to_rfc3339();
 
-    conn.execute(
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    tx.execute(
         "DELETE FROM source_chunks WHERE source_id = ?1",
         rusqlite::params![id],
     )
     .map_err(|e| e.to_string())?;
 
-    for (i, chunk) in chunks.iter().enumerate() {
-        let chunk_id = uuid::Uuid::new_v4().to_string();
-        conn.execute(
-            "INSERT INTO source_chunks (id, source_id, content, chunk_index, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![chunk_id, id, chunk, i as i64, now],
+    {
+        let mut stmt = tx.prepare(
+            "INSERT INTO source_chunks (id, source_id, content, chunk_index, created_at) VALUES (?1, ?2, ?3, ?4, ?5)"
         ).map_err(|e| e.to_string())?;
+
+        for (i, chunk) in chunks.iter().enumerate() {
+            let chunk_id = uuid::Uuid::new_v4().to_string();
+            stmt.execute(
+                rusqlite::params![chunk_id, id, chunk, i as i64, now],
+            ).map_err(|e| e.to_string())?;
+        }
     }
 
-    conn.execute(
+    tx.execute(
         "UPDATE sources SET is_processed = 1, updated_at = ?1 WHERE id = ?2",
         rusqlite::params![now, id],
     )
     .map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
 
     Ok(chunk_count)
 }

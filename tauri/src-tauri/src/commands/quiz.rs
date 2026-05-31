@@ -258,9 +258,11 @@ pub fn list_quizzes(
     let mut stmt = conn
         .prepare(&format!(
             "SELECT {QUIZ_COLUMNS},
-                    (SELECT COUNT(*) FROM quiz_answers a WHERE a.quiz_id = quizzes.id) AS answered,
-                    (SELECT AVG(score) FROM quiz_answers a WHERE a.quiz_id = quizzes.id AND score IS NOT NULL) AS avg_score
-             FROM quizzes WHERE workspace_id = ?1
+                    COALESCE(qa.answered, 0) AS answered,
+                    qa.avg_score
+             FROM quizzes
+             LEFT JOIN (SELECT quiz_id, COUNT(*) AS answered, AVG(score) AS avg_score FROM quiz_answers GROUP BY quiz_id) qa ON quizzes.id = qa.quiz_id
+             WHERE workspace_id = ?1
              ORDER BY created_at DESC LIMIT ?2"
         ))
         .map_err(|e| e.to_string())?;
