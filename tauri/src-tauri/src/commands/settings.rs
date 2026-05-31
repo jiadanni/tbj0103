@@ -920,6 +920,62 @@ pub fn update_settings(
     Ok(())
 }
 
+/// Encode a setting value for storage in the `settings` table, matching the
+/// per-key serialization scheme used by `update_settings`. Acts as the
+/// allow-list for `update_setting` — only keys listed here can be written
+/// through the per-key path.
+fn encode_known_setting(key: &str, value: &serde_json::Value) -> Result<String, String> {
+    match key {
+        // Bool keys (stored as the literal strings "true"/"false")
+        "demo_dismissed" => value
+            .as_bool()
+            .map(|b| b.to_string())
+            .ok_or_else(|| format!("Expected bool for setting key '{key}'")),
+        // Integer keys (stored as plain decimal)
+        "font_size" => value
+            .as_i64()
+            .map(|n| n.to_string())
+            .ok_or_else(|| format!("Expected integer for setting key '{key}'")),
+        // String keys (stored as JSON-encoded strings)
+        "preferred_model"
+        | "background_model"
+        | "summarization_model"
+        | "memory_extraction_model"
+        | "flashcard_model"
+        | "glossary_model"
+        | "topic_signature_model"
+        | "goal_suggestion_model"
+        | "draft_model"
+        | "compare_model_a"
+        | "compare_model_b"
+        | "embedding_model"
+        | "user_chat_label"
+        | "assistant_chat_label" => value
+            .as_str()
+            .ok_or_else(|| format!("Expected string for setting key '{key}'"))
+            .and_then(|s| serde_json::to_string(s).map_err(|e| e.to_string())),
+        _ => Err(format!("Unknown setting key: {key}")),
+    }
+}
+
+/// Per-key write that bypasses the full-Settings read-modify-write round-trip.
+/// Frontend sites that previously did `get_settings` + `update_settings` just
+/// to flip a single field can call this instead — it avoids serializing the
+/// ~70-field Settings blob across the IPC boundary on both legs of the call.
+#[tauri::command]
+pub fn update_setting(
+    auth: State<AuthState>,
+    state: State<DbState>,
+    key: String,
+    value: serde_json::Value,
+) -> Result<(), String> {
+    require_auth(&auth, &state)?;
+    let encoded = encode_known_setting(&key, &value)?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    set_setting(&conn, &key, &encoded)?;
+    Ok(())
+}
+
 pub fn sync_autostart(app: &AppHandle, conn: &rusqlite::Connection) -> Result<(), String> {
     let enabled = get_setting(conn, "start_at_login")
         .map(|v| v == "true")

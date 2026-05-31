@@ -630,6 +630,7 @@ pub fn run() {
             // Settings commands
             commands::settings::get_settings,
             commands::settings::update_settings,
+            commands::settings::update_setting,
             commands::settings::reload_tray_icon,
             commands::system::get_system_specs,
             commands::system::get_performance_stats,
