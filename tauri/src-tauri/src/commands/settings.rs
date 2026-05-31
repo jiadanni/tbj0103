@@ -14,6 +14,7 @@ pub struct Settings {
     pub flashcard_model: String,
     pub glossary_model: String,
     pub topic_signature_model: String,
+    pub goal_suggestion_model: String,
     pub quick_search_models: Vec<String>,
     pub quick_search_shortcut: String,
     pub quick_search_workspace_scope: String,
@@ -85,6 +86,7 @@ impl Default for Settings {
             flashcard_model: "".to_string(),
             glossary_model: "".to_string(),
             topic_signature_model: "".to_string(),
+            goal_suggestion_model: "".to_string(),
             quick_search_models: Vec::new(),
             quick_search_shortcut: "CmdOrCtrl+Shift+K".to_string(),
             quick_search_workspace_scope: "__all__".to_string(),
@@ -201,49 +203,60 @@ fn is_windows_missing_autostart_target(error: &str) -> bool {
 }
 
 #[tauri::command]
-pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, String> {
-    let conn = state.0.get().map_err(|e| e.to_string())?;
-    let def = Settings::default();
-    let stored_start_at_login = get_setting(&conn, "start_at_login")
-        .map(|v| v == "true")
-        .unwrap_or(def.start_at_login);
-    let start_at_login = match app.autolaunch().is_enabled() {
-        Ok(value) => value,
-        Err(err) => {
-            let error = err.to_string();
-            if is_windows_missing_autostart_target(&error) {
-                crate::logging::log_warn(
-                    "settings",
-                    format!(
-                        "Falling back to stored start_at_login value after autostart query failed: {error}"
-                    ),
-                );
-                stored_start_at_login
-            } else {
-                return Err(error);
+pub async fn get_settings(app: AppHandle, state: State<'_, DbState>) -> Result<Settings, String> {
+    // Cheap autolaunch query first, on the caller's thread. If we moved this
+    // into spawn_blocking we would have to send the autostart manager across
+    // threads, which it does not support on all platforms.
+    let stored_start_at_login_default = Settings::default().start_at_login;
+    let autostart_check = app.autolaunch().is_enabled();
+
+    // Clone the pool handle so the closure owns it and lives on the blocking
+    // thread. Pool<SqliteConnectionManager> is Clone+Send+'static.
+    let pool = state.0.clone();
+
+    tokio::task::spawn_blocking(move || -> Result<Settings, String> {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let def = Settings::default();
+        let stored_start_at_login = get_setting(&conn, "start_at_login")
+            .map(|v| v == "true")
+            .unwrap_or(stored_start_at_login_default);
+        let start_at_login = match autostart_check {
+            Ok(value) => value,
+            Err(err) => {
+                let error = err.to_string();
+                if is_windows_missing_autostart_target(&error) {
+                    crate::logging::log_warn(
+                        "settings",
+                        format!(
+                            "Falling back to stored start_at_login value after autostart query failed: {error}"
+                        ),
+                    );
+                    stored_start_at_login
+                } else {
+                    return Err(error);
+                }
             }
+        };
+        let pin_configured = get_setting(&conn, "pin_passcode_hash")
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(false);
+        let pin_lock_enabled = get_setting(&conn, "pin_lock_enabled")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(def.pin_lock_enabled)
+            && pin_configured;
+        let biometric_available = biometric_available();
+        let stored_theme = get_setting(&conn, "theme")
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or_else(|| def.theme.clone());
+        let normalized_theme = normalize_theme(&stored_theme).to_string();
+
+        if normalized_theme != stored_theme {
+            let serialized_theme =
+                serde_json::to_string(&normalized_theme).map_err(|e| e.to_string())?;
+            set_setting(&conn, "theme", &serialized_theme)?;
         }
-    };
-    let pin_configured = get_setting(&conn, "pin_passcode_hash")
-        .map(|v| !v.trim().is_empty())
-        .unwrap_or(false);
-    let pin_lock_enabled = get_setting(&conn, "pin_lock_enabled")
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(def.pin_lock_enabled)
-        && pin_configured;
-    let biometric_available = biometric_available();
-    let stored_theme = get_setting(&conn, "theme")
-        .and_then(|v| serde_json::from_str(&v).ok())
-        .unwrap_or_else(|| def.theme.clone());
-    let normalized_theme = normalize_theme(&stored_theme).to_string();
 
-    if normalized_theme != stored_theme {
-        let serialized_theme =
-            serde_json::to_string(&normalized_theme).map_err(|e| e.to_string())?;
-        set_setting(&conn, "theme", &serialized_theme)?;
-    }
-
-    Ok(Settings {
+        Ok(Settings {
         preferred_model: get_setting(&conn, "preferred_model")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.preferred_model),
@@ -265,6 +278,9 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
         topic_signature_model: get_setting(&conn, "topic_signature_model")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.topic_signature_model),
+        goal_suggestion_model: get_setting(&conn, "goal_suggestion_model")
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or(def.goal_suggestion_model),
         quick_search_models: get_setting(&conn, "quick_search_models")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.quick_search_models),
@@ -440,7 +456,10 @@ pub fn get_settings(app: AppHandle, state: State<DbState>) -> Result<Settings, S
         ram_headroom_percent: get_setting(&conn, "ram_headroom_percent")
             .and_then(|v| v.parse().ok())
             .unwrap_or(def.ram_headroom_percent),
+        })
     })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
 #[tauri::command]
@@ -502,6 +521,11 @@ pub fn update_settings(
         &conn,
         "topic_signature_model",
         &serde_json::to_string(&settings.topic_signature_model).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "goal_suggestion_model",
+        &serde_json::to_string(&settings.goal_suggestion_model).unwrap(),
     )?;
     set_setting(
         &conn,
