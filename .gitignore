@@ -97,6 +97,9 @@ conversations-mac/
 # Patch artifacts
 *.orig
 *.rej
+
+# Local debugging artifacts (perf samples, gdb thread dumps, flamegraphs, traces)
+_debug_artifacts/
 .claude/settings.local.json
 .claude/worktrees/
 tauri/.claude/settings.local.json
