@@ -319,20 +319,6 @@ fn get_dashboard_summary_inner(
                 UNION ALL
 
                 SELECT * FROM (
-                    SELECT c.id AS id,
-                           c.name AS title,
-                           'concept' AS kind,
-                           COALESCE(c.concept_type, '') AS subtitle,
-                           c.updated_at AS timestamp
-                    FROM concept_nodes c
-                    WHERE c.workspace_id {ws_cond}
-                    ORDER BY c.updated_at DESC
-                    LIMIT 6
-                )
-
-                UNION ALL
-
-                SELECT * FROM (
                     SELECT s.id AS id,
                            s.title AS title,
                            'chat' AS kind,

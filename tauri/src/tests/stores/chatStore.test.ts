@@ -273,13 +273,14 @@ describe('message lifecycle edge cases', () => {
       streamingSessionId: null,
       streamingContent: '',
       pendingPromptText: null,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
   });
 
   it('clears all messages for a session', () => {
-    // @ts-ignore
+    // @ts-expect-error - appendMessage is internal or needs mock parameters not matched in simple test
     useChatStore.getState().appendMessage('session-lifecycle-1', dummyMessage);
-    // @ts-ignore
+    // @ts-expect-error - appendMessage is internal or needs mock parameters not matched in simple test
     useChatStore.getState().appendMessage('session-lifecycle-1', { ...dummyMessage, id: 'msg-lifecycle-2' });
 
     useChatStore.getState().setMessages('session-lifecycle-1', []);

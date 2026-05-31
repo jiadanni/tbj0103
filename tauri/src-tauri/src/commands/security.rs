@@ -66,12 +66,12 @@ fn biometric_available() -> bool {
 fn biometric_label() -> String {
     #[cfg(target_os = "macos")]
     {
-        return "Touch ID".to_string();
+        "Touch ID".to_string()
     }
 
     #[cfg(target_os = "windows")]
     {
-        return "Windows Hello".to_string();
+        "Windows Hello".to_string()
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]

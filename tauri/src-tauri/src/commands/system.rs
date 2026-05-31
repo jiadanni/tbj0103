@@ -138,7 +138,7 @@ fn query_gpu_vram() -> Option<(u64, u64, String)> {
             .and_then(|v| v.as_str())
             .unwrap_or("");
         if let Some(bytes) = parse_vram_str(raw) {
-            if best.as_ref().map_or(true, |(prev, _)| bytes > *prev) {
+            if best.as_ref().is_none_or(|(prev, _)| bytes > *prev) {
                 best = Some((bytes, name));
             }
         }
