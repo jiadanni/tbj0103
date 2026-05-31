@@ -161,7 +161,7 @@ export default function WorkspaceSettingsView() {
     return workspaces.find((workspace) => workspace.id === selectedWorkspace.parent_workspace_id) ?? null;
   }, [selectedWorkspace, workspaces]);
   const selectedWorkspaceType = selectedWorkspace?.parent_workspace_id ? "Child Workspace" : selectedWorkspace ? "Root Workspace" : null;
-  const childCreateParentId = selectedWorkspace?.id ?? null;
+  const childCreateParentId = selectedWorkspace?.parent_workspace_id || selectedWorkspace?.id || null;
   const localGlossaryTerms = useMemo(
     () => glossaryTerms.filter((term) => !term.is_inherited),
     [glossaryTerms],
