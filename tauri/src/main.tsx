@@ -5,8 +5,27 @@ import App from "./App";
 import { installConsoleTimestamps, enableBatchLogForwarding } from "./lib/consoleTimestamps";
 import { isLinux } from "./lib/platform";
 import { api } from "./lib/api";
+import { normalizeTheme } from "./lib/theme";
 import "./styles/globals.css";
 import "katex/dist/katex.min.css";
+
+// Apply the persisted theme class synchronously, before React mounts, so the
+// first paint (loading screen) renders against the user's theme rather than
+// the :root default of #ffffff. Without this, app startup briefly flashes a
+// white screen — and on slow boots (e.g. Ollama unreachable) that flash can
+// linger long enough to feel like the app is broken.
+try {
+  const raw = window.localStorage.getItem("aetherium-settings");
+  if (raw) {
+    const parsed = JSON.parse(raw) as { state?: { theme?: string } };
+    const theme = normalizeTheme(parsed?.state?.theme ?? "system");
+    document.documentElement.classList.add(`theme-${theme}`);
+  } else {
+    document.documentElement.classList.add("theme-system");
+  }
+} catch {
+  document.documentElement.classList.add("theme-system");
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {

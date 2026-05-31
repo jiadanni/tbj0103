@@ -354,9 +354,17 @@ export default function App() {
   }, [activeWorkspaceId, primaryWorkspaceId, secondaryWorkspaceId, setFoldersForWorkspace, splitMode]);
 
   if (isLoading) {
+    // Inline styles so this screen is visible even if theme CSS variables
+    // haven't been applied yet on a cold start.
     return (
-      <div className="flex items-center justify-center h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
-        <div className="text-sm opacity-50">{loadingMessage}</div>
+      <div
+        className="flex items-center justify-center h-screen"
+        style={{
+          backgroundColor: "var(--bg-primary, #18181b)",
+          color: "var(--text-primary, #f4f4f5)",
+        }}
+      >
+        <div className="text-sm opacity-70">{loadingMessage}</div>
       </div>
     );
   }
