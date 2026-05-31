@@ -38,6 +38,7 @@ interface AppSettings {
   flashcardModel: string;
   glossaryModel: string;
   topicSignatureModel: string;
+  goalSuggestionModel: string;
   quickSearchWorkspaceScope: string;
   quickSearchTypeFilters: string[];
   ollamaUrl: string;
@@ -92,6 +93,7 @@ interface SettingsStore extends AppSettings {
   setFlashcardModel: (m: string) => void;
   setGlossaryModel: (m: string) => void;
   setTopicSignatureModel: (m: string) => void;
+  setGoalSuggestionModel: (m: string) => void;
   setQuickSearchWorkspaceScope: (scope: string) => void;
   setQuickSearchTypeFilters: (filters: string[]) => void;
   setOllamaUrl: (url: string) => void;
@@ -150,6 +152,7 @@ export const useSettingsStore = create<SettingsStore>()(
       flashcardModel: "",
       glossaryModel: "",
       topicSignatureModel: "",
+      goalSuggestionModel: "",
       quickSearchWorkspaceScope: "__all__",
       quickSearchTypeFilters: ["conversation", "message", "artifact", "memory", "summary"],
       ollamaUrl: "http://localhost:11434",
@@ -201,6 +204,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setFlashcardModel: (flashcardModel) => set({ flashcardModel }),
       setGlossaryModel: (glossaryModel) => set({ glossaryModel }),
       setTopicSignatureModel: (topicSignatureModel) => set({ topicSignatureModel }),
+      setGoalSuggestionModel: (goalSuggestionModel) => set({ goalSuggestionModel }),
       setQuickSearchWorkspaceScope: (quickSearchWorkspaceScope) => set({ quickSearchWorkspaceScope }),
       setQuickSearchTypeFilters: (quickSearchTypeFilters) => set({ quickSearchTypeFilters }),
       setOllamaUrl: (ollamaUrl) => set({ ollamaUrl }),
