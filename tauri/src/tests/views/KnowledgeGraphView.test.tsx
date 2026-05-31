@@ -151,7 +151,7 @@ describe("KnowledgeGraphView", () => {
         active_goals: 1,
         completed_goals: 0,
       },
-      continue_learning: null,
+      continue_learning: [],
       review: {
         due_today: 2,
         total_cards: 4,
@@ -276,7 +276,7 @@ describe("KnowledgeGraphView", () => {
       workspace_id: "ws-1",
       workspace_name: "Linux",
       overview: { chat_sessions: 1, notes: 1, sources: 1, concepts: 1, flashcards: 0, active_goals: 0, completed_goals: 0 },
-      continue_learning: null,
+      continue_learning: [],
       review: {
         due_today: 0,
         total_cards: 0,
@@ -309,7 +309,7 @@ describe("KnowledgeGraphView", () => {
       workspace_id: "ws-1",
       workspace_name: "Linux",
       overview: { chat_sessions: 1, notes: 1, sources: 1, concepts: 1, flashcards: 0, active_goals: 0, completed_goals: 0 },
-      continue_learning: null,
+      continue_learning: [],
       review: {
         due_today: 0,
         total_cards: 0,
@@ -343,7 +343,7 @@ describe("KnowledgeGraphView", () => {
       workspace_id: "ws-1",
       workspace_name: "Linux",
       overview: { chat_sessions: 1, notes: 1, sources: 1, concepts: 1, flashcards: 0, active_goals: 0, completed_goals: 0 },
-      continue_learning: null,
+      continue_learning: [],
       review: {
         due_today: 0,
         total_cards: 0,

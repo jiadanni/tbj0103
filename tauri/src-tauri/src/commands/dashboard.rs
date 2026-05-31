@@ -226,9 +226,9 @@ pub fn get_dashboard_summary(
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
 
-    let continue_learning = conn
-        .query_row(
-            &format!("{cte}SELECT s.id,
+    let mut continue_learning_stmt = conn
+        .prepare(&format!(
+            "{cte}SELECT s.id,
                     s.title,
                     NULLIF(s.folder_id, ''),
                     p.name,
@@ -240,21 +240,24 @@ pub fn get_dashboard_summary(
                AND s.is_incognito = 0
                AND s.exclude_from_analytics = 0
              ORDER BY last_seen DESC
-             LIMIT 1"),
-            params![&workspace_id],
-            |row| {
-                let session_id = row.get::<_, String>(0)?;
-                Ok(DashboardContinueLearning {
-                    session_id: session_id.clone(),
-                    title: row.get(1)?,
-                    folder_id: row.get(2)?,
-                    folder_name: row.get(3)?,
-                    updated_at: row.get(4)?,
-                    route: route(format!("/chat/{session_id}"), None),
-                })
-            },
-        )
-        .ok();
+             LIMIT 3"
+        ))
+        .map_err(|e| e.to_string())?;
+    let continue_learning = continue_learning_stmt
+        .query_map(params![&workspace_id], |row| {
+            let session_id = row.get::<_, String>(0)?;
+            Ok(DashboardContinueLearning {
+                session_id: session_id.clone(),
+                title: row.get(1)?,
+                folder_id: row.get(2)?,
+                folder_name: row.get(3)?,
+                updated_at: row.get(4)?,
+                route: route(format!("/chat/{session_id}"), None),
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
 
     let mut goals_stmt = conn
         .prepare(
@@ -373,7 +376,7 @@ pub fn get_dashboard_summary(
 
     let mut progression = Vec::new();
 
-    if let Some(continue_item) = &continue_learning {
+    if let Some(continue_item) = continue_learning.first() {
         progression.push(DashboardSuggestion {
             id: "continue-thread".to_string(),
             kind: "continue".to_string(),
