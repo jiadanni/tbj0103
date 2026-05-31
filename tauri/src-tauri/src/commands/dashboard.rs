@@ -187,25 +187,31 @@ pub fn get_dashboard_summary(
         })
         .map_err(|e| e.to_string())?;
 
+    // Topic-based "weak topics" list: the same due predicate that powers
+    // topics_due_for_review, ordered by priority (grade > goal > stale). This
+    // surfaces actual review pressure rather than a static review_count
+    // threshold tied to flashcards.
+    let weak_topics_sql = format!(
+        "{cte}SELECT cn.id, cn.name, cn.review_count, {due_topic_priority} AS priority
+         FROM concept_nodes cn
+         WHERE cn.workspace_id {ws_cond}
+           AND {due_topic_predicate}
+         ORDER BY priority ASC, cn.updated_at ASC, cn.name ASC
+         LIMIT 4"
+    );
     let mut weak_concepts_stmt = conn
-        .prepare(
-            &format!("{cte}SELECT id, name, review_count
-             FROM concept_nodes
-             WHERE workspace_id {ws_cond}
-               AND review_count <= 1
-             ORDER BY review_count ASC, updated_at DESC
-             LIMIT 4"),
-        )
+        .prepare(&weak_topics_sql)
         .map_err(|e| e.to_string())?;
     let weak_concepts = weak_concepts_stmt
         .query_map(params![&workspace_id], |row| {
             let concept_id = row.get::<_, String>(0)?;
             let name = row.get::<_, String>(1)?;
             let review_count = row.get::<_, i64>(2)?;
-            let reason = if review_count == 0 {
-                "Not reinforced yet".to_string()
-            } else {
-                "Needs another review pass".to_string()
+            let priority = row.get::<_, i64>(3)?;
+            let reason = match priority {
+                0 => "Recent quiz scored low".to_string(),
+                1 => "Linked goal is at risk".to_string(),
+                _ => "Hasn't been revisited recently".to_string(),
             };
 
             Ok(DashboardConceptFocus {
@@ -213,7 +219,7 @@ pub fn get_dashboard_summary(
                 name,
                 review_count,
                 reason,
-                route: route("/graph", None),
+                route: route("/review-topics", None),
             })
         })
         .map_err(|e| e.to_string())?
@@ -410,20 +416,10 @@ pub fn get_dashboard_summary(
             kind: "goal".to_string(),
             title: "Turn exploration into a learning goal".to_string(),
             description: format!(
-                "You already have concept coverage around {}. Capture a goal so progress becomes visible.",
+                "You already have topic coverage around {}. Capture a goal so progress becomes visible.",
                 goal_hint
             ),
             route: route("/learning", None),
-        });
-    }
-
-    if flashcards == 0 && concepts > 0 {
-        progression.push(DashboardSuggestion {
-            id: "starter-review-set".to_string(),
-            kind: "review".to_string(),
-            title: "Create a starter review set".to_string(),
-            description: "Your knowledge graph is growing, but none of it is scheduled for recall yet.".to_string(),
-            route: route("/flashcards", None),
         });
     }
 
@@ -446,9 +442,9 @@ pub fn get_dashboard_summary(
         progression.push(DashboardSuggestion {
             id: "link-concepts".to_string(),
             kind: "graph".to_string(),
-            title: "Strengthen concept connections".to_string(),
+            title: "Strengthen topic connections".to_string(),
             description: format!(
-                "{} concept{} {} still isolated in the graph.",
+                "{} topic{} {} still isolated in the graph.",
                 isolated_concepts,
                 if isolated_concepts == 1 { "" } else { "s" },
                 if isolated_concepts == 1 { "is" } else { "are" }
@@ -489,7 +485,7 @@ pub fn get_dashboard_summary(
             avg_ease,
             under_reviewed_concepts,
             weak_concepts,
-            route: route("/flashcards", None),
+            route: route("/review-topics", None),
             topics_due_for_review,
             top_due_topic,
         },
