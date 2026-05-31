@@ -1,6 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
 import { useSettingsStore } from "../stores/settingsStore";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, type NavigateOptions } from "react-router-dom";
 import {
   ChevronLeft,
   ChevronRight,
@@ -28,6 +28,9 @@ export default function Sidebar({
   presentation = "sidebar",
 }: SidebarProps) {
   const navigate = useNavigate();
+  const [, startNavTransition] = useTransition();
+  const goTo = (to: string, options?: NavigateOptions) =>
+    startNavTransition(() => { navigate(to, options); });
   const location = useLocation();
   const activeSegment = "/" + location.pathname.split("/")[1];
   const fontSize = useSettingsStore((s) => s.fontSize);
@@ -159,7 +162,7 @@ export default function Sidebar({
               <button
                 key={item.path}
                 onClick={() => {
-                  navigate(item.path);
+                  goTo(item.path);
                   setContextMenu(null);
                   setTooltip(null);
                 }}
@@ -223,7 +226,7 @@ export default function Sidebar({
               onClick={() => {
                 setTooltip(null);
                 setPopoverOpen(false);
-                navigate("/preferences");
+                goTo("/preferences");
               }}
               onMouseEnter={(event) => showTooltip("Preferences", event.currentTarget)}
               onMouseLeave={hideTooltip}
@@ -344,7 +347,7 @@ export default function Sidebar({
         >
           <button
             onClick={() => {
-              navigate(contextMenu.item.path);
+              goTo(contextMenu.item.path);
               setContextMenu(null);
             }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
@@ -353,7 +356,7 @@ export default function Sidebar({
           </button>
           <button
             onClick={() => {
-              navigate("/preferences", { state: { settingsTab: "appearance" } });
+              goTo("/preferences", { state: { settingsTab: "appearance" } });
               setContextMenu(null);
             }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
