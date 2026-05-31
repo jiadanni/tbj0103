@@ -24,6 +24,7 @@ export interface WorkspaceSurvey {
   approach: LearningApproach;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function formatSurveyForPrompt(survey: WorkspaceSurvey): string {
   const skillLabels: Record<SkillLevel, string> = {
     beginner: "Beginner",
@@ -39,11 +40,11 @@ export function formatSurveyForPrompt(survey: WorkspaceSurvey): string {
     balanced: "Balanced mix",
   };
   const lines: string[] = ["Learner context for this workspace:"];
-  if (survey.topic.trim()) lines.push(`- Subject / topic: ${survey.topic.trim()}`);
+  if (survey.topic.trim()) {lines.push(`- Subject / topic: ${survey.topic.trim()}`);}
   lines.push(`- Skill level: ${skillLabels[survey.skillLevel]}`);
-  if (survey.goal.trim()) lines.push(`- Primary goal: ${survey.goal.trim()}`);
-  if (survey.hoursPerWeek) lines.push(`- Available time: ${survey.hoursPerWeek} hours/week`);
-  if (survey.focusAreas.trim()) lines.push(`- Focus / avoid areas: ${survey.focusAreas.trim()}`);
+  if (survey.goal.trim()) {lines.push(`- Primary goal: ${survey.goal.trim()}`);}
+  if (survey.hoursPerWeek) {lines.push(`- Available time: ${survey.hoursPerWeek} hours/week`);}
+  if (survey.focusAreas.trim()) {lines.push(`- Focus / avoid areas: ${survey.focusAreas.trim()}`);}
   lines.push(`- Preferred approach: ${approachLabels[survey.approach]}`);
   return lines.join("\n");
 }
@@ -80,7 +81,7 @@ const HOURS_OPTIONS = [
 ];
 
 const APPROACH_OPTIONS: { value: LearningApproach; label: string; hint: string }[] = [
-  { value: "theory", label: "Theory-first", hint: "Concepts and principles before practice" },
+  { value: "theory", label: "Theory-first", hint: "Topics and principles before practice" },
   { value: "hands-on", label: "Hands-on", hint: "Projects and exercises first" },
   { value: "balanced", label: "Balanced", hint: "Mix of both" },
 ];

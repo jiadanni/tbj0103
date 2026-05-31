@@ -420,7 +420,7 @@ export default function DailyNotesView() {
               <SmartTextEditor
                 value={content}
                 onChange={setContent}
-                placeholder="How was your day? Use [[concept]] to link ideas…"
+                placeholder="How was your day? Use [[topic]] to link ideas…"
                 minHeight="100%"
               />
             </div>
@@ -429,7 +429,7 @@ export default function DailyNotesView() {
               <SmartTextEditor
                 value={content}
                 onChange={setContent}
-                placeholder="How was your day? Use [[concept]] to link ideas…"
+                placeholder="How was your day? Use [[topic]] to link ideas…"
                 minHeight="100%"
               />
             </div>

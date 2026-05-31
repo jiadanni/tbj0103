@@ -66,7 +66,7 @@ export default function ConvertChatModal({
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
       onClick={() => {
-        if (!busy) onClose();
+        if (!busy) {onClose();}
       }}
     >
       <div
@@ -83,7 +83,7 @@ export default function ConvertChatModal({
             </h3>
             <p className="text-sm leading-6 text-[var(--text-secondary)]">
               Summarize <span className="font-medium text-[var(--text-primary)]">{session.title || "Untitled chat"}</span>{" "}
-              and save it as a {targetLabel} in this workspace. Key concepts will be linked into the knowledge graph.
+              and save it as a {targetLabel} in this workspace. Key topics will be linked into the knowledge graph.
             </p>
           </div>
         </div>
@@ -91,7 +91,7 @@ export default function ConvertChatModal({
         {phase.status === "converting" && (
           <div className="flex items-center gap-2 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-subtle)] px-4 py-3 text-sm text-[var(--text-secondary)]">
             <Loader2 size={14} className="animate-spin" />
-            <span>Summarizing and extracting concepts…</span>
+            <span>Summarizing and extracting topics…</span>
           </div>
         )}
 
