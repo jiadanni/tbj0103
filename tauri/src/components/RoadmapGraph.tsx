@@ -73,6 +73,7 @@ function RoadmapGraphInner(
 ) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const [transform, setTransform] = useState<d3.ZoomTransform>(d3.zoomIdentity);
   const [dims, setDims] = useState({ width: 0, height: 0 });
 
@@ -155,18 +156,18 @@ function RoadmapGraphInner(
     const h = layout.bbox.maxY - layout.bbox.minY;
     if (w === 0 || h === 0) { return; }
 
-    const scale = Math.min(dims.width / w, dims.height / h, 1.5);
-    const tx = (dims.width - w * scale) / 2 - layout.bbox.minX * scale;
-    const ty = (dims.height - h * scale) / 2 - layout.bbox.minY * scale;
+    const fitScale = Math.min(dims.width / w, dims.height / h);
+    const scale = Math.min(Math.max(fitScale, 0.6), 1.5);
+    const tx = dims.width / 2 - ((layout.bbox.minX + layout.bbox.maxX) / 2) * scale;
+    const ty = -layout.bbox.minY * scale + 40;
 
     const newTransform = d3.zoomIdentity.translate(tx, ty).scale(scale);
 
     // Sync d3.zoom's internal state first, then update React state via
     // requestAnimationFrame to avoid a synchronous setState inside an effect.
-    d3.select(svgRef.current).call(
-      d3.zoom<SVGSVGElement, unknown>().transform,
-      newTransform,
-    );
+    if (zoomRef.current) {
+      d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
+    }
     requestAnimationFrame(() => setTransform(newTransform));
   }, [layout, dims]);
 
@@ -179,8 +180,10 @@ function RoadmapGraphInner(
       .on("zoom", (event) => {
         setTransform(event.transform);
       });
+    zoomRef.current = zoomBehavior;
     svg.call(zoomBehavior);
     return () => {
+      zoomRef.current = null;
       svg.on(".zoom", null);
     };
   }, []);
