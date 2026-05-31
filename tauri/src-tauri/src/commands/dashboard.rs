@@ -2,7 +2,7 @@ use crate::db::DbState;
 use crate::models::dashboard::{
     DashboardActivity, DashboardConceptFocus, DashboardContinueLearning, DashboardGoalSummary,
     DashboardKnowledgeHealth, DashboardOverview, DashboardReviewSummary, DashboardRoute,
-    DashboardSuggestion, DashboardSummary,
+    DashboardSuggestion, DashboardSummary, ReviewTopic,
 };
 use crate::models::workspace::TopicSignature;
 use crate::services::workspace_hierarchy::workspace_filter_sql;
@@ -43,6 +43,75 @@ pub fn get_dashboard_summary(
         .map(|tag| tag.tag.clone())
         .collect::<Vec<_>>();
 
+    // Predicate identifying concept_nodes that need review (used both for the
+    // count aggregate below and the get_review_topics list command). A topic is
+    // due if any of these hold:
+    //   1. Failing recent grade: a quiz_answers row for this concept (matched
+    //      via quiz_questions.topic case-insensitively against concept_nodes.name)
+    //      with score < 0.7 in the last 30 days.
+    //   2. Stale + under-reinforced: review_count <= 2 AND updated_at older
+    //      than 7 days.
+    //   3. At-risk learning goal: linked goal that is not completed and
+    //      either due within 7 days or under 50% progress and stalled 14 days.
+    //
+    // Note: `quizzes.topic_ids` stores `flashcard_topics.id` values, not
+    // concept_nodes.id, so we resolve the link via the free-text
+    // `quiz_questions.topic` label rather than json_each(topic_ids).
+    let due_topic_predicate = "(
+        EXISTS (
+            SELECT 1
+            FROM quiz_answers qa
+            JOIN quiz_questions qq ON qq.id = qa.question_id
+            JOIN quizzes q ON q.id = qq.quiz_id
+            WHERE q.workspace_id = cn.workspace_id
+              AND qa.score IS NOT NULL
+              AND qa.score < 0.7
+              AND qa.created_at >= datetime('now', '-30 days')
+              AND lower(qq.topic) = lower(cn.name)
+        )
+        OR (
+            cn.review_count <= 2
+            AND cn.updated_at < datetime('now', '-7 days')
+        )
+        OR EXISTS (
+            SELECT 1
+            FROM learning_goals lg
+            WHERE lg.concept_id = cn.id
+              AND lg.is_completed = 0
+              AND (
+                (lg.due_date IS NOT NULL AND lg.due_date <= date('now', '+7 days'))
+                OR (lg.progress < 0.5 AND lg.updated_at < datetime('now', '-14 days'))
+              )
+        )
+    )";
+
+    // Priority CASE expression: 0 = failing grade, 1 = at-risk goal, 2 = stale.
+    // Lower priority value sorts first.
+    let due_topic_priority = "CASE
+        WHEN EXISTS (
+            SELECT 1
+            FROM quiz_answers qa
+            JOIN quiz_questions qq ON qq.id = qa.question_id
+            JOIN quizzes q ON q.id = qq.quiz_id
+            WHERE q.workspace_id = cn.workspace_id
+              AND qa.score IS NOT NULL
+              AND qa.score < 0.7
+              AND qa.created_at >= datetime('now', '-30 days')
+              AND lower(qq.topic) = lower(cn.name)
+        ) THEN 0
+        WHEN EXISTS (
+            SELECT 1
+            FROM learning_goals lg
+            WHERE lg.concept_id = cn.id
+              AND lg.is_completed = 0
+              AND (
+                (lg.due_date IS NOT NULL AND lg.due_date <= date('now', '+7 days'))
+                OR (lg.progress < 0.5 AND lg.updated_at < datetime('now', '-14 days'))
+              )
+        ) THEN 1
+        ELSE 2
+    END";
+
     // ── Batch all simple COUNT / aggregate queries into one statement ──
     let counts_sql = format!(
         "{cte}SELECT
@@ -60,7 +129,9 @@ pub fn get_dashboard_summary(
             cn.under_reviewed_concepts,
             lg.stalled_goals,
             s.unprocessed_sources,
-            cn.isolated_concepts
+            cn.isolated_concepts,
+            td.topics_due_for_review,
+            tdn.top_due_topic
         FROM
             (SELECT COUNT(*) AS chat_sessions FROM chat_sessions WHERE workspace_id {ws_cond} AND is_deleted = 0 AND is_incognito = 0 AND exclude_from_analytics = 0) cs,
             (SELECT COUNT(*) AS notes FROM project_notes WHERE workspace_id {ws_cond}) pn,
@@ -84,7 +155,19 @@ pub fn get_dashboard_summary(
                 COALESCE(SUM(CASE WHEN is_completed = 0 THEN 1 ELSE 0 END), 0) AS active_goals,
                 COALESCE(SUM(CASE WHEN is_completed = 1 THEN 1 ELSE 0 END), 0) AS completed_goals,
                 COALESCE(SUM(CASE WHEN is_completed = 0 AND substr(updated_at, 1, 10) <= date('now', '-14 days') THEN 1 ELSE 0 END), 0) AS stalled_goals
-             FROM learning_goals WHERE workspace_id {ws_cond}) lg"
+             FROM learning_goals WHERE workspace_id {ws_cond}) lg,
+            (SELECT COUNT(DISTINCT cn.id) AS topics_due_for_review
+             FROM concept_nodes cn
+             WHERE cn.workspace_id {ws_cond}
+               AND {due_topic_predicate}) td,
+            (SELECT (
+                SELECT cn.name
+                FROM concept_nodes cn
+                WHERE cn.workspace_id {ws_cond}
+                  AND {due_topic_predicate}
+                ORDER BY {due_topic_priority} ASC, cn.updated_at ASC, cn.name ASC
+                LIMIT 1
+             ) AS top_due_topic) tdn"
     );
 
     let (
@@ -92,12 +175,14 @@ pub fn get_dashboard_summary(
         active_goals, completed_goals, total_cards, due_today,
         learned, avg_ease, under_reviewed_concepts,
         stalled_goals, unprocessed_sources, isolated_concepts,
-    ): (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, f64, i64, i64, i64, i64) = conn
+        topics_due_for_review, top_due_topic,
+    ): (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, f64, i64, i64, i64, i64, i64, Option<String>) = conn
         .query_row(&counts_sql, params![&workspace_id], |row| {
             Ok((
                 row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?,
                 row.get(5)?, row.get(6)?, row.get(7)?, row.get(8)?, row.get(9)?,
                 row.get(10)?, row.get(11)?, row.get(12)?, row.get(13)?, row.get(14)?,
+                row.get(15)?, row.get(16)?,
             ))
         })
         .map_err(|e| e.to_string())?;
@@ -295,18 +380,23 @@ pub fn get_dashboard_summary(
         });
     }
 
-    if due_today > 0 {
+    if topics_due_for_review > 0 {
+        let n = topics_due_for_review;
+        let body = if n == 1 {
+            "1 topic needs another review pass.".to_string()
+        } else {
+            format!("{n} topics need another review pass.")
+        };
+        let description = match top_due_topic.as_deref() {
+            Some(name) if !name.is_empty() => format!("{body} Start with \"{name}\"."),
+            _ => body,
+        };
         progression.push(DashboardSuggestion {
             id: "review-due".to_string(),
             kind: "review".to_string(),
             title: "Review what is due now".to_string(),
-            description: format!(
-                "{} flashcard{} {} ready for reinforcement.",
-                due_today,
-                if due_today == 1 { "" } else { "s" },
-                if due_today == 1 { "is" } else { "are" }
-            ),
-            route: route("/flashcards", None),
+            description,
+            route: route("/review-topics", None),
         });
     }
 
@@ -400,6 +490,8 @@ pub fn get_dashboard_summary(
             under_reviewed_concepts,
             weak_concepts,
             route: route("/flashcards", None),
+            topics_due_for_review,
+            top_due_topic,
         },
         goals,
         progression,
@@ -411,4 +503,324 @@ pub fn get_dashboard_summary(
         },
         recent_activity,
     })
+}
+
+#[tauri::command]
+pub fn get_review_topics(
+    state: State<DbState>,
+    workspace_id: String,
+    include_descendants: Option<bool>,
+) -> Result<Vec<ReviewTopic>, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let (cte, ws_cond) = workspace_filter_sql(include_descendants.unwrap_or(false));
+
+    // Per-row aggregates as scalar sub-selects so the row builds in a single
+    // SELECT (no N+1). Same three-branch predicate as get_dashboard_summary.
+    // Priority: 0 = grade, 1 = goal, 2 = stale.
+    let sql = format!(
+        "{cte}SELECT
+            cn.id,
+            cn.name,
+            (
+                SELECT qa.score
+                FROM quiz_answers qa
+                JOIN quiz_questions qq ON qq.id = qa.question_id
+                JOIN quizzes q ON q.id = qq.quiz_id
+                WHERE q.workspace_id = cn.workspace_id
+                  AND qa.score IS NOT NULL
+                  AND qa.score < 0.7
+                  AND qa.created_at >= datetime('now', '-30 days')
+                  AND lower(qq.topic) = lower(cn.name)
+                ORDER BY qa.created_at DESC
+                LIMIT 1
+            ) AS latest_score,
+            (
+                SELECT lg.title
+                FROM learning_goals lg
+                WHERE lg.concept_id = cn.id
+                  AND lg.is_completed = 0
+                  AND (
+                    (lg.due_date IS NOT NULL AND lg.due_date <= date('now', '+7 days'))
+                    OR (lg.progress < 0.5 AND lg.updated_at < datetime('now', '-14 days'))
+                  )
+                ORDER BY
+                    CASE WHEN lg.due_date IS NOT NULL THEN 0 ELSE 1 END,
+                    lg.due_date ASC,
+                    lg.updated_at ASC
+                LIMIT 1
+            ) AS goal_title,
+            (
+                SELECT lg.due_date
+                FROM learning_goals lg
+                WHERE lg.concept_id = cn.id
+                  AND lg.is_completed = 0
+                  AND (
+                    (lg.due_date IS NOT NULL AND lg.due_date <= date('now', '+7 days'))
+                    OR (lg.progress < 0.5 AND lg.updated_at < datetime('now', '-14 days'))
+                  )
+                ORDER BY
+                    CASE WHEN lg.due_date IS NOT NULL THEN 0 ELSE 1 END,
+                    lg.due_date ASC,
+                    lg.updated_at ASC
+                LIMIT 1
+            ) AS goal_due_date,
+            CASE
+                WHEN cn.review_count <= 2 AND cn.updated_at < datetime('now', '-7 days')
+                    THEN CAST((julianday('now') - julianday(cn.updated_at)) AS INTEGER)
+                ELSE NULL
+            END AS stale_days
+        FROM concept_nodes cn
+        WHERE cn.workspace_id {ws_cond}
+          AND (
+            EXISTS (
+                SELECT 1
+                FROM quiz_answers qa
+                JOIN quiz_questions qq ON qq.id = qa.question_id
+                JOIN quizzes q ON q.id = qq.quiz_id
+                WHERE q.workspace_id = cn.workspace_id
+                  AND qa.score IS NOT NULL
+                  AND qa.score < 0.7
+                  AND qa.created_at >= datetime('now', '-30 days')
+                  AND lower(qq.topic) = lower(cn.name)
+            )
+            OR (
+                cn.review_count <= 2
+                AND cn.updated_at < datetime('now', '-7 days')
+            )
+            OR EXISTS (
+                SELECT 1
+                FROM learning_goals lg
+                WHERE lg.concept_id = cn.id
+                  AND lg.is_completed = 0
+                  AND (
+                    (lg.due_date IS NOT NULL AND lg.due_date <= date('now', '+7 days'))
+                    OR (lg.progress < 0.5 AND lg.updated_at < datetime('now', '-14 days'))
+                  )
+            )
+          )
+        ORDER BY
+            CASE
+                WHEN EXISTS (
+                    SELECT 1 FROM quiz_answers qa
+                    JOIN quiz_questions qq ON qq.id = qa.question_id
+                    JOIN quizzes q ON q.id = qq.quiz_id
+                    WHERE q.workspace_id = cn.workspace_id
+                      AND qa.score IS NOT NULL
+                      AND qa.score < 0.7
+                      AND qa.created_at >= datetime('now', '-30 days')
+                      AND lower(qq.topic) = lower(cn.name)
+                ) THEN 0
+                WHEN EXISTS (
+                    SELECT 1 FROM learning_goals lg
+                    WHERE lg.concept_id = cn.id
+                      AND lg.is_completed = 0
+                      AND (
+                        (lg.due_date IS NOT NULL AND lg.due_date <= date('now', '+7 days'))
+                        OR (lg.progress < 0.5 AND lg.updated_at < datetime('now', '-14 days'))
+                      )
+                ) THEN 1
+                ELSE 2
+            END ASC,
+            cn.updated_at ASC,
+            cn.name ASC"
+    );
+
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![&workspace_id], |row| {
+            let concept_id: String = row.get(0)?;
+            let name: String = row.get(1)?;
+            let latest_score: Option<f64> = row.get(2)?;
+            let goal_title: Option<String> = row.get(3)?;
+            let goal_due_date: Option<String> = row.get(4)?;
+            let stale_days: Option<i64> = row.get(5)?;
+
+            let (reason_kind, detail, priority) = if let Some(score) = latest_score {
+                (
+                    "grade".to_string(),
+                    format!("failing grade {score:.2}"),
+                    0,
+                )
+            } else if let Some(title) = goal_title {
+                let detail = match goal_due_date.as_deref() {
+                    Some(due) if !due.is_empty() => format!("goal \"{title}\" due {due}"),
+                    _ => format!("goal \"{title}\" stalled"),
+                };
+                ("goal".to_string(), detail, 1)
+            } else if let Some(days) = stale_days {
+                (
+                    "stale".to_string(),
+                    format!("under-reinforced, last seen {days}d ago"),
+                    2,
+                )
+            } else {
+                (
+                    "stale".to_string(),
+                    "needs another review pass".to_string(),
+                    2,
+                )
+            };
+
+            Ok(ReviewTopic {
+                concept_id,
+                name,
+                reason_kind,
+                detail,
+                priority,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::db::test_utils::tests::setup_test_db;
+    use rusqlite::params;
+
+    /// Seeds a workspace with two concepts:
+    ///   A — failing recent quiz score
+    ///   B — at-risk learning goal
+    /// and asserts the topics_due_for_review aggregate counts both, and that
+    /// `top_due_topic` resolves to the higher-priority "grade" concept.
+    #[test]
+    fn topic_review_aggregate_counts_and_orders_by_priority() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+
+        // Workspace
+        conn.execute(
+            "INSERT INTO workspaces (id, name, description, icon, is_hidden, parent_workspace_id, created_at, updated_at, order_index)
+             VALUES ('ws-1', 'WS', '', '', 0, NULL, datetime('now'), datetime('now'), 0)",
+            [],
+        ).unwrap();
+
+        // Concept A — will be matched by failing grade.
+        // Use a recent updated_at so the staleness branch alone wouldn't fire.
+        conn.execute(
+            "INSERT INTO concept_nodes (id, workspace_id, name, review_count, created_at, updated_at)
+             VALUES ('A', 'ws-1', 'Alpha', 5, datetime('now'), datetime('now'))",
+            [],
+        ).unwrap();
+        // Concept B — only matched by at-risk goal.
+        conn.execute(
+            "INSERT INTO concept_nodes (id, workspace_id, name, review_count, created_at, updated_at)
+             VALUES ('B', 'ws-1', 'Beta', 5, datetime('now'), datetime('now'))",
+            [],
+        ).unwrap();
+
+        // Quiz + question + low-score answer for Alpha.
+        conn.execute(
+            "INSERT INTO quizzes (id, workspace_id, kind, title, topic_ids, topic_labels, status, question_count, created_at)
+             VALUES ('q1', 'ws-1', 'pop', 'Quiz', '[]', '[]', 'completed', 1, datetime('now'))",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO quiz_questions (id, quiz_id, position, prompt, expected_answer, rubric, topic, created_at)
+             VALUES ('qq1', 'q1', 0, 'p', '', '', 'Alpha', datetime('now'))",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO quiz_answers (id, quiz_id, question_id, user_answer, score, feedback, graded_at, created_at)
+             VALUES ('qa1', 'q1', 'qq1', 'ans', 0.4, '', datetime('now'), datetime('now'))",
+            [],
+        ).unwrap();
+
+        // At-risk learning goal pointing at Beta.
+        conn.execute(
+            "INSERT INTO learning_goals (id, workspace_id, title, goal_description, progress, is_completed, due_date, concept_id, created_at, updated_at)
+             VALUES ('g1', 'ws-1', 'Master Beta', '', 0.1, 0, date('now', '+1 day'), 'B', datetime('now'), datetime('now'))",
+            [],
+        ).unwrap();
+
+        // Run the same predicate as the dashboard aggregate, scoped to ws-1.
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(DISTINCT cn.id)
+                 FROM concept_nodes cn
+                 WHERE cn.workspace_id = ?1
+                   AND (
+                     EXISTS (
+                         SELECT 1 FROM quiz_answers qa
+                         JOIN quiz_questions qq ON qq.id = qa.question_id
+                         JOIN quizzes q ON q.id = qq.quiz_id
+                         WHERE q.workspace_id = cn.workspace_id
+                           AND qa.score IS NOT NULL
+                           AND qa.score < 0.7
+                           AND qa.created_at >= datetime('now', '-30 days')
+                           AND lower(qq.topic) = lower(cn.name)
+                     )
+                     OR (cn.review_count <= 2 AND cn.updated_at < datetime('now', '-7 days'))
+                     OR EXISTS (
+                         SELECT 1 FROM learning_goals lg
+                         WHERE lg.concept_id = cn.id
+                           AND lg.is_completed = 0
+                           AND ((lg.due_date IS NOT NULL AND lg.due_date <= date('now', '+7 days'))
+                                OR (lg.progress < 0.5 AND lg.updated_at < datetime('now', '-14 days')))
+                     )
+                   )",
+                params!["ws-1"],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap();
+        assert_eq!(count, 2, "both Alpha (grade) and Beta (goal) should match");
+
+        // Top due topic — grade priority must win.
+        let top: Option<String> = conn
+            .query_row(
+                "SELECT cn.name FROM concept_nodes cn
+                 WHERE cn.workspace_id = ?1
+                   AND (
+                     EXISTS (
+                         SELECT 1 FROM quiz_answers qa
+                         JOIN quiz_questions qq ON qq.id = qa.question_id
+                         JOIN quizzes q ON q.id = qq.quiz_id
+                         WHERE q.workspace_id = cn.workspace_id
+                           AND qa.score IS NOT NULL
+                           AND qa.score < 0.7
+                           AND qa.created_at >= datetime('now', '-30 days')
+                           AND lower(qq.topic) = lower(cn.name)
+                     )
+                     OR (cn.review_count <= 2 AND cn.updated_at < datetime('now', '-7 days'))
+                     OR EXISTS (
+                         SELECT 1 FROM learning_goals lg
+                         WHERE lg.concept_id = cn.id
+                           AND lg.is_completed = 0
+                           AND ((lg.due_date IS NOT NULL AND lg.due_date <= date('now', '+7 days'))
+                                OR (lg.progress < 0.5 AND lg.updated_at < datetime('now', '-14 days')))
+                     )
+                   )
+                 ORDER BY
+                   CASE
+                     WHEN EXISTS (
+                         SELECT 1 FROM quiz_answers qa
+                         JOIN quiz_questions qq ON qq.id = qa.question_id
+                         JOIN quizzes q ON q.id = qq.quiz_id
+                         WHERE q.workspace_id = cn.workspace_id
+                           AND qa.score IS NOT NULL
+                           AND qa.score < 0.7
+                           AND qa.created_at >= datetime('now', '-30 days')
+                           AND lower(qq.topic) = lower(cn.name)
+                     ) THEN 0
+                     WHEN EXISTS (
+                         SELECT 1 FROM learning_goals lg
+                         WHERE lg.concept_id = cn.id
+                           AND lg.is_completed = 0
+                           AND ((lg.due_date IS NOT NULL AND lg.due_date <= date('now', '+7 days'))
+                                OR (lg.progress < 0.5 AND lg.updated_at < datetime('now', '-14 days')))
+                     ) THEN 1
+                     ELSE 2
+                   END ASC,
+                   cn.updated_at ASC,
+                   cn.name ASC
+                 LIMIT 1",
+                params!["ws-1"],
+                |row| row.get::<_, String>(0),
+            )
+            .ok();
+        assert_eq!(top.as_deref(), Some("Alpha"));
+    }
 }

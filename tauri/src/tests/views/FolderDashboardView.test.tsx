@@ -105,6 +105,8 @@ describe("FolderDashboardView", () => {
           },
         ],
         route: { path: "/graph", state: null },
+        topics_due_for_review: 3,
+        top_due_topic: "PID namespaces",
       },
       goals: [
         {
@@ -122,8 +124,8 @@ describe("FolderDashboardView", () => {
           id: "review-due",
           kind: "review",
           title: "Review what is due now",
-          description: "5 flashcards are ready for reinforcement.",
-          route: { path: "/graph", state: null },
+          description: "3 topics need another review pass. Start with \"PID namespaces\".",
+          route: { path: "/review-topics", state: null },
         },
       ],
       knowledge_health: {

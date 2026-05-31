@@ -1001,15 +1001,16 @@ export default function KnowledgeGraphView({
                     </button>
                   )}
 
-                  {review && review.due_today > 0 && (
+                  {review && review.topics_due_for_review > 0 && (
                     <button
-                      onClick={() => openRoute(review.route)}
+                      onClick={() => openRoute({ path: "/review-topics", state: null })}
                       className="flex w-full items-start justify-between gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-4 text-left transition-colors hover:border-[var(--accent-color)]"
                     >
                       <div>
                         <div className="text-sm font-medium text-[var(--text-primary)]">Review what is due now</div>
                         <div className="mt-1 text-sm text-[var(--text-secondary)]">
-                          {review.due_today} card{review.due_today === 1 ? "" : "s"} are ready for reinforcement.
+                          {review.topics_due_for_review} topic{review.topics_due_for_review === 1 ? "" : "s"} {review.topics_due_for_review === 1 ? "needs" : "need"} another review pass.
+                          {review.top_due_topic ? ` Start with “${review.top_due_topic}”.` : ""}
                         </div>
                       </div>
                       <ArrowRight size={16} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
@@ -1031,7 +1032,7 @@ export default function KnowledgeGraphView({
                     </button>
                   ))}
 
-                  {!continueLearning && progression.length === 0 && (!review || review.due_today === 0) && (
+                  {!continueLearning && progression.length === 0 && (!review || review.topics_due_for_review === 0) && (
                     <div className="rounded-2xl border border-dashed border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-4">
                       <div className="text-sm font-medium text-[var(--text-primary)]">No urgent next step yet</div>
                       <div className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">

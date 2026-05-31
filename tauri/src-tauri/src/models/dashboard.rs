@@ -45,6 +45,25 @@ pub struct DashboardReviewSummary {
     pub under_reviewed_concepts: i64,
     pub weak_concepts: Vec<DashboardConceptFocus>,
     pub route: DashboardRoute,
+    /// Distinct topic count where any of: latest quiz score < 0.7 (last 30d),
+    /// stale + under-reinforced, or backed by an at-risk learning_goal.
+    #[serde(default)]
+    pub topics_due_for_review: i64,
+    /// Highest-priority topic name (priority: grade -> goal -> stale).
+    #[serde(default)]
+    pub top_due_topic: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReviewTopic {
+    pub concept_id: String,
+    pub name: String,
+    /// One of: "grade", "goal", "stale".
+    pub reason_kind: String,
+    /// Human-readable detail used by the view.
+    pub detail: String,
+    /// Lower = higher priority (grade=0, goal=1, stale=2).
+    pub priority: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
