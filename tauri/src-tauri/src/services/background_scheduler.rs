@@ -51,8 +51,17 @@ pub fn start_scheduler(app: AppHandle) {
                 .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
                 .is_err()
             {
+                crate::logging::log_buffered(
+                    "info",
+                    "scheduler",
+                    "[TICK_SKIP] previous tick still running",
+                    "{}",
+                );
                 continue;
             }
+
+            let tick_started_at = std::time::Instant::now();
+            crate::logging::log_buffered("info", "scheduler", "[TICK_START]", "{}");
 
             let db = app.state::<DbState>();
 
@@ -323,6 +332,23 @@ pub fn start_scheduler(app: AppHandle) {
                 }
             }
 
+            let tick_elapsed = tick_started_at.elapsed();
+            crate::logging::log_buffered(
+                "info",
+                "scheduler",
+                &format!(
+                    "[TICK_END] duration={} streaming={} active_chatting={} bg_inference={}",
+                    if tick_elapsed.as_secs() >= 1 {
+                        format!("{:.2}s", tick_elapsed.as_secs_f64())
+                    } else {
+                        format!("{:.1}ms", tick_elapsed.as_secs_f64() * 1000.0)
+                    },
+                    is_streaming,
+                    is_active_chatting,
+                    background_inference_enabled,
+                ),
+                "{}",
+            );
             SCHEDULER_RUNNING.store(false, Ordering::SeqCst);
         }
     });
