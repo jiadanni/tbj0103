@@ -227,6 +227,12 @@ export default function App() {
         ]);
         if (cancelled) {return;}
 
+        const bootStore = useSettingsStore.getState();
+        bootStore.setWebSessionPreserve(settings.web_session_preserve);
+        bootStore.setChatTitleAutoRefresh(settings.chat_title_auto_refresh);
+        bootStore.setChatTitleRefreshInterval(settings.chat_title_refresh_interval);
+        bootStore.setAboutYou(settings.about_you);
+
         // Auto-activate demo on first start (no workspaces + not previously dismissed)
         let finalWorkspaces = workspaces;
         if (workspaces.length === 0 && !settings.demo_dismissed) {
@@ -320,6 +326,10 @@ export default function App() {
         store.setShowGenInfoSpeed(settings.show_gen_info_speed);
         store.setShowGenInfoModel(settings.show_gen_info_model);
         store.setQuickSearchShortcut(settings.quick_search_shortcut);
+        store.setWebSessionPreserve(settings.web_session_preserve);
+        store.setChatTitleAutoRefresh(settings.chat_title_auto_refresh);
+        store.setChatTitleRefreshInterval(settings.chat_title_refresh_interval);
+        store.setAboutYou(settings.about_you);
       } catch (err) {
         console.error("Failed to re-fetch settings after change:", err);
       }

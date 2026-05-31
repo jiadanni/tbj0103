@@ -77,8 +77,8 @@ export default function LearningPathView({ conceptId = null, onClearConceptFilte
     let surveyText = formatSurveyForPrompt(survey);
     // Prepend About You profile so generated goals are tailored to the user.
     try {
-      const settings = await api.settings.get();
-      const profile = resolveAboutYou(activeWorkspace.about_you ?? "", settings.about_you);
+      const aboutYou = useSettingsStore.getState().aboutYou;
+      const profile = resolveAboutYou(activeWorkspace.about_you ?? "", aboutYou);
       const aboutBlock = formatAboutYouForPrompt(profile);
       if (aboutBlock) {
         surveyText = `${aboutBlock}\n\n${surveyText}`;

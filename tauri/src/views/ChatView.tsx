@@ -2841,11 +2841,7 @@ export default function ChatView() {
   }
 
   // Web AI session settings
-  const [preserveWebSession, setPreserveWebSession] = useState(false);
-
-  useEffect(() => {
-    api.settings.get().then((s) => setPreserveWebSession(s.web_session_preserve)).catch(() => { });
-  }, []);
+  const preserveWebSession = useSettingsStore((s) => s.webSessionPreserve);
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const prevScrollChatIdRef = useRef<string | null>(null);
@@ -3785,8 +3781,9 @@ export default function ChatView() {
     return { sessionId, session };
   }
   async function generateSessionTitleIfNeeded(sessionId: string, model: string, firstMessage: string, knownSession?: ChatSession) {
-    const settings = await api.settings.get().catch(() => null);
-    if (!settings || settings.chat_title_auto_refresh === "disabled") { return; }
+    const settingsSnapshot = useSettingsStore.getState();
+    const mode = settingsSnapshot.chatTitleAutoRefresh;
+    if (mode === "disabled") { return; }
 
     // Use the provided session object when available to avoid stale-closure misses
     // (e.g. a brand-new session that hasn't propagated through React state yet).
@@ -3822,9 +3819,9 @@ export default function ChatView() {
     }
 
     // Periodic title refresh — only in "periodic" mode, skip if "initial_only"
-    if (settings.chat_title_auto_refresh === "periodic" && effectiveWorkspaceId) {
+    if (settingsSnapshot.chatTitleAutoRefresh === "periodic" && effectiveWorkspaceId) {
       const lastTitleGenCount = session.message_count_at_title_gen ?? 0;
-      const interval = settings.chat_title_refresh_interval || 5;
+      const interval = settingsSnapshot.chatTitleRefreshInterval || 5;
 
       if (userMessageCount - lastTitleGenCount >= interval) {
         try {

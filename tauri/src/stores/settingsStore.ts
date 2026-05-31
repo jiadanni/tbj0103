@@ -83,6 +83,10 @@ interface AppSettings {
   showStatusBar: boolean;
   userChatLabel: string;
   assistantChatLabel: string;
+  webSessionPreserve: boolean;
+  chatTitleAutoRefresh: "disabled" | "initial_only" | "periodic";
+  chatTitleRefreshInterval: number;
+  aboutYou: string;
 }
 
 interface SettingsStore extends AppSettings {
@@ -140,6 +144,10 @@ interface SettingsStore extends AppSettings {
   setShowStatusBar: (v: boolean) => void;
   setUserChatLabel: (v: string) => void;
   setAssistantChatLabel: (v: string) => void;
+  setWebSessionPreserve: (v: boolean) => void;
+  setChatTitleAutoRefresh: (v: "disabled" | "initial_only" | "periodic") => void;
+  setChatTitleRefreshInterval: (v: number) => void;
+  setAboutYou: (v: string) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -197,6 +205,10 @@ export const useSettingsStore = create<SettingsStore>()(
       showStatusBar: true,
       userChatLabel: "You",
       assistantChatLabel: "Assistant",
+      webSessionPreserve: false,
+      chatTitleAutoRefresh: "initial_only",
+      chatTitleRefreshInterval: 5,
+      aboutYou: "",
       setPreferredModel: (preferredModel) => set({ preferredModel }),
       setBackgroundModel: (backgroundModel) => set({ backgroundModel }),
       setSummarizationModel: (summarizationModel) => set({ summarizationModel }),
@@ -264,6 +276,10 @@ export const useSettingsStore = create<SettingsStore>()(
       setShowStatusBar: (showStatusBar) => set({ showStatusBar }),
       setUserChatLabel: (userChatLabel) => set({ userChatLabel }),
       setAssistantChatLabel: (assistantChatLabel) => set({ assistantChatLabel }),
+      setWebSessionPreserve: (webSessionPreserve) => set({ webSessionPreserve }),
+      setChatTitleAutoRefresh: (chatTitleAutoRefresh) => set({ chatTitleAutoRefresh }),
+      setChatTitleRefreshInterval: (chatTitleRefreshInterval) => set({ chatTitleRefreshInterval }),
+      setAboutYou: (aboutYou) => set({ aboutYou }),
     }),
     {
       name: "aetherium-settings",
