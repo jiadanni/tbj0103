@@ -292,6 +292,7 @@ pub async fn open_preferences_window(
         .inner_size(960.0, 640.0)
         .min_inner_size(720.0, 480.0)
         .resizable(true)
+        .background_color(tauri::webview::Color(24, 24, 27, 255))
         .build()
         .map_err(|e| e.to_string())?;
 
