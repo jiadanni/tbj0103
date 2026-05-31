@@ -3,13 +3,18 @@
  * Left rail: AI analysis + concept tools.
  * Main area: overview, suggested actions, graph map, and recent activity.
  */
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
+import { save } from "@tauri-apps/plugin-dialog";
+import SuccessDialog from "../components/SuccessDialog";
+import ConfirmDialog from "../components/ConfirmDialog";
+import { writeFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import {
   ArrowRight,
   Brain,
   ChevronDown,
   Clock3,
+  Download,
   FileText,
   Loader2,
   MessageSquare,
@@ -22,7 +27,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import RoadmapGraph from "../components/RoadmapGraph";
+import RoadmapGraph, { type RoadmapGraphHandle } from "../components/RoadmapGraph";
 import {
   api,
   type AiModel,
@@ -200,7 +205,7 @@ function makeDemoCards(concept: ConceptNode, workspaceId: string): LearningCard[
       id: `${concept.id}-demo-card-2`,
       workspace_id: workspaceId,
       front: `How does ${concept.name} connect to this topic?`,
-      back: `Use the map to trace the nearby nodes and explain how ${concept.name} supports the broader concept cluster.`,
+      back: `Use the map to trace the nearby nodes and explain how ${concept.name} supports the broader topic cluster.`,
       source_type: "demo",
       source_id: concept.id,
       ease_factor: 2.5,
@@ -274,6 +279,12 @@ export default function KnowledgeGraphView({
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newConceptName, setNewConceptName] = useState("");
   const [newConceptType, setNewConceptType] = useState("topic");
+
+  const roadmapRef = useRef<RoadmapGraphHandle | null>(null);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<string | null>(null);
+  const [successDialog, setSuccessDialog] = useState<{ title: string; description: string } | null>(null);
+  const [errorDialog, setErrorDialog] = useState<{ title: string; description: string } | null>(null);
 
   const [conceptCards, setConceptCards] = useState<LearningCard[]>([]);
   const [isGeneratingCards, setIsGeneratingCards] = useState(false);
@@ -518,6 +529,64 @@ export default function KnowledgeGraphView({
     void loadSummary();
   }
 
+  async function exportRoadmap(format: "markdown" | "json" | "mermaid" | "csv" | "png" | "pdf") {
+    if (!activeWorkspaceId) { return; }
+    setExportMenuOpen(false);
+    setExportingFormat(format);
+    try {
+      const ext = format === "markdown" ? "md" : format;
+      const filterName =
+        format === "markdown" ? "Markdown"
+          : format === "json" ? "JSON"
+          : format === "mermaid" ? "Mermaid"
+          : format === "csv" ? "CSV"
+          : format === "png" ? "PNG"
+          : "PDF";
+      const dest = await save({
+        title: `Export roadmap as ${filterName}`,
+        defaultPath: `roadmap.${ext}`,
+        filters: [{ name: filterName, extensions: [ext] }],
+      });
+      if (!dest) { return; }
+
+      if (format === "png" || format === "pdf") {
+        const snapshot = roadmapRef.current?.getExportableSvg();
+        if (!snapshot) {
+          setErrorDialog({
+            title: "Export failed",
+            description: "Roadmap is not ready to export yet.",
+          });
+          return;
+        }
+        const bytes = format === "png"
+          ? await api.export.roadmap.png(activeWorkspaceId, snapshot.svg, snapshot.width, snapshot.height)
+          : await api.export.roadmap.pdf(activeWorkspaceId, snapshot.svg, snapshot.width, snapshot.height);
+        await writeFile(dest, new Uint8Array(bytes));
+      } else {
+        const text = format === "markdown"
+          ? await api.export.roadmap.markdown(activeWorkspaceId)
+          : format === "json"
+            ? await api.export.roadmap.json(activeWorkspaceId)
+            : format === "mermaid"
+              ? await api.export.roadmap.mermaid(activeWorkspaceId)
+              : await api.export.roadmap.csv(activeWorkspaceId);
+        await writeTextFile(dest, text);
+      }
+      setSuccessDialog({
+        title: "Export complete",
+        description: `Successfully exported roadmap as ${filterName} to ${dest}.`,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorDialog({
+        title: "Export failed",
+        description: msg,
+      });
+    } finally {
+      setExportingFormat(null);
+    }
+  }
+
   async function generateConceptCards() {
     const demoWithoutModels = isDemoMode && availableModels.length === 0;
     if (!selectedConcept || !activeWorkspaceId || isGeneratingCards || (!selectedModel && !demoWithoutModels)) { return; }
@@ -587,13 +656,13 @@ export default function KnowledgeGraphView({
       : includeDescendants
         ? "Runs analysis on each sub-workspace sequentially. The merged graph updates as each workspace completes. Yields to active chat."
         : hasModels
-          ? "Use this to extract concepts and links from what you have already read, asked, and captured."
+          ? "Use this to extract topics and links from what you have already read, asked, and captured."
           : "No local AI models are available yet. Install or connect a model to analyze this workspace.";
   const cardHelpText = isDemoWithoutModels
-    ? "Demo mode can generate sample flashcards locally for this concept."
+    ? "Demo mode can generate sample flashcards locally for this topic."
     : hasModels
       ? ""
-      : "Install a local model to generate flashcards for this concept.";
+      : "Install a local model to generate flashcards for this topic.";
   const analyzeResultSummary = isDemoWithoutModels
     ? "Demo analysis refreshed the seeded sample content."
     : analyzeResult
@@ -657,14 +726,14 @@ export default function KnowledgeGraphView({
             <div className="grid grid-cols-3 gap-2">
               <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-2 text-center">
                 <div className="text-sm font-semibold text-[var(--text-primary)]">{overview?.concepts ?? nodes.length}</div>
-                <div className="mt-1 text-[10px] text-[var(--text-muted)]">Concepts</div>
+                <div className="mt-1 text-[10px] text-[var(--text-muted)]">Topics</div>
               </div>
               <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-2 text-center">
                 <div className="text-sm font-semibold text-[var(--text-primary)]">{links.length}</div>
                 <div className="mt-1 text-[10px] text-[var(--text-muted)]">Links</div>
               </div>
               <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-2 text-center">
-                <div className="text-sm font-semibold text-[var(--text-primary)]">{review?.due_today ?? 0}</div>
+                <div className="text-sm font-semibold text-[var(--text-primary)]">{review?.topics_due_for_review ?? 0}</div>
                 <div className="mt-1 text-[10px] text-[var(--text-muted)]">Due</div>
               </div>
             </div>
@@ -672,7 +741,7 @@ export default function KnowledgeGraphView({
 
           <SidebarCard className="p-3">
             <div className="mb-2 flex items-center justify-between">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Concepts</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Topics</div>
               <button
                 onClick={() => setShowCreateForm(true)}
                 className="inline-flex items-center gap-1 rounded-lg border border-[var(--border-color)] px-2 py-1 text-[10px] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
@@ -686,7 +755,7 @@ export default function KnowledgeGraphView({
               <input
                 value={conceptSearch}
                 onChange={(event) => setConceptSearch(event.target.value)}
-                placeholder="Filter concepts..."
+                placeholder="Filter topics..."
                 className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-input)] py-2 pl-7 pr-3 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
               />
             </div>
@@ -766,7 +835,7 @@ export default function KnowledgeGraphView({
               </div>
             )}
             {hierarchyTree.chapters.length === 0 && hierarchyTree.orphans.length === 0 && (
-              <p className="px-2 py-3 text-[10px] text-[var(--text-muted)]">No concepts match this filter yet.</p>
+              <p className="px-2 py-3 text-[10px] text-[var(--text-muted)]">No topics match this filter yet.</p>
             )}
             </div>
           </SidebarCard>
@@ -895,20 +964,17 @@ export default function KnowledgeGraphView({
 
           <div className="flex flex-wrap gap-2">
             {[
-              { icon: <Brain size={12} />, label: "Concepts", value: overview?.concepts ?? nodes.length, onClick: () => navigate("/graph") },
+              { icon: <Brain size={12} />, label: "Topics", value: overview?.concepts ?? nodes.length, onClick: () => navigate("/graph") },
               { icon: <Network size={12} />, label: "Links", value: links.length, onClick: () => navigate("/graph") },
-              { icon: <Clock3 size={12} />, label: "Due Review", value: review?.due_today ?? 0, onClick: review?.route ? () => openRoute(review.route) : undefined },
+              { icon: <Clock3 size={12} />, label: "Due Review", value: review?.topics_due_for_review ?? 0, onClick: () => navigate("/review-topics") },
               { icon: <Target size={12} />, label: "Active Goals", value: overview?.active_goals ?? 0, onClick: () => navigate("/learning") },
-              { icon: <Network size={12} />, label: "Isolated Concepts", value: summary?.knowledge_health.isolated_concepts ?? 0, onClick: () => navigate("/graph") },
+              { icon: <Network size={12} />, label: "Isolated Topics", value: summary?.knowledge_health.isolated_concepts ?? 0, onClick: () => navigate("/graph") },
               { icon: <FileText size={12} />, label: "Unprocessed Sources", value: summary?.knowledge_health.unprocessed_sources ?? 0, onClick: () => navigate("/sources") },
             ].map(({ icon, label, value, onClick }) => (
               <button
                 key={label}
                 onClick={onClick}
-                disabled={!onClick}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-xs text-[var(--text-secondary)] hover:border-[var(--border-color-hover)] transition-all disabled:cursor-default ${
-                  onClick ? "hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]" : ""
-                }`}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-xs text-[var(--text-secondary)] hover:border-[var(--border-color-hover)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)] transition-all"
               >
                 <span className="text-[var(--accent-color)] flex items-center">{icon}</span>
                 {summaryLoading ? <Loader2 size={10} className="animate-spin text-[var(--text-muted)]" /> : <span className="font-semibold text-[var(--text-primary)]">{value}</span>}
@@ -939,6 +1005,53 @@ export default function KnowledgeGraphView({
                         className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-1.5 pl-8 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
                       />
                     </div>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setExportMenuOpen((open) => !open)}
+                        disabled={nodes.length === 0 || exportingFormat !== null}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-1.5 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)] disabled:opacity-50"
+                      >
+                        {exportingFormat ? (
+                          <Loader2 size={13} className="animate-spin" />
+                        ) : (
+                          <Download size={13} />
+                        )}
+                        Export
+                        <ChevronDown size={13} />
+                      </button>
+                      {exportMenuOpen && (
+                        <div
+                          role="menu"
+                          className="absolute right-0 z-20 mt-1 w-56 overflow-hidden rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-lg"
+                        >
+                          {[
+                            { id: "markdown", label: "Markdown outline (.md)", desc: "AI-friendly hierarchy" },
+                            { id: "json", label: "Hierarchical JSON (.json)", desc: "Nested tree + links" },
+                            { id: "mermaid", label: "Mermaid (.mermaid)", desc: "graph TD source" },
+                            { id: "csv", label: "CSV (.csv)", desc: "Flat with parent_id + depth" },
+                            { id: "png", label: "PNG image (.png)", desc: "Visual snapshot" },
+                            { id: "pdf", label: "PDF document (.pdf)", desc: "Print / archive" },
+                          ].map((item) => {
+                            const isImage = item.id === "png" || item.id === "pdf";
+                            const disabled = isImage && !roadmapRef.current;
+                            return (
+                              <button
+                                key={item.id}
+                                type="button"
+                                role="menuitem"
+                                onClick={() => exportRoadmap(item.id as "markdown" | "json" | "mermaid" | "csv" | "png" | "pdf")}
+                                disabled={disabled || exportingFormat !== null}
+                                className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                <span className="font-medium">{item.label}</span>
+                                <span className="text-xs text-[var(--text-muted)]">{item.desc}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -968,6 +1081,7 @@ export default function KnowledgeGraphView({
                     </div>
                   ) : (
                     <RoadmapGraph
+                      ref={roadmapRef}
                       nodes={nodes}
                       links={links}
                       selectedConceptId={selectedConcept?.id ?? null}
@@ -1073,15 +1187,15 @@ export default function KnowledgeGraphView({
                     </div>
                   </div>
                   <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
-                    <div className="text-xs text-[var(--text-muted)]">Weak concepts</div>
+                    <div className="text-xs text-[var(--text-muted)]">Weak topics</div>
                     <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
                       {weakConcepts.length}
                     </div>
                   </div>
                   <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4">
-                    <div className="text-xs text-[var(--text-muted)]">Reviewed cards</div>
+                    <div className="text-xs text-[var(--text-muted)]">Topics in review</div>
                     <div className="mt-2 text-2xl font-semibold text-[var(--text-primary)]">
-                      {review?.learned ?? 0}
+                      {review?.topics_due_for_review ?? 0}
                     </div>
                   </div>
                 </div>
@@ -1175,7 +1289,7 @@ export default function KnowledgeGraphView({
 
           <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
             <Section
-              title="Concept Focus"
+              title="Topic Focus"
               eyebrow="Signals"
               collapsed={collapsedSections["conceptFocus"]}
               onToggle={() => toggleSection("conceptFocus")}
@@ -1202,7 +1316,7 @@ export default function KnowledgeGraphView({
                   <div className="mt-4 text-xs text-[var(--text-muted)]">
                     {conceptCards.length > 0
                       ? `${conceptCards.length} related card${conceptCards.length === 1 ? "" : "s"} available in the sidebar.`
-                      : "Select generate cards in the sidebar if you want reinforcement for this concept."}
+                      : "Select generate cards in the sidebar if you want reinforcement for this topic."}
                   </div>
                 </div>
               ) : weakConcepts.length > 0 ? (
@@ -1268,7 +1382,7 @@ export default function KnowledgeGraphView({
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/30 backdrop-blur-sm">
           <div className="flex w-72 flex-col gap-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-5 shadow-xl">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-[var(--text-primary)]">New Concept</h3>
+              <h3 className="text-sm font-semibold text-[var(--text-primary)]">New Topic</h3>
               <button onClick={() => setShowCreateForm(false)}>
                 <X size={14} className="text-[var(--text-muted)]" />
               </button>
@@ -1282,12 +1396,12 @@ export default function KnowledgeGraphView({
                 if (event.key === "Enter") { void createConcept(); }
                 if (event.key === "Escape") { setShowCreateForm(false); }
               }}
-              placeholder="Concept name"
+              placeholder="Topic name"
               className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-input)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
             />
 
             <CompactMenuSelect
-              label="Concept Type"
+              label="Topic Type"
               value={newConceptType}
               options={["topic", "person", "technology", "definition", "question", "insight", "resource", "custom"].map((type) => ({
                 value: type,
@@ -1313,6 +1427,26 @@ export default function KnowledgeGraphView({
             </div>
           </div>
         </div>
+      )}
+
+      {successDialog && (
+        <SuccessDialog
+          title={successDialog.title}
+          description={successDialog.description}
+          onConfirm={() => setSuccessDialog(null)}
+        />
+      )}
+
+      {errorDialog && (
+        <ConfirmDialog
+          title={errorDialog.title}
+          description={errorDialog.description}
+          confirmLabel="OK"
+          cancelLabel={null}
+          tone="default"
+          onConfirm={() => setErrorDialog(null)}
+          onCancel={() => setErrorDialog(null)}
+        />
       )}
     </div>
   );

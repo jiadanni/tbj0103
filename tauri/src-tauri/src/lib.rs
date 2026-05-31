@@ -613,6 +613,13 @@ pub fn run() {
             commands::export::export_markdown,
             commands::export::export_json,
             commands::export::export_obsidian_vault,
+            // Roadmap export
+            commands::roadmap_export::export_roadmap_markdown,
+            commands::roadmap_export::export_roadmap_json,
+            commands::roadmap_export::export_roadmap_mermaid,
+            commands::roadmap_export::export_roadmap_csv,
+            commands::roadmap_export::export_roadmap_png,
+            commands::roadmap_export::export_roadmap_pdf,
             // Backup commands
             commands::backup::create_backup,
             commands::backup::list_backups,

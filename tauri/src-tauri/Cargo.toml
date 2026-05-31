@@ -43,6 +43,7 @@ bytes = "1"
 lopdf = "0.34"
 image = { version = "0.25", default-features = false, features = ["png"] }
 base64 = "0.22"
+headless_chrome = "1"
 sha2 = "0.10"
 keyring = { version = "3", features = ["apple-native"] }
 dirs = "5.0"
