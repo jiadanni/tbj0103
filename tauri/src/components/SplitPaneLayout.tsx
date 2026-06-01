@@ -414,7 +414,7 @@ export default function SplitPaneLayout() {
           <WorkspacePaneChrome paneId="primary" />
         </WorkspacePaneProvider>
       </Panel>
-      <PanelResizeHandle className="w-[1px] bg-[var(--border-color)] hover:bg-[var(--accent-color)] transition-colors cursor-col-resize" />
+      <PanelResizeHandle className="w-2 border-x-[3px] border-transparent bg-[var(--border-color)] hover:bg-[var(--accent-color)] bg-clip-content transition-colors cursor-col-resize shrink-0" />
       <Panel id="split-secondary" order={1} defaultSize={splitSizes[1]} minSize={30} className="overflow-hidden min-w-0">
         <WorkspacePaneProvider paneId="secondary">
           <WorkspacePaneChrome paneId="secondary" />

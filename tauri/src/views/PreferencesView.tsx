@@ -31,6 +31,8 @@ import type { PreferencesSection } from "../components/navigationItems";
 import { useAiModelSync } from "../hooks/useAiModelSync";
 import { usePrefsWindowMode } from "../lib/prefsWindowMode";
 import { parseAboutYou, serializeAboutYou, EMPTY_ABOUT_YOU, type AboutYouProfile } from "../lib/aboutYou";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+
 
 const MIN_FONT_SIZE = 11;
 const MAX_FONT_SIZE = 22;
@@ -1284,9 +1286,75 @@ function hexToRgb(hex: string): string {
   return "0, 122, 255";
 }
 
+function useIsLargeScreen() {
+  const [isLarge, setIsLarge] = useState(() => 
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia("(min-width: 1280px)").matches
+      : true
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+    const media = window.matchMedia("(min-width: 1280px)");
+    const listener = (e: MediaQueryListEvent) => setIsLarge(e.matches);
+    media.addEventListener("change", listener);
+    return () => media.removeEventListener("change", listener);
+  }, []);
+
+  return isLarge;
+}
+
+interface PreferencesSplitLayoutProps {
+  isLargeScreen: boolean;
+  children: React.ReactNode;
+  dbSettings: AppSettings;
+  hoverOverrides: {
+    theme?: string | null;
+    accentColor?: string | null;
+    fontSize?: number | null;
+    workspaceNavigation?: NavigationPresentation | null;
+    sectionNavigation?: NavigationPresentation | null;
+    workspaceSortOrder?: string | null;
+    chatMessageStyle?: ChatMessageStyle | null;
+    composerMode?: string | null;
+  };
+}
+
+function PreferencesSplitLayout({
+  isLargeScreen,
+  children,
+  dbSettings,
+  hoverOverrides,
+}: PreferencesSplitLayoutProps) {
+  if (isLargeScreen) {
+    return (
+      <PanelGroup direction="horizontal" className="flex-1 flex overflow-hidden min-h-0">
+        <Panel id="prefs-options" order={0} defaultSize={55} minSize={30} className="overflow-y-auto px-5 py-4 min-h-0">
+          <div className="max-w-5xl">
+            {children}
+          </div>
+        </Panel>
+        <PanelResizeHandle className="w-2 border-x-[3px] border-transparent bg-[var(--border-color)] hover:bg-[var(--accent-color)] bg-clip-content transition-colors cursor-col-resize shrink-0" />
+        <Panel id="prefs-preview" order={1} defaultSize={45} minSize={25} className="min-h-0 bg-[var(--bg-secondary)]/10 flex flex-col items-center justify-center p-6 select-none overflow-hidden">
+          <LiveAppPreview dbSettings={dbSettings} overrides={hoverOverrides} />
+        </Panel>
+      </PanelGroup>
+    );
+  }
+
+  return (
+    <div className="grow shrink max-w-5xl min-h-0 overflow-y-auto px-5 py-4">
+      {children}
+    </div>
+  );
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 
 export default function PreferencesView() {
+  const isLargeScreen = useIsLargeScreen();
   const settingsNavLayout = useSettingsStore((state) => state.settingsNavLayout);
   const setSettingsNavLayout = useSettingsStore((state) => state.setSettingsNavLayout);
   const autoGenerateFlashcards = useSettingsStore((state) => state.autoGenerateFlashcards);
@@ -2125,7 +2193,7 @@ export default function PreferencesView() {
       ? "Saved"
       : saveStatus === "error"
         ? "Save failed"
-        : "Changes save automatically";
+        : "";
 
   const autosaveStatusClassName = saveStatus === "error"
     ? "text-red-400"
@@ -2684,11 +2752,14 @@ export default function PreferencesView() {
             : "flex-col"
         }`}>
           {["app", "navigation", "appearance", "ai", "chat", "learning", "about-you", "webai", "security", "sync"].includes(activeTab) && (
-            <>
-              <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
-                <div className="max-w-5xl space-y-5">
+            <PreferencesSplitLayout
+              isLargeScreen={isLargeScreen}
+              dbSettings={dbSettings}
+              hoverOverrides={hoverOverrides}
+            >
+              <div className="space-y-5">
                   {activeTab === "app" && (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                  <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4 items-start">
                     <div className="space-y-4">
                       {/* Startup & background */}
                       <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
@@ -3057,7 +3128,7 @@ export default function PreferencesView() {
 
                 {/* ── Navigation ── */}
                 {activeTab === "navigation" && (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                  <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4 items-start">
                     <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
                       <div>
                         <h3 className="text-sm font-semibold text-[var(--text-primary)]">Main layout</h3>
@@ -3368,7 +3439,7 @@ export default function PreferencesView() {
                 {/* ── AI / Ollama ── */}
                 {activeTab === "ai" && (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                    <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4 items-start">
                       <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 space-y-3">
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -3441,13 +3512,62 @@ export default function PreferencesView() {
                           <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2.5 space-y-3">
                             <div>
                               <p className="text-[11px] font-semibold text-[var(--text-primary)]">Memory headroom</p>
-                              <p className="mt-0.5 text-[10px] text-[var(--text-secondary)]">
-                                {systemSpecs.os_name.toLowerCase().includes("mac") && ["aarch64", "arm64"].includes(systemSpecs.cpu_arch.toLowerCase())
-                                  ? "Tell Aetherium how much of the unified memory pool the desktop and other apps already hold so model-fit suggestions reflect what is actually usable."
-                                  : "Tell Aetherium how much VRAM and RAM the desktop and other apps already hold so model-fit suggestions reflect what is actually usable. The larger of GB and % is applied per pool."}
-                              </p>
-                              <p className="mt-1 text-[10px] text-[var(--text-secondary)]">
-                                Check current usage: macOS — Activity Monitor (Memory / GPU History) · Linux NVIDIA — <code>nvidia-smi</code> or <code>nvtop</code> · Linux AMD — <code>radeontop</code>, <code>rocm-smi</code>, or Mission Center · Linux Intel — <code>intel_gpu_top</code> · Windows — Task Manager → Performance → GPU.
+                              <p className="mt-1 text-[10px] text-[var(--text-secondary)] leading-relaxed">
+                                {(() => {
+                                  const osLower = systemSpecs.os_name.toLowerCase();
+                                  const isMac = osLower.includes("mac") || osLower.includes("darwin");
+                                  const isWindows = (osLower.includes("windows") || osLower.includes("win32") || osLower.includes("win64") || osLower.includes("microsoft")) && !osLower.includes("darwin") && !osLower.includes("mac");
+                                  const isLinux = osLower.includes("linux");
+
+                                  const isMacUnified = isMac && ["aarch64", "arm64"].includes(systemSpecs.cpu_arch.toLowerCase());
+                                  const hasGpu = (systemSpecs.gpu_memory_bytes ?? 0) > 0;
+                                  const gpuNameLower = (systemSpecs.gpu_name || "").toLowerCase();
+
+                                  const isNvidia = gpuNameLower.includes("nvidia") || gpuNameLower.includes("geforce") || gpuNameLower.includes("rtx");
+                                  const isAmd = gpuNameLower.includes("amd") || gpuNameLower.includes("radeon") || gpuNameLower.includes("navi");
+                                  const isIntel = gpuNameLower.includes("intel");
+
+                                  if (isMacUnified) {
+                                    return (
+                                      <>
+                                        Unified memory reserved for system and other apps. Check usage in macOS <strong>Activity Monitor</strong> (Memory tab).
+                                      </>
+                                    );
+                                  }
+
+                                  const reserveText = hasGpu
+                                    ? "RAM and VRAM reserved for system and other apps (larger of GB or % applies per pool)."
+                                    : "RAM reserved for system and other apps (larger of GB or % applies).";
+
+                                  const checkText = (() => {
+                                    if (isMac) {
+                                      return hasGpu
+                                        ? "Check usage in macOS Activity Monitor (Memory/GPU History)."
+                                        : "Check usage in macOS Activity Monitor (Memory tab).";
+                                    }
+                                    if (isWindows) {
+                                      return hasGpu
+                                        ? "Check usage in Task Manager (Performance → Memory/GPU)."
+                                        : "Check usage in Task Manager (Performance → Memory).";
+                                    }
+                                    if (isLinux) {
+                                      if (hasGpu) {
+                                        if (isNvidia) { return <>Check VRAM via <code>nvidia-smi</code> or <code>nvtop</code>, RAM via <code>free -h</code>.</>; }
+                                        if (isAmd) { return <>Check VRAM via <code>radeontop</code> or <code>rocm-smi</code>, RAM via <code>free -h</code>.</>; }
+                                        if (isIntel) { return <>Check VRAM via <code>intel_gpu_top</code>, RAM via <code>free -h</code>.</>; }
+                                        return <>Check GPU usage via diagnostics, RAM via <code>free -h</code>.</>;
+                                      }
+                                      return <>Check usage via <code>free -h</code> or <code>htop</code>.</>;
+                                    }
+                                    return <>Check usage in your system&apos;s activity monitor.</>;
+                                  })();
+
+                                  return (
+                                    <>
+                                      {reserveText} {checkText}
+                                    </>
+                                  );
+                                })()}
                               </p>
                             </div>
 
@@ -3904,7 +4024,7 @@ export default function PreferencesView() {
 
                 {/* ── Chat ── */}
                 {activeTab === "chat" && (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                  <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4 items-start">
                     {/* Card 1: Chat Layout & Preview */}
                     <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-4">
                       <div>
@@ -4212,7 +4332,7 @@ export default function PreferencesView() {
 
                 {/* ── Learning ── */}
                 {activeTab === "learning" && (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                  <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4 items-start">
                     <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
                       <div className="flex items-center justify-between gap-3">
                         <div>
@@ -4450,7 +4570,7 @@ export default function PreferencesView() {
                 {/* ── Security ── */}
                 {activeTab === "security" && (
                   <>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                    <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4 items-start">
                     {/* Left Column: Enable & Unlock Options */}
                     <div className="space-y-4">
                       {/* ── Require PIN on launch ── */}
@@ -4827,13 +4947,7 @@ export default function PreferencesView() {
                 )}
 
                 </div>
-              </div>
-
-              {/* Right Column: Live App Preview */}
-              <div className="hidden xl:flex xl:w-[42%] 2xl:w-[48%] shrink-0 min-h-0 border-l border-[var(--border-color)] bg-[var(--bg-secondary)]/10 flex-col items-center justify-center p-6 select-none overflow-hidden">
-                <LiveAppPreview dbSettings={dbSettings} overrides={hoverOverrides} />
-              </div>
-            </>
+            </PreferencesSplitLayout>
           )}
 
           {/* ── Full-bleed tabs (workspaces, backup, import) ── */}
