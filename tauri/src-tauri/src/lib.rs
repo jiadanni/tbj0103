@@ -503,6 +503,7 @@ pub fn run() {
             commands::folder::delete_folder,
             commands::folder::move_folder_to_workspace,
             commands::dashboard::get_dashboard_summary,
+            commands::dashboard::get_review_topics,
             // Artifact commands
             commands::artifact::create_artifact,
             commands::artifact::get_artifact,

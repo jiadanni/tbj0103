@@ -11,6 +11,7 @@ import {
   Globe,
   Lightbulb,
   MessageSquare,
+  Network,
   RefreshCw,
   Search,
   Sparkles,
@@ -74,18 +75,29 @@ function progressLabel(progress: number) {
   return `${Math.round(progress * 100)}%`;
 }
 
+type MetricDashVariant = "dot" | "bar" | "none";
+
+// Single knob for the small accent indicator above each metric card's value.
+// "dot" is the legacy circle (can visually collide with the card border on
+// narrow widths); "bar" is a short horizontal stripe; "none" hides it.
+const METRIC_DASH_VARIANT: MetricDashVariant = "bar";
+
 function MetricCard({
   label,
   value,
   accent,
+  dashVariant = METRIC_DASH_VARIANT,
 }: {
   label: string;
   value: string | number;
   accent: string;
+  dashVariant?: MetricDashVariant;
 }) {
   return (
     <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3">
-      <div className={`mb-2 h-1.5 w-1.5 rounded-full ${accent}`} />
+      {dashVariant === "dot" && <div className={`mb-2 h-1.5 w-1.5 rounded-full ${accent}`} />}
+      {dashVariant === "bar" && <div className={`mb-2 h-0.5 w-6 rounded-full ${accent}`} />}
+      {dashVariant === "none" && <div className="mb-2 h-0.5 w-6" aria-hidden />}
       <div className="text-2xl font-semibold text-[var(--text-primary)]">{value}</div>
       <div className="mt-0.5 text-xs text-[var(--text-muted)]">{label}</div>
     </div>
@@ -120,6 +132,27 @@ function routeState(route: DashboardRoute) {
   return route.state ?? undefined;
 }
 
+function ratio(good: number, total: number, fallback = 0) {
+  if (total <= 0) { return fallback; }
+  const v = 1 - good / total;
+  return Math.max(0, Math.min(1, v));
+}
+
+function HealthBar({ label, value, accent }: { label: string; value: number; accent: string }) {
+  const pct = Math.round(value * 100);
+  return (
+    <div>
+      <div className="flex items-baseline justify-between text-[11px] text-[var(--text-muted)]">
+        <span>{label}</span>
+        <span className="text-[var(--text-primary)]">{pct}%</span>
+      </div>
+      <div className="mt-1 h-1.5 rounded-full bg-[var(--bg-sidebar)]">
+        <div className={`h-1.5 rounded-full ${accent}`} style={{ width: `${Math.max(pct, 2)}%` }} />
+      </div>
+    </div>
+  );
+}
+
 function normalizeKnowledgeRoute(route: DashboardRoute): DashboardRoute {
   if (route.path === "/graph" || route.path === "/flashcards" || route.path === "/backlinks" || route.path === "/dedup") {
     return { path: "/graph", state: null };
@@ -141,6 +174,7 @@ export default function FolderDashboardView() {
   // Map of lowercased topic label -> flashcard_topics row id, so dashboard
   // topic chips can deep-link into the Quizzes tab with a real topic_id.
   const [topicIdByLabel, setTopicIdByLabel] = useState<Map<string, string>>(new Map());
+  const [analysisNotice, setAnalysisNotice] = useState<string | null>(null);
 
   function handleSearchSubmit() {
     navigate("/chat", {
@@ -232,12 +266,27 @@ export default function FolderDashboardView() {
     }
   }
 
-  function refreshSummary() {
+  function refreshSummary(showNotice = false) {
     if (!activeWorkspaceId) { return; }
     setIsLoading(true);
     setError(null);
     api.dashboard.getSummary(activeWorkspaceId)
-      .then(setSummary)
+      .then((next) => {
+        setSummary(next);
+        if (showNotice) {
+          const hasContent =
+            next.overview.chat_sessions > 0 ||
+            next.overview.notes > 0 ||
+            next.overview.sources > 0 ||
+            next.overview.concepts > 0;
+          setAnalysisNotice(
+            hasContent
+              ? "Analysis complete — no new signals since last run."
+              : "Analysis complete — no learning material yet. Start a chat or capture a source to see signals.",
+          );
+          window.setTimeout(() => setAnalysisNotice(null), 4500);
+        }
+      })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setIsLoading(false));
   }
@@ -273,7 +322,7 @@ export default function FolderDashboardView() {
           <h1 className="text-xl font-semibold text-[var(--text-primary)]">Dashboard unavailable</h1>
           <p className="mt-2 text-sm text-[var(--text-secondary)]">{error}</p>
           <button
-            onClick={refreshSummary}
+            onClick={() => refreshSummary()}
             className="mt-4 inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-4 py-2 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
           >
             <RefreshCw size={14} />
@@ -349,9 +398,38 @@ export default function FolderDashboardView() {
                 <Clock3 size={15} />
                 Review
               </button>
+              <button
+                type="button"
+                onClick={() => navigate("/graph")}
+                className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-4 py-2 text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
+                title="View Topic Map"
+              >
+                <Network size={15} />
+                View Topic Map
+              </button>
+              <button
+                type="button"
+                onClick={() => refreshSummary(true)}
+                disabled={isLoading}
+                className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-4 py-2 text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)] disabled:opacity-60"
+                title="Recompute knowledge health"
+              >
+                <RefreshCw size={15} className={isLoading ? "animate-spin text-[var(--accent-color)]" : undefined} />
+                {isLoading ? "Analyzing…" : "New Analysis"}
+              </button>
             </div>
           </div>
         </header>
+
+        {analysisNotice && (
+          <div
+            role="status"
+            className="flex items-start gap-2 rounded-xl border border-[var(--accent-color)]/30 bg-[rgba(var(--accent-color-rgb),0.08)] px-3 py-2 text-sm text-[var(--text-primary)]"
+          >
+            <Sparkles size={14} className="mt-0.5 shrink-0 text-[var(--accent-color)]" />
+            <span>{analysisNotice}</span>
+          </div>
+        )}
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <MetricCard label="Due Review" value={effectiveSummary.review.topics_due_for_review} accent="bg-[var(--accent-color)]" />
@@ -364,29 +442,38 @@ export default function FolderDashboardView() {
         <div className="grid gap-4 xl:grid-cols-3">
             <Section title="Continue Learning">
               {continueLearningList.length > 0 ? (
-                <div className="flex-1 flex flex-col gap-2">
-                  {continueLearningList.map((item) => (
-                    <button
-                      key={item.session_id}
-                      onClick={() => openRoute(item.route)}
-                      className="block w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3 text-left transition-colors hover:border-[var(--accent-color)]"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]">
-                          <MessageSquare size={15} />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-medium text-[var(--text-primary)]">
-                            {item.title}
-                          </div>
-                          <div className="text-xs text-[var(--text-secondary)]">
-                            {item.folder_name || "Workspace thread"} · {timeAgo(item.updated_at)}
-                          </div>
-                        </div>
-                        <ArrowRight size={13} className="shrink-0 text-[var(--text-muted)]" />
-                      </div>
-                    </button>
-                  ))}
+                <div className="flex-1 flex flex-col">
+                  <ol className="relative ml-2 flex flex-col gap-4 border-l border-[var(--border-color)] pl-4">
+                    {continueLearningList.map((item, idx) => {
+                      const isActive = idx === 0;
+                      return (
+                        <li key={item.session_id} className="relative">
+                          <span
+                            className={`absolute -left-[21px] top-1.5 inline-block h-3 w-3 rounded-full border-2 ${
+                              isActive
+                                ? "border-[var(--accent-color)] bg-[var(--bg-elevated)]"
+                                : "border-[var(--border-color)] bg-[var(--bg-elevated)]"
+                            }`}
+                            aria-hidden
+                          />
+                          <button
+                            onClick={() => openRoute(item.route)}
+                            className="block w-full text-left transition-colors hover:text-[var(--accent-color)]"
+                          >
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
+                              {isActive ? "Active Thread" : "Historical Context"}
+                            </div>
+                            <div className="mt-0.5 truncate text-sm font-medium text-[var(--text-primary)]">
+                              {item.title}
+                            </div>
+                            <div className="text-xs text-[var(--text-secondary)]">
+                              {item.folder_name || "Workspace thread"} · {timeAgo(item.updated_at)}
+                            </div>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ol>
                 </div>
               ) : (
                 <div className="flex-1 flex flex-col justify-center rounded-xl border border-dashed border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-3">
@@ -525,6 +612,23 @@ export default function FolderDashboardView() {
 
           {hasKnowledgeHealth && (
             <Section title="Knowledge Health" eyebrow="Snapshot">
+              <div className="mb-3 grid gap-2 sm:grid-cols-3">
+                <HealthBar
+                  label="Retention"
+                  value={ratio(effectiveSummary.review.weak_concepts.length, effectiveSummary.overview.concepts, 0.84)}
+                  accent="bg-emerald-400"
+                />
+                <HealthBar
+                  label="Connectivity"
+                  value={ratio(knowledgeHealth.isolated_concepts, effectiveSummary.overview.concepts, 0.62)}
+                  accent="bg-sky-400"
+                />
+                <HealthBar
+                  label="Processing"
+                  value={ratio(knowledgeHealth.unprocessed_sources, effectiveSummary.overview.sources, 0.41)}
+                  accent="bg-amber-400"
+                />
+              </div>
               <div className="grid grid-cols-3 gap-2">
                 <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3">
                   <div className="text-xl font-semibold text-[var(--text-primary)]">{knowledgeHealth.stalled_goals}</div>
