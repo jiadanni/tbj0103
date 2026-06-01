@@ -174,7 +174,6 @@ export default function FolderDashboardView() {
   // Map of lowercased topic label -> flashcard_topics row id, so dashboard
   // topic chips can deep-link into the Quizzes tab with a real topic_id.
   const [topicIdByLabel, setTopicIdByLabel] = useState<Map<string, string>>(new Map());
-  const [analysisNotice, setAnalysisNotice] = useState<string | null>(null);
 
   function handleSearchSubmit() {
     navigate("/chat", {
@@ -266,27 +265,12 @@ export default function FolderDashboardView() {
     }
   }
 
-  function refreshSummary(showNotice = false) {
+  function refreshSummary() {
     if (!activeWorkspaceId) { return; }
     setIsLoading(true);
     setError(null);
     api.dashboard.getSummary(activeWorkspaceId)
-      .then((next) => {
-        setSummary(next);
-        if (showNotice) {
-          const hasContent =
-            next.overview.chat_sessions > 0 ||
-            next.overview.notes > 0 ||
-            next.overview.sources > 0 ||
-            next.overview.concepts > 0;
-          setAnalysisNotice(
-            hasContent
-              ? "Analysis complete — no new signals since last run."
-              : "Analysis complete — no learning material yet. Start a chat or capture a source to see signals.",
-          );
-          window.setTimeout(() => setAnalysisNotice(null), 4500);
-        }
-      })
+      .then(setSummary)
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setIsLoading(false));
   }
@@ -407,29 +391,9 @@ export default function FolderDashboardView() {
                 <Network size={15} />
                 View Topic Map
               </button>
-              <button
-                type="button"
-                onClick={() => refreshSummary(true)}
-                disabled={isLoading}
-                className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-4 py-2 text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)] disabled:opacity-60"
-                title="Recompute knowledge health"
-              >
-                <RefreshCw size={15} className={isLoading ? "animate-spin text-[var(--accent-color)]" : undefined} />
-                {isLoading ? "Analyzing…" : "New Analysis"}
-              </button>
             </div>
           </div>
         </header>
-
-        {analysisNotice && (
-          <div
-            role="status"
-            className="flex items-start gap-2 rounded-xl border border-[var(--accent-color)]/30 bg-[rgba(var(--accent-color-rgb),0.08)] px-3 py-2 text-sm text-[var(--text-primary)]"
-          >
-            <Sparkles size={14} className="mt-0.5 shrink-0 text-[var(--accent-color)]" />
-            <span>{analysisNotice}</span>
-          </div>
-        )}
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <MetricCard label="Due Review" value={effectiveSummary.review.topics_due_for_review} accent="bg-[var(--accent-color)]" />
