@@ -3,7 +3,7 @@ import ReactDOM from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useSettingsStore } from "../stores/settingsStore";
-import { normalizeTheme } from "../lib/theme";
+import { hexToRgbChannels, normalizeTheme } from "../lib/theme";
 import { installConsoleTimestamps } from "../lib/consoleTimestamps";
 import { isLinux, isMac } from "../lib/platform";
 import "../styles/globals.css";
@@ -46,7 +46,10 @@ export function PreferencesApp() {
       if (cls.startsWith("theme-")) { root.classList.remove(cls); }
     });
     root.classList.add(`theme-${normalizedTheme}`);
-    if (accentColor) { root.style.setProperty("--accent-color", accentColor); }
+    if (accentColor) {
+      root.style.setProperty("--accent-color", accentColor);
+      root.style.setProperty("--accent-color-rgb", hexToRgbChannels(accentColor));
+    }
     root.style.setProperty("--font-size-base", `${fontSize}px`);
     root.style.fontSize = `${fontSize}px`;
   }, [theme, accentColor, fontSize]);

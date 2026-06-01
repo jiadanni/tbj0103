@@ -135,6 +135,7 @@ tauri/
 │   │   │   ├── mlx.rs
 │   │   │   ├── note.rs           # create/update auto-index [[wiki-links]]
 │   │   │   ├── ollama.rs
+│   │   │   ├── prompt_bank.rs    # Workspace starter prompt bank jobs
 │   │   │   ├── quick_search.rs
 │   │   │   ├── search.rs
 │   │   │   ├── security.rs
@@ -167,6 +168,7 @@ tauri/
 │   │   │   ├── memory_pipeline.rs
 │   │   │   ├── model_settings.rs
 │   │   │   ├── note_template_engine.rs
+│   │   │   ├── prompt_bank.rs    # Persistent workspace prompt generation/ranking
 │   │   │   ├── quick_search_index.rs
 │   │   │   ├── quick_search_service.rs
 │   │   │   ├── retrieval_engine.rs
@@ -191,7 +193,7 @@ tauri/
 │   │   ├── logging.rs
 │   │   ├── lib.rs
 │   │   ├── main.rs
-│   │   └── schema.sql            # SQLite schema (35 tables)
+│   │   └── schema.sql            # SQLite schema, triggers, and indexes
 │   ├── capabilities/
 │   ├── resources/
 │   ├── icons/
@@ -215,8 +217,8 @@ tauri/
 
 | Dependency | Minimum version | Notes |
 |-----------|----------------|-------|
-| Node.js | 18 | Tested with v20 via nvm |
-| npm | 9 | |
+| Node.js | 22 | Use the version pinned by the repo when available |
+| npm | 10 | Bundled with current Node 22 releases |
 | Rust | 1.77 | `rustup` recommended |
 | Xcode CLT (macOS) | — | `xcode-select --install` |
 | Ollama | latest | `brew install ollama` or `pacman -S ollama` |
@@ -245,7 +247,7 @@ npm run dev:backend
 
 > **nvm users:** If `npm` is not on your `PATH`, prefix commands with the absolute path:
 > ```bash
-> ~/.nvm/versions/node/v20.19.5/bin/npm run tauri dev
+> ~/.nvm/versions/node/$(ls ~/.nvm/versions/node | sort -V | tail -1)/bin/npm run tauri dev
 > ```
 
 ### Platform-specific builds
@@ -268,7 +270,7 @@ The app stores all data in a single SQLite file at the platform default app-data
 | Linux | `~/.local/share/com.aetherium.app/aetherium.db` |
 | Windows | `%APPDATA%\com.aetherium.app\aetherium.db` |
 
-The schema is defined in [src-tauri/src/schema.sql](src-tauri/src/schema.sql) and applied automatically on first launch. Tables include: `workspaces`, `folders`, `chat_sessions`, `messages`, `citations`, `learning_goals`, `learning_cards`, `learning_paths`, `path_milestones`, `concept_nodes`, `concept_links`, `concept_mentions`, `graph_statistics`, `note_templates`, `daily_notes`, `project_notes`, `uploaded_documents`, `document_chunks`, `web_captures`, `sources`, `source_chunks`, `audio_transcriptions`, `calendar_alarms`, `thought_queue`, `memories`, `memory_summaries`, `ai_models`, `settings`, `conversation_summaries`, `artifacts`, `artifact_embeddings`, `memory_embeddings`, `context_snapshots`, `quick_search_documents`, `app_logs`.
+The schema is defined in [src-tauri/src/schema.sql](src-tauri/src/schema.sql) and applied automatically on first launch. Tables include: `workspaces`, `folders`, `chat_sessions`, `messages`, `citations`, `learning_goals`, `learning_cards`, `learning_paths`, `path_milestones`, `concept_nodes`, `concept_links`, `concept_mentions`, `graph_statistics`, `note_templates`, `daily_notes`, `project_notes`, `uploaded_documents`, `document_chunks`, `web_captures`, `sources`, `source_chunks`, `audio_transcriptions`, `calendar_alarms`, `thought_queue`, `memories`, `memory_summaries`, `ai_models`, `settings`, `conversation_summaries`, `artifacts`, `artifact_embeddings`, `memory_embeddings`, `workspace_prompt_bank`, `workspace_prompt_bank_jobs`, `context_snapshots`, `quick_search_documents`, `app_logs`.
 
 ## Key Features
 
@@ -278,6 +280,7 @@ The schema is defined in [src-tauri/src/schema.sql](src-tauri/src/schema.sql) an
 - **AI Model management** — per-model role assignment, sizing, and family grouping
 - **Artifacts** — automatic code/content extraction from chat responses with embedding search
 - **Memory** — workspace-scoped and global memory pipelines with vector embeddings
+- **Workspace Prompt Bank** — persistent, ranked starter prompts generated from workspace topics and learner context
 - **MCP** — built-in Model Context Protocol server and client for tool/resource integration
 - **Knowledge Graph** — interactive D3 force-directed concept graph with statistics
 - **Flashcards** — spaced repetition (SM-2 algorithm) with learning cards
@@ -305,6 +308,7 @@ This Tauri port is a functional equivalent of the SwiftUI app in `swift/Sources/
 
 - All Tauri IPC calls are typed in [`src/lib/api.ts`](src/lib/api.ts) — add new commands there first.
 - The Rust service layer (`src-tauri/src/services/`) contains business logic that commands delegate to; keep commands thin.
+- Background jobs refresh concept hierarchies, prompt banks, and sync tasks from `src-tauri/src/services/background_scheduler.rs`.
 - Platform-specific Tauri config overrides live in `tauri.linux.conf.json`, `tauri.macos.conf.json`, and `tauri.windows.conf.json`.
 - The window starts maximized at 1400×900 with a 1024×700 minimum (set in `tauri.conf.json`).
 - CSP is currently `null` (development convenience) — tighten before shipping.

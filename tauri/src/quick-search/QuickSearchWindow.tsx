@@ -4,7 +4,7 @@ import { Brain, Check, Clock, FileText, MessageSquare, ScrollText, Search, Setti
 import { api, type CoreSettings, type QuickSearchResult } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { Workspace } from "../stores/workspaceStore";
-import { normalizeTheme } from "../lib/theme";
+import { hexToRgbChannels, normalizeTheme } from "../lib/theme";
 
 const ICON_BY_KIND = {
   conversation: MessageSquare,
@@ -111,6 +111,7 @@ export default function QuickSearchWindow() {
     root.classList.add(`theme-${normalizedTheme}`);
     if (displaySettings.accent_color) {
       root.style.setProperty("--accent-color", displaySettings.accent_color);
+      root.style.setProperty("--accent-color-rgb", hexToRgbChannels(displaySettings.accent_color));
     }
     root.style.setProperty("--font-size-base", `${displaySettings.font_size}px`);
     root.style.fontSize = `${displaySettings.font_size}px`;

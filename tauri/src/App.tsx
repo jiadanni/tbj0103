@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useSettingsStore } from "./stores/settingsStore";
 import { useWorkspaceStore } from "./stores/workspaceStore";
 import { api, type QuickSearchResult } from "./lib/api";
-import { normalizeTheme } from "./lib/theme";
+import { hexToRgbChannels, normalizeTheme } from "./lib/theme";
 import { getPrefsWindowSingleInstance } from "./lib/prefsWindowMode";
 import Layout from "./components/Layout";
 import ZoomIndicator from "./components/ZoomIndicator";
@@ -145,7 +145,10 @@ export default function App() {
       if (cls.startsWith("theme-")) {root.classList.remove(cls);}
     });
     root.classList.add(`theme-${normalizedTheme}`);
-    if (accentColor) {root.style.setProperty("--accent-color", accentColor);}
+    if (accentColor) {
+      root.style.setProperty("--accent-color", accentColor);
+      root.style.setProperty("--accent-color-rgb", hexToRgbChannels(accentColor));
+    }
     root.style.setProperty("--font-size-base", `${fontSize}px`);
     root.style.fontSize = `${fontSize}px`;
   }, [theme, accentColor, fontSize]);
