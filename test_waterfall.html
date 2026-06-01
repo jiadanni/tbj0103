@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+.waterfall-container {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  opacity: 0.5;
+  pointer-events: none;
+}
+.waterfall-col {
+  display: flex;
+  flex-direction: column;
+  animation: waterfall 20s linear infinite;
+}
+.waterfall-col.reverse {
+  animation-direction: reverse;
+}
+.waterfall-col:nth-child(even) {
+  animation-duration: 25s;
+}
+.waterfall-item {
+  padding: 1rem;
+  white-space: nowrap;
+  font-family: sans-serif;
+  color: #888;
+}
+@keyframes waterfall {
+  0% { transform: translateY(0%); }
+  100% { transform: translateY(-50%); }
+}
+</style>
+</head>
+<body>
+<div style="position: relative; width: 100vw; height: 100vh; background: #111;">
+  <div class="waterfall-container">
+    <div class="waterfall-col">
+      <div class="waterfall-item">Suggestion 1</div>
+      <div class="waterfall-item">Another topic here</div>
+      <div class="waterfall-item">Suggestion 3</div>
+      <!-- duplicate for infinite loop -->
+      <div class="waterfall-item">Suggestion 1</div>
+      <div class="waterfall-item">Another topic here</div>
+      <div class="waterfall-item">Suggestion 3</div>
+    </div>
+    <div class="waterfall-col reverse">
+      <div class="waterfall-item">Reverse 1</div>
+      <div class="waterfall-item">Reverse 2</div>
+      <div class="waterfall-item">Reverse 3</div>
+      <div class="waterfall-item">Reverse 1</div>
+      <div class="waterfall-item">Reverse 2</div>
+      <div class="waterfall-item">Reverse 3</div>
+    </div>
+  </div>
+  <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;">
+    <button style="padding: 1rem 2rem; z-index: 10; cursor: pointer;">Start New Chat</button>
+  </div>
+</div>
+</body>
+</html>

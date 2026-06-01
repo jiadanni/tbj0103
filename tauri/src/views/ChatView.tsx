@@ -1,4 +1,5 @@
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
+import { WaterfallSuggestions } from "../components/WaterfallSuggestions";
 import React, { useEffect, useLayoutEffect, useRef, useState, memo, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, Paperclip, Image, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder as FolderIcon, FolderOpen, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink, Copy, BarChart2 } from "lucide-react";
@@ -4818,6 +4819,13 @@ export default function ChatView() {
   const canRefreshActiveSessionTitle = activeSession
     ? canRefreshSessionTitle(activeSession, useChatStore.getState().messages)
     : false;
+
+  // Extract all suggestions for the waterfall background
+  const waterfallSuggestions = useMemo(() => {
+    if (activeChatId) return [];
+    return composerSuggestionRows.flatMap(row => row.suggestions);
+  }, [activeChatId, composerSuggestionRows]);
+
   const isComparePanelOpen = activeSubView === "compare";
   const chatWorkspaceClassName = "flex flex-1 min-w-0 min-h-0 overflow-hidden";
 
@@ -4883,7 +4891,12 @@ export default function ChatView() {
           {!isComparePanelOpen ? (
             <div className="flex-1 min-w-0 flex min-h-0 flex-col overflow-hidden">
               {!activeChatId ? (
-                <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-4 text-center">
+                <div className="relative flex-1 min-w-0 flex flex-col items-center justify-center gap-4 text-center overflow-hidden">
+                  <WaterfallSuggestions
+                    suggestions={waterfallSuggestions}
+                    onSelect={(suggestion) => handleSuggestionClick(suggestion, false)}
+                  />
+                  <div className="relative z-10 flex flex-col items-center gap-4">
                   <MessageSquare size={40} className="text-[var(--text-muted)] opacity-30" />
                   <p className="text-[var(--text-muted)] text-sm">Select a chat or start a new one</p>
                   <div
@@ -4950,6 +4963,7 @@ export default function ChatView() {
                         </button>
                       </div>
                     )}
+                  </div>
                   </div>
                 </div>
               ) : (

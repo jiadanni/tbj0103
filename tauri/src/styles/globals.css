@@ -510,3 +510,21 @@ select optgroup {
     }
   }
 }
+
+/* =====================================================
+   Waterfall Animations
+   ===================================================== */
+@keyframes waterfall {
+  0% { transform: translateY(0%); }
+  100% { transform: translateY(-50%); }
+}
+@keyframes waterfall-reverse {
+  0% { transform: translateY(-50%); }
+  100% { transform: translateY(0%); }
+}
+.animate-waterfall {
+  animation: waterfall 20s linear infinite;
+}
+.animate-waterfall-reverse {
+  animation: waterfall-reverse 20s linear infinite;
+}
