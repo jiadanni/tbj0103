@@ -142,20 +142,31 @@ const IMMEDIATE_SAVE_EXCEPTIONS = new Set<keyof AppSettings>([]);
 
 function Toggle({ on, onToggle, disabled = false }: { on: boolean; onToggle: () => void; disabled?: boolean }) {
   return (
-    <div
+    <button
+      type="button"
       onClick={() => {
         if (!disabled) {
           onToggle();
         }
       }}
-      role="switch"
+      role="checkbox"
       aria-checked={on}
       aria-disabled={disabled}
-      className={`w-10 h-6 rounded-full transition-colors relative flex-shrink-0 ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
-        } ${on ? "bg-[var(--accent-color)]" : "bg-[var(--bg-hover)]"}`}
+      disabled={disabled}
+      className={`w-[18px] h-[18px] rounded-[4px] border transition-colors flex items-center justify-center flex-shrink-0 ${
+        disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+      } ${
+        on
+          ? "bg-[var(--accent-color)] border-[var(--accent-color)]"
+          : "bg-transparent border-[var(--border-color)] hover:border-[var(--text-muted)]"
+      }`}
     >
-      <div className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${on ? "translate-x-4" : "translate-x-0"}`} />
-    </div>
+      {on && (
+        <svg viewBox="0 0 16 16" className="w-3 h-3 text-white" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="3 8 7 12 13 4" />
+        </svg>
+      )}
+    </button>
   );
 }
 
@@ -647,13 +658,13 @@ function AboutYouPreferencesPanel({
   const inputCls = "w-full px-3 py-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-input)] text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-color)]";
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
-        <div>
-          <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
-            <UserCircle size={14} /> About You
+    <div className="space-y-8">
+      <section className="space-y-3" data-pref-section>
+        <div className="pb-1.5 border-b border-[var(--border-color)]">
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] flex items-center gap-1.5">
+            <UserCircle size={11} /> About You
           </h3>
-          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+          <p className="text-xs text-[var(--text-muted)]/80 mt-1">
             Tell Aetherium about yourself. This context is shared with the AI when generating learning goals, workspace prompts, and chat responses (toggle below) so it can tailor answers to your background.
           </p>
         </div>
@@ -768,10 +779,13 @@ function AboutYouPreferencesPanel({
             className={inputCls}
           />
         </label>
-      </div>
+      </section>
 
-      <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5">
-        <div className="flex items-center justify-between gap-3">
+      <section className="space-y-3" data-pref-section>
+        <div className="pb-1.5 border-b border-[var(--border-color)]">
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Chat prompt</h3>
+        </div>
+        <div className="flex items-center justify-between gap-3 py-0.5">
           <div>
             <p className="text-sm text-[var(--text-secondary)]">Inject About You into chat system prompt</p>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">
@@ -783,7 +797,7 @@ function AboutYouPreferencesPanel({
             onToggle={() => onSaveInject(!injectAboutYouIntoChat)}
           />
         </div>
-      </div>
+      </section>
     </div>
   );
 }
@@ -1404,6 +1418,22 @@ function PreferencesSplitLayout({
   dbSettings,
   hoverOverrides,
 }: PreferencesSplitLayoutProps) {
+  if (isLargeScreen && isLinux) {
+    return (
+      <div className="flex h-full min-h-0 flex-1 overflow-hidden">
+        <div className="h-full min-h-0 basis-[55%] overflow-y-auto overscroll-contain px-5 py-4" data-testid="preferences-options-scroll">
+          <div className="max-w-2xl">
+            {children}
+          </div>
+        </div>
+        <div className="w-2 shrink-0 border-x-[3px] border-transparent bg-[var(--border-color)] bg-clip-content" />
+        <div className="flex min-h-0 basis-[45%] flex-col items-center justify-center overflow-hidden bg-[var(--bg-secondary)]/10 p-6 select-none">
+          <MemoizedLiveAppPreview dbSettings={dbSettings} overrides={hoverOverrides} />
+        </div>
+      </div>
+    );
+  }
+
   if (isLargeScreen) {
     return (
       <PanelGroup direction="horizontal" className="flex h-full min-h-0 flex-1 overflow-hidden">
@@ -1419,7 +1449,7 @@ function PreferencesSplitLayout({
             style={isLinux ? { contain: "layout paint" } : undefined}
             data-testid="preferences-options-scroll"
           >
-            <div className="max-w-5xl">
+            <div className="max-w-2xl">
               {children}
             </div>
           </div>
@@ -1440,7 +1470,7 @@ function PreferencesSplitLayout({
   }
 
   return (
-    <div className="h-full min-h-0 grow shrink max-w-5xl overflow-y-auto overscroll-contain px-5 py-4" data-testid="preferences-options-scroll">
+    <div className="h-full min-h-0 grow shrink max-w-2xl overflow-y-auto overscroll-contain px-5 py-4" data-testid="preferences-options-scroll">
       {children}
     </div>
   );
@@ -1536,8 +1566,10 @@ export default function PreferencesView() {
   // Filter option rows within the active tab. We tag each "section card" and
   // "option row" at runtime by walking the rendered DOM under the scroll
   // container. Cards/rows that don't contain the query text get hidden via a
-  // data-attribute -> CSS rule. The tab nav is filtered separately via the
-  // static TAB_KEYWORDS index above (only the active tab is mounted).
+  // data-attribute -> CSS rule. Matching substrings inside visible sections
+  // are wrapped in <mark data-pref-highlight> so the user can see what hit.
+  // The tab nav is filtered separately via the static TAB_KEYWORDS index
+  // above (only the active tab is mounted).
   useEffect(() => {
     const root = contentRootRef.current;
     if (!root) { return; }
@@ -1546,10 +1578,23 @@ export default function PreferencesView() {
     );
     const query = tabFilter.trim().toLowerCase();
 
+    const unwrapHighlights = (el: HTMLElement) => {
+      el.querySelectorAll<HTMLElement>('mark[data-pref-highlight]').forEach((mark) => {
+        const parent = mark.parentNode;
+        if (!parent) { return; }
+        while (mark.firstChild) {
+          parent.insertBefore(mark.firstChild, mark);
+        }
+        parent.removeChild(mark);
+        parent.normalize();
+      });
+    };
+
     const reset = (el: HTMLElement) => {
       el.querySelectorAll<HTMLElement>('[data-pref-filtered]').forEach((node) => {
         node.removeAttribute('data-pref-filtered');
       });
+      unwrapHighlights(el);
     };
 
     if (!query) {
@@ -1557,28 +1602,77 @@ export default function PreferencesView() {
       return;
     }
 
+    const highlightInside = (root_: HTMLElement, q: string) => {
+      const skipTags = new Set(['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'SCRIPT', 'STYLE', 'MARK']);
+      const walker = document.createTreeWalker(root_, NodeFilter.SHOW_TEXT, {
+        acceptNode: (node) => {
+          const parent = node.parentElement;
+          if (!parent) { return NodeFilter.FILTER_REJECT; }
+          if (skipTags.has(parent.tagName)) { return NodeFilter.FILTER_REJECT; }
+          if (parent.closest('[data-pref-filtered="hidden"]')) { return NodeFilter.FILTER_REJECT; }
+          const text = node.nodeValue || '';
+          if (!text.toLowerCase().includes(q)) { return NodeFilter.FILTER_REJECT; }
+          return NodeFilter.FILTER_ACCEPT;
+        },
+      });
+      const textNodes: Text[] = [];
+      let current = walker.nextNode();
+      while (current) {
+        textNodes.push(current as Text);
+        current = walker.nextNode();
+      }
+      textNodes.forEach((node) => {
+        const text = node.nodeValue || '';
+        const lower = text.toLowerCase();
+        const frag = document.createDocumentFragment();
+        let cursor = 0;
+        while (cursor < text.length) {
+          const idx = lower.indexOf(q, cursor);
+          if (idx === -1) {
+            frag.appendChild(document.createTextNode(text.slice(cursor)));
+            break;
+          }
+          if (idx > cursor) {
+            frag.appendChild(document.createTextNode(text.slice(cursor, idx)));
+          }
+          const mark = document.createElement('mark');
+          mark.setAttribute('data-pref-highlight', '');
+          mark.textContent = text.slice(idx, idx + q.length);
+          frag.appendChild(mark);
+          cursor = idx + q.length;
+        }
+        node.parentNode?.replaceChild(frag, node);
+      });
+    };
+
     scrollers.forEach((scroller) => {
       reset(scroller);
-      const cards = scroller.querySelectorAll<HTMLElement>('div.rounded-xl.border');
-      cards.forEach((card) => {
-        const cardText = (card.textContent || '').toLowerCase();
-        if (!cardText.includes(query)) {
-          card.setAttribute('data-pref-filtered', 'hidden');
+      // Match both legacy card panels and flat <section data-pref-section> blocks.
+      const sections = scroller.querySelectorAll<HTMLElement>(
+        '[data-pref-section], div.rounded-xl.border',
+      );
+      sections.forEach((section) => {
+        const sectionText = (section.textContent || '').toLowerCase();
+        if (!sectionText.includes(query)) {
+          section.setAttribute('data-pref-filtered', 'hidden');
           return;
         }
-        const title = card.querySelector('h3');
+        const title = section.querySelector('h3');
         const titleMatch = title && (title.textContent || '').toLowerCase().includes(query);
-        if (titleMatch) { return; }
-        const rows = card.querySelectorAll<HTMLElement>(
-          ':scope > div.flex.items-center.justify-between, :scope > div.flex.justify-between',
-        );
-        rows.forEach((row) => {
-          const rowText = (row.textContent || '').toLowerCase();
-          if (!rowText.includes(query)) {
-            row.setAttribute('data-pref-filtered', 'hidden');
-          }
-        });
+        if (!titleMatch) {
+          const rows = section.querySelectorAll<HTMLElement>(
+            ':scope > div.flex.items-center.justify-between, :scope > div.flex.justify-between',
+          );
+          rows.forEach((row) => {
+            const rowText = (row.textContent || '').toLowerCase();
+            if (!rowText.includes(query)) {
+              row.setAttribute('data-pref-filtered', 'hidden');
+            }
+          });
+        }
       });
+      // Highlight matches in everything that survived the filter.
+      highlightInside(scroller, query);
     });
   }, [tabFilter, activeTab, dbSettings]);
 
@@ -2941,28 +3035,18 @@ export default function PreferencesView() {
             >
               <div className="space-y-5">
                   {activeTab === "app" && (
-                  <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4 items-start">
-                    <div className="space-y-4">
+                  <div className="flex flex-col gap-8">
+                    <div className="space-y-8">
                       {/* Startup & background */}
-                      <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
-                        <div>
-                          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Startup & background</h3>
-                          <p className="text-xs text-[var(--text-muted)] mt-1">
+                      <section className="space-y-3" data-pref-section>
+                        <div className="pb-1.5 border-b border-[var(--border-color)]">
+                          <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Startup & background</h3>
+                          <p className="text-xs text-[var(--text-muted)]/80 mt-1">
                             Control how Aetherium launches and whether it stays available after the main window closes.
                           </p>
                         </div>
 
-                        <div className="flex items-center justify-between py-0.5">
-                          <div>
-                            <p className="text-sm text-[var(--text-secondary)]">
-                              {isLinux ? "Start with desktop session" : "Start at login"}
-                            </p>
-                            <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                              {isLinux
-                                ? "Adds Aetherium to your desktop environment's autostart applications"
-                                : "Automatically launch Aetherium when you log in"}
-                            </p>
-                          </div>
+                        <div className="flex items-start gap-3 py-0.5">
                           <Toggle
                             on={dbSettings.start_at_login}
                             onToggle={() => {
@@ -2973,9 +3057,24 @@ export default function PreferencesView() {
                               }
                             }}
                           />
+                          <div>
+                            <p className="text-sm text-[var(--text-secondary)]">
+                              {isLinux ? "Start with desktop session" : "Start at login"}
+                            </p>
+                            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                              {isLinux
+                                ? "Adds Aetherium to your desktop environment's autostart applications"
+                                : "Automatically launch Aetherium when you log in"}
+                            </p>
+                          </div>
                         </div>
 
-                        <div className="flex items-center justify-between py-0.5">
+                        <div className="flex items-start gap-3 py-0.5">
+                          <Toggle
+                            on={dbSettings.open_in_background}
+                            disabled={!dbSettings.start_at_login}
+                            onToggle={() => set("open_in_background", !dbSettings.open_in_background)}
+                            />
                           <div>
                             <p className={`text-sm ${dbSettings.start_at_login ? "text-[var(--text-secondary)]" : "text-[var(--text-muted)]"}`}>Open in background</p>
                             <p className="text-xs text-[var(--text-muted)] mt-0.5">
@@ -2984,40 +3083,39 @@ export default function PreferencesView() {
                                 : "Available only when Start at login is enabled"}
                             </p>
                           </div>
-                          <Toggle
-                            on={dbSettings.open_in_background}
-                            disabled={!dbSettings.start_at_login}
-                            onToggle={() => set("open_in_background", !dbSettings.open_in_background)}
-                          />
                         </div>
 
-                        <div className="flex items-center justify-between py-0.5">
+                        <div className="flex items-start gap-3 py-0.5">
+                          <Toggle
+                            on={dbSettings.keep_running_in_tray}
+                            onToggle={() => set("keep_running_in_tray", !dbSettings.keep_running_in_tray)}
+                            />
                           <div>
                             <p className="text-sm text-[var(--text-secondary)]">Keep running in tray</p>
                             <p className="text-xs text-[var(--text-muted)] mt-0.5">
                               Closing the main window keeps the menu bar or tray app alive so quick search still works.
                             </p>
                           </div>
-                          <Toggle
-                            on={dbSettings.keep_running_in_tray}
-                            onToggle={() => set("keep_running_in_tray", !dbSettings.keep_running_in_tray)}
-                          />
                         </div>
 
-                        <div className="flex items-center justify-between py-0.5">
+                        <div className="flex items-start gap-3 py-0.5">
+                          <Toggle
+                            on={dbSettings.hide_native_menu}
+                            onToggle={() => set("hide_native_menu", !dbSettings.hide_native_menu)}
+                            />
                           <div>
                             <p className="text-sm text-[var(--text-secondary)]">Hide native menu</p>
                             <p className="text-xs text-[var(--text-muted)] mt-0.5">
                               Removes the standard application menu bar (macOS only).
                             </p>
                           </div>
-                          <Toggle
-                            on={dbSettings.hide_native_menu}
-                            onToggle={() => set("hide_native_menu", !dbSettings.hide_native_menu)}
-                          />
                         </div>
 
-                        <div className="flex items-center justify-between py-0.5">
+                        <div className="flex items-start gap-3 py-0.5">
+                          <Toggle
+                            on={singleWindowMode}
+                            onToggle={toggleSingleWindowMode}
+                          />
                           <div>
                             <div className="flex items-center gap-2">
                               <p className="text-sm text-[var(--text-secondary)]">Single window mode</p>
@@ -3027,10 +3125,6 @@ export default function PreferencesView() {
                               Prevent multiple preferences windows from opening simultaneously.
                             </p>
                           </div>
-                          <Toggle
-                            on={singleWindowMode}
-                            onToggle={toggleSingleWindowMode}
-                          />
                         </div>
 
                         {isDemoMode ? (
@@ -3084,36 +3178,36 @@ export default function PreferencesView() {
                             </button>
                           </div>
                         )}
-                      </div>
+                      </section>
 
                       {/* Features */}
-                      <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
-                        <div>
-                          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Features</h3>
-                          <p className="text-xs text-[var(--text-muted)] mt-1">
+                      <section className="space-y-3" data-pref-section>
+                        <div className="pb-1.5 border-b border-[var(--border-color)]">
+                          <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Features</h3>
+                          <p className="text-xs text-[var(--text-muted)]/80 mt-1">
                             Enable or disable optional features across Aetherium.
                           </p>
                         </div>
 
-                        <div className="flex items-center justify-between py-0.5">
+                        <div className="flex items-start gap-3 py-0.5">
+                          <Toggle
+                            on={dbSettings.memory_enabled}
+                            onToggle={() => set("memory_enabled", !dbSettings.memory_enabled)}
+                            />
                           <div>
                             <p className="text-sm text-[var(--text-secondary)]">Memory</p>
                             <p className="text-xs text-[var(--text-muted)] mt-0.5">
                               Store and use persistent facts and preferences across conversations
                             </p>
                           </div>
-                          <Toggle
-                            on={dbSettings.memory_enabled}
-                            onToggle={() => set("memory_enabled", !dbSettings.memory_enabled)}
-                          />
                         </div>
-                      </div>
+                      </section>
 
                       {/* Shortcut */}
-                      <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
-                        <div>
-                          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Shortcut</h3>
-                          <p className="text-xs text-[var(--text-muted)] mt-1">
+                      <section className="space-y-3" data-pref-section>
+                        <div className="pb-1.5 border-b border-[var(--border-color)]">
+                          <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Shortcut</h3>
+                          <p className="text-xs text-[var(--text-muted)]/80 mt-1">
                             Set the global accelerator used to open quick search from anywhere.
                           </p>
                         </div>
@@ -3123,29 +3217,29 @@ export default function PreferencesView() {
                           onCommit={(v) => set("quick_search_shortcut", v)}
                           placeholder={isMac ? "Cmd+Shift+K" : "Ctrl+Shift+K"}
                         />
-                      </div>
+                      </section>
                     </div>
 
                     {/* Background Jobs */}
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
-                      <div>
-                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Background Jobs</h3>
-                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                    <section className="space-y-3" data-pref-section>
+                      <div className="pb-1.5 border-b border-[var(--border-color)]">
+                        <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Background Jobs</h3>
+                        <p className="text-xs text-[var(--text-muted)]/80 mt-1">
                           Configure automatic background processing tasks like memory extraction and summarization.
                         </p>
                       </div>
 
-                      <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <Toggle
+                          on={dbSettings.background_inference_enabled}
+                          onToggle={() => set("background_inference_enabled", !dbSettings.background_inference_enabled)}
+                        />
                         <div>
                           <p className="text-sm text-[var(--text-secondary)]">Enable background inference</p>
                           <p className="text-xs text-[var(--text-muted)] mt-0.5">
                             Run memory extraction, summarization, and glossary jobs automatically. Disable to reduce GPU/RAM usage when the app is idle.
                           </p>
                         </div>
-                        <Toggle
-                          on={dbSettings.background_inference_enabled}
-                          onToggle={() => set("background_inference_enabled", !dbSettings.background_inference_enabled)}
-                        />
                       </div>
 
                       <div className="flex items-center justify-between py-0.5">
@@ -3256,17 +3350,17 @@ export default function PreferencesView() {
                           className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
                         />
                       </div>
-                      <div className="flex items-center justify-between py-0.5">
+                      <div className="flex items-start gap-3 py-0.5">
+                        <Toggle
+                          on={dbSettings.hover_definition_scan_enabled}
+                          onToggle={() => set("hover_definition_scan_enabled", !dbSettings.hover_definition_scan_enabled)}
+                          />
                         <div>
                           <p className="text-sm text-[var(--text-secondary)]">Chat definition scan</p>
                           <p className="text-xs text-[var(--text-muted)] mt-0.5">
                             Scan assistant replies for unresolved workspace terminology after glossary refresh
                           </p>
                         </div>
-                        <Toggle
-                          on={dbSettings.hover_definition_scan_enabled}
-                          onToggle={() => set("hover_definition_scan_enabled", !dbSettings.hover_definition_scan_enabled)}
-                        />
                       </div>
                       <div className="flex items-center justify-between py-0.5">
                         <div>
@@ -3285,7 +3379,7 @@ export default function PreferencesView() {
                         />
                       </div>
 
-                      <div className="border-t border-[var(--border-color)] pt-3">
+                      <div className="pt-3">
                         <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-2">Git Sync</p>
                       </div>
                       <div className="flex items-center justify-between py-0.5">
@@ -3304,17 +3398,17 @@ export default function PreferencesView() {
                           className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
                         />
                       </div>
-                    </div>
+                    </section>
                   </div>
                 )}
 
                 {/* ── Navigation ── */}
                 {activeTab === "navigation" && (
-                  <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4 items-start">
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
-                      <div>
-                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Main layout</h3>
-                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                  <div className="flex flex-col gap-8">
+                    <section className="space-y-3" data-pref-section>
+                      <div className="pb-1.5 border-b border-[var(--border-color)]">
+                        <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Main layout</h3>
+                        <p className="text-xs text-[var(--text-muted)]/80 mt-1">
                           Choose how workspace and section switching is presented in the main window.
                         </p>
                       </div>
@@ -3370,13 +3464,13 @@ export default function PreferencesView() {
                           ))}
                         </div>
                       </div>
-                    </div>
+                    </section>
 
 
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
-                      <div>
-                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Workspace behavior</h3>
-                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                    <section className="space-y-3" data-pref-section>
+                      <div className="pb-1.5 border-b border-[var(--border-color)]">
+                        <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Workspace behavior</h3>
+                        <p className="text-xs text-[var(--text-muted)]/80 mt-1">
                           Tune workspace ordering and what happens when you jump between workspaces.
                         </p>
                       </div>
@@ -3488,18 +3582,18 @@ export default function PreferencesView() {
                           ))}
                         </div>
                       </div>
-                    </div>
+                    </section>
                   </div>
                 )}
 
                 {/* ── Appearance ── */}
                 {activeTab === "appearance" && (
-                  <div className="flex flex-col gap-4">
-                    {/* Typography & Interface Card */}
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-4">
-                      <div>
-                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Typography & Interface</h3>
-                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                  <div className="flex flex-col gap-8">
+                    {/* Typography & Interface */}
+                    <section className="space-y-3" data-pref-section>
+                      <div className="pb-1.5 border-b border-[var(--border-color)]">
+                        <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Typography & Interface</h3>
+                        <p className="text-xs text-[var(--text-muted)]/80 mt-1">
                           Adjust text sizes and platform-specific window decorations.
                         </p>
                       </div>
@@ -3562,13 +3656,13 @@ export default function PreferencesView() {
                           </div>
                         </div>
                       )}
-                    </div>
+                    </section>
 
-                    {/* Theme & Accent Card */}
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-4">
-                      <div>
-                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Theme & Accent</h3>
-                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                    {/* Theme & Accent */}
+                    <section className="space-y-3" data-pref-section>
+                      <div className="pb-1.5 border-b border-[var(--border-color)]">
+                        <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Theme & Accent</h3>
+                        <p className="text-xs text-[var(--text-muted)]/80 mt-1">
                           Personalize the color scheme and main highlights of the interface.
                         </p>
                       </div>
@@ -3614,14 +3708,14 @@ export default function PreferencesView() {
                           ))}
                         </div>
                       </div>
-                    </div>
+                    </section>
                   </div>
                 )}
 
                 {/* ── AI / Ollama ── */}
                 {activeTab === "ai" && (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4 items-start">
+                  <div className="space-y-8">
+                    <div className="flex flex-col gap-8">
                       <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 space-y-3">
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -3847,28 +3941,26 @@ export default function PreferencesView() {
                       )}
                     </div>
 
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Local inference providers</h3>
-                          <p className="text-xs text-[var(--text-muted)] mt-1">
-                            Configure your local inference engines. Use the default local server for a standard experience, or enable MLX and llama.cpp for optimized hardware performance.
-                          </p>
-                        </div>
+                    <section className="space-y-3" data-pref-section>
+                      <div className="pb-1.5 border-b border-[var(--border-color)]">
+                        <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Local inference providers</h3>
+                        <p className="text-xs text-[var(--text-muted)]/80 mt-1">
+                          Configure your local inference engines. Use the default local server for a standard experience, or enable MLX and llama.cpp for optimized hardware performance.
+                        </p>
                       </div>
 
                       <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-4 space-y-4">
-                        <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-start gap-3">
+                          <Toggle
+                            on={dbSettings.auto_start_ollama}
+                            onToggle={() => set("auto_start_ollama", !dbSettings.auto_start_ollama)}
+                          />
                           <div>
                             <p className="text-sm text-[var(--text-secondary)]">Auto-start Ollama</p>
                             <p className="text-xs text-[var(--text-muted)] mt-0.5">
                               Automatically start the Ollama server when the app launches.
                             </p>
                           </div>
-                          <Toggle
-                            on={dbSettings.auto_start_ollama}
-                            onToggle={() => set("auto_start_ollama", !dbSettings.auto_start_ollama)}
-                          />
                         </div>
 
                         <div>
@@ -4085,12 +4177,12 @@ export default function PreferencesView() {
                           Embedded inference via llama.cpp with local acceleration when available.
                         </p>
                       </div>
-                    </div>
+                    </section>
 
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
-                      <div>
-                        <p className="text-sm text-[var(--text-secondary)]">Dual-model execution</p>
-                        <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                    <section className="space-y-3" data-pref-section>
+                      <div className="pb-1.5 border-b border-[var(--border-color)]">
+                        <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Dual-model execution</h3>
+                        <p className="text-xs text-[var(--text-muted)]/80 mt-1">
                           Choose whether the draft and refine models run one after the other or at the same time.
                         </p>
                       </div>
@@ -4107,12 +4199,12 @@ export default function PreferencesView() {
                       <p className="text-[10px] text-[var(--text-muted)]">
                         Serial is steadier and uses one Ollama generation at a time. Parallel feels faster overall, but can use more compute and memory.
                       </p>
-                    </div>
+                    </section>
 
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
-                      <div>
-                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Embedding model</h3>
-                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                    <section className="space-y-3" data-pref-section>
+                      <div className="pb-1.5 border-b border-[var(--border-color)]">
+                        <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Embedding model</h3>
+                        <p className="text-xs text-[var(--text-muted)]/80 mt-1">
                           Choose the model used for embeddings and retrieval.
                         </p>
                       </div>
@@ -4197,7 +4289,7 @@ export default function PreferencesView() {
                           );
                         })()}
                       </div>
-                    </div>
+                    </section>
 
                   </div>
                   {ollamaModelsSection}
@@ -4206,12 +4298,12 @@ export default function PreferencesView() {
 
                 {/* ── Chat ── */}
                 {activeTab === "chat" && (
-                  <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4 items-start">
-                    {/* Card 1: Chat Layout & Preview */}
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-4">
-                      <div>
-                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Chat Layout & Preview</h3>
-                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                  <div className="flex flex-col gap-8">
+                    {/* Section: Chat Layout & Preview */}
+                    <section className="space-y-3" data-pref-section>
+                      <div className="pb-1.5 border-b border-[var(--border-color)]">
+                        <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Chat Layout & Preview</h3>
+                        <p className="text-xs text-[var(--text-muted)]/80 mt-1">
                           Configure chat message appearance, size limits, and scroll behavior.
                         </p>
                       </div>
@@ -4241,71 +4333,32 @@ export default function PreferencesView() {
                         <p className="text-[11px] text-[var(--text-muted)] mt-2">
                           <strong>Bubble:</strong> colored rounded message bubbles. <strong>Flat:</strong> borderless document-style layout. <strong>Minimal:</strong> full-width, no bubbles, with role labels.
                         </p>
-
-                        {/* Live preview */}
-                        <div className="mt-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-4 space-y-3 overflow-hidden">
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Preview</p>
-                          {/* User message */}
-                          <div className={`flex flex-col gap-0.5 ${
-                            chatMessageStyle === "minimal" ? "items-start" : "items-end"
-                          }`}>
-                            {chatMessageStyle === "minimal" && (
-                              <span className="text-[10px] font-semibold text-[var(--text-muted)] tracking-wide">{dbSettings.user_chat_label || "You"}</span>
-                            )}
-                            <div className={`text-xs ${
-                              chatMessageStyle === "minimal"
-                                ? "w-full py-1 text-[var(--text-primary)]"
-                                : chatMessageStyle === "flat"
-                                  ? "w-fit rounded border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-1.5 text-[var(--text-primary)]"
-                                  : "w-fit rounded-2xl rounded-tr-sm message-user px-3 py-1.5"
-                            }`}>
-                              What is the speed of light?
-                            </div>
-                          </div>
-                          {/* Assistant message */}
-                          <div className={`flex flex-col gap-0.5 ${
-                            chatMessageStyle === "minimal" ? "items-start" : "items-start"
-                          }`}>
-                            {chatMessageStyle === "minimal" && (
-                              <span className="text-[10px] font-semibold text-[var(--text-muted)] tracking-wide">{dbSettings.assistant_chat_label || "Assistant"}</span>
-                            )}
-                            <div className={`text-xs ${
-                              chatMessageStyle === "minimal"
-                                ? "w-full py-1 text-[var(--text-primary)]"
-                                : chatMessageStyle === "flat"
-                                  ? "w-full rounded border-l-2 border-[var(--accent-color)]/40 bg-transparent px-3 py-1.5 text-[var(--text-primary)]"
-                                  : "w-full rounded-2xl rounded-tl-sm message-assistant px-3 py-1.5"
-                            }`}>
-                              The speed of light in a vacuum is approximately 299,792,458 meters per second.
-                            </div>
-                          </div>
-                        </div>
                       </div>
 
-                      <div className="border-t border-[var(--border-color)] pt-3 space-y-3">
-                        <div className="flex items-center justify-between py-0.5">
+                      <div className="space-y-2 pt-1">
+                        <div className="flex items-start gap-3 py-0.5">
+                          <Toggle on={expandChatToWindowWidth} onToggle={() => setExpandChatToWindowWidth(!expandChatToWindowWidth)} />
                           <div>
                             <p className="text-sm text-[var(--text-secondary)]">Expand Chat Container</p>
                             <p className="text-xs text-[var(--text-muted)] mt-0.5">Remove the maximum width constraint on the chat area</p>
                           </div>
-                          <Toggle on={expandChatToWindowWidth} onToggle={() => setExpandChatToWindowWidth(!expandChatToWindowWidth)} />
                         </div>
 
-                        <div className="flex items-center justify-between py-0.5">
+                        <div className="flex items-start gap-3 py-0.5">
+                          <Toggle on={scrollToTopOnSend} onToggle={() => setScrollToTopOnSend(!scrollToTopOnSend)} />
                           <div>
                             <p className="text-sm text-[var(--text-secondary)]">Scroll Message to Top</p>
                             <p className="text-xs text-[var(--text-muted)] mt-0.5">After sending, scroll so your message appears at the top of the view</p>
                           </div>
-                          <Toggle on={scrollToTopOnSend} onToggle={() => setScrollToTopOnSend(!scrollToTopOnSend)} />
                         </div>
                       </div>
-                    </div>
+                    </section>
 
-                    {/* Card 2: Composer & Input */}
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-4">
-                      <div>
-                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Composer & Input</h3>
-                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                    {/* Section: Composer & Input */}
+                    <section className="space-y-3" data-pref-section>
+                      <div className="pb-1.5 border-b border-[var(--border-color)]">
+                        <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Composer & Input</h3>
+                        <p className="text-xs text-[var(--text-muted)]/80 mt-1">
                           Configure layout buttons, chips, and identification labels.
                         </p>
                       </div>
@@ -4338,9 +4391,9 @@ export default function PreferencesView() {
                       </div>
 
                       {/* Composer Suggestions */}
-                      <div className="border-t border-[var(--border-color)] pt-3">
+                      <div className="pt-3">
                         <label className="text-xs text-[var(--text-secondary)] mb-2 block font-medium">Composer Suggestions</label>
-                        <div className="flex flex-col gap-2">
+                        <div className="flex flex-row flex-wrap gap-x-5 gap-y-2">
                           <label className="flex items-center gap-2 text-sm cursor-pointer font-normal">
                             <Toggle on={showComposerWorkspaceSuggestions} onToggle={() => setShowComposerWorkspaceSuggestions(!showComposerWorkspaceSuggestions)} />
                             <span className="text-[var(--text-secondary)]">Workspace suggestions</span>
@@ -4353,7 +4406,7 @@ export default function PreferencesView() {
                       </div>
 
                       {/* Chat Identifiers */}
-                      <div className="border-t border-[var(--border-color)] pt-3">
+                      <div className="pt-3">
                         <label className="text-xs text-[var(--text-secondary)] mb-2 block font-medium">Chat Identifiers</label>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-1.5">
@@ -4378,13 +4431,13 @@ export default function PreferencesView() {
                           </div>
                         </div>
                       </div>
-                    </div>
+                    </section>
 
-                    {/* Card 3: Metadata & Behavior */}
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-4">
-                      <div>
-                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Metadata & Diagnostics</h3>
-                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                    {/* Section: Metadata & Diagnostics */}
+                    <section className="space-y-3" data-pref-section>
+                      <div className="pb-1.5 border-b border-[var(--border-color)]">
+                        <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Metadata & Diagnostics</h3>
+                        <p className="text-xs text-[var(--text-muted)]/80 mt-1">
                           Configure auto-generated content and performance overlays.
                         </p>
                       </div>
@@ -4392,7 +4445,7 @@ export default function PreferencesView() {
                       {/* Chat Title Auto-Generation */}
                       <div>
                         <label className="text-xs text-[var(--text-secondary)] mb-2 block font-medium font-semibold">Chat Title Auto-Generation</label>
-                        <div className="flex flex-col gap-2">
+                        <div className="flex flex-row flex-wrap gap-x-5 gap-y-2">
                           <label className="flex items-center gap-2 text-sm cursor-pointer">
                             <input
                               type="radio"
@@ -4440,16 +4493,16 @@ export default function PreferencesView() {
                       </div>
 
                       {/* Show Gen Info */}
-                      <div className="border-t border-[var(--border-color)] pt-3 space-y-2">
-                        <div className="flex items-center justify-between py-0.5">
+                      <div className="pt-3 space-y-2">
+                        <div className="flex items-start gap-3 py-0.5">
+                          <Toggle on={showGenInfo} onToggle={() => setShowGenInfo(!showGenInfo)} />
                           <div>
                             <p className="text-sm text-[var(--text-secondary)]">Show Gen Info</p>
                             <p className="text-xs text-[var(--text-muted)] mt-0.5">Display token count, duration, and speed (tok/s) below assistant messages.</p>
                           </div>
-                          <Toggle on={showGenInfo} onToggle={() => setShowGenInfo(!showGenInfo)} />
                         </div>
                         {showGenInfo && (
-                          <div className="flex flex-col gap-2 ml-4 border-l border-[var(--border-color)] pl-4 py-1">
+                          <div className="flex flex-row flex-wrap gap-x-5 gap-y-2 ml-4 border-l border-[var(--border-color)] pl-4 py-1">
                             <label className="flex items-center gap-2 text-xs cursor-pointer">
                               <Toggle on={showGenInfoModel} onToggle={() => setShowGenInfoModel(!showGenInfoModel)} />
                               <span className="text-[var(--text-secondary)]">Model name</span>
@@ -4471,57 +4524,57 @@ export default function PreferencesView() {
                       </div>
 
                       {/* Status Bar */}
-                      <div className="border-t border-[var(--border-color)] pt-3">
-                        <div className="flex items-center justify-between py-0.5">
+                      <div className="pt-3">
+                        <div className="flex items-start gap-3 py-0.5">
+                          <Toggle on={showStatusBar} onToggle={() => setShowStatusBar(!showStatusBar)} />
                           <div>
                             <p className="text-sm text-[var(--text-secondary)]">Show Status Bar</p>
                             <p className="text-xs text-[var(--text-muted)] mt-0.5">Display the system status bar (CPU, RAM, active jobs) at the bottom of the window</p>
                           </div>
-                          <Toggle on={showStatusBar} onToggle={() => setShowStatusBar(!showStatusBar)} />
                         </div>
                       </div>
-                    </div>
+                    </section>
 
-                    {/* Card 4: Safety & Deletion */}
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-4">
-                      <div>
-                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Safety & Deletion</h3>
-                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                    {/* Section: Safety & Deletion */}
+                    <section className="space-y-3" data-pref-section>
+                      <div className="pb-1.5 border-b border-[var(--border-color)]">
+                        <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Safety & Deletion</h3>
+                        <p className="text-xs text-[var(--text-muted)]/80 mt-1">
                           Configure safety prompts and permanent deletion options.
                         </p>
                       </div>
 
-                      <div className="flex items-center justify-between py-0.5">
+                      <div className="flex items-start gap-3 py-0.5">
+                        <Toggle on={dbSettings.immediate_delete} onToggle={() => set("immediate_delete", !dbSettings.immediate_delete)} />
                         <div>
                           <p className="text-sm text-[var(--text-secondary)]">Immediate Delete</p>
                           <p className="text-xs text-[var(--text-muted)] mt-0.5">Bypass recycle bin and delete chats immediately with confirmation</p>
                         </div>
-                        <Toggle on={dbSettings.immediate_delete} onToggle={() => set("immediate_delete", !dbSettings.immediate_delete)} />
                       </div>
 
                       {!dbSettings.immediate_delete && (
-                        <div className="flex items-center justify-between py-0.5">
+                        <div className="flex items-start gap-3 py-0.5">
+                          <Toggle on={dbSettings.confirm_move_to_trash} onToggle={() => set("confirm_move_to_trash", !dbSettings.confirm_move_to_trash)} />
                           <div>
                             <p className="text-sm text-[var(--text-secondary)]">Confirm Move to Trash</p>
                             <p className="text-xs text-[var(--text-muted)] mt-0.5">Prompt for confirmation before moving chats to the recycle bin</p>
                           </div>
-                          <Toggle on={dbSettings.confirm_move_to_trash} onToggle={() => set("confirm_move_to_trash", !dbSettings.confirm_move_to_trash)} />
                         </div>
                       )}
-                    </div>
+                    </section>
                   </div>
                 )}
 
                 {/* ── Learning ── */}
                 {activeTab === "learning" && (
-                  <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4 items-start">
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
-                      <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-col gap-8">
+                    <section className="space-y-3" data-pref-section>
+                      <div className="pb-1.5 border-b border-[var(--border-color)] flex items-center justify-between gap-3">
                         <div>
-                          <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
-                            <Sparkles size={14} /> Flashcards
+                          <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] flex items-center gap-1.5">
+                            <Sparkles size={11} /> Flashcards
                           </h3>
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                          <p className="text-xs text-[var(--text-muted)]/80 mt-1">
                             Aetherium can extract flashcards from your chats so you can review them later.
                           </p>
                         </div>
@@ -4533,7 +4586,7 @@ export default function PreferencesView() {
                           <span className="text-[var(--text-secondary)]">Auto-generate from chats</span>
                         </label>
                       </div>
-                      <div className="flex items-center justify-between gap-3 pt-2 border-t border-[var(--border-color)]">
+                      <div className="flex items-center justify-between gap-3 pt-1">
                         <div>
                           <p className="text-sm text-[var(--text-secondary)]">Generation model</p>
                           <p className="text-xs text-[var(--text-muted)] mt-0.5">
@@ -4550,18 +4603,18 @@ export default function PreferencesView() {
                           Configure in AI →
                         </button>
                       </div>
-                    </div>
+                    </section>
 
-                    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3.5 space-y-3">
-                      <div>
-                        <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
-                          <Brain size={14} /> Knowledge
+                    <section className="space-y-3" data-pref-section>
+                      <div className="pb-1.5 border-b border-[var(--border-color)]">
+                        <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] flex items-center gap-1.5">
+                          <Brain size={11} /> Knowledge
                         </h3>
-                        <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                        <p className="text-xs text-[var(--text-muted)]/80 mt-1">
                           A roadmap of concepts Aetherium has extracted from your workspace. Use it to navigate what you&apos;ve learned and spot gaps.
                         </p>
                       </div>
-                      <div className="flex items-center justify-between gap-3 pt-2 border-t border-[var(--border-color)]">
+                      <div className="flex items-center justify-between gap-3 pt-1">
                         <p className="text-xs text-[var(--text-muted)]">
                           The roadmap rebuilds itself as you chat, take notes, and capture sources in the active workspace.
                         </p>
@@ -4573,7 +4626,7 @@ export default function PreferencesView() {
                           Open Knowledge Graph →
                         </button>
                       </div>
-                    </div>
+                    </section>
                   </div>
                 )}
 
@@ -4589,11 +4642,11 @@ export default function PreferencesView() {
 
                 {/* ── Browser Automation ── */}
                 {activeTab === "webai" && (
-                  <>
-                    <div className="flex items-start justify-between gap-3 mb-1">
+                  <section data-pref-section>
+                    <div className="pb-1.5 mb-3 border-b border-[var(--border-color)] flex items-start justify-between gap-3">
                       <div>
-                        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Manual Browser Targets</h3>
-                        <p className="text-xs text-[var(--text-muted)] mt-1">
+                        <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Manual Browser Targets</h3>
+                        <p className="text-xs text-[var(--text-muted)]/80 mt-1">
                           Use manual browser automation for user-configured web targets. Select an enabled browser-backed model from the Chat view model dropdown to activate it. Requires Node.js and the <code className="px-1 py-0.5 rounded bg-[var(--bg-hover)] font-mono text-[10px]">playwright</code> npm package (<code className="px-1 py-0.5 rounded bg-[var(--bg-hover)] font-mono text-[10px]">npm install -g playwright && npx playwright install chromium</code>).
                         </p>
                       </div>
@@ -4746,18 +4799,42 @@ export default function PreferencesView() {
                       </p>
                     </div>
 
-                  </>
+                  </section>
                 )}
 
                 {/* ── Security ── */}
                 {activeTab === "security" && (
                   <>
-                    <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4 items-start">
+                    <div className="flex flex-col gap-8">
                     {/* Left Column: Enable & Unlock Options */}
-                    <div className="space-y-4">
+                    <div className="space-y-8">
                       {/* ── Require PIN on launch ── */}
-                      <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 py-3.5">
-                        <div className="flex items-center justify-between">
+                      <section className="space-y-3" data-pref-section>
+                        <div className="pb-1.5 border-b border-[var(--border-color)]">
+                          <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">App lock</h3>
+                        </div>
+                        <div className="flex items-start gap-3 py-0.5">
+                          <Toggle
+                            on={dbSettings.pin_lock_enabled}
+                            onToggle={() => {
+                            if (!dbSettings.pin_lock_enabled) {
+                            // Enabling — if no PIN exists, show the setup modal
+                            if (!pinConfigured) {
+                            resetPinForm();
+                            setPinMessage(null);
+                            setShowPinSetupModal(true);
+                            } else {
+                            set("pin_lock_enabled", true);
+                            }
+                            } else {
+                            // Disabling
+                            set("pin_lock_enabled", false);
+                            if (dbSettings.touch_id_enabled) {
+                            set("touch_id_enabled", false);
+                            }
+                            }
+                            }}
+                            />
                           <div>
                             <p className="text-sm font-semibold text-[var(--text-primary)]">Require PIN on launch</p>
                             <p className="text-xs text-[var(--text-muted)] mt-1">
@@ -4766,54 +4843,31 @@ export default function PreferencesView() {
                                 : "Lock the app with a PIN passcode each time it starts."}
                             </p>
                           </div>
-                          <Toggle
-                            on={dbSettings.pin_lock_enabled}
-                            onToggle={() => {
-                              if (!dbSettings.pin_lock_enabled) {
-                                // Enabling — if no PIN exists, show the setup modal
-                                if (!pinConfigured) {
-                                  resetPinForm();
-                                  setPinMessage(null);
-                                  setShowPinSetupModal(true);
-                                } else {
-                                  set("pin_lock_enabled", true);
-                                }
-                              } else {
-                                // Disabling
-                                set("pin_lock_enabled", false);
-                                if (dbSettings.touch_id_enabled) {
-                                  set("touch_id_enabled", false);
-                                }
-                              }
-                            }}
-                          />
                         </div>
-                      </div>
 
-                      {/* ── Biometric ── */}
-                      {dbSettings.pin_lock_enabled && biometricAvailable && (
-                        <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 py-3.5">
-                          <div className="flex items-center justify-between">
+                        {/* ── Biometric ── */}
+                        {dbSettings.pin_lock_enabled && biometricAvailable && (
+                          <div className="flex items-start gap-3 py-0.5">
+                            <Toggle
+                              on={dbSettings.touch_id_enabled}
+                              onToggle={() => set("touch_id_enabled", !dbSettings.touch_id_enabled)}
+                              />
                             <div>
                               <p className="text-sm font-semibold text-[var(--text-primary)]">{biometricLabel}</p>
                               <p className="text-xs text-[var(--text-muted)] mt-1">
                                 Use {biometricLabel} as a quick unlock. PIN is always available as a fallback.
                               </p>
                             </div>
-                            <Toggle
-                              on={dbSettings.touch_id_enabled}
-                              onToggle={() => set("touch_id_enabled", !dbSettings.touch_id_enabled)}
-                            />
                           </div>
-                        </div>
-                      )}
+                        )}
+                      </section>
 
                       {/* ── Auto-lock ── */}
                       {dbSettings.pin_lock_enabled && (
-                        <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 py-3.5 space-y-3">
-                          <div>
-                            <h3 className="text-sm font-semibold text-[var(--text-primary)]">Auto-lock</h3>
-                            <p className="text-xs text-[var(--text-muted)] mt-1">Automatically lock the app after a period of inactivity.</p>
+                        <section className="space-y-3" data-pref-section>
+                          <div className="pb-1.5 border-b border-[var(--border-color)]">
+                            <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Auto-lock</h3>
+                            <p className="text-xs text-[var(--text-muted)]/80 mt-1">Automatically lock the app after a period of inactivity.</p>
                           </div>
                           <div className="flex flex-row flex-wrap gap-x-6 gap-y-2 pt-1 font-normal">
                             <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -4853,18 +4907,18 @@ export default function PreferencesView() {
                               )}
                             </label>
                           </div>
-                        </div>
+                        </section>
                       )}
                     </div>
 
                     {/* Right Column: PIN Management */}
-                    <div className="space-y-4">
+                    <div className="space-y-8">
                       {dbSettings.pin_lock_enabled && (
-                        <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-3">
-                          <div className="flex items-start justify-between gap-4">
+                        <section className="space-y-3" data-pref-section>
+                          <div className="pb-1.5 border-b border-[var(--border-color)] flex items-start justify-between gap-4">
                             <div>
-                              <p className="text-sm font-semibold text-[var(--text-primary)]">PIN passcode</p>
-                              <p className="text-xs text-[var(--text-muted)] mt-1 max-w-sm">
+                              <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">PIN passcode</h3>
+                              <p className="text-xs text-[var(--text-muted)]/80 mt-1 max-w-sm">
                                 4 to 8 digits. Stored as a hash, never plaintext.
                               </p>
                             </div>
@@ -4935,7 +4989,7 @@ export default function PreferencesView() {
                               Remove PIN
                             </button>
                           </div>
-                        </div>
+                        </section>
                       )}
                     </div>
                   </div>
@@ -5020,10 +5074,10 @@ export default function PreferencesView() {
 
                 {/* ── Sync ── */}
                 {activeTab === "sync" && (
-                  <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 space-y-4">
-                    <div>
-                      <h3 className="text-sm font-semibold text-[var(--text-primary)]">Multi-device Sync</h3>
-                      <p className="text-xs text-[var(--text-muted)] mt-1">
+                  <section className="space-y-3" data-pref-section>
+                    <div className="pb-1.5 border-b border-[var(--border-color)]">
+                      <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Multi-device Sync</h3>
+                      <p className="text-xs text-[var(--text-muted)]/80 mt-1">
                         Sync your chats, memories, and settings across devices using a private Git remote.
                         Requires a private repository (GitHub, GitLab, or any SSH-accessible bare repo) and
                         Git installed on this machine.
@@ -5125,7 +5179,7 @@ export default function PreferencesView() {
                         {gitSync.last_error}
                       </div>
                     )}
-                  </div>
+                  </section>
                 )}
 
                 </div>

@@ -528,3 +528,14 @@ select optgroup {
 .animate-waterfall-reverse {
   animation: waterfall-reverse 20s linear infinite;
 }
+
+/* =====================================================
+   Preferences search-match highlight
+   ===================================================== */
+mark[data-pref-highlight] {
+  background-color: color-mix(in srgb, var(--accent-color) 30%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 2px;
+  margin: 0 -1px;
+}
