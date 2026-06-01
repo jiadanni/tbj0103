@@ -4202,13 +4202,24 @@ export default function ChatView() {
   }
 
   async function handleComposerSuggestion(suggestion: ComposerSuggestion, sendImmediately?: boolean) {
+    const modelForSend = composerMode === "family"
+      ? (activeFamilyDefaultModelId ?? selectedModel)
+      : selectedModel;
+
     if (suggestion.action === "send_immediately" || sendImmediately) {
-      await sendMessageWithModel(selectedModel, suggestion.prompt);
+      await sendMessageWithModel(modelForSend, suggestion.prompt);
       return;
     }
 
+    if (!activeChatId) {
+      const session = await findOrCreateEmptySession();
+      if (session) {
+        activateSession(session);
+      }
+    }
+
     setInput((prev) => mergeComposerInput(prev, suggestion.prompt));
-    requestAnimationFrame(() => inputRef.current?.focus());
+    requestAnimationFrame(() => resizeAndFocusComposer(suggestion.prompt.length));
   }
 
   const deleteSession = useCallback(async (id: string) => {
@@ -4822,7 +4833,7 @@ export default function ChatView() {
 
   // Extract all suggestions for the waterfall background
   const waterfallSuggestions = useMemo(() => {
-    if (activeChatId) return [];
+    if (activeChatId) { return []; }
     return composerSuggestionRows.flatMap(row => row.suggestions);
   }, [activeChatId, composerSuggestionRows]);
 
@@ -4894,7 +4905,7 @@ export default function ChatView() {
                 <div className="relative flex-1 min-w-0 flex flex-col items-center justify-center gap-4 text-center overflow-hidden">
                   <WaterfallSuggestions
                     suggestions={waterfallSuggestions}
-                    onSelect={(suggestion) => handleSuggestionClick(suggestion, false)}
+                    onSelect={(suggestion) => void handleComposerSuggestion(suggestion, false)}
                   />
                   <div className="relative z-10 flex flex-col items-center gap-4">
                   <MessageSquare size={40} className="text-[var(--text-muted)] opacity-30" />
@@ -4903,14 +4914,14 @@ export default function ChatView() {
                     ref={emptyStatePrivacyMenuRef}
                     className="relative flex flex-wrap justify-center gap-2"
                   >
-                    <div className="flex overflow-hidden rounded-lg border border-[rgba(var(--accent-color-rgb),0.26)] bg-[var(--accent-color)] text-white shadow-[0_18px_40px_-26px_rgba(var(--accent-color-rgb),0.9)]">
+                    <div className="flex overflow-hidden rounded-xl border border-[rgba(var(--accent-color-rgb),0.38)] bg-[var(--accent-color)] text-white shadow-[0_18px_44px_-24px_rgba(var(--accent-color-rgb),0.9)] ring-1 ring-white/10 transition-transform hover:-translate-y-0.5">
                       <button
                         type="button"
                         onClick={() => {
                           setIsEmptyStatePrivacyMenuOpen(false);
                           void createNewSession();
                         }}
-                        className="px-4 py-2 text-sm transition-opacity hover:opacity-90"
+                        className="px-4 py-2.5 text-sm font-semibold tracking-[0.01em] transition-colors hover:bg-white/10"
                       >
                         Start a new chat
                       </button>
@@ -4920,7 +4931,7 @@ export default function ChatView() {
                         aria-haspopup="menu"
                         aria-expanded={isEmptyStatePrivacyMenuOpen}
                         onClick={() => setIsEmptyStatePrivacyMenuOpen((open) => !open)}
-                        className="flex items-center justify-center border-l border-white/15 px-3 transition-colors hover:bg-white/10"
+                        className="flex items-center justify-center border-l border-white/20 px-3 transition-colors hover:bg-white/10"
                       >
                         <ChevronDown size={14} className={`transition-transform ${isEmptyStatePrivacyMenuOpen ? "rotate-180" : ""}`} />
                       </button>

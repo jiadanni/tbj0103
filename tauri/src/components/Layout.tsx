@@ -1486,6 +1486,9 @@ function TopTabsNavigation() {
   const location = useLocation();
   const [, startNavTransition] = React.useTransition();
   const goTo = (to: string, options?: NavigateOptions) => {
+    if (to === "/chat") {
+      useChatStore.getState().setActiveChatId(null);
+    }
     startNavTransition(() => { navigate(to, options); });
   };
   const activeSegment = "/" + location.pathname.split("/")[1];
@@ -1626,7 +1629,12 @@ function CompactSectionNavigation() {
         label="Section"
         value={selectedPath}
         options={sectionOptions}
-        onChange={(value) => startNavTransition(() => { navigate(value); })}
+        onChange={(value) => {
+          if (value === "/chat") {
+            useChatStore.getState().setActiveChatId(null);
+          }
+          startNavTransition(() => { navigate(value); });
+        }}
         widthClassName="min-w-0 w-full max-w-[260px] sm:w-[240px]"
       />
     </div>

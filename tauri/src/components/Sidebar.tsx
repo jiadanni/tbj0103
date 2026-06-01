@@ -12,6 +12,7 @@ import {
 import { PRIMARY_NAV_ITEMS } from "./navigationItems";
 import type { NavigationItem } from "./navigationItems";
 import { api } from "../lib/api";
+import { useChatStore } from "../stores/chatStore";
 
 const MIN_FONT_SIZE = 11;
 const MAX_FONT_SIZE = 22;
@@ -144,6 +145,13 @@ export default function Sidebar({
     api.settings.updateOne("font_size", next).catch(() => {});
   }
 
+  function goToSection(path: string) {
+    if (path === "/chat") {
+      useChatStore.getState().setActiveChatId(null);
+    }
+    goTo(path);
+  }
+
   const visibleTooltip = tooltip && tooltip.path === location.pathname ? tooltip : null;
   const activeNavClassName = "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]";
   const inactiveNavClassName = "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
@@ -160,7 +168,7 @@ export default function Sidebar({
               <button
                 key={item.path}
                 onClick={() => {
-                  goTo(item.path);
+                  goToSection(item.path);
                   setContextMenu(null);
                   setTooltip(null);
                 }}
@@ -345,7 +353,7 @@ export default function Sidebar({
         >
           <button
             onClick={() => {
-              goTo(contextMenu.item.path);
+              goToSection(contextMenu.item.path);
               setContextMenu(null);
             }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
