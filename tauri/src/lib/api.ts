@@ -203,6 +203,23 @@ export interface ConceptLink {
   link_type: string; strength: number; context: string; created_at: string;
 }
 
+export interface ChangeProposal {
+  id: string;
+  workspace_id: string;
+  job_id: string | null;
+  proposal_type: string;
+  target_node_id: string | null;
+  payload: string;
+  reason: string | null;
+  created_at: string;
+}
+
+export interface KnowledgeSettings {
+  upgrade_mode: string;
+  supersede_mode: string;
+  confidence_threshold: number;
+}
+
 export interface LearningCard {
   id: string; workspace_id: string; front: string; back: string;
   source_type: string; source_id?: string; topic_id?: string;
@@ -1245,7 +1262,8 @@ export const api = {
   graph: {
     createConcept: (workspaceId: string, name: string, opts?: Partial<ConceptNode>) =>
       invoke<ConceptNode>("create_concept", { req: { workspace_id: workspaceId, name, ...opts } }),
-    listConcepts: (workspaceId: string, limit?: number, offset?: number, opts?: { includeDescendants?: boolean }) => invoke<ConceptNode[]>("list_concepts", { workspaceId, limit, offset, includeDescendants: opts?.includeDescendants }),
+    listConcepts: (workspaceId: string, limit?: number, offset?: number, opts?: { includeDescendants?: boolean; includeSuperseded?: boolean }) =>
+      invoke<ConceptNode[]>("list_concepts", { workspaceId, limit, offset, includeDescendants: opts?.includeDescendants, includeSuperseded: opts?.includeSuperseded }),
     getConcept: (id: string) => invoke<ConceptNode | null>("get_concept", { id }),
     updateConcept: (id: string, fields: Partial<ConceptNode>) => invoke<void>("update_concept", { id, ...fields }),
     deleteConcept: (id: string) => invoke<void>("delete_concept", { id }),
@@ -1265,6 +1283,11 @@ export const api = {
     /** Idempotent: ensures a concept exists for the given tag name (case-insensitive). Returns the concept id. */
     upsertFromTopicTag: (workspaceId: string, name: string) =>
       invoke<string>("upsert_concept_from_tag", { workspaceId, name }),
+    undoLastAnalysis: (workspaceId: string) => invoke<void>("undo_last_analysis", { workspaceId }),
+    listChangeProposals: (workspaceId: string) => invoke<ChangeProposal[]>("list_change_proposals", { workspaceId }),
+    applyChangeProposal: (id: string) => invoke<void>("apply_change_proposal", { id }),
+    dismissChangeProposal: (id: string) => invoke<void>("dismiss_change_proposal", { id }),
+    getKnowledgeSettings: () => invoke<KnowledgeSettings>("get_knowledge_settings"),
   },
 
   learningGoal: {

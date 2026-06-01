@@ -609,6 +609,105 @@ struct AiHierarchicalOutput {
     relationships: Vec<AiRelationship>,
 }
 
+fn model_confidence(model: &str) -> f64 {
+    let m = model.to_lowercase();
+    if m.contains("70b") || m.contains("72b") { 0.95 }
+    else if m.contains("32b") || m.contains("34b") { 0.85 }
+    else if m.contains("13b") || m.contains("14b") { 0.75 }
+    else if m.contains("7b")  || (m.contains("8b") && !m.contains(".8b")) { 0.60 }
+    else if m.contains("3b")  || m.contains("4b")  || m.contains(".8b") { 0.45 }
+    else { 0.50 }
+}
+
+fn would_create_cycle(conn: &rusqlite::Connection, start_id: &str, target_id: &str) -> rusqlite::Result<bool> {
+    if start_id == target_id {
+        return Ok(true);
+    }
+    let mut current = start_id.to_string();
+    for _ in 0..64 {
+        let next: Option<String> = conn
+            .query_row(
+                "SELECT target_id FROM concept_links
+                 WHERE source_id = ?1 AND link_type = 'part_of'
+                 LIMIT 1",
+                rusqlite::params![current],
+                |r| r.get(0),
+            )
+            .ok();
+        match next {
+            None => return Ok(false),
+            Some(parent) => {
+                if parent == target_id {
+                    return Ok(true);
+                }
+                current = parent;
+            }
+        }
+    }
+    Ok(true)
+}
+
+fn apply_supersede(
+    conn: &rusqlite::Connection,
+    old_id: &str,
+    new_id: &str,
+    reason: &str,
+    now: &str,
+    job_id: &str,
+) -> rusqlite::Result<()> {
+    let uef_json: String = conn.query_row(
+        "SELECT user_edited_fields FROM concept_nodes WHERE id = ?1",
+        rusqlite::params![old_id],
+        |r| r.get(0)
+    ).unwrap_or_else(|_| "[]".to_string());
+    let uef: Vec<String> = serde_json::from_str(&uef_json).unwrap_or_default();
+    if !uef.is_empty() {
+        return Ok(());
+    }
+
+    if would_create_cycle(conn, new_id, old_id).unwrap_or(false) {
+        return Ok(());
+    }
+
+    conn.execute(
+        "UPDATE concept_nodes \
+         SET superseded_by = ?1, superseded_at = ?2, supersede_reason = ?3, \
+             last_modified_by_job = ?4, updated_at = ?5 \
+         WHERE id = ?6 AND (superseded_by IS NULL OR superseded_by = '');",
+        rusqlite::params![new_id, now, reason, job_id, now, old_id],
+    )?;
+
+    conn.execute(
+        "UPDATE concept_nodes \
+         SET review_count = review_count + (SELECT COALESCE(review_count, 0) FROM concept_nodes WHERE id = ?1) \
+         WHERE id = ?2;",
+        rusqlite::params![old_id, new_id],
+    )?;
+
+    conn.execute(
+        "UPDATE concept_links \
+         SET target_id = ?1, last_modified_by_job = ?2 \
+         WHERE target_id = ?3 AND json_array_length(user_edited_fields) > 0;",
+        rusqlite::params![new_id, job_id, old_id],
+    )?;
+    conn.execute(
+        "UPDATE concept_links \
+         SET source_id = ?1, last_modified_by_job = ?2 \
+         WHERE source_id = ?3 AND json_array_length(user_edited_fields) > 0;",
+        rusqlite::params![new_id, job_id, old_id],
+    )?;
+
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct SupersedeRecommendation {
+    old_id: String,
+    action: String,
+    new_id: Option<String>,
+    reason: Option<String>,
+}
+
 // --------------- Shared helpers ---------------
 
 /// Fuzzy name lookup: exact → normalized → substring fallback
@@ -632,12 +731,6 @@ fn fuzzy_lookup(
 }
 
 /// Preload existing concept_nodes into name_to_id for dedup.
-///
-/// The map carries both *level-agnostic* keys (`"f-strings"`) — used by
-/// the relationship fuzzy lookup, which doesn't care about
-/// `hierarchy_level` — and *level-scoped* keys (`"chapter::python
-/// programming"`) — used by `upsert_node` so a previously-stored section
-/// of the same name does not get reused as a chapter (or vice versa).
 fn preload_name_to_id(
     conn: &rusqlite::Connection,
     workspace_id: &str,
@@ -681,6 +774,7 @@ fn preload_name_to_id(
 
 // --------------- Per-chunk worker ---------------
 
+#[allow(clippy::too_many_arguments)]
 async fn analyze_chunk(
     pool: &Pool<SqliteConnectionManager>,
     workspace_id: &str,
@@ -690,8 +784,8 @@ async fn analyze_chunk(
     survey_context: Option<&str>,
     chunk_text: &str,
     name_to_id: &mut HashMap<String, String>,
+    job_id: &str,
 ) -> Result<ChunkStats, String> {
-    // Build prompt
     let focus_clause = focus_topic
         .filter(|s| !s.trim().is_empty())
         .map(|t| format!(" Focus especially on concepts related to: {t}."))
@@ -729,7 +823,6 @@ Rules:\n\
         content_section = content_section,
     );
 
-    // Call Ollama
     let client = OllamaClient::new(ollama_url.map(|s| s.to_string()))?;
     let messages = vec![OllamaMessage {
         role: "user".to_string(),
@@ -737,7 +830,6 @@ Rules:\n\
     }];
     let raw = client.send_message("ai_knowledge", model, messages).await?;
 
-    // Parse JSON
     let trimmed = raw.trim();
     let json_str = match extract_first_json_object(trimmed) {
         Some(s) => s,
@@ -767,153 +859,398 @@ Rules:\n\
         }
     };
 
-    // Upsert hierarchy + relationships
-    let conn = pool.get().map_err(|e| e.to_string())?;
-    let now = chrono::Utc::now().to_rfc3339();
-
-    let upsert_node = |name: &str,
-                       description: &str,
-                       concept_type: &str,
-                       hierarchy_level: &str,
-                       name_to_id: &mut HashMap<String, String>|
-     -> Option<String> {
-        let lower = name.trim().to_lowercase();
-        if lower.is_empty() {
-            return None;
-        }
-        let normalized = normalize_concept_name(name);
-        // Level-scoped lookup first so e.g. an existing section "Python
-        // Programming" does NOT get reused as a chapter.
-        let level_lower = level_dedup_key(hierarchy_level, &lower);
-        let level_norm = level_dedup_key(hierarchy_level, &normalized);
-        if let Some(existing_id) = name_to_id.get(&level_lower).cloned() {
-            return Some(existing_id);
-        }
-        if let Some(existing_id) = name_to_id.get(&level_norm).cloned() {
-            name_to_id.insert(level_lower, existing_id.clone());
-            return Some(existing_id);
-        }
-        let id = uuid::Uuid::new_v4().to_string();
-        let result = conn.execute(
-            "INSERT INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at, hierarchy_level) \
-             VALUES (?1, ?2, ?3, ?4, ?5, '[]', '[]', '[]', 0.0, 0.0, 0, ?6, ?6, ?7)",
-            rusqlite::params![id, workspace_id, name.trim(), description, concept_type, now, hierarchy_level],
-        );
-        if result.is_ok() {
-            name_to_id.insert(lower, id.clone());
-            name_to_id.insert(normalized, id.clone());
-            name_to_id.insert(level_lower, id.clone());
-            name_to_id.insert(level_norm, id.clone());
-            Some(id)
-        } else {
-            None
-        }
-    };
-
-    let upsert_link = |source_id: &str, target_id: &str, link_type: &str, strength: f64, context: &str| {
-        if link_type == "part_of" {
-            let pair: Option<(String, String)> = conn
-                .query_row(
-                    "SELECT
-                        (SELECT hierarchy_level FROM concept_nodes WHERE id = ?1),
-                        (SELECT hierarchy_level FROM concept_nodes WHERE id = ?2)",
-                    rusqlite::params![source_id, target_id],
-                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
-                )
-                .ok();
-            match pair {
-                Some((child, parent)) if is_valid_parent_pair(&child, &parent) => {}
-                _ => return false,
-            }
-        }
-        let exists: bool = conn
+    let (upgrade_mode, supersede_mode, confidence_threshold) = {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let up_mode = conn
             .query_row(
-                "SELECT COUNT(*) FROM concept_links WHERE source_id = ?1 AND target_id = ?2 AND link_type = ?3",
-                rusqlite::params![source_id, target_id, link_type],
-                |row| row.get::<_, i64>(0),
+                "SELECT value FROM settings WHERE key = 'knowledge.upgrade_mode'",
+                [],
+                |r| r.get::<_, String>(0),
             )
-            .unwrap_or(0)
-            > 0;
-        if !exists {
-            let link_id = uuid::Uuid::new_v4().to_string();
-            conn.execute(
-                "INSERT INTO concept_links (id, source_id, target_id, link_type, strength, context, created_at) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                rusqlite::params![link_id, source_id, target_id, link_type, strength, context, now],
-            ).is_ok()
-        } else {
-            false
-        }
+            .unwrap_or_else(|_| "\"auto\"".to_string());
+        let up_mode: String = serde_json::from_str(&up_mode).unwrap_or_else(|_| "auto".to_string());
+
+        let sup_mode = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'knowledge.supersede_mode'",
+                [],
+                |r| r.get::<_, String>(0),
+            )
+            .unwrap_or_else(|_| "\"auto\"".to_string());
+        let sup_mode: String = serde_json::from_str(&sup_mode).unwrap_or_else(|_| "auto".to_string());
+
+        let threshold_str = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'knowledge.confidence_threshold'",
+                [],
+                |r| r.get::<_, String>(0),
+            )
+            .unwrap_or_else(|_| "0.05".to_string());
+        let threshold: f64 = threshold_str.parse().unwrap_or(0.05);
+
+        (up_mode, sup_mode, threshold)
     };
 
+    let mut newly_created_concepts = Vec::new();
     let mut stats = ChunkStats::default();
 
-    for chapter in &output.chapters {
-        let ch_name = chapter.name.trim();
-        if ch_name.is_empty() { continue; }
-        let ch_desc = chapter.description.as_deref().unwrap_or("");
-        let ch_id_opt = upsert_node(ch_name, ch_desc, "topic", "chapter", name_to_id);
-        let ch_id = match ch_id_opt {
-            Some(id) => { stats.chapters_created += 1; id }
-            None => continue,
-        };
+    {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let now = chrono::Utc::now().to_rfc3339();
 
-        for section in &chapter.sections {
-            let sec_name = section.name.trim();
-            if sec_name.is_empty() { continue; }
-            let sec_desc = section.description.as_deref().unwrap_or("");
-            let sec_id_opt = upsert_node(sec_name, sec_desc, "topic", "section", name_to_id);
-            let sec_id = match sec_id_opt {
-                Some(id) => { stats.sections_created += 1; id }
-                None => continue,
-            };
-            if upsert_link(&sec_id, &ch_id, "part_of", 1.0, "hierarchy") {
-                stats.links_created += 1;
-            }
+        let mut upsert_node = |name: &str,
+                               description: &str,
+                               concept_type: &str,
+                               hierarchy_level: &str,
+                               name_to_id: &mut HashMap<String, String>|
+         -> Option<String> {
+            let lower = name.trim().to_lowercase();
+            if lower.is_empty() { return None; }
+            let normalized = normalize_concept_name(name);
+            let level_lower = level_dedup_key(hierarchy_level, &lower);
+            let level_norm = level_dedup_key(hierarchy_level, &normalized);
 
-            for concept in &section.concepts {
-                let con_name = concept.name.trim();
-                if con_name.is_empty() || !is_specific_concept(con_name) {
-                    stats.concepts_skipped += 1;
-                    continue;
-                }
-                let con_desc = concept.description.as_deref().unwrap_or("");
-                let con_type = concept.concept_type.as_deref().unwrap_or("topic");
-                let valid_types = ["topic", "definition", "technology", "insight", "question", "resource"];
-                let con_type = if valid_types.contains(&con_type) { con_type } else { "topic" };
-                let con_id_opt = upsert_node(con_name, con_desc, con_type, "concept", name_to_id);
-                match con_id_opt {
-                    Some(con_id) => {
-                        stats.concepts_created += 1;
-                        if upsert_link(&con_id, &sec_id, "part_of", 1.0, "hierarchy") {
-                            stats.links_created += 1;
+            let existing_id = name_to_id.get(&lower)
+                .or_else(|| name_to_id.get(&normalized))
+                .cloned();
+
+            let new_confidence = model_confidence(model);
+
+            if let Some(eid) = existing_id {
+                if upgrade_mode != "off" {
+                    if let Ok((old_confidence, uef_json, old_desc, old_type, old_level, old_source_model)) = conn.query_row(
+                        "SELECT confidence, user_edited_fields, concept_description, concept_type, hierarchy_level, source_model \
+                         FROM concept_nodes WHERE id = ?1",
+                        rusqlite::params![eid],
+                        |row| Ok((
+                            row.get::<_, f64>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                            row.get::<_, String>(4)?,
+                            row.get::<_, Option<String>>(5)?,
+                        )),
+                    ) {
+                        let uef: Vec<String> = serde_json::from_str(&uef_json).unwrap_or_default();
+                        if new_confidence > old_confidence + confidence_threshold {
+                            let mut update_desc = false;
+                            let mut update_type = false;
+                            let mut update_level = false;
+
+                            if !uef.contains(&"concept_description".to_string()) && description.len() > old_desc.len() {
+                                update_desc = true;
+                            }
+                            if !uef.contains(&"concept_type".to_string()) && concept_type != old_type {
+                                update_type = true;
+                            }
+                            if !uef.contains(&"hierarchy_level".to_string()) && hierarchy_level != old_level {
+                                update_level = true;
+                            }
+
+                            if update_desc || update_type || update_level {
+                                if upgrade_mode == "auto" {
+                                    let mut query = "UPDATE concept_nodes SET source_model = ?1, confidence = ?2, last_modified_by_job = ?3, updated_at = ?4".to_string();
+                                    let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![
+                                        Box::new(model.to_string()),
+                                        Box::new(new_confidence),
+                                        Box::new(job_id.to_string()),
+                                        Box::new(now.clone()),
+                                    ];
+                                    let mut param_idx = 5;
+                                    if update_desc {
+                                        query.push_str(&format!(", concept_description = ?{}", param_idx));
+                                        params.push(Box::new(description.to_string()));
+                                        param_idx += 1;
+                                    }
+                                    if update_type {
+                                        query.push_str(&format!(", concept_type = ?{}", param_idx));
+                                        params.push(Box::new(concept_type.to_string()));
+                                        param_idx += 1;
+                                    }
+                                    if update_level {
+                                        query.push_str(&format!(", hierarchy_level = ?{}", param_idx));
+                                        params.push(Box::new(hierarchy_level.to_string()));
+                                        param_idx += 1;
+                                    }
+                                    query.push_str(&format!(" WHERE id = ?{}", param_idx));
+                                    params.push(Box::new(eid.clone()));
+
+                                    let ref_params: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+                                    let _ = conn.execute(&query, ref_params.as_slice());
+                                } else if upgrade_mode == "suggest" {
+                                    let mut payload = serde_json::Map::new();
+                                    if update_desc { payload.insert("concept_description".to_string(), serde_json::Value::String(description.to_string())); }
+                                    if update_type { payload.insert("concept_type".to_string(), serde_json::Value::String(concept_type.to_string())); }
+                                    if update_level { payload.insert("hierarchy_level".to_string(), serde_json::Value::String(hierarchy_level.to_string())); }
+                                    if !payload.is_empty() {
+                                        payload.insert("source_model".to_string(), serde_json::Value::String(model.to_string()));
+                                        payload.insert("confidence".to_string(), serde_json::Value::Number(serde_json::Number::from_f64(new_confidence).unwrap()));
+                                        let payload_str = serde_json::to_string(&payload).unwrap_or_default();
+                                        let proposal_id = uuid::Uuid::new_v4().to_string();
+                                        let old_model_str = old_source_model.unwrap_or_else(|| "user".to_string());
+                                        let reason = format!("Upgrade node '{}' from model '{}' (confidence {:.2}) to '{}' (confidence {:.2})", name, old_model_str, old_confidence, model, new_confidence);
+                                        let _ = conn.execute(
+                                            "INSERT INTO concept_change_proposals (id, workspace_id, job_id, proposal_type, target_node_id, payload, reason, created_at) \
+                                             VALUES (?1, ?2, ?3, 'upgrade', ?4, ?5, ?6, ?7)",
+                                            rusqlite::params![proposal_id, workspace_id, job_id, eid, payload_str, reason, now],
+                                        );
+                                    }
+                                }
+                            }
                         }
                     }
-                    None => { stats.concepts_skipped += 1; }
+                }
+                name_to_id.insert(level_lower, eid.clone());
+                name_to_id.insert(level_norm, eid.clone());
+                return Some(eid);
+            }
+
+            let id = uuid::Uuid::new_v4().to_string();
+            let result = conn.execute(
+                "INSERT INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at, hierarchy_level, source_model, confidence, user_edited_fields, last_modified_by_job) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, '[]', '[]', '[]', 0.0, 0.0, 0, ?6, ?6, ?7, ?8, ?9, '[]', ?10)",
+                rusqlite::params![id, workspace_id, name.trim(), description, concept_type, now, hierarchy_level, model, new_confidence, job_id],
+            );
+            if result.is_ok() {
+                name_to_id.insert(lower, id.clone());
+                name_to_id.insert(normalized, id.clone());
+                name_to_id.insert(level_lower, id.clone());
+                name_to_id.insert(level_norm, id.clone());
+                newly_created_concepts.push((id.clone(), name.trim().to_string(), description.to_string()));
+                Some(id)
+            } else {
+                None
+            }
+        };
+
+        let upsert_link = |source_id: &str, target_id: &str, link_type: &str, strength: f64, context: &str| {
+            if link_type == "part_of" {
+                let pair: Option<(String, String)> = conn
+                    .query_row(
+                        "SELECT
+                            (SELECT hierarchy_level FROM concept_nodes WHERE id = ?1),
+                            (SELECT hierarchy_level FROM concept_nodes WHERE id = ?2)",
+                        rusqlite::params![source_id, target_id],
+                        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                    )
+                    .ok();
+                match pair {
+                    Some((child, parent)) if is_valid_parent_pair(&child, &parent) => {}
+                    _ => return false,
+                }
+            }
+
+            let new_confidence = model_confidence(model);
+            let old_link: Option<(String, f64, String)> = conn.query_row(
+                "SELECT id, confidence, user_edited_fields FROM concept_links WHERE source_id = ?1 AND target_id = ?2 AND link_type != ?3",
+                rusqlite::params![source_id, target_id, link_type],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            ).ok();
+
+            if let Some((old_link_id, old_confidence, uef_json)) = old_link {
+                let uef: Vec<String> = serde_json::from_str(&uef_json).unwrap_or_default();
+                if uef.is_empty() && new_confidence > old_confidence + confidence_threshold && upgrade_mode == "auto" {
+                    let _ = conn.execute("DELETE FROM concept_links WHERE id = ?1", rusqlite::params![old_link_id]);
+                }
+            }
+
+            let exists_info: Option<(String, f64, String)> = conn
+                .query_row(
+                    "SELECT id, confidence, user_edited_fields FROM concept_links WHERE source_id = ?1 AND target_id = ?2 AND link_type = ?3",
+                    rusqlite::params![source_id, target_id, link_type],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?, row.get::<_, String>(2)?)),
+                )
+                .ok();
+
+            if let Some((link_id, old_confidence, uef_json)) = exists_info {
+                if upgrade_mode != "off" && new_confidence > old_confidence + confidence_threshold {
+                    let uef: Vec<String> = serde_json::from_str(&uef_json).unwrap_or_default();
+                    if upgrade_mode == "auto" {
+                        let mut query = "UPDATE concept_links SET source_model = ?1, confidence = ?2, last_modified_by_job = ?3".to_string();
+                        let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![
+                            Box::new(model.to_string()),
+                            Box::new(new_confidence),
+                            Box::new(job_id.to_string()),
+                        ];
+                        let mut param_idx = 4;
+                        if !uef.contains(&"strength".to_string()) {
+                            query.push_str(&format!(", strength = ?{}", param_idx));
+                            params.push(Box::new(strength));
+                            param_idx += 1;
+                        }
+                        if !uef.contains(&"context".to_string()) {
+                            query.push_str(&format!(", context = ?{}", param_idx));
+                            params.push(Box::new(context.to_string()));
+                            param_idx += 1;
+                        }
+                        query.push_str(&format!(" WHERE id = ?{}", param_idx));
+                        params.push(Box::new(link_id));
+
+                        let ref_params: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+                        let _ = conn.execute(&query, ref_params.as_slice());
+                    }
+                }
+                false
+            } else {
+                let link_id = uuid::Uuid::new_v4().to_string();
+                conn.execute(
+                    "INSERT INTO concept_links (id, source_id, target_id, link_type, strength, context, created_at, source_model, confidence, user_edited_fields, last_modified_by_job) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, '[]', ?10)",
+                    rusqlite::params![link_id, source_id, target_id, link_type, strength, context, now, model, new_confidence, job_id],
+                ).is_ok()
+            }
+        };
+
+        for chapter in &output.chapters {
+            let ch_name = chapter.name.trim();
+            if ch_name.is_empty() { continue; }
+            let ch_desc = chapter.description.as_deref().unwrap_or("");
+            let ch_id_opt = upsert_node(ch_name, ch_desc, "topic", "chapter", name_to_id);
+            let ch_id = match ch_id_opt {
+                Some(id) => { stats.chapters_created += 1; id }
+                None => continue,
+            };
+
+            for section in &chapter.sections {
+                let sec_name = section.name.trim();
+                if sec_name.is_empty() { continue; }
+                let sec_desc = section.description.as_deref().unwrap_or("");
+                let sec_id_opt = upsert_node(sec_name, sec_desc, "topic", "section", name_to_id);
+                let sec_id = match sec_id_opt {
+                    Some(id) => { stats.sections_created += 1; id }
+                    None => continue,
+                };
+                if upsert_link(&sec_id, &ch_id, "part_of", 1.0, "hierarchy") {
+                    stats.links_created += 1;
+                }
+
+                for concept in &section.concepts {
+                    let con_name = concept.name.trim();
+                    if con_name.is_empty() || !is_specific_concept(con_name) {
+                        stats.concepts_skipped += 1;
+                        continue;
+                    }
+                    let con_desc = concept.description.as_deref().unwrap_or("");
+                    let con_type = concept.concept_type.as_deref().unwrap_or("topic");
+                    let valid_types = ["topic", "definition", "technology", "insight", "question", "resource"];
+                    let con_type = if valid_types.contains(&con_type) { con_type } else { "topic" };
+                    let con_id_opt = upsert_node(con_name, con_desc, con_type, "concept", name_to_id);
+                    match con_id_opt {
+                        Some(con_id) => {
+                            stats.concepts_created += 1;
+                            if upsert_link(&con_id, &sec_id, "part_of", 1.0, "hierarchy") {
+                                stats.links_created += 1;
+                            }
+                        }
+                        None => { stats.concepts_skipped += 1; }
+                    }
+                }
+            }
+        }
+
+        for rel in &output.relationships {
+            let src_id = match fuzzy_lookup(name_to_id, &rel.source) {
+                Some(id) => id,
+                None => continue,
+            };
+            let tgt_id = match fuzzy_lookup(name_to_id, &rel.target) {
+                Some(id) => id,
+                None => continue,
+            };
+            let valid_rel_types = ["related", "prerequisite", "supports", "contradicts", "example"];
+            let link_type = if valid_rel_types.contains(&rel.r#type.as_str()) {
+                rel.r#type.as_str()
+            } else {
+                "related"
+            };
+            let strength = rel.strength.unwrap_or(0.7).clamp(0.0, 1.0);
+            let context = rel.description.as_deref().unwrap_or("ai_inferred");
+            if upsert_link(&src_id, &tgt_id, link_type, strength, context) {
+                stats.links_created += 1;
+            }
+        }
+    }
+
+    let mut low_conf_concepts: Vec<(String, String, String, f64)> = Vec::new();
+    if supersede_mode != "off" && !newly_created_concepts.is_empty() {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, concept_description, confidence FROM concept_nodes WHERE workspace_id = ?1 AND confidence < 0.6 AND (superseded_by IS NULL OR superseded_by = '')"
+        ).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map(rusqlite::params![workspace_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, f64>(3)?))
+        }).map_err(|e| e.to_string())?;
+        low_conf_concepts = rows.filter_map(Result::ok).collect();
+    }
+
+    let mut recommendations = Vec::new();
+    if supersede_mode != "off" && !newly_created_concepts.is_empty() && !low_conf_concepts.is_empty() {
+        let mut old_concepts_str = String::new();
+        for (id, name, desc, conf) in &low_conf_concepts {
+            old_concepts_str.push_str(&format!("[{}] Name: {} (Confidence: {:.2})\nDescription: {}\n\n", id, name, conf, desc));
+        }
+        let mut new_concepts_str = String::new();
+        for (id, name, desc) in &newly_created_concepts {
+            new_concepts_str.push_str(&format!("[{}] Name: {}\nDescription: {}\n\n", id, name, desc));
+        }
+
+        let prompt = format!(
+            "You are a knowledge graph consolidation assistant.\n\
+Identify if any of the existing low-confidence concepts should be superseded by or merged into the newly created concepts because they represent the same concept, synonyms, or are higher quality.\n\n\
+Existing low-confidence concepts:\n\
+{}\n\
+Newly created concepts:\n\
+{}\n\
+Respond with ONLY a raw JSON array of recommendations, each having: \"old_id\", \"action\" (one of: \"keep\", \"supersede_by\", \"merge_into\"), \"new_id\" (if supersede or merge), and \"reason\".\n\
+Example:\n\
+[\n  {{\"old_id\": \"old-1\", \"action\": \"supersede_by\", \"new_id\": \"new-1\", \"reason\": \"synonym\"}},\n  {{\"old_id\": \"old-2\", \"action\": \"keep\", \"reason\": \"distinct concept\"}}\n]\n\n\
+No markdown formatting, no commentary, only raw JSON.",
+            old_concepts_str,
+            new_concepts_str
+        );
+
+        let client = OllamaClient::new(ollama_url.map(|s| s.to_string()))?;
+        let messages = vec![OllamaMessage {
+            role: "user".to_string(),
+            content: prompt,
+        }];
+        if let Ok(reply) = client.send_message("ai_knowledge_supersede", model, messages).await {
+            if let Some(json_str) = extract_first_json_object(reply.trim()).or_else(|| Some(reply.trim())) {
+                if let Ok(recs) = serde_json::from_str::<Vec<SupersedeRecommendation>>(json_str) {
+                    recommendations = recs;
                 }
             }
         }
     }
 
-    for rel in &output.relationships {
-        let src_id = match fuzzy_lookup(name_to_id, &rel.source) {
-            Some(id) => id,
-            None => continue,
-        };
-        let tgt_id = match fuzzy_lookup(name_to_id, &rel.target) {
-            Some(id) => id,
-            None => continue,
-        };
-        let valid_rel_types = ["related", "prerequisite", "supports", "contradicts", "example"];
-        let link_type = if valid_rel_types.contains(&rel.r#type.as_str()) {
-            rel.r#type.as_str()
-        } else {
-            "related"
-        };
-        let strength = rel.strength.unwrap_or(0.7).clamp(0.0, 1.0);
-        let context = rel.description.as_deref().unwrap_or("ai_inferred");
-        if upsert_link(&src_id, &tgt_id, link_type, strength, context) {
-            stats.links_created += 1;
+    if !recommendations.is_empty() {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let now = chrono::Utc::now().to_rfc3339();
+        for rec in recommendations {
+            if rec.action == "keep" { continue; }
+            if let Some(nid) = rec.new_id {
+                let reason_str = rec.reason.clone().unwrap_or_else(|| "superseded".to_string());
+                if supersede_mode == "auto" {
+                    let _ = apply_supersede(&conn, &rec.old_id, &nid, &reason_str, &now, job_id);
+                } else if supersede_mode == "suggest" {
+                    let prop_id = uuid::Uuid::new_v4().to_string();
+                    let payload_json = serde_json::json!({ "successor_id": nid });
+                    let _ = conn.execute(
+                        "INSERT INTO concept_change_proposals (id, workspace_id, job_id, proposal_type, target_node_id, payload, reason, created_at) \
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                        rusqlite::params![
+                            prop_id,
+                            workspace_id,
+                            job_id,
+                            if rec.action == "merge_into" { "merge" } else { "supersede" },
+                            rec.old_id,
+                            payload_json.to_string(),
+                            reason_str,
+                            now
+                        ]
+                    );
+                }
+            }
         }
     }
 
@@ -1001,7 +1338,7 @@ fn auto_categorize_orphans(
         }
     };
 
-    let upsert_link = |source_id: &str, target_id: &str, link_type: &str, strength: f64, context: &str| -> bool {
+    let upsert_link = |source_id: &str, target_id: &str, link_type: &str, strength: f64, context: &str| {
         if link_type == "part_of" {
             let pair: Option<(String, String)> = conn
                 .query_row(
@@ -1102,7 +1439,6 @@ async fn analyze_workspace_chunked_impl(
 ) -> Result<AnalysisResult, String> {
     use crate::commands::ollama::BackgroundInferenceCancel;
 
-    // 1. Gather items
     let items = {
         let conn = pool.get().map_err(|e| e.to_string())?;
         gather_workspace_items(&conn, &req.workspace_id)
@@ -1118,14 +1454,11 @@ async fn analyze_workspace_chunked_impl(
         return Err("Not enough workspace material yet to build a useful graph. Add a bit more chat, notes, or documents, then analyze again.".to_string());
     }
 
-    // 2. Compute budget
     let chunk_budget = budget_override.unwrap_or_else(|| {
         let ctx = context_size_for_model(&req.model);
         ((ctx * 3).saturating_sub(2000)).clamp(2000, 10_000)
     });
 
-    // 3. Pack into chunks
-    // If survey_context is provided but items are empty, create a single chunk with just the survey
     let mut chunks = pack_into_chunks(items, chunk_budget);
     if chunks.is_empty() && req.survey_context.is_some() {
         chunks.push(WorkspaceChunk {
@@ -1138,7 +1471,6 @@ async fn analyze_workspace_chunked_impl(
     let job_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
-    // 4. Auto-cancel prior running jobs for this workspace
     {
         let conn = pool.get().map_err(|e| e.to_string())?;
         let _ = conn.execute(
@@ -1147,7 +1479,6 @@ async fn analyze_workspace_chunked_impl(
         );
     }
 
-    // 5. Insert job + chunk rows
     {
         let conn = pool.get().map_err(|e| e.to_string())?;
         conn.execute(
@@ -1164,26 +1495,22 @@ async fn analyze_workspace_chunked_impl(
         }
     }
 
-    // 6. Preload name_to_id
     let mut name_to_id = {
         let conn = pool.get().map_err(|e| e.to_string())?;
         preload_name_to_id(&conn, &req.workspace_id)
     };
 
-    // 7. Subscribe to cancellation
     let cancel_rx = app
         .state::<BackgroundInferenceCancel>()
         .0
         .subscribe();
 
-    // 8. Loop chunks
     let mut agg = ChunkStats::default();
     let mut completed_count = 0usize;
     let mut failed_count = 0usize;
     let mut cancelled = false;
 
     for (i, chunk) in chunks.iter().enumerate() {
-        // Check cancellation
         if cancel_rx.has_changed().unwrap_or(false) {
             cancelled = true;
             let _ = app.emit("workspace-analysis-progress", &WorkspaceAnalysisProgress {
@@ -1200,7 +1527,6 @@ async fn analyze_workspace_chunked_impl(
             break;
         }
 
-        // Mark chunk running + emit started
         {
             let conn = pool.get().map_err(|e| e.to_string())?;
             let _ = conn.execute(
@@ -1220,7 +1546,6 @@ async fn analyze_workspace_chunked_impl(
             error: None,
         });
 
-        // Run chunk
         match analyze_chunk(
             pool,
             &req.workspace_id,
@@ -1230,6 +1555,7 @@ async fn analyze_workspace_chunked_impl(
             req.survey_context.as_deref(),
             &chunk.text,
             &mut name_to_id,
+            &job_id,
         ).await {
             Ok(stats) => {
                 let chunk_now = chrono::Utc::now().to_rfc3339();

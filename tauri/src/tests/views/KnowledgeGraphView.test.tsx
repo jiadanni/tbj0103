@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
+import { api } from "@/lib/api";
 import KnowledgeGraphView from "@/views/KnowledgeGraphView";
 
 const mocks = vi.hoisted(() => ({
@@ -55,6 +56,8 @@ vi.mock("@/lib/api", () => ({
       createConcept: vi.fn(),
       deleteConcept: vi.fn(),
       getLearningPath: vi.fn().mockResolvedValue([]),
+      getKnowledgeSettings: vi.fn().mockResolvedValue({ upgrade_mode: "auto", supersede_mode: "auto", confidence_threshold: 0.05 }),
+      listChangeProposals: vi.fn().mockResolvedValue([]),
     },
     knowledge: {
       analyzeWorkspace: mocks.analyzeWorkspace,
@@ -370,5 +373,48 @@ describe("KnowledgeGraphView", () => {
     const text = await screen.findByText(/5 topics need another review pass\./);
     expect(text).toBeInTheDocument();
     expect(text.textContent ?? "").not.toContain("Start with");
+  });
+
+  it("renders the proposals review panel and applies a proposal", async () => {
+    // Mock getKnowledgeSettings
+    api.graph.getKnowledgeSettings = vi.fn().mockResolvedValue({
+      upgrade_mode: "suggest",
+      supersede_mode: "suggest",
+      confidence_threshold: 0.15,
+    });
+
+    // Mock listChangeProposals to return one proposal
+    const mockProposal = {
+      id: "proposal-1",
+      workspace_id: "ws-1",
+      job_id: "job-1",
+      proposal_type: "upgrade",
+      target_node_id: "concept-1",
+      payload: JSON.stringify({ concept_description: "New primitive description" }),
+      reason: "Improved extraction quality",
+      created_at: "2026-04-06T10:30:00Z",
+    };
+    api.graph.listChangeProposals = vi.fn().mockResolvedValue([mockProposal]);
+    api.graph.applyChangeProposal = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <MemoryRouter>
+        <KnowledgeGraphView />
+      </MemoryRouter>,
+    );
+
+    // Wait for the proposals panel to render
+    expect(await screen.findByText("Change Proposals (1)")).toBeInTheDocument();
+    expect(screen.getAllByText("Namespaces")[0]).toBeInTheDocument();
+    expect(screen.getByText("Upgrade description")).toBeInTheDocument();
+    expect(screen.getByText(/Improved extraction quality/)).toBeInTheDocument();
+
+    // Click Accept button
+    const acceptBtn = screen.getByRole("button", { name: "Accept" });
+    fireEvent.click(acceptBtn);
+
+    await waitFor(() => {
+      expect(api.graph.applyChangeProposal).toHaveBeenCalledWith("proposal-1");
+    });
   });
 });

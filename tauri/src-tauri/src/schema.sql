@@ -139,7 +139,15 @@ CREATE TABLE IF NOT EXISTS concept_nodes (
     hierarchy_level TEXT DEFAULT 'concept',
     parent_checked_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    source_model TEXT,
+    confidence REAL NOT NULL DEFAULT 0.5,
+    user_edited_fields TEXT NOT NULL DEFAULT '[]'
+        CHECK (json_valid(user_edited_fields)),
+    superseded_by TEXT REFERENCES concept_nodes(id) ON DELETE SET NULL,
+    superseded_at TEXT,
+    supersede_reason TEXT,
+    last_modified_by_job TEXT
 );
 
 CREATE TABLE IF NOT EXISTS concept_links (
@@ -150,7 +158,12 @@ CREATE TABLE IF NOT EXISTS concept_links (
         CHECK(link_type IN ('related','part_of','prerequisite','contradicts','supports','example')),
     strength REAL NOT NULL DEFAULT 0.5 CHECK(strength >= 0.0 AND strength <= 1.0),
     context TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    source_model TEXT,
+    confidence REAL NOT NULL DEFAULT 0.5,
+    user_edited_fields TEXT NOT NULL DEFAULT '[]'
+        CHECK (json_valid(user_edited_fields)),
+    last_modified_by_job TEXT
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_concept_links_source_target_type
@@ -162,6 +175,17 @@ CREATE TABLE IF NOT EXISTS concept_mentions (
     source_type TEXT NOT NULL,
     source_id TEXT NOT NULL,
     context TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS concept_change_proposals (
+    id TEXT PRIMARY KEY NOT NULL,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    job_id TEXT REFERENCES analyze_jobs(id) ON DELETE CASCADE,
+    proposal_type TEXT NOT NULL CHECK (proposal_type IN ('upgrade','supersede','merge')),
+    target_node_id TEXT REFERENCES concept_nodes(id) ON DELETE CASCADE,
+    payload TEXT NOT NULL CHECK (json_valid(payload)),  -- proposed fields or successor id
+    reason TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -592,7 +616,10 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('vram_headroom_gb', '0'),
     ('vram_headroom_percent', '10'),
     ('ram_headroom_gb', '0'),
-    ('ram_headroom_percent', '10');
+    ('ram_headroom_percent', '10'),
+    ('knowledge.upgrade_mode', '"auto"'),
+    ('knowledge.supersede_mode', '"auto"'),
+    ('knowledge.confidence_threshold', '0.05');
 
 
 -- Conversation summaries

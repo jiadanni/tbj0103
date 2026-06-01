@@ -34,6 +34,7 @@ import {
   api,
   type AiModel,
   type AnalysisResult,
+  type ChangeProposal,
   type ConceptLink,
   type ConceptNode,
   type DashboardActivity,
@@ -286,6 +287,12 @@ export default function KnowledgeGraphView({
 
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  const [includeSuperseded, setIncludeSuperseded] = useState(false);
+  const [proposals, setProposals] = useState<ChangeProposal[]>([]);
+  const [upgradeMode, setUpgradeMode] = useState<string>("auto");
+  const [supersedeMode, setSupersedeMode] = useState<string>("auto");
+  const [confidenceThreshold, setConfidenceThreshold] = useState<number>(0.05);
+
   // Exit fullscreen on Escape key press
   useEffect(() => {
     if (!isFullscreen) {
@@ -373,12 +380,12 @@ export default function KnowledgeGraphView({
     }
 
     const [nextNodes, nextLinks] = await Promise.all([
-      api.graph.listConcepts(activeWorkspaceId, undefined, undefined, { includeDescendants }),
+      api.graph.listConcepts(activeWorkspaceId, undefined, undefined, { includeDescendants, includeSuperseded }),
       api.graph.listLinks(activeWorkspaceId, undefined, undefined, { includeDescendants }),
     ]);
     setNodes(nextNodes);
     setLinks(nextLinks);
-  }, [activeWorkspaceId, includeDescendants]);
+  }, [activeWorkspaceId, includeDescendants, includeSuperseded]);
 
   const loadSummary = useCallback(async () => {
     if (!activeWorkspaceId) {
@@ -415,6 +422,34 @@ export default function KnowledgeGraphView({
     api.knowledge.checkWorkspaceAnalyzable(activeWorkspaceId)
       .then((result) => setWorkspaceReady(result.ready))
       .catch(() => setWorkspaceReady(null));
+  }, [activeWorkspaceId]);
+
+  const loadProposals = useCallback(async () => {
+    if (!activeWorkspaceId) {
+      setProposals([]);
+      return;
+    }
+    try {
+      const list = await api.graph.listChangeProposals(activeWorkspaceId);
+      setProposals(list);
+    } catch (err) {
+      console.error(err);
+    }
+  }, [activeWorkspaceId]);
+
+  useEffect(() => {
+    void loadProposals();
+  }, [loadProposals]);
+
+  useEffect(() => {
+    if (!activeWorkspaceId) { return; }
+    api.graph.getKnowledgeSettings()
+      .then((settings) => {
+        setUpgradeMode(settings.upgrade_mode);
+        setSupersedeMode(settings.supersede_mode);
+        setConfidenceThreshold(settings.confidence_threshold);
+      })
+      .catch((err) => console.error("Failed to load knowledge settings", err));
   }, [activeWorkspaceId]);
 
   useEffect(() => {
@@ -501,7 +536,7 @@ export default function KnowledgeGraphView({
           unlisten();
           setDescendantProgress(null);
         }
-        await Promise.all([loadGraph(), loadSummary()]);
+        await Promise.all([loadGraph(), loadSummary(), loadProposals()]);
         return;
       }
 
@@ -518,11 +553,78 @@ export default function KnowledgeGraphView({
         unlistenChunk();
         setChunkProgress(null);
       }
-      await Promise.all([loadGraph(), loadSummary()]);
+      await Promise.all([loadGraph(), loadSummary(), loadProposals()]);
     } catch (error: unknown) {
       setAnalyzeError(error instanceof Error ? error.message : String(error));
     } finally {
       setIsAnalyzing(false);
+    }
+  }
+
+  async function handleApplyProposal(id: string) {
+    try {
+      await api.graph.applyChangeProposal(id);
+      void loadProposals();
+      void loadGraph();
+      void loadSummary();
+      setSuccessDialog({
+        title: "Proposal applied",
+        description: "Successfully applied the recommended concept change.",
+      });
+    } catch (err) {
+      setErrorDialog({
+        title: "Failed to apply proposal",
+        description: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  async function handleDismissProposal(id: string) {
+    try {
+      await api.graph.dismissChangeProposal(id);
+      void loadProposals();
+    } catch (err) {
+      setErrorDialog({
+        title: "Failed to dismiss proposal",
+        description: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  async function handleSettingChange(key: string, value: unknown) {
+    try {
+      await api.settings.updateOne(key, value);
+      if (key === "knowledge.upgrade_mode") {
+        setUpgradeMode(value as string);
+      } else if (key === "knowledge.supersede_mode") {
+        setSupersedeMode(value as string);
+      } else if (key === "knowledge.confidence_threshold") {
+        setConfidenceThreshold(Number(value));
+      }
+    } catch (err) {
+      setErrorDialog({
+        title: "Failed to update setting",
+        description: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  async function handleUndo() {
+    if (!activeWorkspaceId) { return; }
+    try {
+      await api.graph.undoLastAnalysis(activeWorkspaceId);
+      void loadGraph();
+      void loadSummary();
+      void loadProposals();
+      setSuccessDialog({
+        title: "Analysis undone",
+        description: "Reverted the last analysis changes successfully.",
+      });
+    } catch (err) {
+      setErrorDialog({
+        title: "Undo failed",
+        description: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -717,6 +819,49 @@ export default function KnowledgeGraphView({
               className="mb-2 w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-input)] px-3 py-2 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
             />
 
+            <div className="mb-3 flex flex-col gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-2.5">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                Upgrade & Merge Settings
+              </div>
+              <CompactMenuSelect
+                label="Upgrade Mode"
+                value={upgradeMode}
+                options={[
+                  { value: "auto", label: "Auto Apply" },
+                  { value: "suggest", label: "Suggest Changes" },
+                  { value: "off", label: "Off" },
+                ]}
+                onChange={(val) => handleSettingChange("knowledge.upgrade_mode", val)}
+                widthClassName="w-full text-xs"
+              />
+              <CompactMenuSelect
+                label="Supersede Mode"
+                value={supersedeMode}
+                options={[
+                  { value: "auto", label: "Auto Apply" },
+                  { value: "suggest", label: "Suggest Changes" },
+                  { value: "off", label: "Off" },
+                ]}
+                onChange={(val) => handleSettingChange("knowledge.supersede_mode", val)}
+                widthClassName="w-full text-xs"
+              />
+              <div className="flex flex-col gap-1 mt-1">
+                <div className="flex justify-between items-center text-[10px] text-[var(--text-secondary)]">
+                  <span>Confidence Threshold</span>
+                  <span className="font-mono text-[var(--accent-color)]">{confidenceThreshold.toFixed(2)}</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.00"
+                  max="0.50"
+                  step="0.01"
+                  value={confidenceThreshold}
+                  onChange={(e) => handleSettingChange("knowledge.confidence_threshold", Number(e.target.value))}
+                  className="w-full accent-[var(--accent-color)] h-1 rounded bg-[var(--bg-input)] cursor-pointer"
+                />
+              </div>
+            </div>
+
             <button
               onClick={handleAnalyze}
               disabled={isAnalyzing || !canRunAiActions || insufficientData}
@@ -776,6 +921,17 @@ export default function KnowledgeGraphView({
                 placeholder="Filter topics..."
                 className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-input)] py-2 pl-7 pr-3 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
               />
+            </div>
+            <div className="mb-3 px-1 flex items-center justify-between">
+              <label className="flex items-center gap-1.5 text-[10px] text-[var(--text-secondary)] select-none cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeSuperseded}
+                  onChange={(e) => setIncludeSuperseded(e.target.checked)}
+                  className="rounded border-[var(--border-color)] bg-[var(--bg-input)] text-[var(--accent-color)] outline-none cursor-pointer"
+                />
+                Show Superseded
+              </label>
             </div>
             <div className="max-h-[26rem] space-y-0.5 overflow-y-auto pr-1">
             {hierarchyTree.chapters.map((chapter) => {
@@ -977,6 +1133,15 @@ export default function KnowledgeGraphView({
                   >
                     <RefreshCw size={14} className={summaryLoading ? "animate-spin" : ""} />
                     Refresh Overview
+                  </button>
+                  <button
+                    onClick={handleUndo}
+                    disabled={isAnalyzing}
+                    className="inline-flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm text-red-400 transition-colors hover:bg-red-500/20 hover:border-red-500/50"
+                    title="Undo the last analysis job and revert its additions/updates"
+                  >
+                    <Trash2 size={14} />
+                    Undo Last Analysis
                   </button>
                 </div>
                 {analyzeError && (
@@ -1215,6 +1380,75 @@ export default function KnowledgeGraphView({
             </Section>
 
             <div className="grid gap-4">
+              {proposals.length > 0 && (
+                <Section
+                  title={`Change Proposals (${proposals.length})`}
+                  eyebrow="Review"
+                >
+                  <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                    {proposals.map((proposal) => {
+                      let details = "";
+                      try {
+                        const payloadVal = JSON.parse(proposal.payload);
+                        if (proposal.proposal_type === "upgrade") {
+                          const changes = [];
+                          if (payloadVal.concept_description) { changes.push("description"); }
+                          if (payloadVal.concept_type) { changes.push(`type to ${payloadVal.concept_type}`); }
+                          if (payloadVal.hierarchy_level) { changes.push(`level to ${payloadVal.hierarchy_level}`); }
+                          details = `Upgrade ${changes.join(", ")}`;
+                        } else if (proposal.proposal_type === "supersede") {
+                          details = `Supersede by "${payloadVal.successor_name || payloadVal.successor_id}"`;
+                        } else if (proposal.proposal_type === "merge") {
+                          details = `Merge into "${payloadVal.successor_name || payloadVal.successor_id}"`;
+                        }
+                      } catch {
+                        details = proposal.proposal_type;
+                      }
+
+                      const targetNode = nodes.find(n => n.id === proposal.target_node_id);
+                      const targetName = targetNode ? targetNode.name : "Unknown Topic";
+
+                      return (
+                        <div key={proposal.id} className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-4 flex flex-col gap-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="text-sm font-semibold text-[var(--text-primary)]">
+                                {targetName}
+                              </div>
+                              <div className="text-xs text-[var(--text-secondary)] mt-0.5">
+                                {details}
+                              </div>
+                            </div>
+                            <span className="rounded-full bg-[var(--accent-color)]/10 px-2 py-0.5 text-[10px] text-[var(--accent-color)] capitalize">
+                              {proposal.proposal_type}
+                            </span>
+                          </div>
+                          {proposal.reason && (
+                            <p className="text-xs text-[var(--text-muted)] italic leading-relaxed">
+                              &ldquo;{proposal.reason}&rdquo;
+                            </p>
+                          )}
+                          <div className="flex gap-2 mt-1">
+                            <button
+                              onClick={() => handleApplyProposal(proposal.id)}
+                              className="flex-1 rounded-lg bg-[var(--accent-color)] py-1.5 text-xs text-white hover:opacity-90 font-medium"
+                            >
+                              Accept
+                            </button>
+                            <button
+                              onClick={() => handleDismissProposal(proposal.id)}
+                              className="flex-1 rounded-lg border border-[var(--border-color)] py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                            >
+                              Dismiss
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </Section>
+              )}
+
               <Section
                 title="Suggested Next Steps"
                 eyebrow="Actions"

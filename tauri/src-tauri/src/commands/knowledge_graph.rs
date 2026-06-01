@@ -77,14 +77,21 @@ pub fn list_concepts(
     limit: Option<i64>,
     offset: Option<i64>,
     include_descendants: Option<bool>,
+    include_superseded: Option<bool>,
 ) -> Result<Vec<ConceptNode>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let limit = limit.unwrap_or(500).clamp(1, 5000);
     let offset = offset.unwrap_or(0).max(0);
     let (cte, ws_cond) = workspace_filter_sql(include_descendants.unwrap_or(false));
+    let include_superseded = include_superseded.unwrap_or(false);
+    let superseded_cond = if include_superseded {
+        ""
+    } else {
+        "AND (superseded_by IS NULL OR superseded_by = '') "
+    };
     let sql = format!(
         "{cte}SELECT id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at, hierarchy_level
-         FROM concept_nodes WHERE workspace_id {ws_cond} ORDER BY name ASC
+         FROM concept_nodes WHERE workspace_id {ws_cond} {superseded_cond}ORDER BY name ASC
          LIMIT ?2 OFFSET ?3"
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
@@ -792,5 +799,297 @@ pub fn extract_and_link_concepts(
         created,
         existing,
         mentions_recorded,
+    })
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ChangeProposal {
+    pub id: String,
+    pub workspace_id: String,
+    pub job_id: Option<String>,
+    pub proposal_type: String,
+    pub target_node_id: Option<String>,
+    pub payload: String,
+    pub reason: Option<String>,
+    pub created_at: String,
+}
+
+#[tauri::command]
+pub fn undo_last_analysis(state: State<DbState>, workspace_id: String) -> Result<(), String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let last_job: Option<(String, String)> = conn.query_row(
+        "SELECT id, started_at FROM analyze_jobs WHERE workspace_id = ?1 AND status IN ('completed', 'running') ORDER BY started_at DESC LIMIT 1",
+        rusqlite::params![workspace_id],
+        |row| Ok((row.get(0)?, row.get(1)?))
+    ).ok();
+
+    if let Some((job_id, started_at)) = last_job {
+        conn.execute(
+            "DELETE FROM concept_nodes WHERE last_modified_by_job = ?1 OR (created_at >= ?2 AND last_modified_by_job = ?1)",
+            rusqlite::params![job_id, started_at]
+        ).map_err(|e| e.to_string())?;
+
+        conn.execute(
+            "UPDATE concept_nodes SET superseded_by = NULL, superseded_at = NULL, supersede_reason = NULL, last_modified_by_job = NULL \
+             WHERE last_modified_by_job = ?1",
+            rusqlite::params![job_id]
+        ).map_err(|e| e.to_string())?;
+
+        conn.execute(
+            "DELETE FROM concept_links WHERE last_modified_by_job = ?1",
+            rusqlite::params![job_id]
+        ).map_err(|e| e.to_string())?;
+
+        conn.execute(
+            "UPDATE concept_links SET last_modified_by_job = NULL WHERE last_modified_by_job = ?1",
+            rusqlite::params![job_id]
+        ).map_err(|e| e.to_string())?;
+
+        conn.execute(
+            "DELETE FROM concept_change_proposals WHERE job_id = ?1",
+            rusqlite::params![job_id]
+        ).map_err(|e| e.to_string())?;
+
+        conn.execute(
+            "UPDATE analyze_jobs SET status = 'undone' WHERE id = ?1",
+            rusqlite::params![job_id]
+        ).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn list_change_proposals(
+    state: State<DbState>,
+    workspace_id: String,
+) -> Result<Vec<ChangeProposal>, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT id, workspace_id, job_id, proposal_type, target_node_id, payload, reason, created_at \
+         FROM concept_change_proposals WHERE workspace_id = ?1 ORDER BY created_at DESC"
+    ).map_err(|e| e.to_string())?;
+    let items = stmt.query_map(rusqlite::params![workspace_id], |row| {
+        Ok(ChangeProposal {
+            id: row.get(0)?,
+            workspace_id: row.get(1)?,
+            job_id: row.get(2)?,
+            proposal_type: row.get(3)?,
+            target_node_id: row.get(4)?,
+            payload: row.get(5)?,
+            reason: row.get(6)?,
+            created_at: row.get(7)?,
+        })
+    }).map_err(|e| e.to_string())?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|e| e.to_string())?;
+    Ok(items)
+}
+
+#[tauri::command]
+pub fn apply_change_proposal(
+    state: State<DbState>,
+    id: String,
+) -> Result<(), String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let proposal: ChangeProposal = conn.query_row(
+        "SELECT id, workspace_id, job_id, proposal_type, target_node_id, payload, reason, created_at \
+         FROM concept_change_proposals WHERE id = ?1",
+        rusqlite::params![id],
+        |row| Ok(ChangeProposal {
+            id: row.get(0)?,
+            workspace_id: row.get(1)?,
+            job_id: row.get(2)?,
+            proposal_type: row.get(3)?,
+            target_node_id: row.get(4)?,
+            payload: row.get(5)?,
+            reason: row.get(6)?,
+            created_at: row.get(7)?,
+        })
+    ).map_err(|e| e.to_string())?;
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let job_id = proposal.job_id.unwrap_or_default();
+
+    if proposal.proposal_type == "upgrade" {
+        if let Some(target_id) = proposal.target_node_id {
+            if let Ok(payload_val) = serde_json::from_str::<serde_json::Value>(&proposal.payload) {
+                let mut updates = Vec::new();
+                let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+                let mut param_idx = 1;
+
+                if let Some(desc) = payload_val.get("concept_description").and_then(|v| v.as_str()) {
+                    updates.push(format!("concept_description = ?{}", param_idx));
+                    params.push(Box::new(desc.to_string()));
+                    param_idx += 1;
+                }
+                if let Some(ctype) = payload_val.get("concept_type").and_then(|v| v.as_str()) {
+                    updates.push(format!("concept_type = ?{}", param_idx));
+                    params.push(Box::new(ctype.to_string()));
+                    param_idx += 1;
+                }
+                if let Some(level) = payload_val.get("hierarchy_level").and_then(|v| v.as_str()) {
+                    updates.push(format!("hierarchy_level = ?{}", param_idx));
+                    params.push(Box::new(level.to_string()));
+                    param_idx += 1;
+                }
+                if let Some(source_model) = payload_val.get("source_model").and_then(|v| v.as_str()) {
+                    updates.push(format!("source_model = ?{}", param_idx));
+                    params.push(Box::new(source_model.to_string()));
+                    param_idx += 1;
+                }
+                if let Some(confidence) = payload_val.get("confidence").and_then(|v| v.as_f64()) {
+                    updates.push(format!("confidence = ?{}", param_idx));
+                    params.push(Box::new(confidence));
+                    param_idx += 1;
+                }
+
+                if !updates.is_empty() {
+                    updates.push(format!("updated_at = ?{}", param_idx));
+                    params.push(Box::new(now));
+                    param_idx += 1;
+
+                    let query = format!(
+                        "UPDATE concept_nodes SET {} WHERE id = ?{}",
+                        updates.join(", "),
+                        param_idx
+                    );
+                    params.push(Box::new(target_id));
+
+                    let ref_params: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+                    conn.execute(&query, ref_params.as_slice()).map_err(|e| e.to_string())?;
+                }
+            }
+        }
+    } else if proposal.proposal_type == "supersede" || proposal.proposal_type == "merge" {
+        if let Some(target_id) = proposal.target_node_id {
+            if let Ok(payload_val) = serde_json::from_str::<serde_json::Value>(&proposal.payload) {
+                if let Some(successor_id) = payload_val.get("successor_id").and_then(|v| v.as_str()) {
+                    let reason_str = proposal.reason.unwrap_or_else(|| "superseded".to_string());
+                    
+                    if !would_create_cycle_local(&conn, successor_id, &target_id).unwrap_or(true) {
+                        conn.execute(
+                            "UPDATE concept_nodes \
+                             SET superseded_by = ?1, superseded_at = ?2, supersede_reason = ?3, \
+                                 last_modified_by_job = ?4, updated_at = ?5 \
+                             WHERE id = ?6 AND (superseded_by IS NULL OR superseded_by = '');",
+                            rusqlite::params![successor_id, now, reason_str, job_id, now, target_id],
+                        ).map_err(|e| e.to_string())?;
+
+                        conn.execute(
+                            "UPDATE concept_nodes \
+                             SET review_count = review_count + (SELECT COALESCE(review_count, 0) FROM concept_nodes WHERE id = ?1) \
+                             WHERE id = ?2;",
+                            rusqlite::params![target_id, successor_id],
+                        ).map_err(|e| e.to_string())?;
+
+                        conn.execute(
+                            "UPDATE concept_links \
+                             SET target_id = ?1, last_modified_by_job = ?2 \
+                             WHERE target_id = ?3 AND json_array_length(user_edited_fields) > 0;",
+                            rusqlite::params![successor_id, job_id, target_id],
+                        ).map_err(|e| e.to_string())?;
+                        conn.execute(
+                            "UPDATE concept_links \
+                             SET source_id = ?1, last_modified_by_job = ?2 \
+                             WHERE source_id = ?3 AND json_array_length(user_edited_fields) > 0;",
+                            rusqlite::params![successor_id, job_id, target_id],
+                        ).map_err(|e| e.to_string())?;
+                    }
+                }
+            }
+        }
+    }
+
+    conn.execute(
+        "DELETE FROM concept_change_proposals WHERE id = ?1",
+        rusqlite::params![id],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+fn would_create_cycle_local(conn: &rusqlite::Connection, start_id: &str, target_id: &str) -> rusqlite::Result<bool> {
+    if start_id == target_id {
+        return Ok(true);
+    }
+    let mut current = start_id.to_string();
+    for _ in 0..64 {
+        let next: Option<String> = conn
+            .query_row(
+                "SELECT target_id FROM concept_links
+                 WHERE source_id = ?1 AND link_type = 'part_of'
+                 LIMIT 1",
+                rusqlite::params![current],
+                |r| r.get(0),
+            )
+            .ok();
+        match next {
+            None => return Ok(false),
+            Some(parent) => {
+                if parent == target_id {
+                    return Ok(true);
+                }
+                current = parent;
+            }
+        }
+    }
+    Ok(true)
+}
+
+#[tauri::command]
+pub fn dismiss_change_proposal(
+    state: State<DbState>,
+    id: String,
+) -> Result<(), String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM concept_change_proposals WHERE id = ?1",
+        rusqlite::params![id],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct KnowledgeSettings {
+    pub upgrade_mode: String,
+    pub supersede_mode: String,
+    pub confidence_threshold: f64,
+}
+
+#[tauri::command]
+pub fn get_knowledge_settings(state: State<DbState>) -> Result<KnowledgeSettings, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    
+    let up_mode = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'knowledge.upgrade_mode'",
+            [],
+            |r| r.get::<_, String>(0),
+        )
+        .unwrap_or_else(|_| "\"auto\"".to_string());
+    let up_mode: String = serde_json::from_str(&up_mode).unwrap_or_else(|_| "auto".to_string());
+
+    let sup_mode = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'knowledge.supersede_mode'",
+            [],
+            |r| r.get::<_, String>(0),
+        )
+        .unwrap_or_else(|_| "\"auto\"".to_string());
+    let sup_mode: String = serde_json::from_str(&sup_mode).unwrap_or_else(|_| "auto".to_string());
+
+    let threshold_str = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'knowledge.confidence_threshold'",
+            [],
+            |r| r.get::<_, String>(0),
+        )
+        .unwrap_or_else(|_| "0.05".to_string());
+    let threshold: f64 = threshold_str.parse().unwrap_or(0.05);
+
+    Ok(KnowledgeSettings {
+        upgrade_mode: up_mode,
+        supersede_mode: sup_mode,
+        confidence_threshold: threshold,
     })
 }

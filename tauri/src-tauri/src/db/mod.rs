@@ -77,6 +77,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v63_concept_hierarchy_job",
     "v64_cleanup_invalid_part_of",
     "v65_workspace_prompt_bank",
+    "v66_knowledge_graph_model_upgrade",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -1794,6 +1795,99 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             CREATE INDEX IF NOT EXISTS idx_workspace_prompt_bank_jobs_workspace
                 ON workspace_prompt_bank_jobs(workspace_id, status, created_at);
             INSERT INTO _migrations(name) VALUES('v65_workspace_prompt_bank');",
+        )?;
+    }
+
+    let applied_v66: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v66_knowledge_graph_model_upgrade'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v66 == 0 {
+        // 1. Alter concept_nodes
+        let (has_sm, has_conf, has_uef, has_sup_by, has_sup_at, has_sup_re, has_job) = {
+            let mut stmt = conn.prepare("PRAGMA table_info(concept_nodes)")?;
+            let names = stmt
+                .query_map([], |r| r.get::<_, String>(1))?
+                .filter_map(Result::ok)
+                .collect::<Vec<_>>();
+            (
+                names.iter().any(|n| n == "source_model"),
+                names.iter().any(|n| n == "confidence"),
+                names.iter().any(|n| n == "user_edited_fields"),
+                names.iter().any(|n| n == "superseded_by"),
+                names.iter().any(|n| n == "superseded_at"),
+                names.iter().any(|n| n == "supersede_reason"),
+                names.iter().any(|n| n == "last_modified_by_job"),
+            )
+        };
+        if !has_sm {
+            let _ = conn.execute_batch("ALTER TABLE concept_nodes ADD COLUMN source_model TEXT;");
+        }
+        if !has_conf {
+            let _ = conn.execute_batch("ALTER TABLE concept_nodes ADD COLUMN confidence REAL NOT NULL DEFAULT 0.5;");
+        }
+        if !has_uef {
+            let _ = conn.execute_batch("ALTER TABLE concept_nodes ADD COLUMN user_edited_fields TEXT NOT NULL DEFAULT '[]';");
+        }
+        if !has_sup_by {
+            let _ = conn.execute_batch("ALTER TABLE concept_nodes ADD COLUMN superseded_by TEXT;");
+        }
+        if !has_sup_at {
+            let _ = conn.execute_batch("ALTER TABLE concept_nodes ADD COLUMN superseded_at TEXT;");
+        }
+        if !has_sup_re {
+            let _ = conn.execute_batch("ALTER TABLE concept_nodes ADD COLUMN supersede_reason TEXT;");
+        }
+        if !has_job {
+            let _ = conn.execute_batch("ALTER TABLE concept_nodes ADD COLUMN last_modified_by_job TEXT;");
+        }
+
+        // 2. Alter concept_links
+        let (has_link_sm, has_link_conf, has_link_uef, has_link_job) = {
+            let mut stmt = conn.prepare("PRAGMA table_info(concept_links)")?;
+            let names = stmt
+                .query_map([], |r| r.get::<_, String>(1))?
+                .filter_map(Result::ok)
+                .collect::<Vec<_>>();
+            (
+                names.iter().any(|n| n == "source_model"),
+                names.iter().any(|n| n == "confidence"),
+                names.iter().any(|n| n == "user_edited_fields"),
+                names.iter().any(|n| n == "last_modified_by_job"),
+            )
+        };
+        if !has_link_sm {
+            let _ = conn.execute_batch("ALTER TABLE concept_links ADD COLUMN source_model TEXT;");
+        }
+        if !has_link_conf {
+            let _ = conn.execute_batch("ALTER TABLE concept_links ADD COLUMN confidence REAL NOT NULL DEFAULT 0.5;");
+        }
+        if !has_link_uef {
+            let _ = conn.execute_batch("ALTER TABLE concept_links ADD COLUMN user_edited_fields TEXT NOT NULL DEFAULT '[]';");
+        }
+        if !has_link_job {
+            let _ = conn.execute_batch("ALTER TABLE concept_links ADD COLUMN last_modified_by_job TEXT;");
+        }
+
+        // 3. Create proposals table & default settings keys
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS concept_change_proposals (
+                id TEXT PRIMARY KEY NOT NULL,
+                workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                job_id TEXT REFERENCES analyze_jobs(id) ON DELETE CASCADE,
+                proposal_type TEXT NOT NULL CHECK (proposal_type IN ('upgrade','supersede','merge')),
+                target_node_id TEXT REFERENCES concept_nodes(id) ON DELETE CASCADE,
+                payload TEXT NOT NULL CHECK (json_valid(payload)),
+                reason TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+             );
+             CREATE INDEX IF NOT EXISTS idx_concept_change_proposals_workspace ON concept_change_proposals(workspace_id);
+             INSERT OR IGNORE INTO settings (key, value) VALUES
+                ('knowledge.upgrade_mode', '\"auto\"'),
+                ('knowledge.supersede_mode', '\"auto\"'),
+                ('knowledge.confidence_threshold', '0.05');
+             INSERT INTO _migrations(name) VALUES('v66_knowledge_graph_model_upgrade');"
         )?;
     }
 

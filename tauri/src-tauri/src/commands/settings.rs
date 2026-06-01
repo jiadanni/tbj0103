@@ -962,10 +962,24 @@ fn encode_known_setting(key: &str, value: &serde_json::Value) -> Result<String, 
         | "compare_model_b"
         | "embedding_model"
         | "user_chat_label"
-        | "assistant_chat_label" => value
+        | "assistant_chat_label"
+        | "knowledge.upgrade_mode"
+        | "knowledge.supersede_mode" => value
             .as_str()
             .ok_or_else(|| format!("Expected string for setting key '{key}'"))
             .and_then(|s| serde_json::to_string(s).map_err(|e| e.to_string())),
+        "knowledge.confidence_threshold" => {
+            if let Some(n) = value.as_f64() {
+                Ok(n.to_string())
+            } else if let Some(n) = value.as_i64() {
+                Ok(n.to_string())
+            } else if let Some(s) = value.as_str() {
+                let _: f64 = s.parse().map_err(|e| format!("Invalid float for setting: {e}"))?;
+                Ok(s.to_string())
+            } else {
+                Err(format!("Expected float or string for setting key '{key}'"))
+            }
+        }
         _ => Err(format!("Unknown setting key: {key}")),
     }
 }
