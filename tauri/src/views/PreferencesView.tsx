@@ -57,6 +57,80 @@ const TABS: { id: PreferencesSection; label: string; Icon: React.ElementType }[]
   { id: "logs", label: "Logs", Icon: ScrollText },
 ];
 
+// Static keyword index per tab. Used to filter the tab navigation by option
+// text — only the active tab is mounted, so we can't enumerate options at
+// runtime across all tabs. Keep in sync when adding visible options.
+const TAB_KEYWORDS: Record<string, string[]> = {
+  app: [
+    "Startup", "background", "Start at login", "desktop session", "Open in background",
+    "Keep running in tray", "Hide native menu", "Single window mode", "Demo Mode",
+    "Features", "Memory", "Memory extraction threshold", "Background Jobs",
+    "Enable background inference", "Shortcut", "Quick search", "Git Sync",
+    "Topic Analysis", "Summarization", "Min messages before summarizing",
+    "Sessions per tick", "Workspace Glossary", "Chat definition scan",
+    "Sessions per scan tick", "Confirm Move to Trash", "Immediate Delete",
+  ],
+  navigation: [
+    "Main layout", "Settings Navigation", "Workspace Navigation", "Section Navigation",
+    "Workspace behavior", "Workspace Sort Order", "Navigate on workspace switch",
+    "Stay on current", "Chat", "Dashboard", "History", "Knowledge", "Notes", "Sources",
+  ],
+  appearance: [
+    "Theme", "Accent Color", "Theme & Accent", "Typography", "Interface",
+    "Text Size", "Font size", "Menubar Icon Style",
+  ],
+  chat: [
+    "Chat Layout", "Preview", "Expand Chat Container", "Scroll Message to Top",
+    "Chat Messages Style", "Composer", "Input", "Composer Mode", "Composer Suggestions",
+    "Workspace suggestions", "Follow-up suggestions", "Metadata", "Diagnostics",
+    "Show Gen Info", "Token count", "Generation duration", "Model name", "Show Status Bar",
+    "Chat Title Auto-Generation", "Initial title only", "Refresh periodically",
+    "Chat Identifiers", "User Identifier", "Assistant Identifier",
+    "Safety", "Deletion", "Confirm Move to Trash", "Immediate Delete",
+  ],
+  learning: [
+    "Flashcards", "Auto-generate from chats", "Generation model",
+  ],
+  "about-you": [
+    "About You", "Profile", "Name", "Pronouns", "Role", "Interests", "Inject into chat",
+  ],
+  ai: [
+    "Local inference providers", "Ollama", "Server URL", "Auto-start Ollama",
+    "MLX", "llama.cpp", "Embedding model", "Dual-model execution",
+    "Activity Monitor", "VRAM headroom", "Memory headroom", "Detected hardware",
+    "Models", "Background model", "Summarization model", "Memory extraction model",
+    "Flashcard model", "Glossary model", "Topic signature model", "Goal suggestion model",
+    "Concept hierarchy model", "Draft model", "Compare models",
+  ],
+  webai: [
+    "Browser Automation", "Manual Browser Targets", "Preserve browser session",
+    "Provider Target", "Display Name", "Model",
+  ],
+  security: [
+    "PIN", "PIN passcode", "Require PIN on launch", "Auto-lock", "Lock after",
+    "Touch ID", "Biometric", "Set a PIN", "Current PIN", "New PIN", "Confirm PIN",
+  ],
+  sync: [
+    "Multi-device Sync", "Enable sync", "Remote URL", "Last synced", "Git",
+  ],
+  workspaces: ["Workspaces", "Workspace management"],
+  backup: ["Workspace Backup", "Global Backup", "Backup directory", "Schedule"],
+  import: ["Import", "Migrate"],
+  mcp: ["Model Context Protocol", "MCP Server", "Server Name", "Command"],
+  memory: ["Global Memory", "Memory entries"],
+  logs: ["Logs", "Activity log"],
+};
+
+function tabMatchesFilter(tab: { id: string; label: string }, query: string): boolean {
+  if (!query) { return true; }
+  const q = query.toLowerCase();
+  if (tab.label.toLowerCase().includes(q)) { return true; }
+  if (tab.id.toLowerCase().includes(q)) { return true; }
+  const kws = TAB_KEYWORDS[tab.id];
+  if (kws && kws.some((kw) => kw.toLowerCase().includes(q))) { return true; }
+  return false;
+}
+
 function normalizePreferencesSection(section: string | undefined): PreferencesSection | null {
   if (section === "general") {
     return "app";
@@ -1270,6 +1344,8 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
   );
 }
 
+const MemoizedLiveAppPreview = React.memo(LiveAppPreview);
+
 function hexToRgb(hex: string): string {
   const cleanHex = (hex || "").replace("#", "");
   if (cleanHex.length === 3) {
@@ -1330,22 +1406,41 @@ function PreferencesSplitLayout({
 }: PreferencesSplitLayoutProps) {
   if (isLargeScreen) {
     return (
-      <PanelGroup direction="horizontal" className="flex-1 flex overflow-hidden min-h-0">
-        <Panel id="prefs-options" order={0} defaultSize={55} minSize={30} className="overflow-y-auto px-5 py-4 min-h-0">
-          <div className="max-w-5xl">
-            {children}
+      <PanelGroup direction="horizontal" className="flex h-full min-h-0 flex-1 overflow-hidden">
+        <Panel
+          id="prefs-options"
+          order={0}
+          defaultSize={55}
+          minSize={30}
+          className="h-full min-h-0"
+        >
+          <div
+            className="h-full min-h-0 overflow-y-auto overscroll-contain px-5 py-4"
+            style={isLinux ? { contain: "layout paint" } : undefined}
+            data-testid="preferences-options-scroll"
+          >
+            <div className="max-w-5xl">
+              {children}
+            </div>
           </div>
         </Panel>
         <PanelResizeHandle className="w-2 border-x-[3px] border-transparent bg-[var(--border-color)] hover:bg-[var(--accent-color)] bg-clip-content transition-colors cursor-col-resize shrink-0" />
-        <Panel id="prefs-preview" order={1} defaultSize={45} minSize={25} className="min-h-0 bg-[var(--bg-secondary)]/10 flex flex-col items-center justify-center p-6 select-none overflow-hidden">
-          <LiveAppPreview dbSettings={dbSettings} overrides={hoverOverrides} />
+        <Panel
+          id="prefs-preview"
+          order={1}
+          defaultSize={45}
+          minSize={25}
+          className="min-h-0 bg-[var(--bg-secondary)]/10 flex flex-col items-center justify-center p-6 select-none overflow-hidden"
+          style={isLinux ? { contain: "layout paint style", transform: "translateZ(0)", backfaceVisibility: "hidden" } : undefined}
+        >
+          <MemoizedLiveAppPreview dbSettings={dbSettings} overrides={hoverOverrides} />
         </Panel>
       </PanelGroup>
     );
   }
 
   return (
-    <div className="grow shrink max-w-5xl min-h-0 overflow-y-auto px-5 py-4">
+    <div className="h-full min-h-0 grow shrink max-w-5xl overflow-y-auto overscroll-contain px-5 py-4" data-testid="preferences-options-scroll">
       {children}
     </div>
   );
@@ -1418,6 +1513,8 @@ export default function PreferencesView() {
 
   const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([]);
   const [activeTab, setActiveTab] = useState<PreferencesSection>(() => (window.localStorage.getItem("preferencesActiveTab") as PreferencesSection) || "app");
+  const [tabFilter, setTabFilter] = useState("");
+  const contentRootRef = useRef<HTMLDivElement | null>(null);
 
   // Handle external tab switching via router state
   useEffect(() => {
@@ -1435,6 +1532,56 @@ export default function PreferencesView() {
   }, [location.state]);
 
   const [dbSettings, setDbSettings] = useState<AppSettings | null>(null);
+
+  // Filter option rows within the active tab. We tag each "section card" and
+  // "option row" at runtime by walking the rendered DOM under the scroll
+  // container. Cards/rows that don't contain the query text get hidden via a
+  // data-attribute -> CSS rule. The tab nav is filtered separately via the
+  // static TAB_KEYWORDS index above (only the active tab is mounted).
+  useEffect(() => {
+    const root = contentRootRef.current;
+    if (!root) { return; }
+    const scrollers = Array.from(
+      root.querySelectorAll<HTMLElement>('[data-testid="preferences-options-scroll"]'),
+    );
+    const query = tabFilter.trim().toLowerCase();
+
+    const reset = (el: HTMLElement) => {
+      el.querySelectorAll<HTMLElement>('[data-pref-filtered]').forEach((node) => {
+        node.removeAttribute('data-pref-filtered');
+      });
+    };
+
+    if (!query) {
+      scrollers.forEach(reset);
+      return;
+    }
+
+    scrollers.forEach((scroller) => {
+      reset(scroller);
+      const cards = scroller.querySelectorAll<HTMLElement>('div.rounded-xl.border');
+      cards.forEach((card) => {
+        const cardText = (card.textContent || '').toLowerCase();
+        if (!cardText.includes(query)) {
+          card.setAttribute('data-pref-filtered', 'hidden');
+          return;
+        }
+        const title = card.querySelector('h3');
+        const titleMatch = title && (title.textContent || '').toLowerCase().includes(query);
+        if (titleMatch) { return; }
+        const rows = card.querySelectorAll<HTMLElement>(
+          ':scope > div.flex.items-center.justify-between, :scope > div.flex.justify-between',
+        );
+        rows.forEach((row) => {
+          const rowText = (row.textContent || '').toLowerCase();
+          if (!rowText.includes(query)) {
+            row.setAttribute('data-pref-filtered', 'hidden');
+          }
+        });
+      });
+    });
+  }, [tabFilter, activeTab, dbSettings]);
+
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [_saveError, setSaveError] = useState<string | null>(null);
   const [testingOllama, setTestingOllama] = useState(false);
@@ -2162,9 +2309,41 @@ export default function PreferencesView() {
   const biometricAvailable = securityStatus?.biometric_available ?? false;
   const biometricLabel = securityStatus?.biometric_label ?? "Biometric authentication";
 
+  const normalizedTabFilter = tabFilter.trim().toLowerCase();
+  const filteredTabs = normalizedTabFilter
+    ? TABS.filter((tab) => tabMatchesFilter(tab, normalizedTabFilter))
+    : TABS;
+
+  const tabFilterInput = (
+    <div className={`relative ${settingsNavLayout === "top-tabs" ? "w-48 flex-shrink-0" : "w-full mb-2"}`}>
+      <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" />
+      <input
+        type="text"
+        value={tabFilter}
+        onChange={(e) => setTabFilter(e.target.value)}
+        placeholder="Filter settings…"
+        aria-label="Filter preferences sections"
+        className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] pl-7 pr-7 py-1.5 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-color)]"
+      />
+      {tabFilter && (
+        <button
+          onClick={() => setTabFilter("")}
+          aria-label="Clear filter"
+          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)] text-xs leading-none px-1"
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
+
   const settingsTabButtons = (
-    <div className={settingsNavLayout === "top-tabs" ? "flex gap-1.5 overflow-x-auto pb-0.5" : "flex flex-col gap-1.5"}>
-      {TABS.map(({ id, label, Icon }, idx) => (
+    <div className={settingsNavLayout === "top-tabs" ? "flex gap-1.5 overflow-x-auto pb-0.5 flex-1 min-w-0" : "flex flex-col gap-1.5"}>
+      {filteredTabs.length === 0 ? (
+        <div className="text-xs text-[var(--text-muted)] px-2 py-3">No matching sections</div>
+      ) : filteredTabs.map(({ id, label, Icon }) => {
+        const idx = TABS.findIndex((t) => t.id === id);
+        return (
         <Tooltip key={id} content={`${label} (${MOD_KEY}⇧${idx + 1})`} position={settingsNavLayout === "top-tabs" ? "bottom" : "right"}>
           <button
             onClick={() => setActiveTab(id)}
@@ -2183,7 +2362,8 @@ export default function PreferencesView() {
             {label}
           </button>
         </Tooltip>
-      ))}
+        );
+      })}
     </div>
   );
 
@@ -2723,10 +2903,11 @@ export default function PreferencesView() {
   );
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div ref={contentRootRef} className="flex h-full min-h-0 flex-col overflow-hidden [&_[data-pref-filtered=hidden]]:hidden">
       {settingsNavLayout === "top-tabs" ? (
-        <div className="flex items-center justify-between px-4 pt-3 pb-0 border-b border-[var(--border-color)] flex-shrink-0">
+        <div className="flex items-center justify-between gap-3 px-4 pt-3 pb-0 border-b border-[var(--border-color)] flex-shrink-0">
           {settingsTabButtons}
+          {tabFilterInput}
           <div className={`mb-1 text-xs ${autosaveStatusClassName}`}>{autosaveStatus}</div>
         </div>
       ) : (
@@ -2739,14 +2920,15 @@ export default function PreferencesView() {
         </div>
       )}
 
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {settingsNavLayout === "side-tabs" && (
           <aside className="w-52 shrink-0 border-r border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2.5 py-4 overflow-y-auto">
+            {tabFilterInput}
             {settingsTabButtons}
           </aside>
         )}
 
-        <div className={`flex-1 min-h-0 overflow-hidden flex ${
+        <div className={`flex h-full min-h-0 flex-1 overflow-hidden ${
           ["app", "navigation", "appearance", "ai", "chat", "learning", "about-you", "webai", "security", "sync"].includes(activeTab)
             ? "flex-row"
             : "flex-col"
@@ -5007,7 +5189,7 @@ export default function PreferencesView() {
           )}
 
           {activeTab === "mcp" && (
-            <div className="flex-1 overflow-y-auto py-6">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-6">
               <div className="app-container">
                 <h2 className="text-2xl font-bold mb-4">Model Context Protocol Servers</h2>
 
