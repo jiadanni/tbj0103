@@ -157,6 +157,31 @@ export interface WorkspaceMatchResult {
   suggestion: WorkspaceSuggestion | null;
 }
 
+export interface PromptSuggestion {
+  id: string;
+  prompt: string;
+  tags: string[];
+  score: number;
+}
+
+export interface PromptBankJob {
+  id: string;
+  workspace_id: string;
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  target_count: number;
+  generated_count: number;
+  model: string;
+  error?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+}
+
+export interface PromptBankStatus {
+  prompt_count: number;
+  active_job: PromptBankJob | null;
+  latest_job: PromptBankJob | null;
+}
+
 export interface LearningGoal {
   id: string; workspace_id: string; title: string; goal_description: string;
   progress: number; is_completed: boolean; due_date?: string;
@@ -935,6 +960,12 @@ export const api = {
     updateIcon: (id: string, icon: string) => invoke<void>("update_workspace_icon", { id, icon }),
     recommendIcon: (workspaceName: string, workspaceDescription: string) => invoke<string>("recommend_workspace_icon", { workspaceName, workspaceDescription }),
     generateWorkspacePrompts: (workspaceId: string, workspaceName: string, surveyData?: string | null) => invoke<string[]>("generate_workspace_prompts", { workspaceId, workspaceName, surveyData }),
+    listPromptSuggestions: (workspaceId: string, limit = 12) =>
+      invoke<PromptSuggestion[]>("list_workspace_prompt_suggestions", { workspaceId, limit }),
+    getPromptBankStatus: (workspaceId: string) =>
+      invoke<PromptBankStatus>("get_workspace_prompt_bank_status", { workspaceId }),
+    startPromptBankJob: (workspaceId: string, targetCount = 120) =>
+      invoke<PromptBankJob>("start_workspace_prompt_bank_job", { workspaceId, targetCount }),
     hide: (id: string) => invoke<void>("hide_workspace", { id }),
     unhide: (id: string) => invoke<void>("unhide_workspace", { id }),
     reorder: (ids: string[]) => invoke<void>("reorder_workspaces", { ids }),

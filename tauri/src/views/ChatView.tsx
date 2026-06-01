@@ -2762,6 +2762,7 @@ export default function ChatView() {
   const [messageSources] = useState<Record<string, SearchResult[]>>({});
   const [expandedSources, setExpandedSources] = useState<string | null>(null);
   const [followUps, setFollowUps] = useState<string[]>([]);
+  const [promptBankPrompts, setPromptBankPrompts] = useState<string[]>([]);
   const followUpsGenRef = useRef(0);
 
   // Per-message metadata (tok/s and duration) persisted on the Message itself;
@@ -3312,6 +3313,28 @@ export default function ChatView() {
   }, [effectiveWorkspaceId, setActiveTopicSignature, setWorkspaceTopicSignature]);
 
   useEffect(() => {
+    if (!effectiveWorkspaceId || activeChatMessages.length > 0) {
+      setPromptBankPrompts([]);
+      return;
+    }
+
+    let cancelled = false;
+    api.workspace.listPromptSuggestions(effectiveWorkspaceId, 12)
+      .then((suggestions) => {
+        if (!cancelled) {
+          setPromptBankPrompts(suggestions.map((suggestion) => suggestion.prompt));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPromptBankPrompts([]);
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, [effectiveWorkspaceId, activeChatMessages.length]);
+
+  useEffect(() => {
     if (!effectiveWorkspaceId) { return; }
 
     let cancelled = false;
@@ -3341,6 +3364,7 @@ export default function ChatView() {
 
   // Generate AI workspace prompts if needed
   const suggestedPromptsCount = activeTopicSignature?.suggested_prompts?.length ?? 0;
+  const promptBankPromptsCount = promptBankPrompts.length;
   const autoDetectedTagsCount = activeTopicSignature?.auto_detected_tags?.length ?? 0;
   const customTagsCount = activeTopicSignature?.custom_tags?.length ?? 0;
   const topicSignatureLoaded = activeTopicSignature !== undefined;
@@ -3349,12 +3373,14 @@ export default function ChatView() {
       effectiveWorkspaceId,
       activeChatMessagesLength: activeChatMessages.length,
       suggestedPromptsCount,
+      promptBankPromptsCount,
       topicSignatureLoaded,
       autoDetectedTagsCount,
       customTagsCount,
     });
     if (!effectiveWorkspaceId) { return; }
     if (activeChatMessages.length > 0) { return; } // Only when no messages (new chat)
+    if (promptBankPromptsCount > 0) { return; }
     if (suggestedPromptsCount > 0) { return; }
     // Only run once the topic signature has loaded from the backend.
     if (!topicSignatureLoaded) { return; }
@@ -3404,7 +3430,7 @@ export default function ChatView() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [effectiveWorkspaceId, activeChatMessages.length, suggestedPromptsCount, autoDetectedTagsCount, customTagsCount, topicSignatureLoaded, setWorkspaceTopicSignature]);
+  }, [effectiveWorkspaceId, activeChatMessages.length, promptBankPromptsCount, suggestedPromptsCount, autoDetectedTagsCount, customTagsCount, topicSignatureLoaded, setWorkspaceTopicSignature]);
 
   // Activate session from URL
   useEffect(() => {
@@ -4780,6 +4806,7 @@ export default function ChatView() {
     workspaceName: activeWorkspace?.name ?? null,
     folderName: activeFolder?.name ?? null,
     topicSignature: activeTopicSignature,
+    promptBankPrompts,
     processedDocCount: attachedSources.length,
     activeMessages,
     followUps,
@@ -4787,6 +4814,7 @@ export default function ChatView() {
     activeWorkspace,
     activeFolder,
     activeTopicSignature,
+    promptBankPrompts,
     attachedSources.length,
     activeMessages,
     followUps,

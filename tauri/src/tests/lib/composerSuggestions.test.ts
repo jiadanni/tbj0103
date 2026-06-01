@@ -65,6 +65,34 @@ describe("composerSuggestions", () => {
     expect(row?.suggestions[0].action).toBe("send_immediately");
   });
 
+  it("prefers prompt bank suggestions over legacy topic signature prompts", () => {
+    const row = buildWorkspaceSuggestionRow({
+      folderName: "Tauri App",
+      topicSignature: {
+        auto_detected_tags: [],
+        custom_tags: [],
+        excluded_tags: [],
+        intent_patterns: [],
+        generated_at: null,
+        message_count_at_gen: null,
+        ollama_enriched: false,
+        suggested_prompts: ["Legacy prompt"],
+      },
+      promptBankPrompts: [
+        "How should I structure a Tauri command?",
+        "What should I review before adding IPC?",
+      ],
+      processedDocCount: 0,
+      activeMessages: [],
+      followUps: [],
+    });
+
+    expect(row?.suggestions.map((suggestion) => suggestion.prompt)).toEqual([
+      "How should I structure a Tauri command?",
+      "What should I review before adding IPC?",
+    ]);
+  });
+
   it("merges suggestions into existing composer text cleanly", () => {
     expect(mergeComposerInput("", "What is Tauri?")).toBe("What is Tauri?");
     expect(mergeComposerInput("Please help", "What is Tauri?")).toBe("Please help\nWhat is Tauri?");

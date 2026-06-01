@@ -18,7 +18,7 @@ import { useWorkspaceStore } from "../stores/workspaceStore";
 import { Tooltip } from "../components/Tooltip";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { Workspace } from "../stores/workspaceStore";
-import type { DashboardSummary, TopicSignature, WorkspaceGlossaryTerm } from "../lib/api";
+import type { DashboardSummary, PromptBankStatus, TopicSignature, WorkspaceGlossaryTerm } from "../lib/api";
 
 type WorkspaceDialogState =
   | { kind: "last-workspace" }
@@ -119,6 +119,9 @@ export default function WorkspaceSettingsView() {
   const [glossaryDraftTerm, setGlossaryDraftTerm] = useState("");
   const [glossaryDraftAliases, setGlossaryDraftAliases] = useState("");
   const [glossaryDraftDefinition, setGlossaryDraftDefinition] = useState("");
+  const [promptBankStatus, setPromptBankStatus] = useState<PromptBankStatus | null>(null);
+  const [isLoadingPromptBank, setIsLoadingPromptBank] = useState(false);
+  const [isStartingPromptBankJob, setIsStartingPromptBankJob] = useState(false);
 
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
     try {
@@ -212,6 +215,54 @@ export default function WorkspaceSettingsView() {
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
+
+  useEffect(() => {
+    if (!selectedId) {
+      setPromptBankStatus(null);
+      return;
+    }
+
+    const workspaceId = selectedId;
+    let cancelled = false;
+    async function loadPromptBankStatus() {
+      setIsLoadingPromptBank(true);
+      try {
+        const status = await api.workspace.getPromptBankStatus(workspaceId);
+        if (!cancelled) {
+          setPromptBankStatus(status);
+        }
+      } catch {
+        if (!cancelled) {
+          setPromptBankStatus(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingPromptBank(false);
+        }
+      }
+    }
+
+    void loadPromptBankStatus();
+    const interval = window.setInterval(loadPromptBankStatus, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [selectedId]);
+
+  async function startPromptBankJob() {
+    if (!selectedId || isStartingPromptBankJob) { return; }
+    setIsStartingPromptBankJob(true);
+    try {
+      await api.workspace.startPromptBankJob(selectedId, 120);
+      const status = await api.workspace.getPromptBankStatus(selectedId);
+      setPromptBankStatus(status);
+    } catch (error) {
+      console.error("Failed to start prompt bank job:", error);
+    } finally {
+      setIsStartingPromptBankJob(false);
+    }
+  }
 
   useEffect(() => {
     if (!selectedId) {
@@ -939,6 +990,51 @@ export default function WorkspaceSettingsView() {
                       }));
                     }}
                   />
+                )}
+              </div>
+
+              <div className="space-y-3 py-5">
+                <button
+                  onClick={() => toggleSection("prompt-bank")}
+                  className="flex w-full items-center justify-between"
+                >
+                  <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-2">
+                    <Sparkles size={12} /> Explorer Prompt Bank
+                  </h3>
+                  <ChevronDown size={14} className={`text-[var(--text-muted)] transition-transform ${collapsedSections["prompt-bank"] ? "-rotate-90" : ""}`} />
+                </button>
+                {!collapsedSections["prompt-bank"] && (
+                  <div className="space-y-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium text-[var(--text-primary)]">
+                          {isLoadingPromptBank ? "Loading starter prompts…" : `${promptBankStatus?.prompt_count ?? 0} prompts stored`}
+                        </div>
+                        <div className="mt-1 text-xs text-[var(--text-secondary)]">
+                          Builds a larger local prompt bank for the Chat explorer screen and topic matching.
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { void startPromptBankJob(); }}
+                        disabled={isStartingPromptBankJob || promptBankStatus?.active_job?.status === "queued" || promptBankStatus?.active_job?.status === "running"}
+                        className="inline-flex items-center gap-2 rounded-lg border border-[rgba(var(--accent-color-rgb),0.35)] bg-[var(--accent-color)] px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[var(--accent-color)]/90 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {(isStartingPromptBankJob || promptBankStatus?.active_job) && <Loader2 size={13} className="animate-spin" />}
+                        {promptBankStatus?.prompt_count ? "Regenerate bank" : "Generate bank"}
+                      </button>
+                    </div>
+                    {promptBankStatus?.active_job && (
+                      <div className="text-xs text-[var(--text-secondary)]">
+                        Job {promptBankStatus.active_job.status}: {promptBankStatus.active_job.generated_count}/{promptBankStatus.active_job.target_count}
+                      </div>
+                    )}
+                    {!promptBankStatus?.active_job && promptBankStatus?.latest_job?.status === "failed" && (
+                      <div className="text-xs text-red-400">
+                        Last job failed{promptBankStatus.latest_job.error ? `: ${promptBankStatus.latest_job.error}` : "."}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
 

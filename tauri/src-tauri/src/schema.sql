@@ -649,6 +649,44 @@ CREATE TABLE IF NOT EXISTS memory_embeddings (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS workspace_prompt_bank (
+    id TEXT PRIMARY KEY NOT NULL,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    prompt TEXT NOT NULL,
+    normalized_prompt TEXT NOT NULL,
+    tags_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(tags_json)),
+    source TEXT NOT NULL DEFAULT 'ai'
+        CHECK(source IN ('ai','manual','fallback')),
+    embedding BLOB,
+    embedding_model TEXT,
+    quality_score REAL NOT NULL DEFAULT 0.0,
+    used_count INTEGER NOT NULL DEFAULT 0,
+    dismissed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(workspace_id, normalized_prompt)
+);
+
+CREATE TABLE IF NOT EXISTS workspace_prompt_bank_jobs (
+    id TEXT PRIMARY KEY NOT NULL,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'queued'
+        CHECK(status IN ('queued','running','completed','failed','cancelled')),
+    target_count INTEGER NOT NULL DEFAULT 120,
+    generated_count INTEGER NOT NULL DEFAULT 0,
+    model TEXT NOT NULL DEFAULT '',
+    error TEXT,
+    started_at TEXT,
+    completed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_prompt_bank_workspace
+    ON workspace_prompt_bank(workspace_id, dismissed_at, used_count);
+CREATE INDEX IF NOT EXISTS idx_workspace_prompt_bank_jobs_workspace
+    ON workspace_prompt_bank_jobs(workspace_id, status, created_at);
+
 CREATE INDEX IF NOT EXISTS idx_workspace_glossary_workspace
     ON workspace_glossary_terms(workspace_id, normalized_term);
 CREATE INDEX IF NOT EXISTS idx_workspace_glossary_source_session

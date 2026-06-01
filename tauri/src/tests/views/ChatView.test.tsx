@@ -76,6 +76,7 @@ vi.mock("@/lib/api", () => ({
       list: vi.fn(() => Promise.resolve([])),
       get: vi.fn(() => Promise.resolve(null)),
       generateWorkspacePrompts: vi.fn(() => Promise.resolve([])),
+      listPromptSuggestions: vi.fn(() => Promise.resolve([])),
     },
     chat: {
       listSessions: vi.fn((workspaceId: string, folderId: string | null) => Promise.resolve(

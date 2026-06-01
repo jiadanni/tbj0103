@@ -21,6 +21,7 @@ export interface ComposerSuggestionRow {
 export interface ComposerSuggestionContext {
   folderName?: string | null;
   topicSignature?: TopicSignature | null;
+  promptBankPrompts?: string[];
   processedDocCount: number;
   activeMessages: Message[];
   followUps: string[];
@@ -77,6 +78,21 @@ function buildWorkspacePrompt(term: string, slot: number, hasDocs: boolean) {
     : `What are the key ideas in ${term}?`;
 }
 
+function latestAssistantMessage(messages: Message[]) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role === "assistant") {
+      return message.content.trim();
+    }
+  }
+
+  return "";
+}
+
+function asksBinaryQuestion(content: string) {
+  return /\?$/.test(content) && /^(do|does|did|can|could|should|would|will|is|are|was|were|have|has|had)\b/i.test(content);
+}
+
 export function mergeComposerInput(currentInput: string, prompt: string) {
   const nextPrompt = prompt.trim();
   if (!nextPrompt) {return currentInput;}
@@ -96,6 +112,21 @@ export function buildWorkspaceSuggestionRow(context: ComposerSuggestionContext):
   // exchange exists, follow-ups derived from the actual reply take over.
   if (context.activeMessages.length > 0) {
     return null;
+  }
+
+  if (context.promptBankPrompts && context.promptBankPrompts.length > 0) {
+    return {
+      id: "workspace",
+      label: "Workspace suggestions",
+      collapsible: true,
+      defaultExpanded: true,
+      suggestions: context.promptBankPrompts.map((prompt, index) => ({
+        id: `workspace-bank-${index}`,
+        label: prompt,
+        prompt: prompt,
+        action: "append",
+      })),
+    };
   }
 
   // If we have AI-generated starter prompts, use them directly
@@ -146,6 +177,23 @@ export function buildWorkspaceSuggestionRow(context: ComposerSuggestionContext):
 }
 
 export function buildChatSuggestionRow(context: ComposerSuggestionContext): ComposerSuggestionRow | null {
+  const binarySuggestions = asksBinaryQuestion(latestAssistantMessage(context.activeMessages))
+    ? [
+        {
+          id: "chat-binary-yes",
+          label: "Yes",
+          prompt: "Yes",
+          action: "send_immediately" as const,
+        },
+        {
+          id: "chat-binary-no",
+          label: "No",
+          prompt: "No",
+          action: "send_immediately" as const,
+        },
+      ]
+    : [];
+
   const followUpSuggestions = context.followUps.slice(0, 3).map((suggestion, index) => ({
     id: `chat-follow-up-${index}`,
     label: suggestion,
@@ -153,13 +201,18 @@ export function buildChatSuggestionRow(context: ComposerSuggestionContext): Comp
     action: "append" as const,
   }));
 
-  if (followUpSuggestions.length === 0) {
+  const suggestions = [
+    ...binarySuggestions,
+    ...followUpSuggestions,
+  ];
+
+  if (suggestions.length === 0) {
     return null;
   }
 
   return {
     id: "chat",
     label: "Chat",
-    suggestions: followUpSuggestions,
+    suggestions,
   };
 }

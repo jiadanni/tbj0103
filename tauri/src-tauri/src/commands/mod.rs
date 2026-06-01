@@ -25,6 +25,7 @@ pub mod note;
 pub mod ollama;
 pub mod folder;
 pub mod quick_search;
+pub mod prompt_bank;
 pub mod quiz;
 pub mod roadmap_export;
 pub mod search;

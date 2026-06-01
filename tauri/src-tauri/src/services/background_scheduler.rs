@@ -295,6 +295,27 @@ pub fn start_scheduler(app: AppHandle) {
                     };
                     emit_task(&app, "concept_hierarchy", status, &message, ch_model);
                 }
+
+                let prompt_bank_model = lookup_job_model(&app, "topic_signature_model").await;
+                emit_task(
+                    &app,
+                    "workspace_prompt_bank",
+                    "started",
+                    "Refreshing starter prompts…",
+                    prompt_bank_model.clone(),
+                );
+                let prompt_bank_result = crate::services::prompt_bank::tick(&db).await;
+                emit_task(
+                    &app,
+                    "workspace_prompt_bank",
+                    if prompt_bank_result.is_ok() { "completed" } else { "failed" },
+                    if prompt_bank_result.is_ok() {
+                        "Starter prompts refreshed"
+                    } else {
+                        "Starter prompt refresh failed"
+                    },
+                    prompt_bank_model,
+                );
             }
 
             // 3. Git sync — configurable interval (default 5 minutes = 10 ticks at 30s)

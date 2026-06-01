@@ -24,6 +24,7 @@ pub mod folder_service;
 pub mod quick_search_index;
 pub mod quiz_service;
 pub mod quick_search_service;
+pub mod prompt_bank;
 pub mod retrieval_engine;
 pub mod roadmap_export;
 pub mod roadmap_render;
