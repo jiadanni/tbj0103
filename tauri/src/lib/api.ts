@@ -490,6 +490,7 @@ export interface AppSettings {
   topic_signature_model: string;
   goal_suggestion_model: string;
   concept_hierarchy_model: string;
+  quick_search_models: string[];
   quick_search_shortcut: string;
   quick_search_workspace_scope: string;
   quick_search_type_filters: string[];

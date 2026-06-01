@@ -146,6 +146,7 @@ function mergeSplitSettings(
     show_gen_info_model: ai.show_gen_info_model,
     background_inference_enabled: ai.background_inference_enabled,
     // advanced
+    quick_search_models: advanced.quick_search_models,
     quick_search_shortcut: advanced.quick_search_shortcut,
     quick_search_workspace_scope: advanced.quick_search_workspace_scope,
     quick_search_type_filters: advanced.quick_search_type_filters,
