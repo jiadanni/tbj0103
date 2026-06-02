@@ -51,6 +51,7 @@ vi.mock("lucide-react", () => ({
   ExternalLink: () => <div data-testid="icon-external-link" />,
   Copy: () => <div data-testid="icon-copy" />,
   BarChart2: () => <div data-testid="icon-bar-chart-2" />,
+  Info: () => <div data-testid="icon-info" />,
 }));
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
@@ -126,6 +127,9 @@ vi.mock("@/lib/api", () => ({
     source: {
       create: vi.fn(),
       process: vi.fn(() => Promise.resolve(1)),
+    },
+    summary: {
+      list: vi.fn(() => Promise.resolve([])),
     },
     topicSignature: {
       get: vi.fn(() => Promise.resolve(null)),

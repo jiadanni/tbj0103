@@ -2,12 +2,12 @@ import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { WaterfallSuggestions } from "../components/WaterfallSuggestions";
 import React, { useEffect, useLayoutEffect, useRef, useState, memo, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, Paperclip, Image, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder as FolderIcon, FolderOpen, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink, Copy, BarChart2 } from "lucide-react";
+import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, Paperclip, Image, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder as FolderIcon, FolderOpen, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink, Copy, BarChart2, Info } from "lucide-react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
 import { readTextFile } from "@tauri-apps/plugin-fs";
-import { api, type AiModel, type OllamaModel, type SearchResult, type QuickSearchResult, type ThoughtItem, type AppSettings, type Memory, type TopicSignature } from "../lib/api";
+import { api, type AiModel, type OllamaModel, type SearchResult, type QuickSearchResult, type ThoughtItem, type AppSettings, type Memory, type TopicSignature, type ConversationSummary } from "../lib/api";
 import { useChatStore, findUnusedSession } from "../stores/chatStore";
 import { useArtifactStore } from "../stores/artifactStore";
 import { useWorkspaceStore, type Folder, type Workspace } from "../stores/workspaceStore";
@@ -2521,6 +2521,7 @@ export default function ChatView() {
   const [newFolderName, setNewFolderName] = useState("");
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const [successDialog, setSuccessDialog] = useState<{ title: string; description: string } | null>(null);
+  const [activeChatSummary, setActiveChatSummary] = useState<ConversationSummary | null>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const creatingFolderRequestRef = useRef(false);
   const confirmResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
@@ -2963,6 +2964,26 @@ export default function ChatView() {
   // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
   const webProviderKey = isWebProvider ? selectedModelMeta!.provider.replace("web_", "") : "";
   const { toolbarState, toolbarRef, dismiss: dismissToolbar } = useTextSelectionToolbar(messagesScrollContainerRef);
+
+  useEffect(() => {
+    if (!activeChatId) {
+      setActiveChatSummary(null);
+      return;
+    }
+
+    let cancelled = false;
+    api.summary.list(activeChatId)
+      .then((summaries) => {
+        if (cancelled) { return; }
+        setActiveChatSummary(summaries.find((summary) => summary.content.trim().length > 0) ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setActiveChatSummary(null);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [activeChatId, activeMessages.length]);
 
   const pendingPromptText = useChatStore((s) => s.pendingPromptText);
   const setPendingPromptText = useChatStore((s) => s.setPendingPromptText);
@@ -5066,6 +5087,27 @@ export default function ChatView() {
                         <Tooltip content={activeSession?.title || "New Chat"} position="bottom">
                           <span className="truncate">{activeSession?.title || "New Chat"}</span>
                         </Tooltip>
+                        {activeChatSummary && (
+                          <Tooltip
+                            position="bottom"
+                            className="max-w-sm whitespace-normal text-left leading-relaxed"
+                            content={(
+                              <div className="space-y-1">
+                                <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                                  Chat Summary · {activeChatSummary.summary_type}
+                                </div>
+                                <p>{activeChatSummary.content}</p>
+                              </div>
+                            )}
+                          >
+                            <span
+                              aria-label="Chat summary"
+                              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--accent-color)]"
+                            >
+                              <Info size={13} />
+                            </span>
+                          </Tooltip>
+                        )}
                         {activeSession?.is_incognito && (
                           <Tooltip content="Incognito thread" position="bottom">
                             <span><Ghost size={14} className="text-purple-400" /></span>
