@@ -504,6 +504,33 @@ export interface BackgroundTaskEvent {
   model?: string;
 }
 
+/**
+ * Emitted when a background job is gated on user confirmation (run-mode is
+ * `confirm_only` or `dual_model`). The status bar shows a play button while
+ * status is `"pending"`; subsequent statuses clear it.
+ */
+export interface BackgroundTaskPromptEvent {
+  task_type: string;
+  mode: 'confirm_only' | 'dual_model';
+  status: 'pending' | 'dismissed' | 'confirmed' | 'cancelled';
+  heavy_model?: string;
+  small_model?: string;
+  timeout_seconds: number;
+}
+
+export type BackgroundJobRunMode = 'auto' | 'confirm_only' | 'dual_model';
+
+export interface ScheduledJobSetting {
+  job_key: string;
+  run_mode: BackgroundJobRunMode | string;
+  heavy_model: string;
+}
+
+export interface ScheduledTaskSettings {
+  jobs: ScheduledJobSetting[];
+  confirm_timeout_seconds: number;
+}
+
 export interface WorkspaceGlossaryTerm {
   id: string;
   workspace_id: string;
@@ -1957,6 +1984,24 @@ export const api = {
     listen<BackgroundTaskEvent>("background-task", (event) => {
       onEvent(event.payload);
     }),
+
+  listenBackgroundTaskPrompt: (onEvent: (event: BackgroundTaskPromptEvent) => void): Promise<UnlistenFn> =>
+    listen<BackgroundTaskPromptEvent>("background-task-prompt", (event) => {
+      onEvent(event.payload);
+    }),
+
+  backgroundJobs: {
+    confirm: (taskType: string) =>
+      invoke<boolean>("confirm_background_job", { taskType }),
+    dismiss: (taskType: string) =>
+      invoke<boolean>("dismiss_background_job", { taskType }),
+    cancel: (taskType: string) =>
+      invoke<boolean>("cancel_background_job", { taskType }),
+    getScheduledTaskSettings: () =>
+      invoke<ScheduledTaskSettings>("get_scheduled_task_settings"),
+    setScheduledTaskSetting: (key: string, value: string) =>
+      invoke<void>("set_scheduled_task_setting", { key, value }),
+  },
 
   mcp: {
     listServers: () => invoke<MCPServerConfig[]>("list_mcp_servers", {}),

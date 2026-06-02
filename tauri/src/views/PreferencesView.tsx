@@ -8,7 +8,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
 import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Sparkles, Columns2, ChevronLeft, ChevronRight, BarChart2, Library, History, Search, Paperclip, Send, FileEdit, ArrowUpDown, UserCircle, SlidersHorizontal, RotateCcw, Loader2 } from "lucide-react";
-import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat, type CoreSettings, type AiSettings, type AdvancedSettings, type KnowledgeResetOptions, type KnowledgeResetResult } from "../lib/api";
+import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat, type CoreSettings, type AiSettings, type AdvancedSettings, type KnowledgeResetOptions, type KnowledgeResetResult, type ScheduledJobSetting, type BackgroundJobRunMode } from "../lib/api";
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
 import { groupModelsByFamily } from "../lib/modelFamilyGrouping";
@@ -46,6 +46,7 @@ const TABS: { id: PreferencesSection; label: string; Icon: React.ElementType }[]
   { id: "learning", label: "Learning", Icon: GraduationCap },
   { id: "about-you", label: "About You", Icon: UserCircle },
   { id: "ai", label: "AI", Icon: Bot },
+  { id: "scheduled-tasks", label: "Scheduled Tasks", Icon: RefreshCw },
   { id: "webai", label: "Browser Automation", Icon: Globe },
   { id: "security", label: "Security", Icon: ShieldCheck },
   { id: "workspaces", label: "Workspaces", Icon: LayoutGrid },
@@ -96,12 +97,17 @@ const TAB_KEYWORDS: Record<string, string[]> = {
     "About You", "Profile", "Name", "Pronouns", "Role", "Interests", "Inject into chat",
   ],
   ai: [
-    "Local inference providers", "Ollama", "Server URL", "Auto-start Ollama",
+    "Local inference providers", "Ollama", "Server URL", "Remote Ollama", "Auto-start Ollama",
     "MLX", "llama.cpp", "Embedding model", "Dual-model execution",
     "Activity Monitor", "VRAM headroom", "Memory headroom", "Detected hardware",
-    "Models", "Background model", "Summarization model", "Memory extraction model",
-    "Flashcard model", "Glossary model", "Topic signature model", "Goal suggestion model",
-    "Concept hierarchy model", "Draft model", "Compare models",
+    "Models", "Background model", "Draft model", "Compare models",
+  ],
+  "scheduled-tasks": [
+    "Scheduled Tasks", "Background Tasks", "Background Jobs", "Run mode",
+    "Auto", "Ask first", "Heavy model", "Small model", "Confirmation timeout",
+    "Play button", "Memory Extraction", "Summarization", "Flashcard Generation",
+    "Workspace Glossary", "Hover Definitions", "Topic Hierarchy",
+    "Starter Prompts", "Topic Signatures",
   ],
   webai: [
     "Browser Automation", "Manual Browser Targets", "Preserve browser session",
@@ -221,6 +227,7 @@ function mergeSplitSettings(
     compare_model_a: ai.compare_model_a,
     compare_model_b: ai.compare_model_b,
     ollama_base_url: ai.ollama_base_url,
+    ollama_remote_enabled: ai.ollama_remote_enabled,
     auto_start_ollama: ai.auto_start_ollama,
     mlx_base_url: ai.mlx_base_url,
     llamacpp_model_paths: ai.llamacpp_model_paths,
@@ -1489,22 +1496,17 @@ function DataControlsPreferences() {
     rows: Array<{ key: keyof KnowledgeResetOptions; label: string; description: string }>;
   }> = [
     {
-      title: "Workspace Map",
+      title: "Knowledge",
       rows: [
         { key: "clear_graph", label: "Graph and roadmap", description: "Concepts, links, mentions, graph statistics, and concept proposals." },
         { key: "clear_topic_signatures", label: "Topic signatures", description: "Workspace topic fingerprints that can re-seed old concepts." },
+        { key: "clear_analysis_jobs", label: "Analysis jobs", description: "Analyze Workspace job and chunk history." },
       ],
     },
     {
       title: "Chat",
       rows: [
         { key: "clear_prompt_bank", label: "Prompt bank", description: "Stored starter prompts and prompt-bank jobs." },
-      ],
-    },
-    {
-      title: "AI Analysis",
-      rows: [
-        { key: "clear_analysis_jobs", label: "Analysis jobs", description: "Analyze Workspace job and chunk history." },
       ],
     },
     {
@@ -1818,6 +1820,244 @@ function PreferencesSplitLayout({
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Job catalog. `job_key` is the scheduler's task_type (used for run-mode /
+ * heavy-model settings, status-bar events, cancel/confirm). `model_setting`
+ * is the AppSettings key that holds the small (default) model — already wired
+ * through Rust's `get_model_for_job`. `tokens`/`note` are sizing hints.
+ */
+const SCHEDULED_JOBS_CATALOG: {
+  job_key: string;
+  model_setting: keyof AppSettings;
+  label: string;
+  description: string;
+  tokens: string;
+  note: string;
+}[] = [
+  { job_key: "memory_extraction", model_setting: "memory_extraction_model", label: "Memory Extraction", description: "Extract durable facts from finished chats", tokens: "~200–1,000 tokens input", note: "2k context OK" },
+  { job_key: "summarization", model_setting: "summarization_model", label: "Summarization", description: "Roll up long chat sessions", tokens: "~500–5,000 tokens input", note: "≥4k context recommended" },
+  { job_key: "flashcard_generation", model_setting: "flashcard_model", label: "Flashcard Generation", description: "Generate spaced-repetition cards from topics", tokens: "~100–200 tokens input", note: "2k context OK" },
+  { job_key: "workspace_glossary", model_setting: "glossary_model", label: "Workspace Glossary", description: "Refresh per-workspace term definitions", tokens: "~800–2,000 tokens input", note: "≥4k context recommended" },
+  { job_key: "hover_definition_scan", model_setting: "glossary_model", label: "Hover Definitions", description: "Find undefined terms in recent chats", tokens: "~400–1,500 tokens input", note: "2k context OK" },
+  { job_key: "workspace_prompt_bank", model_setting: "topic_signature_model", label: "Starter Prompts / Topic Signatures", description: "Refresh per-workspace prompt suggestions", tokens: "~1,000–3,000 tokens input", note: "≥4k context recommended" },
+  { job_key: "concept_hierarchy", model_setting: "concept_hierarchy_model", label: "Topic Hierarchy", description: "LLM-assisted concept parent linking", tokens: "~200–800 tokens input", note: "2k context OK" },
+];
+
+const RUN_MODE_OPTIONS: { value: BackgroundJobRunMode; label: string; description: string }[] = [
+  { value: "auto", label: "Auto", description: "Run on schedule with the small model" },
+  { value: "confirm_only", label: "Ask first", description: "Only run when the play-button is clicked; skip on timeout" },
+  { value: "dual_model", label: "Ask for heavy, fallback small", description: "Run small on timeout; heavy on confirm" },
+];
+
+function ScheduledTasksCard({
+  ollamaModels,
+  aiModels,
+  modelLabels,
+  dbSettings,
+  set,
+  systemGuidance,
+}: {
+  ollamaModels: OllamaModel[];
+  aiModels: AiModel[];
+  modelLabels: Record<string, string>;
+  dbSettings: AppSettings;
+  set: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
+  systemGuidance: ReturnType<typeof inferHardwareModelGuidance> | null;
+}) {
+  const [scheduled, setScheduled] = useState<Record<string, ScheduledJobSetting>>({});
+  const [timeoutSeconds, setTimeoutSec] = useState<number>(20);
+  const [loading, setLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.backgroundJobs.getScheduledTaskSettings().then((s) => {
+      if (cancelled) { return; }
+      const byKey: Record<string, ScheduledJobSetting> = {};
+      for (const j of s.jobs) { byKey[j.job_key] = j; }
+      setScheduled(byKey);
+      setTimeoutSec(s.confirm_timeout_seconds);
+      setLoading(false);
+    }).catch(() => {
+      if (!cancelled) { setLoading(false); }
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const eligibleModels = aiModels.filter((m) => m.provider === "ollama" && m.enabled);
+  const smallModelOptions = useMemo(
+    () => [
+      { value: "", label: "Default (background model)" },
+      ...eligibleModels.map((m) => ({
+        value: m.model_id,
+        label: resolveModelDisplayName(m.model_id, modelLabels, aiModels),
+      })),
+    ],
+    [eligibleModels, modelLabels, aiModels],
+  );
+  const heavyModelOptions = useMemo(
+    () => [
+      { value: "", label: "None (small model only)" },
+      ...eligibleModels.map((m) => ({
+        value: m.model_id,
+        label: resolveModelDisplayName(m.model_id, modelLabels, aiModels),
+      })),
+    ],
+    [eligibleModels, modelLabels, aiModels],
+  );
+  const modeOptions = RUN_MODE_OPTIONS.map((o) => ({ value: o.value, label: o.label }));
+
+  const updateRunMode = (jobKey: string, mode: BackgroundJobRunMode) => {
+    setScheduled((prev) => ({
+      ...prev,
+      [jobKey]: { ...(prev[jobKey] ?? { job_key: jobKey, run_mode: mode, heavy_model: "" }), run_mode: mode },
+    }));
+    void api.backgroundJobs.setScheduledTaskSetting(`${jobKey}_run_mode`, mode);
+  };
+
+  const updateHeavyModel = (jobKey: string, modelId: string) => {
+    setScheduled((prev) => ({
+      ...prev,
+      [jobKey]: { ...(prev[jobKey] ?? { job_key: jobKey, run_mode: "auto", heavy_model: modelId }), heavy_model: modelId },
+    }));
+    void api.backgroundJobs.setScheduledTaskSetting(`${jobKey}_heavy_model`, modelId);
+  };
+
+  const updateTimeout = (value: number) => {
+    const clamped = Math.max(5, Math.min(120, value || 20));
+    setTimeoutSec(clamped);
+    void api.backgroundJobs.setScheduledTaskSetting(
+      "background_confirm_timeout_seconds",
+      String(clamped),
+    );
+  };
+
+  return (
+    <section className="space-y-3" data-pref-section>
+      <div className="pb-1.5 border-b border-[var(--border-color)]">
+        <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+          Scheduled Tasks
+        </h3>
+        <p className="text-xs text-[var(--text-muted)]/80 mt-1">
+          Each AI-inferred background job has a small (default) model that runs on schedule and an optional heavy model you can opt into per-tick via the status bar. Run-mode controls whether the job runs automatically, only with confirmation, or both.
+        </p>
+      </div>
+
+      <div className="rounded-lg border border-[var(--border-color)]/60 bg-[var(--bg-primary)]/40 p-3.5 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm text-[var(--text-secondary)]">Confirmation timeout</p>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+              How long the play-button stays in the status bar before it&apos;s dismissed.
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="number"
+              min={5}
+              max={120}
+              value={timeoutSeconds}
+              onChange={(e) => updateTimeout(Number(e.target.value))}
+              className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+            />
+            <span className="text-xs text-[var(--text-muted)]">seconds</span>
+          </div>
+        </div>
+
+        {loading && (
+          <div className="py-3 text-xs text-[var(--text-muted)]">Loading…</div>
+        )}
+
+        {!loading && (
+          <div className="divide-y divide-[var(--border-color)]/60">
+            {SCHEDULED_JOBS_CATALOG.map((job) => {
+              const entry = scheduled[job.job_key];
+              const runMode = (entry?.run_mode ?? "auto") as BackgroundJobRunMode;
+              const heavyModel = entry?.heavy_model ?? "";
+              const smallModel = (dbSettings[job.model_setting] as string) ?? "";
+
+              const smallSelected = smallModel ? eligibleModels.find((m) => m.model_id === smallModel) : null;
+              const smallOllamaMeta = smallSelected ? ollamaModels.find((om) => om.name === smallSelected.model_id) : null;
+              const smallParams = smallSelected
+                ? parseModelParamsB(smallSelected.model_id)
+                  ?? parseModelParamsB(smallSelected.name)
+                  ?? parseModelParamsB(smallOllamaMeta?.details?.parameter_size ?? "")
+                : null;
+              const smallParamsLabel = smallParams != null ? formatParams(smallParams) : null;
+              const smallFit = systemGuidance ? classifyModelFit(smallParams, systemGuidance.recommendedMaxParamsB) : "unknown";
+              const smallFitMeta = getModelFitMeta(smallFit);
+
+              const heavySelected = heavyModel ? eligibleModels.find((m) => m.model_id === heavyModel) : null;
+              const heavyOllamaMeta = heavySelected ? ollamaModels.find((om) => om.name === heavySelected.model_id) : null;
+              const heavyParams = heavySelected
+                ? parseModelParamsB(heavySelected.model_id)
+                  ?? parseModelParamsB(heavySelected.name)
+                  ?? parseModelParamsB(heavyOllamaMeta?.details?.parameter_size ?? "")
+                : null;
+              const heavyParamsLabel = heavyParams != null ? formatParams(heavyParams) : null;
+
+              return (
+                <div
+                  key={job.job_key}
+                  className="grid grid-cols-[minmax(0,1fr)_160px_minmax(0,1fr)_minmax(0,1fr)] items-start gap-3 py-3"
+                >
+                  <div className="min-w-0">
+                    <div className="text-xs font-medium text-[var(--text-primary)]">{job.label}</div>
+                    <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">{job.description}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-[var(--text-muted)]/80">
+                      <span>{job.tokens}</span>
+                      <span>•</span>
+                      <span>{job.note}</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <CompactMenuSelect
+                      label="Run mode"
+                      value={runMode}
+                      options={modeOptions}
+                      onChange={(value) => updateRunMode(job.job_key, value as BackgroundJobRunMode)}
+                    />
+                  </div>
+
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1">Small (default)</div>
+                    <CompactMenuSelect
+                      label="Small model"
+                      value={smallModel}
+                      options={smallModelOptions}
+                      onChange={(value) => set(job.model_setting, value as never)}
+                    />
+                    {smallSelected && (smallParamsLabel || smallFitMeta.label) && (
+                      <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[10px] text-[var(--text-muted)]">
+                        {smallParamsLabel && <span>{smallParamsLabel}</span>}
+                        {smallParamsLabel && smallFitMeta.label && <span>•</span>}
+                        {smallFitMeta.label && <span className={`font-medium ${smallFitMeta.textClassName}`}>{smallFitMeta.label}</span>}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1">Heavy (opt-in)</div>
+                    <CompactMenuSelect
+                      label="Heavy model"
+                      value={heavyModel}
+                      options={heavyModelOptions}
+                      onChange={(value) => updateHeavyModel(job.job_key, value)}
+                    />
+                    {heavyParamsLabel && (
+                      <div className="mt-1 text-[10px] text-[var(--text-muted)]">{heavyParamsLabel}</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
 
 export default function PreferencesView() {
   const isLargeScreen = useIsLargeScreen();
@@ -3175,80 +3415,6 @@ export default function PreferencesView() {
         </div>
       )}
 
-      {(() => {
-        const eligibleModels = aiModels.filter((m) => m.provider === "ollama" && m.enabled);
-        const jobs: { key: keyof AppSettings; label: string; tokens: string; note: string }[] = [
-          { key: "memory_extraction_model", label: "Memory Extraction", tokens: "~200–1,000 tokens input", note: "2k context OK" },
-          { key: "summarization_model", label: "Summarization", tokens: "~500–5,000 tokens input", note: "≥4k context recommended" },
-          { key: "flashcard_model", label: "Flashcard Generation", tokens: "~100–200 tokens input", note: "2k context OK" },
-          { key: "glossary_model", label: "Workspace Glossary", tokens: "~800–2,000 tokens input", note: "≥4k context recommended" },
-          { key: "topic_signature_model", label: "Topic Signatures", tokens: "~1,000–3,000 tokens input", note: "≥4k context recommended" },
-          { key: "goal_suggestion_model", label: "Goal Suggestion", tokens: "~300–1,500 tokens input", note: "2k context OK" },
-          { key: "concept_hierarchy_model", label: "Topic Hierarchy", tokens: "~200–800 tokens input", note: "2k context OK" },
-        ];
-        const options = [
-          { value: "", label: "Default (background model)" },
-          ...eligibleModels.map((m) => ({
-            value: m.model_id,
-            label: resolveModelDisplayName(m.model_id, modelLabels, aiModels),
-          })),
-        ];
-        return (
-          <div className="rounded-lg border border-[var(--border-color)]/60 bg-[var(--bg-primary)]/40 p-3.5 space-y-3">
-            <div>
-              <h4 className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-secondary)]">Background Tasks</h4>
-              <p className="mt-1 text-[11px] text-[var(--text-muted)]">
-                Background tasks work best with smaller, faster models. The token ranges below show how much context each job typically needs — pick a model whose context window comfortably exceeds it. Leave a row on “Default” to fall back to BG Default → preferred model.
-              </p>
-            </div>
-            <div className="divide-y divide-[var(--border-color)]/60">
-              {jobs.map((job) => {
-                const selected = (dbSettings[job.key] as string) ?? "";
-                const selectedModel = selected ? eligibleModels.find((m) => m.model_id === selected) : null;
-                const ollamaMeta = selectedModel ? ollamaModels.find((om) => om.name === selectedModel.model_id) : null;
-                const modelParams = selectedModel
-                  ? parseModelParamsB(selectedModel.model_id)
-                    ?? parseModelParamsB(selectedModel.name)
-                    ?? parseModelParamsB(ollamaMeta?.details?.parameter_size ?? "")
-                  : null;
-                const formattedParams = modelParams != null ? formatParams(modelParams) : null;
-                const fit = systemGuidance
-                  ? classifyModelFit(modelParams, systemGuidance.recommendedMaxParamsB)
-                  : "unknown";
-                const fitMeta = getModelFitMeta(fit);
-                return (
-                  <div key={String(job.key)} className="grid grid-cols-[minmax(0,1fr)_220px] items-center gap-3 py-2">
-                    <div className="min-w-0">
-                      <div className="text-xs font-medium text-[var(--text-primary)]">{job.label}</div>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-[var(--text-muted)]">
-                        <span>{job.tokens}</span>
-                        <span>•</span>
-                        <span>{job.note}</span>
-                        {selectedModel && (formattedParams || fitMeta.label) && (
-                          <>
-                            <span>•</span>
-                            {formattedParams && <span>{formattedParams}</span>}
-                            {formattedParams && fitMeta.label && <span>•</span>}
-                            {fitMeta.label && <span className={`font-medium ${fitMeta.textClassName}`}>{fitMeta.label}</span>}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    <div>
-                      <CompactMenuSelect
-                        label={job.label}
-                        value={selected}
-                        options={options}
-                        onChange={(value) => set(job.key, value as never)}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })()}
     </div>
   );
 
@@ -4293,13 +4459,35 @@ export default function PreferencesView() {
                       <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-4 space-y-4">
                         <div className="flex items-start gap-3">
                           <Toggle
+                            on={dbSettings.ollama_remote_enabled}
+                            onToggle={() => {
+                              const remoteEnabled = !dbSettings.ollama_remote_enabled;
+                              updateSettings({
+                                ollama_remote_enabled: remoteEnabled,
+                                auto_start_ollama: remoteEnabled ? false : dbSettings.auto_start_ollama,
+                              });
+                            }}
+                          />
+                          <div>
+                            <p className="text-sm text-[var(--text-secondary)]">Remote Ollama</p>
+                            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                              Send Ollama requests to another machine on your network.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-start gap-3">
+                          <Toggle
                             on={dbSettings.auto_start_ollama}
+                            disabled={dbSettings.ollama_remote_enabled}
                             onToggle={() => set("auto_start_ollama", !dbSettings.auto_start_ollama)}
                           />
                           <div>
                             <p className="text-sm text-[var(--text-secondary)]">Auto-start Ollama</p>
                             <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                              Automatically start the Ollama server when the app launches.
+                              {dbSettings.ollama_remote_enabled
+                                ? "Disabled in remote mode because the server runs on another machine."
+                                : "Automatically start the Ollama server when the app launches."}
                             </p>
                           </div>
                         </div>
@@ -4323,7 +4511,7 @@ export default function PreferencesView() {
                                     setStartingOllama(false);
                                   }
                                 }}
-                                disabled={startingOllama || testingOllama}
+                                disabled={dbSettings.ollama_remote_enabled || startingOllama || testingOllama}
                                 className="text-[10px] text-[var(--accent-color)] hover:underline flex items-center gap-1 disabled:opacity-50"
                               >
                                 {startingOllama ? <RefreshCw size={10} className="animate-spin" /> : <Bot size={10} />}
@@ -4361,11 +4549,13 @@ export default function PreferencesView() {
                               set("ollama_base_url", e.target.value);
                               refreshOllamaModels(e.target.value, { clearResult: true });
                             }}
-                            placeholder="http://localhost:11434"
+                            placeholder={dbSettings.ollama_remote_enabled ? "http://macbook.local:11434" : "http://localhost:11434"}
                             className="w-full px-3 py-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
                           />
                           <p className="text-[10px] text-[var(--text-muted)] mt-1.5">
-                            Enable auto-start to try to start the server on launch when you use the default local address.
+                            {dbSettings.ollama_remote_enabled
+                              ? "Use a LAN address such as http://macbook.local:11434 or a reserved 192.168.x.x address."
+                              : "Enable auto-start to try to start the server on launch when you use the default local address."}
                           </p>
                           {ollamaTestResult && (
                             <p className={`text-[10px] mt-1.5 font-medium ${ollamaTestResult.success ? "text-green-400" : "text-red-400"}`}>
@@ -4978,6 +5168,18 @@ export default function PreferencesView() {
                     injectAboutYouIntoChat={dbSettings.inject_about_you_into_chat ?? true}
                     onSaveAboutYou={(val) => set("about_you", val)}
                     onSaveInject={(val) => set("inject_about_you_into_chat", val)}
+                  />
+                )}
+
+                {/* ── Scheduled Tasks ── */}
+                {activeTab === "scheduled-tasks" && (
+                  <ScheduledTasksCard
+                    ollamaModels={ollamaModels}
+                    aiModels={aiModels}
+                    modelLabels={modelLabels}
+                    dbSettings={dbSettings}
+                    set={set}
+                    systemGuidance={systemGuidance}
                   />
                 )}
 

@@ -202,6 +202,15 @@ vi.mock("@/lib/api", () => ({
     mlx: {
       listModels: vi.fn(() => Promise.resolve([])),
     },
+    backgroundJobs: {
+      confirm: vi.fn(() => Promise.resolve(true)),
+      dismiss: vi.fn(() => Promise.resolve(true)),
+      cancel: vi.fn(() => Promise.resolve(true)),
+      getScheduledTaskSettings: vi.fn(() =>
+        Promise.resolve({ jobs: [], confirm_timeout_seconds: 20 }),
+      ),
+      setScheduledTaskSetting: vi.fn(() => Promise.resolve()),
+    },
   },
 }));
 

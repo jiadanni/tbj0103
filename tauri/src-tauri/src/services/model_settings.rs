@@ -53,3 +53,46 @@ pub fn get_configured_chat_model(conn: &Connection) -> Option<String> {
 pub fn get_embedding_model(conn: &Connection) -> Option<String> {
     get_string_setting(conn, "embedding_model")
 }
+
+/// Run-mode for a background job. `Auto` matches legacy behavior — job runs on
+/// its scheduled tick with the per-job model. `ConfirmOnly` defers the job
+/// until the user clicks the play button in the status bar; on timeout the
+/// job is skipped. `DualModel` defers the job and, on timeout, runs it with
+/// the per-job (small) model — confirming runs it with the heavy model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunMode {
+    Auto,
+    ConfirmOnly,
+    DualModel,
+}
+
+impl RunMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RunMode::Auto => "auto",
+            RunMode::ConfirmOnly => "confirm_only",
+            RunMode::DualModel => "dual_model",
+        }
+    }
+}
+
+pub fn get_run_mode(conn: &Connection, job_key: &str) -> RunMode {
+    let key = format!("{}_run_mode", job_key);
+    match get_string_setting(conn, &key).as_deref() {
+        Some("confirm_only") => RunMode::ConfirmOnly,
+        Some("dual_model") => RunMode::DualModel,
+        _ => RunMode::Auto,
+    }
+}
+
+pub fn get_heavy_model(conn: &Connection, job_key: &str) -> Option<String> {
+    let key = format!("{}_heavy_model", job_key);
+    get_string_setting(conn, &key)
+}
+
+pub fn get_confirm_timeout_seconds(conn: &Connection) -> u64 {
+    get_string_setting(conn, "background_confirm_timeout_seconds")
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or(20)
+}

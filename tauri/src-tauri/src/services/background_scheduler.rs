@@ -1,12 +1,33 @@
 use crate::db::DbState;
-use crate::services::model_settings::get_model_for_job;
+use crate::services::model_settings::{
+    get_confirm_timeout_seconds, get_heavy_model, get_model_for_job, get_run_mode, RunMode,
+};
 use crate::services::{git_sync, memory_pipeline, summarization_service, workspace_glossary};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
+use tokio::sync::oneshot;
 
 static SCHEDULER_RUNNING: AtomicBool = AtomicBool::new(false);
+
+/// Pending confirmation channels keyed by task_type. When a job is gated by
+/// `confirm_only` or `dual_model`, the scheduler installs a oneshot sender
+/// here and awaits the receiver. `confirm_background_job` resolves it.
+type PendingMap = HashMap<String, oneshot::Sender<PromptResolution>>;
+static PENDING: LazyLock<Mutex<PendingMap>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Cancel flags for currently-running jobs. The stop button in the status bar
+/// sets these; running jobs check between stages and abort cooperatively.
+static CANCEL_FLAGS: LazyLock<Mutex<HashMap<String, bool>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+#[derive(Debug, Clone, Copy)]
+enum PromptResolution {
+    Confirmed,
+    Cancelled,
+}
 /// Counts scheduler ticks consumed by the concept-hierarchy job so we can
 /// gate it to roughly every 5 minutes (5 ticks at the current 60s cadence).
 /// Cheap LLM amortisation guard — the job itself is bounded internally too.
@@ -21,6 +42,192 @@ pub struct BackgroundTaskEvent {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+}
+
+/// Emitted on `background-task-prompt` when a job is gated on user
+/// confirmation. The status-bar shows a play button until the user clicks it
+/// or the timeout elapses.
+#[derive(Debug, Clone, Serialize)]
+pub struct BackgroundTaskPromptEvent {
+    pub task_type: String,
+    pub mode: String, // "confirm_only" | "dual_model"
+    pub status: String, // "pending" | "dismissed" | "confirmed" | "cancelled"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub heavy_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub small_model: Option<String>,
+    pub timeout_seconds: u64,
+}
+
+fn emit_prompt(
+    app: &AppHandle,
+    task_type: &str,
+    mode: RunMode,
+    status: &str,
+    heavy_model: Option<String>,
+    small_model: Option<String>,
+    timeout_seconds: u64,
+) {
+    let _ = app.emit(
+        "background-task-prompt",
+        BackgroundTaskPromptEvent {
+            task_type: task_type.to_string(),
+            mode: mode.as_str().to_string(),
+            status: status.to_string(),
+            heavy_model,
+            small_model,
+            timeout_seconds,
+        },
+    );
+}
+
+/// Resolve a pending confirmation. Returns `false` if no prompt was pending.
+pub fn resolve_prompt(task_type: &str, confirmed: bool) -> bool {
+    let sender = {
+        let Ok(mut map) = PENDING.lock() else {
+            return false;
+        };
+        map.remove(task_type)
+    };
+    let Some(sender) = sender else {
+        return false;
+    };
+    let resolution = if confirmed {
+        PromptResolution::Confirmed
+    } else {
+        PromptResolution::Cancelled
+    };
+    sender.send(resolution).is_ok()
+}
+
+/// Request cooperative cancellation of a running job. Returns `true` if the
+/// flag was set (i.e., the job was known). Jobs check this between stages.
+pub fn request_cancel(task_type: &str) -> bool {
+    if let Ok(mut map) = CANCEL_FLAGS.lock() {
+        if map.contains_key(task_type) {
+            map.insert(task_type.to_string(), true);
+            return true;
+        }
+    }
+    false
+}
+
+fn register_running(task_type: &str) {
+    if let Ok(mut map) = CANCEL_FLAGS.lock() {
+        map.insert(task_type.to_string(), false);
+    }
+}
+
+fn unregister_running(task_type: &str) {
+    if let Ok(mut map) = CANCEL_FLAGS.lock() {
+        map.remove(task_type);
+    }
+}
+
+pub fn is_cancelled(task_type: &str) -> bool {
+    CANCEL_FLAGS
+        .lock()
+        .map(|m| m.get(task_type).copied().unwrap_or(false))
+        .unwrap_or(false)
+}
+
+/// Read run-mode and heavy-model for a job from settings.
+async fn lookup_job_mode(app: &AppHandle, job_key: &str) -> (RunMode, Option<String>, u64) {
+    let db = app.state::<DbState>();
+    let pool = db.0.clone();
+    let job_key_owned = job_key.to_string();
+    tokio::task::spawn_blocking(move || -> (RunMode, Option<String>, u64) {
+        let Ok(conn) = pool.get() else {
+            return (RunMode::Auto, None, 20);
+        };
+        let mode = get_run_mode(&conn, &job_key_owned);
+        let heavy = get_heavy_model(&conn, &job_key_owned);
+        let timeout = get_confirm_timeout_seconds(&conn);
+        (mode, heavy, timeout)
+    })
+    .await
+    .unwrap_or((RunMode::Auto, None, 20))
+}
+
+/// Gate a job behind the user's run-mode setting.
+///
+/// Returns `(should_run, model)`. When `should_run` is false the caller must
+/// skip the job entirely (confirm_only timeout, or user-cancelled prompt).
+/// When true, `model` is what to run with — heavy on confirmation, small/
+/// default otherwise.
+async fn gate_job(
+    app: &AppHandle,
+    job_key: &str,
+    default_model: Option<String>,
+) -> (bool, Option<String>) {
+    let (mode, heavy_model, timeout_seconds) = lookup_job_mode(app, job_key).await;
+    match mode {
+        RunMode::Auto => (true, default_model),
+        RunMode::ConfirmOnly | RunMode::DualModel => {
+            let (tx, rx) = oneshot::channel::<PromptResolution>();
+            {
+                let Ok(mut map) = PENDING.lock() else {
+                    return (true, default_model);
+                };
+                // Newest wins: drop any previously-installed sender for this job.
+                map.insert(job_key.to_string(), tx);
+            }
+            emit_prompt(
+                app,
+                job_key,
+                mode,
+                "pending",
+                heavy_model.clone(),
+                default_model.clone(),
+                timeout_seconds,
+            );
+            let wait = tokio::time::timeout(Duration::from_secs(timeout_seconds), rx).await;
+            // Drop our entry if still installed (timeout path)
+            let _ = PENDING.lock().map(|mut m| m.remove(job_key));
+            match wait {
+                Ok(Ok(PromptResolution::Confirmed)) => {
+                    emit_prompt(
+                        app,
+                        job_key,
+                        mode,
+                        "confirmed",
+                        heavy_model.clone(),
+                        default_model.clone(),
+                        timeout_seconds,
+                    );
+                    (true, heavy_model.or(default_model))
+                }
+                Ok(Ok(PromptResolution::Cancelled)) => {
+                    emit_prompt(
+                        app,
+                        job_key,
+                        mode,
+                        "cancelled",
+                        heavy_model,
+                        default_model,
+                        timeout_seconds,
+                    );
+                    (false, None)
+                }
+                _ => {
+                    // Timeout or channel closed
+                    emit_prompt(
+                        app,
+                        job_key,
+                        mode,
+                        "dismissed",
+                        heavy_model,
+                        default_model.clone(),
+                        timeout_seconds,
+                    );
+                    match mode {
+                        RunMode::DualModel => (true, default_model),
+                        _ => (false, None),
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn emit_task(app: &AppHandle, task_type: &str, status: &str, message: &str, model: Option<String>) {
@@ -138,52 +345,85 @@ pub fn start_scheduler(app: AppHandle) {
             // If user is NOT chatting and background inference is enabled, run AI tasks
             if !is_streaming && !is_active_chatting && background_inference_enabled {
                 // 1. Process memory extraction
-                let mem_model = lookup_job_model(&app, "memory_extraction_model").await;
-                emit_task(&app, "memory_extraction", "started", "Extracting memories…", mem_model.clone());
-                let mem_result =
-                    memory_pipeline::process_auto_memory_extraction(&db, ollama_url.clone()).await;
-                emit_task(
-                    &app,
-                    "memory_extraction",
-                    if mem_result.is_ok() { "completed" } else { "failed" },
-                    if mem_result.is_ok() { "Memory extraction done" } else { "Memory extraction failed" },
-                    mem_model,
-                );
-
-                let glossary_model = lookup_job_model(&app, "glossary_model").await;
-                emit_task(&app, "workspace_glossary", "started", "Refreshing workspace glossary…", glossary_model.clone());
-                let glossary_result = workspace_glossary::refresh_due_workspaces(&db).await;
-                emit_task(
-                    &app,
-                    "workspace_glossary",
-                    if glossary_result.is_ok() { "completed" } else { "failed" },
-                    if glossary_result.is_ok() {
-                        "Workspace glossary refreshed"
+                let mem_default = lookup_job_model(&app, "memory_extraction_model").await;
+                let (mem_run, mem_model) = gate_job(&app, "memory_extraction", mem_default).await;
+                if mem_run {
+                    register_running("memory_extraction");
+                    emit_task(&app, "memory_extraction", "started", "Extracting memories…", mem_model.clone());
+                    let mem_result = if is_cancelled("memory_extraction") {
+                        Err("cancelled".to_string())
                     } else {
-                        "Workspace glossary refresh failed"
-                    },
-                    glossary_model.clone(),
-                );
+                        memory_pipeline::process_auto_memory_extraction(&db, ollama_url.clone()).await
+                    };
+                    let cancelled = is_cancelled("memory_extraction");
+                    emit_task(
+                        &app,
+                        "memory_extraction",
+                        if cancelled { "failed" } else if mem_result.is_ok() { "completed" } else { "failed" },
+                        if cancelled { "Memory extraction cancelled" } else if mem_result.is_ok() { "Memory extraction done" } else { "Memory extraction failed" },
+                        mem_model,
+                    );
+                    unregister_running("memory_extraction");
+                }
 
-                emit_task(
-                    &app,
-                    "hover_definition_scan",
-                    "started",
-                    "Scanning chats for missing definitions…",
-                    glossary_model.clone(),
-                );
-                let scan_result = workspace_glossary::scan_recent_sessions_for_missing_terms(&db).await;
-                emit_task(
-                    &app,
-                    "hover_definition_scan",
-                    if scan_result.is_ok() { "completed" } else { "failed" },
-                    if scan_result.is_ok() {
-                        "Hover definition scan done"
+                let glossary_default = lookup_job_model(&app, "glossary_model").await;
+                let (g_run, glossary_model) = gate_job(&app, "workspace_glossary", glossary_default.clone()).await;
+                if g_run {
+                    register_running("workspace_glossary");
+                    emit_task(&app, "workspace_glossary", "started", "Refreshing workspace glossary…", glossary_model.clone());
+                    let glossary_result = if is_cancelled("workspace_glossary") {
+                        Err("cancelled".to_string())
                     } else {
-                        "Hover definition scan failed"
-                    },
-                    glossary_model,
-                );
+                        workspace_glossary::refresh_due_workspaces(&db).await
+                    };
+                    let cancelled = is_cancelled("workspace_glossary");
+                    emit_task(
+                        &app,
+                        "workspace_glossary",
+                        if cancelled || glossary_result.is_err() { "failed" } else { "completed" },
+                        if cancelled {
+                            "Workspace glossary cancelled"
+                        } else if glossary_result.is_ok() {
+                            "Workspace glossary refreshed"
+                        } else {
+                            "Workspace glossary refresh failed"
+                        },
+                        glossary_model,
+                    );
+                    unregister_running("workspace_glossary");
+                }
+
+                let (scan_run, scan_model) = gate_job(&app, "hover_definition_scan", glossary_default).await;
+                if scan_run {
+                    register_running("hover_definition_scan");
+                    emit_task(
+                        &app,
+                        "hover_definition_scan",
+                        "started",
+                        "Scanning chats for missing definitions…",
+                        scan_model.clone(),
+                    );
+                    let scan_result = if is_cancelled("hover_definition_scan") {
+                        Err("cancelled".to_string())
+                    } else {
+                        workspace_glossary::scan_recent_sessions_for_missing_terms(&db).await
+                    };
+                    let cancelled = is_cancelled("hover_definition_scan");
+                    emit_task(
+                        &app,
+                        "hover_definition_scan",
+                        if cancelled || scan_result.is_err() { "failed" } else { "completed" },
+                        if cancelled {
+                            "Hover definition scan cancelled"
+                        } else if scan_result.is_ok() {
+                            "Hover definition scan done"
+                        } else {
+                            "Hover definition scan failed"
+                        },
+                        scan_model,
+                    );
+                    unregister_running("hover_definition_scan");
+                }
 
                 // 2. Process summarization — only sessions with recent activity
                 let (summ_recency_minutes, summ_max_sessions) = {
@@ -231,91 +471,135 @@ pub fn start_scheduler(app: AppHandle) {
                 };
 
                 if !sessions.is_empty() {
-                    let summ_model = lookup_job_model(&app, "summarization_model").await;
-                    emit_task(&app, "summarization", "started", "Summarizing chats…", summ_model.clone());
-                    let mut any_failed = false;
-                    for (session_id, workspace_id) in sessions {
-                        let result = summarization_service::generate_rolling_summary(
-                            &db,
-                            &session_id,
-                            &workspace_id,
-                            ollama_url.clone(),
-                        )
-                        .await;
-                        if result.is_err() {
-                            any_failed = true;
+                    let summ_default = lookup_job_model(&app, "summarization_model").await;
+                    let (summ_run, summ_model) = gate_job(&app, "summarization", summ_default).await;
+                    if summ_run {
+                        register_running("summarization");
+                        emit_task(&app, "summarization", "started", "Summarizing chats…", summ_model.clone());
+                        let mut any_failed = false;
+                        for (session_id, workspace_id) in sessions {
+                            if is_cancelled("summarization") {
+                                any_failed = true;
+                                break;
+                            }
+                            let result = summarization_service::generate_rolling_summary(
+                                &db,
+                                &session_id,
+                                &workspace_id,
+                                ollama_url.clone(),
+                            )
+                            .await;
+                            if result.is_err() {
+                                any_failed = true;
+                            }
                         }
+                        let cancelled = is_cancelled("summarization");
+                        emit_task(
+                            &app,
+                            "summarization",
+                            if any_failed { "failed" } else { "completed" },
+                            if cancelled { "Summarization cancelled" } else if any_failed { "Summarization failed" } else { "Summarization done" },
+                            summ_model,
+                        );
+                        unregister_running("summarization");
                     }
-                    emit_task(
-                        &app,
-                        "summarization",
-                        if any_failed { "failed" } else { "completed" },
-                        if any_failed { "Summarization failed" } else { "Summarization done" },
-                        summ_model,
-                    );
                 }
 
                 // 4. Flashcard topic sync + automatic card generation
-                let fc_model = lookup_job_model(&app, "flashcard_model").await;
-                emit_task(&app, "flashcard_generation", "started", "Generating flashcards…", fc_model.clone());
-                let fc_result = crate::services::flashcard_topic_service::tick(&db, ollama_url.clone()).await;
-                emit_task(
-                    &app,
-                    "flashcard_generation",
-                    if fc_result.is_ok() { "completed" } else { "failed" },
-                    if fc_result.is_ok() { "Flashcard generation done" } else { "Flashcard generation failed" },
-                    fc_model,
-                );
+                let fc_default = lookup_job_model(&app, "flashcard_model").await;
+                let (fc_run, fc_model) = gate_job(&app, "flashcard_generation", fc_default).await;
+                if fc_run {
+                    register_running("flashcard_generation");
+                    emit_task(&app, "flashcard_generation", "started", "Generating flashcards…", fc_model.clone());
+                    let fc_result = if is_cancelled("flashcard_generation") {
+                        Err("cancelled".to_string())
+                    } else {
+                        crate::services::flashcard_topic_service::tick(&db, ollama_url.clone()).await
+                    };
+                    let cancelled = is_cancelled("flashcard_generation");
+                    emit_task(
+                        &app,
+                        "flashcard_generation",
+                        if cancelled || fc_result.is_err() { "failed" } else { "completed" },
+                        if cancelled { "Flashcard generation cancelled" } else if fc_result.is_ok() { "Flashcard generation done" } else { "Flashcard generation failed" },
+                        fc_model,
+                    );
+                    unregister_running("flashcard_generation");
+                }
 
                 // 5. Concept hierarchy — LLM-assisted parent detection.
                 //    Gated to every Nth tick so we don't spend ~20 LLM calls
                 //    every minute. The job itself caps work per call.
                 let hierarchy_tick = HIERARCHY_TICK.fetch_add(1, Ordering::Relaxed) + 1;
                 if hierarchy_tick.is_multiple_of(HIERARCHY_TICK_INTERVAL) {
-                    let ch_model = lookup_job_model(&app, "concept_hierarchy_model").await;
-                    emit_task(
-                        &app,
-                        "concept_hierarchy",
-                        "started",
-                        "Linking related topics…",
-                        ch_model.clone(),
-                    );
-                    let ch_result =
-                        crate::services::concept_hierarchy_service::tick(&db, ollama_url.clone())
-                            .await;
-                    let (status, message) = match &ch_result {
-                        Ok(report) => (
-                            "completed",
-                            format!(
-                                "Topic linking done ({} considered, {} linked)",
-                                report.considered, report.linked
-                            ),
-                        ),
-                        Err(_) => ("failed", "Topic linking failed".to_string()),
-                    };
-                    emit_task(&app, "concept_hierarchy", status, &message, ch_model);
+                    let ch_default = lookup_job_model(&app, "concept_hierarchy_model").await;
+                    let (ch_run, ch_model) = gate_job(&app, "concept_hierarchy", ch_default).await;
+                    if ch_run {
+                        register_running("concept_hierarchy");
+                        emit_task(
+                            &app,
+                            "concept_hierarchy",
+                            "started",
+                            "Linking related topics…",
+                            ch_model.clone(),
+                        );
+                        let ch_result = if is_cancelled("concept_hierarchy") {
+                            Err("cancelled".to_string())
+                        } else {
+                            crate::services::concept_hierarchy_service::tick(&db, ollama_url.clone()).await
+                        };
+                        let cancelled = is_cancelled("concept_hierarchy");
+                        let (status, message) = if cancelled {
+                            ("failed", "Topic linking cancelled".to_string())
+                        } else {
+                            match &ch_result {
+                                Ok(report) => (
+                                    "completed",
+                                    format!(
+                                        "Topic linking done ({} considered, {} linked)",
+                                        report.considered, report.linked
+                                    ),
+                                ),
+                                Err(_) => ("failed", "Topic linking failed".to_string()),
+                            }
+                        };
+                        emit_task(&app, "concept_hierarchy", status, &message, ch_model);
+                        unregister_running("concept_hierarchy");
+                    }
                 }
 
-                let prompt_bank_model = lookup_job_model(&app, "topic_signature_model").await;
-                emit_task(
-                    &app,
-                    "workspace_prompt_bank",
-                    "started",
-                    "Refreshing starter prompts…",
-                    prompt_bank_model.clone(),
-                );
-                let prompt_bank_result = crate::services::prompt_bank::tick(&db).await;
-                emit_task(
-                    &app,
-                    "workspace_prompt_bank",
-                    if prompt_bank_result.is_ok() { "completed" } else { "failed" },
-                    if prompt_bank_result.is_ok() {
-                        "Starter prompts refreshed"
+                let pb_default = lookup_job_model(&app, "topic_signature_model").await;
+                let (pb_run, prompt_bank_model) = gate_job(&app, "workspace_prompt_bank", pb_default).await;
+                if pb_run {
+                    register_running("workspace_prompt_bank");
+                    emit_task(
+                        &app,
+                        "workspace_prompt_bank",
+                        "started",
+                        "Refreshing starter prompts…",
+                        prompt_bank_model.clone(),
+                    );
+                    let prompt_bank_result = if is_cancelled("workspace_prompt_bank") {
+                        Err("cancelled".to_string())
                     } else {
-                        "Starter prompt refresh failed"
-                    },
-                    prompt_bank_model,
-                );
+                        crate::services::prompt_bank::tick(&db).await
+                    };
+                    let cancelled = is_cancelled("workspace_prompt_bank");
+                    emit_task(
+                        &app,
+                        "workspace_prompt_bank",
+                        if cancelled || prompt_bank_result.is_err() { "failed" } else { "completed" },
+                        if cancelled {
+                            "Starter prompt refresh cancelled"
+                        } else if prompt_bank_result.is_ok() {
+                            "Starter prompts refreshed"
+                        } else {
+                            "Starter prompt refresh failed"
+                        },
+                        prompt_bank_model,
+                    );
+                    unregister_running("workspace_prompt_bank");
+                }
             }
 
             // 3. Git sync — configurable interval (default 5 minutes = 10 ticks at 30s)

@@ -3,6 +3,7 @@ pub mod ai_model;
 pub mod alarm;
 pub mod artifact;
 pub mod backup;
+pub mod background_jobs;
 pub mod chat;
 pub mod chat_conversion;
 pub mod chat_file;
