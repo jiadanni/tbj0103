@@ -403,7 +403,7 @@ export default function FolderDashboardView() {
           <MetricCard label="Completed Goals" value={effectiveSummary.overview.completed_goals} accent="bg-emerald-400" />
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-3">
+        <div className="gap-4 columns-1 lg:columns-2 xl:columns-3 [&>section]:mb-4 [&>section]:break-inside-avoid">
             <Section title="Continue Learning">
               {continueLearningList.length > 0 ? (
                 <div className="flex-1 flex flex-col">
@@ -440,22 +440,17 @@ export default function FolderDashboardView() {
                   </ol>
                 </div>
               ) : (
-                <div className="flex-1 flex flex-col justify-center rounded-xl border border-dashed border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-medium text-[var(--text-primary)]">Nothing to resume yet</div>
-                      <div className="mt-0.5 text-xs text-[var(--text-secondary)]">
-                        Start with search or chat — the dashboard will surface continuations automatically.
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => navigate("/chat")}
-                      className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-color)] px-2.5 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
-                    >
-                      <Search size={12} />
-                      Open search
-                    </button>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-xs text-[var(--text-secondary)]">
+                    Nothing to resume yet — start with search or chat.
                   </div>
+                  <button
+                    onClick={() => navigate("/chat")}
+                    className="shrink-0 inline-flex items-center gap-1.5 rounded-lg text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--accent-color)]"
+                  >
+                    <Search size={12} />
+                    Open search
+                  </button>
                 </div>
               )}
             </Section>
@@ -496,22 +491,17 @@ export default function FolderDashboardView() {
                   ))}
                 </div>
               ) : (
-                <div className="rounded-xl border border-dashed border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-medium text-[var(--text-primary)]">No goals yet</div>
-                      <div className="mt-0.5 text-xs text-[var(--text-secondary)]">
-                        Use search naturally first. Capture a goal when you&apos;re ready.
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => navigate("/graph")}
-                      className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
-                    >
-                      <Target size={12} />
-                      Open knowledge
-                    </button>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-xs text-[var(--text-secondary)]">
+                    No goals yet — capture one when you&apos;re ready.
                   </div>
+                  <button
+                    onClick={() => navigate("/graph")}
+                    className="shrink-0 inline-flex items-center gap-1.5 rounded-lg text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--accent-color)]"
+                  >
+                    <Target size={12} />
+                    Open knowledge
+                  </button>
                 </div>
               )}
             </Section>
@@ -593,20 +583,22 @@ export default function FolderDashboardView() {
                   accent="bg-amber-400"
                 />
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3">
-                  <div className="text-xl font-semibold text-[var(--text-primary)]">{knowledgeHealth.stalled_goals}</div>
-                  <div className="mt-0.5 text-[11px] text-[var(--text-muted)]">Stalled goals</div>
+              {(knowledgeHealth.stalled_goals > 0 || knowledgeHealth.unprocessed_sources > 0 || knowledgeHealth.isolated_concepts > 0) && (
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3">
+                    <div className="text-xl font-semibold text-[var(--text-primary)]">{knowledgeHealth.stalled_goals}</div>
+                    <div className="mt-0.5 text-[11px] text-[var(--text-muted)]">Stalled goals</div>
+                  </div>
+                  <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3">
+                    <div className="text-xl font-semibold text-[var(--text-primary)]">{knowledgeHealth.unprocessed_sources}</div>
+                    <div className="mt-0.5 text-[11px] text-[var(--text-muted)]">Unprocessed sources</div>
+                  </div>
+                  <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3">
+                    <div className="text-xl font-semibold text-[var(--text-primary)]">{knowledgeHealth.isolated_concepts}</div>
+                    <div className="mt-0.5 text-[11px] text-[var(--text-muted)]">Isolated topics</div>
+                  </div>
                 </div>
-                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3">
-                  <div className="text-xl font-semibold text-[var(--text-primary)]">{knowledgeHealth.unprocessed_sources}</div>
-                  <div className="mt-0.5 text-[11px] text-[var(--text-muted)]">Unprocessed sources</div>
-                </div>
-                <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3">
-                  <div className="text-xl font-semibold text-[var(--text-primary)]">{knowledgeHealth.isolated_concepts}</div>
-                  <div className="mt-0.5 text-[11px] text-[var(--text-muted)]">Isolated topics</div>
-                </div>
-              </div>
+              )}
               {knowledgeHealth.active_topic_tags.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {knowledgeHealth.active_topic_tags.map((tag) => {
