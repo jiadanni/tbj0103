@@ -6,6 +6,7 @@ import { installConsoleTimestamps, enableBatchLogForwarding } from "./lib/consol
 import { isLinux } from "./lib/platform";
 import { api } from "./lib/api";
 import { normalizeTheme } from "./lib/theme";
+import { installNativeContextMenuSuppressor } from "./lib/nativeContextMenu";
 import "./styles/globals.css";
 import "katex/dist/katex.min.css";
 
@@ -34,6 +35,7 @@ const queryClient = new QueryClient({
 });
 
 installConsoleTimestamps();
+installNativeContextMenuSuppressor();
 
 // Forward console.warn/error to persistent backend log store (batched)
 enableBatchLogForwarding(

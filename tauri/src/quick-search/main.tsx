@@ -3,9 +3,11 @@ import ReactDOM from "react-dom/client";
 import QuickSearchWindow from "./QuickSearchWindow";
 import { installConsoleTimestamps } from "../lib/consoleTimestamps";
 import { isLinux } from "../lib/platform";
+import { installNativeContextMenuSuppressor } from "../lib/nativeContextMenu";
 import "../styles/globals.css";
 
 installConsoleTimestamps();
+installNativeContextMenuSuppressor();
 
 if (isLinux) {
   document.documentElement.dataset.platform = "linux";

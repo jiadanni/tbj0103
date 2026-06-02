@@ -6,6 +6,7 @@ import { useSettingsStore } from "../stores/settingsStore";
 import { hexToRgbChannels, normalizeTheme } from "../lib/theme";
 import { installConsoleTimestamps } from "../lib/consoleTimestamps";
 import { isLinux, isMac } from "../lib/platform";
+import { installNativeContextMenuSuppressor } from "../lib/nativeContextMenu";
 import "../styles/globals.css";
 
 // Lazy-load the (very large) PreferencesView so the standalone window can paint
@@ -92,6 +93,7 @@ export function PreferencesApp() {
 }
 
 installConsoleTimestamps();
+installNativeContextMenuSuppressor();
 
 if (isLinux) {
   document.documentElement.dataset.platform = "linux";
