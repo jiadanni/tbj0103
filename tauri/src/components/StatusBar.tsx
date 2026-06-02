@@ -380,14 +380,13 @@ export default function StatusBar() {
     Map<string, { heavyModel?: string; smallModel?: string; mode: "confirm_only" | "dual_model" }>
   >(new Map());
   const promptTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-  // [P2] In-flight guard: prevents overlapping getPerformanceStats() calls.
-  const inFlightRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Poll performance stats on a slower cadence, rescheduling after each
   // response completes so a slow backend sample never overlaps with the next.
   useEffect(() => {
     let cancelled = false;
+    let inFlight = false;
 
     function clearTimer() {
       if (timerRef.current !== null) {
@@ -403,18 +402,18 @@ export default function StatusBar() {
     }
 
     async function fetchOnce() {
-      if (cancelled || inFlightRef.current) {
+      if (cancelled || inFlight) {
         scheduleNext();
         return;
       }
-      inFlightRef.current = true;
+      inFlight = true;
       try {
         const result = await api.system.getPerformanceStats();
         if (!cancelled) { setStats(result); }
       } catch {
         // silently ignore — backend may not be ready yet
       } finally {
-        inFlightRef.current = false;
+        inFlight = false;
         scheduleNext();
       }
     }

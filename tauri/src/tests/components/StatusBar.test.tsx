@@ -113,6 +113,18 @@ describe("StatusBar", () => {
     expect(listWorkspaces).not.toHaveBeenCalled();
   });
 
+  it("starts a fresh performance sample after a StrictMode remount", async () => {
+    getPerformanceStats.mockImplementation(() => new Promise(() => {}));
+
+    render(
+      <React.StrictMode>
+        <StatusBar />
+      </React.StrictMode>,
+    );
+
+    await waitFor(() => expect(getPerformanceStats.mock.calls.length).toBeGreaterThanOrEqual(2));
+  });
+
   it("renders every active background job", async () => {
     let onTask: ((event: BackgroundTaskEvent) => void) | undefined;
     listenBackgroundTask.mockImplementation(async (callback: (event: BackgroundTaskEvent) => void) => {
