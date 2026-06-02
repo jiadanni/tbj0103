@@ -69,6 +69,10 @@ vi.mock("@/lib/api", () => ({
   },
 }));
 
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(() => Promise.resolve(() => {})),
+}));
+
 vi.mock("@/lib/workspacePane", () => ({
   useScopedWorkspace: () => ({
     activeWorkspaceId: "ws-1",

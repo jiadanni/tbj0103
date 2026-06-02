@@ -7,7 +7,7 @@ use crate::services::concept_extractor;
 use crate::services::concept_hierarchy::normalize_concept_name;
 use crate::services::workspace_hierarchy::{descendant_workspace_ids, workspace_filter_sql};
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{AppHandle, Emitter, Runtime, State};
 
 fn row_to_concept(row: &rusqlite::Row) -> rusqlite::Result<ConceptNode> {
     let type_str: String = row.get(4)?;
@@ -918,12 +918,18 @@ pub struct KnowledgeResetResult {
 }
 
 #[tauri::command]
-pub fn reset_knowledge_state(
+pub fn reset_knowledge_state<R: Runtime>(
+    app: AppHandle<R>,
     state: State<DbState>,
     req: KnowledgeResetRequest,
 ) -> Result<KnowledgeResetResult, String> {
     let mut conn = state.0.get().map_err(|e| e.to_string())?;
-    reset_knowledge_state_inner(&mut conn, req)
+    let result = reset_knowledge_state_inner(&mut conn, req)?;
+    if !result.dry_run {
+        let _ = app.emit("knowledge-state-reset", &result);
+        let _ = app.emit("workspaces-changed", ());
+    }
+    Ok(result)
 }
 
 fn reset_knowledge_state_inner(
@@ -991,8 +997,7 @@ fn resolve_reset_workspace_ids(
 }
 
 fn placeholders(count: usize) -> String {
-    std::iter::repeat("?")
-        .take(count)
+    std::iter::repeat_n("?", count)
         .collect::<Vec<_>>()
         .join(",")
 }

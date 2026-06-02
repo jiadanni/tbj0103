@@ -5,6 +5,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
+import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import SuccessDialog from "../components/SuccessDialog";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -448,6 +449,17 @@ export default function KnowledgeGraphView({
   useEffect(() => {
     void loadProposals();
   }, [loadProposals]);
+
+  useEffect(() => {
+    const unlisten = listen("knowledge-state-reset", () => {
+      void loadGraph();
+      void loadSummary();
+      void loadProposals();
+      setSelectedConcept(null);
+      setConceptCards([]);
+    });
+    return () => { unlisten.then(fn => fn()); };
+  }, [loadGraph, loadSummary, loadProposals]);
 
   useEffect(() => {
     if (!activeWorkspaceId) { return; }
@@ -1152,15 +1164,17 @@ export default function KnowledgeGraphView({
                     <RefreshCw size={14} className={summaryLoading ? "animate-spin" : ""} />
                     Refresh Overview
                   </button>
-                  <button
-                    onClick={() => setConfirmUndoOpen(true)}
-                    disabled={isAnalyzing || undoBusy}
-                    className="inline-flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm text-red-400 transition-colors hover:bg-red-500/20 hover:border-red-500/50"
-                    title="Remove the latest AI-generated concepts and links for this workspace"
-                  >
-                    <Trash2 size={14} />
-                    Remove Latest AI Output
-                  </button>
+                  {hasAiInferredGraph && (
+                    <button
+                      onClick={() => setConfirmUndoOpen(true)}
+                      disabled={isAnalyzing || undoBusy}
+                      className="inline-flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm text-red-400 transition-colors hover:bg-red-500/20 hover:border-red-500/50"
+                      title="Remove the latest AI-generated concepts and links for this workspace"
+                    >
+                      <Trash2 size={14} />
+                      Remove Latest AI Output
+                    </button>
+                  )}
                 </div>
                 {analyzeError && (
                   <p className="max-w-xs text-right text-xs text-red-400">{analyzeError}</p>
