@@ -814,6 +814,37 @@ pub fn get_message_variants(conn: &Connection, message_id: &str) -> Result<Vec<M
 }
 
 
+/// Deletes the given message and every message in the same session created at
+/// or after its timestamp. Returns the number of rows deleted.
+pub fn delete_message_and_following(
+    conn: &Connection,
+    session_id: &str,
+    message_id: &str,
+) -> Result<usize, String> {
+    let created_at: String = conn
+        .query_row(
+            "SELECT created_at FROM messages WHERE id = ?1 AND session_id = ?2",
+            rusqlite::params![message_id, session_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let deleted = conn
+        .execute(
+            "DELETE FROM messages WHERE session_id = ?1 AND created_at >= ?2",
+            rusqlite::params![session_id, created_at],
+        )
+        .map_err(|e| e.to_string())?;
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let _ = conn.execute(
+        "UPDATE chat_sessions SET updated_at = ?1 WHERE id = ?2",
+        rusqlite::params![now, session_id],
+    );
+
+    Ok(deleted)
+}
+
 /// Returns a map of child workspace ID → session count for all direct and
 /// indirect descendants of `parent_workspace_id`. The parent itself is excluded.
 pub fn count_sessions_per_child_workspace(

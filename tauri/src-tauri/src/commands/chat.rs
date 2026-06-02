@@ -316,6 +316,16 @@ pub fn refresh_message(
 }
 
 #[tauri::command]
+pub fn delete_message_and_following(
+    state: State<DbState>,
+    session_id: String,
+    message_id: String,
+) -> Result<usize, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    chat_service::delete_message_and_following(&conn, &session_id, &message_id)
+}
+
+#[tauri::command]
 pub fn get_message_variants(
     state: State<DbState>,
     message_id: String,

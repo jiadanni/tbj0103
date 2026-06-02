@@ -1126,6 +1126,8 @@ export const api = {
       timed("chat.getMessages", () => invoke<Message[]>("get_messages", { sessionId, limit, offset })),
     refreshMessage: (sessionId: string, messageId: string, modelId: string) =>
       invoke<Message>("refresh_message", { sessionId, messageId, modelId }),
+    deleteMessageAndFollowing: (sessionId: string, messageId: string) =>
+      invoke<number>("delete_message_and_following", { sessionId, messageId }),
     getMessageVariants: (messageId: string) =>
       invoke<Message[]>("get_message_variants", { messageId }),
     getTokenUsageByDate: (workspaceId: string, days?: number) =>

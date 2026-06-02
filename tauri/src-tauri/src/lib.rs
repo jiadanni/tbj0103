@@ -533,6 +533,7 @@ pub fn run() {
             commands::chat::add_message,
             commands::chat::get_messages,
             commands::chat::refresh_message,
+            commands::chat::delete_message_and_following,
             commands::chat::get_message_variants,
             commands::chat::count_sessions_per_child_workspace,
             commands::chat::list_deleted_chat_sessions,

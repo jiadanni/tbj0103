@@ -2693,6 +2693,11 @@ export default function ChatView() {
     handleVariationChangeRef.current?.(msgId, newIndex);
   }, []);
 
+  const handleDeleteMessageRef = useRef<((msgId: string) => void) | null>(null);
+  const handleDeleteMessageStable = useCallback((msgId: string) => {
+    handleDeleteMessageRef.current?.(msgId);
+  }, []);
+
   const markdownComponents = useMemo(() => ({
     a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
       <a
@@ -4699,9 +4704,47 @@ export default function ChatView() {
     if (activeChatId) { updateMessage(activeChatId, vars[newIndex]); }
   }
 
+  async function deleteMessageAndFollowing(msgId: string) {
+    if (!activeChatId || isStreaming) { return; }
+    const idx = activeMessages.findIndex((m) => m.id === msgId);
+    if (idx < 0) { return; }
+    const followingCount = activeMessages.length - idx - 1;
+    const description = followingCount > 0
+      ? `This will permanently delete this message and ${followingCount} message${followingCount === 1 ? "" : "s"} that follow it. This cannot be undone.`
+      : "This will permanently delete this message. This cannot be undone.";
+    if (!await openConfirmDialog({
+      title: "Delete Message?",
+      description,
+      confirmLabel: "Delete",
+      tone: "danger",
+    })) {
+      return;
+    }
+
+    const deletedIds = activeMessages.slice(idx).map((m) => m.id);
+    setMessages(activeChatId, activeMessages.slice(0, idx));
+    setMessageVariations((prev) => {
+      const next = new Map(prev);
+      deletedIds.forEach((id) => next.delete(id));
+      return next;
+    });
+    setVariationIndex((prev) => {
+      const next = new Map(prev);
+      deletedIds.forEach((id) => next.delete(id));
+      return next;
+    });
+
+    try {
+      await api.chat.deleteMessageAndFollowing(activeChatId, msgId);
+    } catch (err) {
+      console.error("Failed to delete message", err);
+    }
+  }
+
   redoMessageRef.current = redoMessage;
   submitEditRef.current = submitEdit;
   handleVariationChangeRef.current = handleVariationChange;
+  handleDeleteMessageRef.current = deleteMessageAndFollowing;
 
   // Load models for comparison mode
   useEffect(() => {
@@ -5154,6 +5197,7 @@ export default function ChatView() {
                                 onVariationChange={handleVariationChangeStable}
                                 onToggleThought={handleToggleThought}
                                 onToggleSources={handleToggleSources}
+                                onDelete={handleDeleteMessageStable}
                               />
                             </div>
                           );
@@ -5167,14 +5211,17 @@ export default function ChatView() {
                       && activeMessages[activeMessages.length - 1].role === "assistant" && (
                       <div
                         data-testid="chat-follow-ups"
-                        className={`flex-shrink-0 ${chatMessageStyle === "minimal" ? "px-8" : "pl-4 pr-[52px]"} pb-2`}
+                        className="flex-shrink-0 px-4 pb-3 sm:px-6"
                       >
-                        <ComposerSuggestionRows
-                          rows={[chatFollowUpRow]}
-                          disabled={isStreaming}
-                          disableImmediateSend={!selectedModel || !effectiveWorkspaceId}
-                          onSuggestionClick={handleComposerSuggestion}
-                        />
+                        <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} mx-auto min-w-0`}>
+                          <ComposerSuggestionRows
+                            rows={[chatFollowUpRow]}
+                            disabled={isStreaming}
+                            disableImmediateSend={!selectedModel || !effectiveWorkspaceId}
+                            variant="follow-up"
+                            onSuggestionClick={handleComposerSuggestion}
+                          />
+                        </div>
                       </div>
                     )}
                     <ChatMinimap

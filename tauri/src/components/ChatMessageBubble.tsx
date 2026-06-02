@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
-import { Check, Copy, Pencil, RotateCcw, ChevronDown, ChevronRight, ChevronUp, ChevronLeft, BookOpen, Sparkles, Loader } from "lucide-react";
+import { Check, Copy, Pencil, RotateCcw, ChevronDown, ChevronRight, ChevronUp, ChevronLeft, BookOpen, Sparkles, Loader, Trash2 } from "lucide-react";
 import type { Message } from "../stores/chatStore";
 import type { AiModel, SearchResult } from "../lib/api";
 import ContextIndicator from "./ContextIndicator";
@@ -95,6 +95,7 @@ export interface ChatMessageBubbleProps {
   onToggleSources: (msgId: string) => void;
   onGenerateFlashcards?: (msgId: string, content: string) => void;
   flashcardGeneratingId?: string | null;
+  onDelete?: (msgId: string) => void;
 }
 
 const ChatMessageBubble = React.memo(function ChatMessageBubble({
@@ -134,6 +135,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
   onToggleSources,
   onGenerateFlashcards,
   flashcardGeneratingId,
+  onDelete,
 }: ChatMessageBubbleProps) {
   const displayMsg = (variations && currentVariationIndex !== undefined)
     ? (variations[currentVariationIndex] ?? msg)
@@ -408,6 +410,16 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                   className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-color)] transition-colors disabled:opacity-50"
                 >
                   {flashcardGeneratingId === msg.id ? <Loader size={11} className="animate-spin" /> : <Sparkles size={11} />}
+                </button>
+              </Tooltip>
+            )}
+            {!isStreaming && onDelete && (
+              <Tooltip content="Delete this and all following messages">
+                <button
+                  onClick={() => onDelete(msg.id)}
+                  className="p-1 text-[var(--text-muted)] hover:text-red-500 transition-colors"
+                >
+                  <Trash2 size={11} />
                 </button>
               </Tooltip>
             )}
