@@ -42,12 +42,16 @@ pub fn start_workspace_prompt_bank_job(
     target_count: Option<i64>,
 ) -> Result<PromptBankJob, String> {
     let job = prompt_bank::create_job(&state, &workspace_id, target_count.unwrap_or(120))?;
-    emit_prompt_bank_task(
-        &app,
-        if job.status == "running" { "processing" } else { "started" },
-        "Refreshing starter prompts…",
-        Some(job.model.clone()),
-    );
+    if job.status == "running" {
+        // Already running (someone else picked it up). Emit "processing" so
+        // the status bar reflects the live state immediately.
+        emit_prompt_bank_task(
+            &app,
+            "processing",
+            "Refreshing starter prompts…",
+            Some(job.model.clone()),
+        );
+    }
     if job.status == "queued" {
         let pool = app.state::<DbState>().0.clone();
         let job_id = job.id.clone();
@@ -56,8 +60,16 @@ pub fn start_workspace_prompt_bank_job(
         tauri::async_runtime::spawn(async move {
             // Wait for any in-flight background job to finish so we don't
             // overlap with the scheduler (would show two pills in the status
-            // bar and ask Ollama to load two models concurrently).
+            // bar and ask Ollama to load two models concurrently). The
+            // "started" event is deferred until AFTER we hold the permit so
+            // the pill only appears when work is actually happening.
             let _permit = crate::services::background_scheduler::acquire_job_permit().await;
+            emit_prompt_bank_task(
+                &app_handle,
+                "started",
+                "Refreshing starter prompts…",
+                Some(model.clone()),
+            );
             if let Err(error) = prompt_bank::run_job_by_id(pool.clone(), job_id.clone()).await {
                 prompt_bank::mark_job_failed(&pool, &job_id, &error);
                 emit_prompt_bank_task(

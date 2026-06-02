@@ -537,9 +537,13 @@ export default function StatusBar() {
         );
         if (cancelled) { return; }
 
+        // Only treat actually-running jobs as active. A "queued" job is one
+        // that's been recorded but is still waiting on the global background-
+        // job semaphore — showing it as a pill while another job is running
+        // produces a visible "two jobs at once" race.
         const activePromptBankJobs = statuses
           .map((status) => status?.active_job ?? null)
-          .filter((job) => job !== null && (job.status === "queued" || job.status === "running"));
+          .filter((job) => job !== null && job.status === "running");
 
         setActiveJobs((prev) => {
           const next = new Map(prev);
