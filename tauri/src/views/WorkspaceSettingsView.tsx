@@ -170,22 +170,17 @@ function KnowledgeResetDialog({
     rows: Array<{ key: keyof KnowledgeResetOptions; label: string; description: string }>;
   }> = [
     {
-      title: "Workspace Map",
+      title: "Knowledge",
       rows: [
         { key: "clear_graph", label: "Graph and roadmap", description: "Concepts, links, mentions, graph statistics, and concept proposals." },
         { key: "clear_topic_signatures", label: "Topic signatures", description: "Workspace topic fingerprints that can re-seed old concepts." },
+        { key: "clear_analysis_jobs", label: "Analysis jobs", description: "Analyze Workspace job and chunk history." },
       ],
     },
     {
       title: "Chat",
       rows: [
         { key: "clear_prompt_bank", label: "Prompt bank", description: "Stored starter prompts and prompt-bank jobs." },
-      ],
-    },
-    {
-      title: "AI Analysis",
-      rows: [
-        { key: "clear_analysis_jobs", label: "Analysis jobs", description: "Analyze Workspace job and chunk history." },
       ],
     },
     {
