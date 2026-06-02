@@ -6,10 +6,10 @@ use crate::services::{git_sync, memory_pipeline, summarization_service, workspac
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, OwnedSemaphorePermit, Semaphore};
 
 static SCHEDULER_RUNNING: AtomicBool = AtomicBool::new(false);
 
@@ -22,6 +22,20 @@ static PENDING: LazyLock<Mutex<PendingMap>> = LazyLock::new(|| Mutex::new(HashMa
 /// Cancel flags for currently-running jobs. The stop button in the status bar
 /// sets these; running jobs check between stages and abort cooperatively.
 static CANCEL_FLAGS: LazyLock<Mutex<HashMap<String, bool>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Single-permit semaphore serializing every background job — scheduler ticks
+/// and manually-triggered IPCs (e.g. `start_workspace_prompt_bank_job`) all
+/// acquire this before doing work. Holding it for the duration of a job means
+/// the status bar shows at most one running pill, and Ollama isn't asked to
+/// load two models at the same time.
+static JOB_LOCK: LazyLock<Arc<Semaphore>> = LazyLock::new(|| Arc::new(Semaphore::new(1)));
+
+/// Acquire the global job lock. Manual IPCs and the scheduler tick both call
+/// this; the returned permit must be held for the duration of the job and
+/// dropped on completion.
+pub async fn acquire_job_permit() -> OwnedSemaphorePermit {
+    JOB_LOCK.clone().acquire_owned().await.expect("JOB_LOCK semaphore closed")
+}
 
 #[derive(Debug, Clone, Copy)]
 enum PromptResolution {
@@ -354,6 +368,7 @@ pub fn start_scheduler(app: AppHandle) {
                 let mem_default = lookup_job_model(&app, "memory_extraction_model").await;
                 let (mem_run, mem_model) = gate_job(&app, "memory_extraction", mem_default).await;
                 if mem_run {
+                    let _permit = acquire_job_permit().await;
                     register_running("memory_extraction");
                     emit_task(&app, "memory_extraction", "started", "Extracting memories…", mem_model.clone());
                     let mem_result = if is_cancelled("memory_extraction") {
@@ -375,6 +390,7 @@ pub fn start_scheduler(app: AppHandle) {
                 let glossary_default = lookup_job_model(&app, "glossary_model").await;
                 let (g_run, glossary_model) = gate_job(&app, "workspace_glossary", glossary_default.clone()).await;
                 if g_run {
+                    let _permit = acquire_job_permit().await;
                     register_running("workspace_glossary");
                     emit_task(&app, "workspace_glossary", "started", "Refreshing workspace glossary…", glossary_model.clone());
                     let glossary_result = if is_cancelled("workspace_glossary") {
@@ -401,6 +417,7 @@ pub fn start_scheduler(app: AppHandle) {
 
                 let (scan_run, scan_model) = gate_job(&app, "hover_definition_scan", glossary_default).await;
                 if scan_run {
+                    let _permit = acquire_job_permit().await;
                     register_running("hover_definition_scan");
                     emit_task(
                         &app,
@@ -480,6 +497,7 @@ pub fn start_scheduler(app: AppHandle) {
                     let summ_default = lookup_job_model(&app, "summarization_model").await;
                     let (summ_run, summ_model) = gate_job(&app, "summarization", summ_default).await;
                     if summ_run {
+                        let _permit = acquire_job_permit().await;
                         register_running("summarization");
                         emit_task(&app, "summarization", "started", "Summarizing chats…", summ_model.clone());
                         let mut any_failed = false;
@@ -515,6 +533,7 @@ pub fn start_scheduler(app: AppHandle) {
                 let fc_default = lookup_job_model(&app, "flashcard_model").await;
                 let (fc_run, fc_model) = gate_job(&app, "flashcard_generation", fc_default).await;
                 if fc_run {
+                    let _permit = acquire_job_permit().await;
                     register_running("flashcard_generation");
                     emit_task(&app, "flashcard_generation", "started", "Generating flashcards…", fc_model.clone());
                     let fc_result = if is_cancelled("flashcard_generation") {
@@ -541,6 +560,7 @@ pub fn start_scheduler(app: AppHandle) {
                     let ch_default = lookup_job_model(&app, "concept_hierarchy_model").await;
                     let (ch_run, ch_model) = gate_job(&app, "concept_hierarchy", ch_default).await;
                     if ch_run {
+                        let _permit = acquire_job_permit().await;
                         register_running("concept_hierarchy");
                         emit_task(
                             &app,
@@ -582,6 +602,7 @@ pub fn start_scheduler(app: AppHandle) {
                     (false, None)
                 };
                 if pb_run {
+                    let _permit = acquire_job_permit().await;
                     register_running("workspace_prompt_bank");
                     emit_task(
                         &app,
