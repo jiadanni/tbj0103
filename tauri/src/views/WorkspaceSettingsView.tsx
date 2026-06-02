@@ -1148,7 +1148,7 @@ export default function WorkspaceSettingsView() {
         {/* Right: Workspace Details */}
         <div className="flex-1 bg-[var(--bg-primary)] overflow-y-auto">
           {selectedWorkspace ? (
-            <div className="app-container py-6 divide-y divide-[var(--border-color)]">
+            <div className="app-container mx-0 max-w-5xl py-6 divide-y divide-[var(--border-color)]">
               {/* Header Details */}
               <div className="space-y-2 pb-5">
                 <div className="flex items-center gap-3">
