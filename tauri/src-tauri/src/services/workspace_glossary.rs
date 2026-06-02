@@ -12,12 +12,43 @@ use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 
 const GENERIC_TERMS: &[&str] = &[
-    "about", "answer", "app", "assistant", "build", "change", "chat", "code", "content",
-    "context", "data", "debug", "definition", "details", "example", "feature", "file", "files",
-    "fix", "function", "generic", "help", "implement", "implementation", "issue", "items",
-    "message", "messages", "model", "note", "notes", "output", "problem", "project", "question",
-    "response", "result", "session", "settings", "summary", "system", "task", "text", "thing",
-    "update", "user", "using", "view", "work", "workspace",
+    "about", "above", "across", "adjacent", "after", "afterwards", "again", "against", "all",
+    "almost", "alone", "along", "already", "also", "although", "always", "amid", "amidst",
+    "among", "amongst", "amount", "another", "answer", "any", "anyhow", "anyone", "anything",
+    "anyway", "anywhere", "app", "around", "assistant", "back", "base", "based", "became",
+    "because", "become", "becomes", "becoming", "been", "before", "beforehand", "behind", "being",
+    "below", "beneath", "beside", "besides", "between", "beyond", "both", "bottom", "build",
+    "cannot", "change", "chat", "code", "come", "comes", "coming", "complete", "completed",
+    "completing", "concerning", "considering", "content", "context", "could", "data", "debug", "definition",
+    "despite", "details", "does", "doing", "done", "down", "during", "each", "either",
+    "else", "elsewhere", "empty", "enough", "every", "everyone", "everything", "everywhere", "example",
+    "except", "excepting", "excluding", "feature", "file", "files", "first", "five", "fix",
+    "following", "former", "formerly", "found", "four", "from", "front", "full", "function",
+    "further", "gave", "generic", "give", "given", "giving", "goes", "going", "gone",
+    "half", "hardly", "have", "having", "help", "hence", "hereafter", "hereby", "herein",
+    "hereupon", "hers", "herself", "himself", "however", "hundred", "implement", "implementation", "indeed",
+    "inside", "instead", "into", "issue", "items", "itself", "just", "keep", "keeps",
+    "kept", "last", "latter", "latterly", "least", "less", "like", "little", "look",
+    "looking", "looks", "many", "maybe", "meanwhile", "message", "messages", "might", "model",
+    "more", "moreover", "most", "mostly", "much", "must", "myself", "namely", "near",
+    "neither", "never", "nevertheless", "next", "nine", "nobody", "none", "noone", "nor",
+    "note", "notes", "nothing", "nowhere", "often", "once", "only", "onto", "opposite",
+    "other", "others", "otherwise", "ought", "ourselves", "output", "outside", "over", "overall",
+    "parallel", "past", "perhaps", "please", "plus", "possible", "possibly", "probably", "problem",
+    "project", "question", "quite", "rather", "really", "regarding", "response", "result", "round",
+    "same", "seem", "seemed", "seeming", "seems", "seldom", "session", "settings", "several",
+    "shall", "should", "since", "some", "somehow", "someone", "something", "sometime", "sometimes",
+    "somewhere", "still", "such", "summary", "system", "task", "ten", "text", "than",
+    "that", "their", "theirs", "them", "themselves", "then", "thence", "there", "thereafter",
+    "thereby", "therefore", "therein", "thereupon", "these", "they", "thing", "things", "think",
+    "thinks", "third", "this", "those", "though", "three", "through", "throughout", "thru",
+    "thus", "together", "toward", "towards", "twelve", "twenty", "under", "underneath", "unless",
+    "unlike", "until", "update", "upon", "user", "using", "usually", "versus", "very",
+    "view", "was", "were", "what", "whatever", "when", "whence", "whenever", "where",
+    "whereafter", "whereas", "whereby", "wherein", "whereupon", "wherever", "whether", "which", "while",
+    "whither", "who", "whoever", "whole", "whom", "whose", "why", "will", "with",
+    "within", "without", "work", "workspace", "would", "yet", "you", "your", "yours",
+    "yourself", "yourselves",
 ];
 const SHORT_TECH_TERMS: &[&str] = &["api", "css", "html", "http", "json", "sql", "ssh", "url"];
 
@@ -707,6 +738,10 @@ pub async fn refresh_workspace_glossary(
 }
 
 pub async fn refresh_due_workspaces(state: &DbState) -> Result<usize, String> {
+    // Active-workspace preference: refresh the user's current workspace if
+    // it's due, plus at most one other workspace per tick (drip). The drip
+    // prevents stale workspaces from going completely dark but keeps the
+    // per-tick LLM cost bounded.
     let workspace_ids = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
         let interval_minutes =
@@ -714,6 +749,8 @@ pub async fn refresh_due_workspaces(state: &DbState) -> Result<usize, String> {
                 .and_then(|value| value.parse::<i64>().ok())
                 .unwrap_or(60);
         let interval_clause = format!("-{} minutes", interval_minutes);
+        let current_workspace_id =
+            crate::services::model_settings::get_current_workspace_id(&conn);
         let mut stmt = conn
             .prepare(
                 "SELECT w.id
@@ -733,10 +770,16 @@ pub async fn refresh_due_workspaces(state: &DbState) -> Result<usize, String> {
                          AND cs.exclude_from_analytics = 0
                          AND cs.is_imported = 0
                      )
-                   )",
+                   )
+                 ORDER BY
+                   CASE WHEN w.id = ?2 THEN 0
+                        WHEN w.id = (SELECT parent_workspace_id FROM workspaces WHERE id = ?2) THEN 1
+                        ELSE 2 END ASC,
+                   datetime(COALESCE(s.last_seeded_at, '1970-01-01T00:00:00Z')) ASC
+                 LIMIT 2",
             )
             .map_err(|e| e.to_string())?;
-        let rows = stmt.query_map(params![interval_clause], |row| {
+        let rows = stmt.query_map(params![interval_clause, current_workspace_id.unwrap_or_default()], |row| {
             row.get::<_, String>(0)
         })
         .map_err(|e| e.to_string())?;
@@ -852,6 +895,11 @@ pub async fn scan_recent_sessions_for_missing_terms(state: &DbState) -> Result<u
                 .unwrap_or(3);
         let model = get_model_for_job(&conn, "glossary_model");
         let ollama_url = get_ollama_base_url(&conn);
+        let current_workspace_id =
+            crate::services::model_settings::get_current_workspace_id(&conn);
+        // Prefer sessions in the active workspace (or its parent if user is
+        // in a sub-workspace) so the scan results are visible where the user
+        // actually is.
         let mut stmt = conn
             .prepare(
                 "SELECT cs.id, cs.workspace_id
@@ -859,12 +907,16 @@ pub async fn scan_recent_sessions_for_missing_terms(state: &DbState) -> Result<u
                  WHERE cs.is_incognito = 0
                    AND cs.exclude_from_analytics = 0
                    AND cs.is_imported = 0
-                 ORDER BY cs.updated_at DESC
+                 ORDER BY
+                   CASE WHEN cs.workspace_id = ?2 THEN 0
+                        WHEN cs.workspace_id = (SELECT parent_workspace_id FROM workspaces WHERE id = ?2) THEN 1
+                        ELSE 2 END ASC,
+                   cs.updated_at DESC
                  LIMIT ?1",
             )
             .map_err(|e| e.to_string())?;
         let sessions = stmt
-            .query_map(params![max_sessions as i64], |row| {
+            .query_map(params![max_sessions as i64, current_workspace_id.unwrap_or_default()], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })
             .map_err(|e| e.to_string())?

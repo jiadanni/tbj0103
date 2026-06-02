@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { TopicSignature, WorkspaceMatchResult } from "../lib/api";
+import { api, type TopicSignature, type WorkspaceMatchResult } from "../lib/api";
 import { useChatStore } from "./chatStore";
 
 export interface Workspace {
@@ -456,6 +456,15 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         { resolveRootToChild: !(options?.allowRoot) },
       );
       const workspaceChanged = nextSelection.workspaceId !== state.activeWorkspaceId;
+      if (workspaceChanged) {
+        // Persist so the Rust scheduler can prefer the active workspace when
+        // picking work. Fire-and-forget — the active workspace setting is
+        // advisory, not load-bearing for the UI. Guard the api lookup itself
+        // so test mocks without backgroundJobs don't throw.
+        try {
+          void api.backgroundJobs?.setCurrentWorkspaceId?.(nextSelection.workspaceId)?.catch(() => undefined);
+        } catch { /* ignore */ }
+      }
       const panes = {
         ...state.panes,
         primary: {

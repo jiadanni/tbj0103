@@ -82,6 +82,29 @@ pub async fn get_scheduled_task_settings(
     .map_err(|e| e.to_string())?
 }
 
+/// Persist the user's currently-active workspace ID. The background scheduler
+/// reads this to prefer the active workspace when picking work — see
+/// `services/background_scheduler.rs::current_workspace_id`. Frontend should
+/// call this whenever the workspace store's `activeWorkspaceId` changes.
+#[tauri::command]
+pub async fn set_current_workspace_id(
+    state: State<'_, DbState>,
+    workspace_id: Option<String>,
+) -> Result<(), String> {
+    let pool = state.0.clone();
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('current_workspace_id', ?1)",
+            rusqlite::params![workspace_id.unwrap_or_default()],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub async fn set_scheduled_task_setting(
     state: State<'_, DbState>,

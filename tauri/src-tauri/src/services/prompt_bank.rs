@@ -333,6 +333,10 @@ pub async fn tick(db: &DbState) -> Result<Option<PromptBankJob>, String> {
         if queued.is_some() {
             queued
         } else {
+            // Prefer the currently-active workspace (and its parent if user
+            // is in a sub-workspace) over background drip to other workspaces.
+            let current_workspace_id =
+                crate::services::model_settings::get_current_workspace_id(&conn);
             let workspace_id = conn
                 .query_row(
                     "SELECT w.id
@@ -342,9 +346,13 @@ pub async fn tick(db: &DbState) -> Result<Option<PromptBankJob>, String> {
                      WHERE w.is_hidden = 0 AND j.id IS NULL
                      GROUP BY w.id
                      HAVING COUNT(p.id) < ?1
-                     ORDER BY COALESCE(w.last_message_at, w.updated_at) DESC
+                     ORDER BY
+                       CASE WHEN w.id = ?2 THEN 0
+                            WHEN w.id = (SELECT parent_workspace_id FROM workspaces WHERE id = ?2) THEN 1
+                            ELSE 2 END ASC,
+                       COALESCE(w.last_message_at, w.updated_at) DESC
                      LIMIT 1",
-                    params![REFILL_WATERMARK],
+                    params![REFILL_WATERMARK, current_workspace_id.clone().unwrap_or_default()],
                     |row| row.get::<_, String>(0),
                 )
                 .optional()

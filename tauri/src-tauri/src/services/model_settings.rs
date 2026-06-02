@@ -96,3 +96,10 @@ pub fn get_confirm_timeout_seconds(conn: &Connection) -> u64 {
         .filter(|v| *v > 0)
         .unwrap_or(20)
 }
+
+/// Read the user's currently-active workspace from settings (written by the
+/// frontend on workspace switch). The scheduler uses this to prefer active-
+/// workspace work over other workspaces.
+pub fn get_current_workspace_id(conn: &Connection) -> Option<String> {
+    get_string_setting(conn, "current_workspace_id")
+}

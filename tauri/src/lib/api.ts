@@ -578,6 +578,7 @@ export interface AppSettings {
   preferred_model: string; backup_enabled: boolean; touch_id_enabled: boolean; pin_lock_enabled: boolean;
   auto_lock_minutes: number; theme: string; accent_color: string;
   font_size: number; sidebar_width: number; ollama_base_url: string;
+  ollama_remote_enabled: boolean;
   auto_start_ollama: boolean;
   mlx_base_url: string;
   llamacpp_model_paths: string[];
@@ -680,6 +681,7 @@ export interface AiSettings {
   compare_model_a: string;
   compare_model_b: string;
   ollama_base_url: string;
+  ollama_remote_enabled: boolean;
   auto_start_ollama: boolean;
   mlx_base_url: string;
   llamacpp_model_paths: string[];
@@ -2001,6 +2003,8 @@ export const api = {
       invoke<ScheduledTaskSettings>("get_scheduled_task_settings"),
     setScheduledTaskSetting: (key: string, value: string) =>
       invoke<void>("set_scheduled_task_setting", { key, value }),
+    setCurrentWorkspaceId: (workspaceId: string | null) =>
+      invoke<void>("set_current_workspace_id", { workspaceId }),
   },
 
   mcp: {

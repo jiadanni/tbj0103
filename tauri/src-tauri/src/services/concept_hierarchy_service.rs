@@ -77,6 +77,12 @@ fn resolve_model(conn: &Connection) -> Option<String> {
 /// Concepts evaluated *before* a peer was added are re-evaluated so a parent
 /// added after the child can still get linked.
 fn collect_candidates(conn: &Connection) -> rusqlite::Result<Vec<Candidate>> {
+    // Prefer concepts in the active workspace (and its parent if user is in
+    // a sub-workspace) so the user sees hierarchy links forming where they're
+    // working. Other workspaces still drip through after active ones are
+    // exhausted within MAX_CANDIDATES_PER_TICK.
+    let current_workspace_id =
+        crate::services::model_settings::get_current_workspace_id(conn).unwrap_or_default();
     let mut stmt = conn.prepare(
         "SELECT cn.id, cn.workspace_id, cn.name, cn.hierarchy_level
          FROM concept_nodes cn
@@ -91,11 +97,16 @@ fn collect_candidates(conn: &Connection) -> rusqlite::Result<Vec<Candidate>> {
                  WHERE cn2.workspace_id = cn.workspace_id
              )
          )
-         ORDER BY cn.parent_checked_at IS NULL DESC, cn.created_at ASC
+         ORDER BY
+           CASE WHEN cn.workspace_id = ?2 THEN 0
+                WHEN cn.workspace_id = (SELECT parent_workspace_id FROM workspaces WHERE id = ?2) THEN 1
+                ELSE 2 END ASC,
+           cn.parent_checked_at IS NULL DESC,
+           cn.created_at ASC
          LIMIT ?1",
     )?;
     let rows = stmt
-        .query_map(rusqlite::params![MAX_CANDIDATES_PER_TICK as i64], |r| {
+        .query_map(rusqlite::params![MAX_CANDIDATES_PER_TICK as i64, current_workspace_id], |r| {
             Ok(Candidate {
                 id: r.get(0)?,
                 workspace_id: r.get(1)?,
