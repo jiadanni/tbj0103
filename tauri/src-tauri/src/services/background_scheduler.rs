@@ -33,6 +33,12 @@ enum PromptResolution {
 /// Cheap LLM amortisation guard — the job itself is bounded internally too.
 static HIERARCHY_TICK: AtomicU32 = AtomicU32::new(0);
 const HIERARCHY_TICK_INTERVAL: u32 = 5;
+/// Same idea for the prompt-bank job — refilling happens at most every 30 min
+/// (30 ticks at the current 60s cadence). Prompts are only generated when a
+/// workspace dips below `REFILL_WATERMARK`, so the on-tick check is a cheap
+/// SQL lookup, but we cap how often we even consider it to avoid streaks.
+static PROMPT_BANK_TICK: AtomicU32 = AtomicU32::new(0);
+const PROMPT_BANK_TICK_INTERVAL: u32 = 30;
 
 /// Mirror of the TypeScript `BackgroundTaskEvent` interface in api.ts.
 #[derive(Debug, Clone, Serialize)]
@@ -568,8 +574,13 @@ pub fn start_scheduler(app: AppHandle) {
                     }
                 }
 
+                let prompt_bank_tick = PROMPT_BANK_TICK.fetch_add(1, Ordering::Relaxed) + 1;
                 let pb_default = lookup_job_model(&app, "topic_signature_model").await;
-                let (pb_run, prompt_bank_model) = gate_job(&app, "workspace_prompt_bank", pb_default).await;
+                let (pb_run, prompt_bank_model) = if prompt_bank_tick.is_multiple_of(PROMPT_BANK_TICK_INTERVAL) {
+                    gate_job(&app, "workspace_prompt_bank", pb_default).await
+                } else {
+                    (false, None)
+                };
                 if pb_run {
                     register_running("workspace_prompt_bank");
                     emit_task(

@@ -11,7 +11,8 @@ use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::time::Duration;
 
-const DEFAULT_TARGET_COUNT: i64 = 120;
+const DEFAULT_TARGET_COUNT: i64 = 30;
+const REFILL_WATERMARK: i64 = 15;
 const BATCH_SIZE: usize = 20;
 
 #[derive(Debug, Clone, Serialize)]
@@ -343,7 +344,7 @@ pub async fn tick(db: &DbState) -> Result<Option<PromptBankJob>, String> {
                      HAVING COUNT(p.id) < ?1
                      ORDER BY COALESCE(w.last_message_at, w.updated_at) DESC
                      LIMIT 1",
-                    params![DEFAULT_TARGET_COUNT],
+                    params![REFILL_WATERMARK],
                     |row| row.get::<_, String>(0),
                 )
                 .optional()
