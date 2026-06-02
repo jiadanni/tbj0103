@@ -1760,7 +1760,7 @@ function PreferencesSplitLayout({
           onWheel={handleLinuxPreferencesWheel}
           data-testid="preferences-options-scroll"
         >
-          <div className="max-w-2xl">
+          <div className="max-w-4xl">
             {children}
           </div>
         </div>
@@ -1788,7 +1788,7 @@ function PreferencesSplitLayout({
             style={isLinux ? { contain: "layout paint" } : undefined}
             data-testid="preferences-options-scroll"
           >
-            <div className="max-w-2xl">
+            <div className="max-w-4xl">
               {children}
             </div>
           </div>
@@ -1810,7 +1810,7 @@ function PreferencesSplitLayout({
 
   return (
     <div
-      className="h-full min-h-0 grow shrink max-w-2xl overflow-y-auto overscroll-contain px-5 py-4"
+      className="h-full min-h-0 grow shrink max-w-4xl overflow-y-auto overscroll-contain px-5 py-4"
       onWheel={handleLinuxPreferencesWheel}
       data-testid="preferences-options-scroll"
     >
@@ -3075,7 +3075,7 @@ export default function PreferencesView() {
         <p className="text-xs text-[var(--text-muted)] py-2">No models configured. Add one above to set up priority ordering.</p>
       ) : (
       <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] overflow-hidden">
-        <div className="grid grid-cols-[minmax(0,1fr)_100px_120px_120px_60px_60px] items-center gap-3 px-4 py-2.5 bg-[var(--bg-hover)]/30 border-b border-[var(--border-color)] text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+        <div className="grid grid-cols-[minmax(160px,1.6fr)_70px_100px_100px_48px_48px] items-center gap-2 px-4 py-2.5 bg-[var(--bg-hover)]/30 border-b border-[var(--border-color)] text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
           <span>Ollama Models</span>
           <Tooltip content="BG Default: fallback model for background AI tasks (memory extraction, summarization, flashcards, glossary, topic signatures) when no per-job model is set below. Per-job overrides take precedence." position="top">
             <span className="text-center inline-flex items-center justify-center gap-1">
@@ -3177,7 +3177,7 @@ export default function PreferencesView() {
                     data-family-key={group.key}
                     className={`relative transition-colors select-none ${draggedModelId === m.id || draggedFamilyId === group.key ? "opacity-50" : ""} ${isDragOver ? `bg-[var(--accent-color)]/5 ${dropIndicatorClass}` : "hover:bg-[var(--bg-hover)]/5"} px-4 py-3`}
                   >
-                    <div className="flex flex-col gap-2 md:grid md:grid-cols-[minmax(0,1fr)_100px_120px_120px_60px_60px] md:items-start md:gap-3">
+                    <div className="flex flex-col gap-2 md:grid md:grid-cols-[minmax(160px,1.6fr)_70px_100px_100px_48px_48px] md:items-start md:gap-2">
                       <div className="flex min-w-0 items-start gap-2">
                         <div
                           className="flex items-center pt-1.5 text-[var(--text-muted)] cursor-grab hover:text-[var(--text-primary)]"
@@ -3274,7 +3274,7 @@ export default function PreferencesView() {
                       {isOllamaModel && (
                         <Tooltip content={canBeBackgroundModel ? "Use for background tasks" : "Enable this model to make it selectable for background tasks"}>
                           <label
-                            className={`flex items-center justify-center md:w-[100px] ${canBeBackgroundModel ? "cursor-pointer text-[var(--text-secondary)]" : "cursor-not-allowed text-[var(--text-muted)] opacity-60"
+                            className={`flex items-center justify-center md:w-[70px] ${canBeBackgroundModel ? "cursor-pointer text-[var(--text-secondary)]" : "cursor-not-allowed text-[var(--text-muted)] opacity-60"
                               }`}
                           >
                             <input
@@ -3290,9 +3290,9 @@ export default function PreferencesView() {
                           </label>
                         </Tooltip>
                       )}
-                      {!isOllamaModel && <div className="hidden md:block md:w-[100px]" />}
+                      {!isOllamaModel && <div className="hidden md:block md:w-[70px]" />}
 
-                      <div className="text-right text-[10px] leading-5 text-[var(--text-muted)] md:w-[120px]">
+                      <div className="text-right text-[10px] leading-5 text-[var(--text-muted)] md:w-[100px]">
                         {m.is_paid && (
                           <div className="font-medium uppercase tracking-wide text-amber-400">Paid</div>
                         )}
@@ -3319,7 +3319,7 @@ export default function PreferencesView() {
                         )}
                       </div>
 
-                      <div className="flex justify-center pt-0.5 md:w-[120px]">
+                      <div className="flex justify-center pt-0.5 md:w-[100px]">
                         {!isWebModel && !m.id.startsWith("transient-") && (
                           <ContextSizeInput
                             modelName={m.name}
@@ -3330,7 +3330,7 @@ export default function PreferencesView() {
                         )}
                       </div>
 
-                      <div className="flex justify-center pt-0.5 md:w-[60px]">
+                      <div className="flex justify-center pt-0.5 md:w-[48px]">
                         <Toggle
                           on={m.enabled}
                           onToggle={async () => {
@@ -3350,7 +3350,7 @@ export default function PreferencesView() {
                         />
                       </div>
 
-                      <div className="flex justify-center pt-1 md:w-[60px]">
+                      <div className="flex justify-center pt-1 md:w-[48px]">
                         <Tooltip content={m.is_hidden ? "Show in Chat" : "Hide from Chat"}>
                           <button
                             onClick={async () => {
