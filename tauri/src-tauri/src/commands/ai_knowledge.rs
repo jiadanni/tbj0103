@@ -358,6 +358,16 @@ fn gather_workspace_items(
         }
     }
 
+    fn push_item(items: &mut Vec<SourceItem>, text: String, kind: &str) {
+        if text.trim().is_empty() {
+            return;
+        }
+        items.push(SourceItem {
+            text,
+            kind: kind.to_string(),
+        });
+    }
+
     // --- project_notes ---
     if let Ok(mut stmt) = conn.prepare(
         "SELECT title, content FROM project_notes WHERE workspace_id = ?1 \
@@ -371,12 +381,13 @@ fn gather_workspace_items(
             })
             .map(|rows| {
                 for item in rows.flatten() {
-                    let snippet = safe_truncate(&item.1, 400);
+                    let content = item.1.trim();
+                    if content.is_empty() {
+                        continue;
+                    }
+                    let snippet = safe_truncate(content, 400);
                     let entry = format!("Note: {}\n{}\n", item.0, snippet);
-                    items.push(SourceItem {
-                        text: entry,
-                        kind: "note".to_string(),
-                    });
+                    push_item(&mut items, entry, "note");
                 }
             });
     }
@@ -394,34 +405,63 @@ fn gather_workspace_items(
             })
             .map(|rows| {
                 for item in rows.flatten() {
-                    let snippet = safe_truncate(&item.1, 300);
+                    let content = item.1.trim();
+                    if content.is_empty() {
+                        continue;
+                    }
+                    let snippet = safe_truncate(content, 300);
                     let entry = format!("Daily note ({}): {}\n", item.0, snippet);
-                    items.push(SourceItem {
-                        text: entry,
-                        kind: "daily_note".to_string(),
-                    });
+                    push_item(&mut items, entry, "daily_note");
+                }
+            });
+    }
+
+    // --- conversation summaries ---
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT cs.title, s.content FROM conversation_summaries s \
+         JOIN chat_sessions cs ON s.session_id = cs.id \
+         WHERE s.workspace_id = ?1 AND cs.is_incognito = 0 AND cs.exclude_from_analytics = 0 AND cs.is_deleted = 0 \
+         ORDER BY s.updated_at DESC LIMIT 40",
+    ) {
+        let _ = stmt
+            .query_map(rusqlite::params![workspace_id], |row| {
+                let title: String = row.get(0)?;
+                let content: String = row.get(1)?;
+                Ok((title, content))
+            })
+            .map(|rows| {
+                for (title, content) in rows.flatten() {
+                    let content = content.trim();
+                    if content.is_empty() {
+                        continue;
+                    }
+                    let snippet = safe_truncate(content, 700);
+                    let entry = format!("Chat summary ({}): {}\n", title, snippet);
+                    push_item(&mut items, entry, "summary");
                 }
             });
     }
 
     // --- chat messages (any session in this workspace) ---
     if let Ok(mut stmt) = conn.prepare(
-        "SELECT m.content FROM messages m \
+        "SELECT cs.title, m.content FROM messages m \
          JOIN chat_sessions cs ON m.session_id = cs.id \
          WHERE cs.workspace_id = ?1 AND m.role = 'user' AND cs.is_incognito = 0 AND cs.exclude_from_analytics = 0 AND cs.is_deleted = 0 \
          ORDER BY m.created_at DESC LIMIT 60",
     ) {
         let _ = stmt.query_map(rusqlite::params![workspace_id], |row| {
-            let content: String = row.get(0)?;
-            Ok(content)
+            let title: String = row.get(0)?;
+            let content: String = row.get(1)?;
+            Ok((title, content))
         }).map(|rows| {
-            for content in rows.flatten() {
-                let snippet = safe_truncate(&content, 500);
-                let entry = format!("Message: {}\n", snippet);
-                items.push(SourceItem {
-                    text: entry,
-                    kind: "message".to_string(),
-                });
+            for (title, content) in rows.flatten() {
+                let content = content.trim();
+                if content.is_empty() {
+                    continue;
+                }
+                let snippet = safe_truncate(content, 500);
+                let entry = format!("Message ({}): {}\n", title, snippet);
+                push_item(&mut items, entry, "message");
             }
         });
     }
@@ -442,17 +482,18 @@ fn gather_workspace_items(
             .map(|rows| {
                 for (source_type, title, content, summary) in rows.flatten() {
                     let text = summary.unwrap_or(content);
-                    let snippet = safe_truncate(&text, 500);
+                    let text = text.trim();
+                    if text.is_empty() {
+                        continue;
+                    }
+                    let snippet = safe_truncate(text, 500);
                     let label = if source_type == "document" {
                         "Document"
                     } else {
                         "Web Capture"
                     };
                     let entry = format!("{} ({}): {}\n", label, title, snippet);
-                    items.push(SourceItem {
-                        text: entry,
-                        kind: "source".to_string(),
-                    });
+                    push_item(&mut items, entry, "source");
                 }
             });
     }
@@ -516,6 +557,7 @@ fn dedup_kinds(kinds: &[String]) -> String {
         "note" => "notes",
         "daily_note" => "dailies",
         "message" => "messages",
+        "summary" => "summaries",
         "source" => "sources",
         other => other,
     }).collect();
@@ -1935,7 +1977,7 @@ pub async fn suggest_learning_goals(
 
 #[cfg(test)]
 mod tests {
-    use super::{level_dedup_key, pack_into_chunks, preload_name_to_id, repair_truncated_json_object, SourceItem};
+    use super::{gather_workspace_items, level_dedup_key, pack_into_chunks, preload_name_to_id, repair_truncated_json_object, SourceItem};
     use crate::db::test_utils::tests::setup_test_db;
 
     #[test]
@@ -1993,6 +2035,53 @@ mod tests {
     fn pack_into_chunks_empty() {
         let chunks = pack_into_chunks(Vec::new(), 6000);
         assert!(chunks.is_empty());
+    }
+
+    #[test]
+    fn gather_workspace_items_uses_summaries_and_skips_empty_notes() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        conn.execute(
+            "INSERT INTO workspaces (id, name, created_at, updated_at)
+             VALUES ('w1', 'WS', datetime('now'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO daily_notes (id, workspace_id, date, content, created_at, updated_at)
+             VALUES ('daily-empty', 'w1', '2026-06-01', '', datetime('now'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO chat_sessions (id, workspace_id, title, created_at, updated_at)
+             VALUES ('s1', 'w1', 'Rust Ownership', datetime('now'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO messages (id, session_id, role, content, created_at)
+             VALUES ('m1', 's1', 'user', 'borrow checker', datetime('now'))",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO conversation_summaries
+                (id, session_id, workspace_id, summary_type, content, key_topics,
+                 message_range_start, message_range_end, token_count, created_at, updated_at)
+             VALUES
+                ('sum1', 's1', 'w1', 'rolling',
+                 'The user is exploring Rust ownership, borrowing, lifetimes, and how the compiler prevents invalid aliasing while preserving memory safety.',
+                 '[]', 0, 1, 20, datetime('now'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+
+        let items = gather_workspace_items(&conn, "w1");
+        assert_eq!(items.len(), 2);
+        assert!(items.iter().any(|item| item.kind == "summary" && item.text.contains("Rust Ownership")));
+        assert!(items.iter().any(|item| item.kind == "message" && item.text.contains("Message (Rust Ownership): borrow checker")));
+        assert!(!items.iter().any(|item| item.kind == "daily_note"));
     }
 
     #[test]
