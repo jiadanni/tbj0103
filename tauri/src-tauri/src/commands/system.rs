@@ -6,35 +6,70 @@ use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 // Cache for query_gpu_vram() — the underlying call may shell out to
 // nvidia-smi / system_profiler / wmic, each of which can take hundreds of
-// milliseconds (and on cold GPUs/multi-GPU hosts, seconds). The StatusBar
-// polls performance stats every 2.5 s, so without caching every poll pays
-// the full subprocess cost. We cache positive hits briefly (so live VRAM
-// numbers still update) and remember misses for much longer (no point
-// re-probing a machine that has no Nvidia GPU on every call).
+// milliseconds (and on cold GPUs/multi-GPU hosts, seconds). The StatusBar only
+// needs coarse-grained telemetry, so cache hits for a while and remember misses
+// much longer instead of re-probing machines with no supported GPU path.
 struct GpuVramCache {
     fetched_at: Instant,
     result: Option<(u64, u64, String)>,
 }
 
-static GPU_VRAM_CACHE: OnceLock<Mutex<Option<GpuVramCache>>> = OnceLock::new();
-const GPU_VRAM_HIT_TTL: Duration = Duration::from_millis(1_500);
-const GPU_VRAM_MISS_TTL: Duration = Duration::from_secs(60);
+struct GpuVramState {
+    entry: Option<GpuVramCache>,
+    refresh_in_progress: bool,
+}
+
+static GPU_VRAM_CACHE: OnceLock<Mutex<GpuVramState>> = OnceLock::new();
+const GPU_VRAM_HIT_TTL: Duration = Duration::from_secs(30);
+const GPU_VRAM_MISS_TTL: Duration = Duration::from_secs(300);
 
 fn cached_query_gpu_vram() -> Option<(u64, u64, String)> {
-    let cache = GPU_VRAM_CACHE.get_or_init(|| Mutex::new(None));
-    if let Ok(guard) = cache.lock() {
-        if let Some(entry) = guard.as_ref() {
+    let cache = GPU_VRAM_CACHE.get_or_init(|| {
+        Mutex::new(GpuVramState {
+            entry: None,
+            refresh_in_progress: false,
+        })
+    });
+
+    let mut start_refresh = false;
+    let stale_result = if let Ok(mut guard) = cache.lock() {
+        if let Some(entry) = guard.entry.as_ref() {
             let ttl = if entry.result.is_some() { GPU_VRAM_HIT_TTL } else { GPU_VRAM_MISS_TTL };
             if entry.fetched_at.elapsed() < ttl {
                 return entry.result.clone();
             }
         }
+
+        if !guard.refresh_in_progress {
+            guard.refresh_in_progress = true;
+            start_refresh = true;
+        }
+
+        guard.entry.as_ref().and_then(|entry| entry.result.clone())
+    } else {
+        None
+    };
+
+    if start_refresh {
+        std::thread::spawn(|| {
+            let fresh = query_gpu_vram();
+            let cache = GPU_VRAM_CACHE.get_or_init(|| {
+                Mutex::new(GpuVramState {
+                    entry: None,
+                    refresh_in_progress: false,
+                })
+            });
+            if let Ok(mut guard) = cache.lock() {
+                guard.entry = Some(GpuVramCache {
+                    fetched_at: Instant::now(),
+                    result: fresh,
+                });
+                guard.refresh_in_progress = false;
+            }
+        });
     }
-    let fresh = query_gpu_vram();
-    if let Ok(mut guard) = cache.lock() {
-        *guard = Some(GpuVramCache { fetched_at: Instant::now(), result: fresh.clone() });
-    }
-    fresh
+
+    stale_result
 }
 
 #[derive(Debug)]

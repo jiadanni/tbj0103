@@ -67,6 +67,13 @@ const chatInitialState = {
   refineContent: "",
 };
 
+function setVisibilityState(value: DocumentVisibilityState) {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value,
+  });
+}
+
 function taskStarted(taskType: string, model?: string): BackgroundTaskEvent {
   return {
     task_type: taskType,
@@ -78,6 +85,7 @@ function taskStarted(taskType: string, model?: string): BackgroundTaskEvent {
 
 describe("StatusBar", () => {
   beforeEach(() => {
+    setVisibilityState("visible");
     useChatStore.setState(chatInitialState);
     getPerformanceStats.mockResolvedValue(emptyStats);
     listenBackgroundTask.mockReset();
@@ -94,6 +102,15 @@ describe("StatusBar", () => {
     listWorkspaces.mockResolvedValue([]);
     getPromptBankStatus.mockReset();
     getPromptBankStatus.mockResolvedValue(null);
+  });
+
+  it("still samples performance stats when the document reports hidden", async () => {
+    setVisibilityState("hidden");
+
+    render(<StatusBar />);
+
+    await waitFor(() => expect(getPerformanceStats).toHaveBeenCalledTimes(1));
+    expect(listWorkspaces).not.toHaveBeenCalled();
   });
 
   it("renders every active background job", async () => {

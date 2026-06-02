@@ -356,8 +356,12 @@ function ZoomSlider() {
 
 // ── Main StatusBar ────────────────────────────────────────────────────────────
 
-const POLL_INTERVAL_MS = 2500;
-const JOB_RECONCILE_INTERVAL_MS = 5000;
+const PERFORMANCE_POLL_INTERVAL_MS = 10_000;
+const JOB_RECONCILE_INTERVAL_MS = 30_000;
+
+function isDocumentHidden(): boolean {
+  return typeof document !== "undefined" && document.visibilityState === "hidden";
+}
 
 export default function StatusBar() {
   const streamingSessionId = useChatStore((s) => s.streamingSessionId);
@@ -380,13 +384,22 @@ export default function StatusBar() {
   const inFlightRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Poll performance stats — reschedule only after each response completes.
+  // Poll performance stats on a slower cadence, rescheduling after each
+  // response completes so a slow backend sample never overlaps with the next.
   useEffect(() => {
     let cancelled = false;
 
+    function clearTimer() {
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    }
+
     function scheduleNext() {
+      clearTimer();
       if (cancelled) { return; }
-      timerRef.current = setTimeout(() => { void fetchOnce(); }, POLL_INTERVAL_MS);
+      timerRef.current = setTimeout(() => { void fetchOnce(); }, PERFORMANCE_POLL_INTERVAL_MS);
     }
 
     async function fetchOnce() {
@@ -406,12 +419,11 @@ export default function StatusBar() {
       }
     }
 
-    // Kick off immediately, then reschedule after each completion.
     void fetchOnce();
 
     return () => {
       cancelled = true;
-      if (timerRef.current !== null) { clearTimeout(timerRef.current); }
+      clearTimer();
     };
   }, []);
 
@@ -524,12 +536,24 @@ export default function StatusBar() {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
+    function clearTimer() {
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    }
+
     function scheduleNext() {
-      if (cancelled) { return; }
+      clearTimer();
+      if (cancelled || isDocumentHidden()) { return; }
       timer = setTimeout(() => { void reconcileOnce(); }, JOB_RECONCILE_INTERVAL_MS);
     }
 
     async function reconcileOnce() {
+      if (cancelled || isDocumentHidden()) {
+        scheduleNext();
+        return;
+      }
       try {
         const workspaces = await api.workspace.list();
         const statuses = await Promise.all(
@@ -562,11 +586,23 @@ export default function StatusBar() {
       }
     }
 
-    void reconcileOnce();
+    function handleVisibilityChange() {
+      if (isDocumentHidden()) {
+        clearTimer();
+        return;
+      }
+      void reconcileOnce();
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    if (!isDocumentHidden()) {
+      void reconcileOnce();
+    }
 
     return () => {
       cancelled = true;
-      if (timer !== null) { clearTimeout(timer); }
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      clearTimer();
     };
   }, []);
 
