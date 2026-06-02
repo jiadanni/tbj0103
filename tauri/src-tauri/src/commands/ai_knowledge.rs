@@ -1454,6 +1454,17 @@ async fn analyze_workspace_chunked_impl(
         return Err("Not enough workspace material yet to build a useful graph. Add a bit more chat, notes, or documents, then analyze again.".to_string());
     }
 
+    // Preflight: confirm Ollama is reachable before queueing chunks or writing any
+    // analyze_jobs row. Without this, an unreachable Ollama produces an all-zero
+    // "Ok" result that the UI renders as a calm "+0 concepts added" success.
+    {
+        let probe = OllamaClient::new(req.ollama_url.clone())?;
+        probe
+            .list_models("analyze_workspace_preflight")
+            .await
+            .map_err(|e| format!("Cannot reach Ollama to analyze this workspace: {e}"))?;
+    }
+
     let chunk_budget = budget_override.unwrap_or_else(|| {
         let ctx = context_size_for_model(&req.model);
         ((ctx * 3).saturating_sub(2000)).clamp(2000, 10_000)
@@ -1509,6 +1520,7 @@ async fn analyze_workspace_chunked_impl(
     let mut completed_count = 0usize;
     let mut failed_count = 0usize;
     let mut cancelled = false;
+    let mut first_chunk_error: Option<String> = None;
 
     for (i, chunk) in chunks.iter().enumerate() {
         if cancel_rx.has_changed().unwrap_or(false) {
@@ -1594,6 +1606,9 @@ async fn analyze_workspace_chunked_impl(
                     );
                 }
                 failed_count += 1;
+                if first_chunk_error.is_none() {
+                    first_chunk_error = Some(err.clone());
+                }
                 let _ = app.emit("workspace-analysis-progress", &WorkspaceAnalysisProgress {
                     job_id: job_id.clone(),
                     workspace_id: req.workspace_id.clone(),
@@ -1640,6 +1655,16 @@ async fn analyze_workspace_chunked_impl(
             "UPDATE analyze_jobs SET status = ?1, completed_at = ?2 WHERE id = ?3",
             rusqlite::params![status, final_now, job_id],
         );
+    }
+
+    // Gate: if every chunk failed, surface that as an error so the UI doesn't
+    // render a "+0 concepts added" success banner. The analyze_jobs row above
+    // still records the run as 'partial' for diagnostics.
+    if !cancelled && completed_count == 0 && failed_count > 0 {
+        let detail = first_chunk_error.unwrap_or_else(|| "unknown error".to_string());
+        return Err(format!(
+            "Analysis failed for all {failed_count} chunk(s). First error: {detail}"
+        ));
     }
 
     Ok(AnalysisResult {
