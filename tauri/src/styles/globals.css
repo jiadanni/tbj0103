@@ -435,11 +435,11 @@ select optgroup {
 @keyframes tooltip-fade-in-top {
   from { 
     opacity: 0;
-    transform: translateX(-50%) translateY(4px) scale(0.96);
+    transform: translateX(-50%) translateY(calc(-100% + 4px)) scale(0.96);
   }
   to { 
     opacity: 1;
-    transform: translateX(-50%) translateY(0) scale(1);
+    transform: translateX(-50%) translateY(-100%) scale(1);
   }
 }
 
@@ -457,11 +457,11 @@ select optgroup {
 @keyframes tooltip-fade-in-left {
   from { 
     opacity: 0;
-    transform: translateY(-50%) translateX(4px) scale(0.96);
+    transform: translateX(calc(-100% + 4px)) translateY(-50%) scale(0.96);
   }
   to { 
     opacity: 1;
-    transform: translateY(-50%) translateX(0) scale(1);
+    transform: translateX(-100%) translateY(-50%) scale(1);
   }
 }
 
