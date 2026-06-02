@@ -581,6 +581,7 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('font_size', '14'),
     ('sidebar_width', '240'),
     ('ollama_base_url', '"http://localhost:11434"'),
+    ('ollama_remote_enabled', 'false'),
     ('auto_start_ollama', 'false'),
     ('embedding_model', '"nomic-embed-text"'),
     ('demo_mode', 'false'),

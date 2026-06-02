@@ -248,6 +248,7 @@ describe("PreferencesView", () => {
       background_model: "",
       quick_search_models: [],
       ollama_base_url: "http://localhost:11434",
+      ollama_remote_enabled: false,
       mlx_base_url: "http://localhost:8080",
       llamacpp_model_paths: [],
       embedding_model: "nomic-embed-text",
@@ -327,6 +328,7 @@ describe("PreferencesView", () => {
       compare_model_a: fullSettings.compare_model_a,
       compare_model_b: fullSettings.compare_model_b,
       ollama_base_url: fullSettings.ollama_base_url,
+      ollama_remote_enabled: fullSettings.ollama_remote_enabled,
       auto_start_ollama: fullSettings.auto_start_ollama,
       mlx_base_url: fullSettings.mlx_base_url,
       llamacpp_model_paths: fullSettings.llamacpp_model_paths,
@@ -426,6 +428,7 @@ describe("PreferencesView", () => {
 
     expect(await screen.findByText("Ollama", { selector: "div" })).toBeInTheDocument();
     expect(screen.getByText("Gemma 4")).toBeInTheDocument();
+    expect(screen.getByText("Remote Ollama")).toBeInTheDocument();
 
     // Switch to Browser Automation tab for Web AI models
     const webAiTab = screen.getByText("Browser Automation");

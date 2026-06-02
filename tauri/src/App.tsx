@@ -269,7 +269,7 @@ export default function App() {
         // alone can take 60s+, which used to leave the boot overlay visible
         // long enough to feel like a hang. Features that need Ollama handle
         // "not yet running" via their own loading states.
-        if (ai.auto_start_ollama) {
+        if (ai.auto_start_ollama && !ai.ollama_remote_enabled) {
           void api.ollama.ensureRunning(ai.ollama_base_url || undefined).catch(() => null);
         }
       } catch {

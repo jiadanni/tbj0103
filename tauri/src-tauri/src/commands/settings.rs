@@ -29,6 +29,7 @@ pub struct Settings {
     pub font_size: i64,
     pub sidebar_width: i64,
     pub ollama_base_url: String,
+    pub ollama_remote_enabled: bool,
     pub auto_start_ollama: bool,
     pub mlx_base_url: String,
     pub llamacpp_model_paths: Vec<String>,
@@ -110,6 +111,7 @@ impl Default for Settings {
             font_size: 16,
             sidebar_width: 240,
             ollama_base_url: "http://localhost:11434".to_string(),
+            ollama_remote_enabled: false,
             auto_start_ollama: false,
             mlx_base_url: "http://localhost:8080".to_string(),
             llamacpp_model_paths: Vec::new(),
@@ -367,9 +369,15 @@ pub async fn get_settings(app: AppHandle, state: State<'_, DbState>) -> Result<S
         ollama_base_url: get_setting(&conn, "ollama_base_url")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.ollama_base_url),
+        ollama_remote_enabled: get_setting(&conn, "ollama_remote_enabled")
+            .map(|v| v == "true")
+            .unwrap_or(def.ollama_remote_enabled),
         auto_start_ollama: get_setting(&conn, "auto_start_ollama")
             .map(|v| v == "true")
-            .unwrap_or(def.auto_start_ollama),
+            .unwrap_or(def.auto_start_ollama)
+            && !get_setting(&conn, "ollama_remote_enabled")
+                .map(|v| v == "true")
+                .unwrap_or(def.ollama_remote_enabled),
         mlx_base_url: get_setting(&conn, "mlx_base_url")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.mlx_base_url),
@@ -664,8 +672,13 @@ pub fn update_settings(
     )?;
     set_setting(
         &conn,
+        "ollama_remote_enabled",
+        &settings.ollama_remote_enabled.to_string(),
+    )?;
+    set_setting(
+        &conn,
         "auto_start_ollama",
-        &settings.auto_start_ollama.to_string(),
+        &(settings.auto_start_ollama && !settings.ollama_remote_enabled).to_string(),
     )?;
     set_setting(
         &conn,
@@ -1113,6 +1126,7 @@ pub struct AiSettings {
     pub compare_model_a: String,
     pub compare_model_b: String,
     pub ollama_base_url: String,
+    pub ollama_remote_enabled: bool,
     pub auto_start_ollama: bool,
     pub mlx_base_url: String,
     pub llamacpp_model_paths: Vec<String>,
@@ -1286,9 +1300,15 @@ pub async fn get_ai_settings(state: State<'_, DbState>) -> Result<AiSettings, St
             ollama_base_url: lookup("ollama_base_url")
                 .and_then(|v| serde_json::from_str(&v).ok())
                 .unwrap_or(def.ollama_base_url),
+            ollama_remote_enabled: lookup("ollama_remote_enabled")
+                .map(|v| v == "true")
+                .unwrap_or(def.ollama_remote_enabled),
             auto_start_ollama: lookup("auto_start_ollama")
                 .map(|v| v == "true")
-                .unwrap_or(def.auto_start_ollama),
+                .unwrap_or(def.auto_start_ollama)
+                && !lookup("ollama_remote_enabled")
+                    .map(|v| v == "true")
+                    .unwrap_or(def.ollama_remote_enabled),
             mlx_base_url: lookup("mlx_base_url")
                 .and_then(|v| serde_json::from_str(&v).ok())
                 .unwrap_or(def.mlx_base_url),
