@@ -149,9 +149,17 @@ export default function App() {
       root.style.setProperty("--accent-color", accentColor);
       root.style.setProperty("--accent-color-rgb", hexToRgbChannels(accentColor));
     }
-    root.style.setProperty("--font-size-base", `${fontSize}px`);
-    root.style.fontSize = `${fontSize}px`;
-  }, [theme, accentColor, fontSize]);
+    // Clamp to the supported zoom range (11–22). An earlier build allowed
+    // Ctrl+scroll to drive font-size up to 48px, and that value still lives
+    // in some users' localStorage/DB.
+    const safeFontSize = Math.max(11, Math.min(22, fontSize || 16));
+    if (safeFontSize !== fontSize) {
+      setFontSize(safeFontSize);
+      api.settings.updateOne("font_size", safeFontSize).catch(() => {});
+    }
+    root.style.setProperty("--font-size-base", `${safeFontSize}px`);
+    root.style.fontSize = `${safeFontSize}px`;
+  }, [theme, accentColor, fontSize, setFontSize]);
 
   // Zoom: Ctrl/Cmd + Scroll; Keyboard shortcuts (Ctrl/Cmd + + / - / 0); F12 for DevTools
   useEffect(() => {
@@ -167,21 +175,27 @@ export default function App() {
         api.system.openPreferencesWindow(getPrefsWindowSingleInstance()).catch(() => {});
       }
 
-      // Zoom keyboard shortcuts
+      // Zoom keyboard shortcuts — range must match Sidebar/Preferences (11–22)
+      // so accidental Ctrl+scroll can't blow the UI up to 40px+.
       if (isCtrlCmd) {
         if (e.key === "=" || e.key === "+") {
           e.preventDefault();
           const current = useSettingsStore.getState().fontSize;
-          setFontSize(Math.min(current + 2, 48));
+          const next = Math.min(current + 1, 22);
+          setFontSize(next);
+          api.settings.updateOne("font_size", next).catch(() => {});
           triggerZoomIndicator();
         } else if (e.key === "-") {
           e.preventDefault();
           const current = useSettingsStore.getState().fontSize;
-          setFontSize(Math.max(current - 2, 10));
+          const next = Math.max(current - 1, 11);
+          setFontSize(next);
+          api.settings.updateOne("font_size", next).catch(() => {});
           triggerZoomIndicator();
         } else if (e.key === "0") {
           e.preventDefault();
           setFontSize(16);
+          api.settings.updateOne("font_size", 16).catch(() => {});
           triggerZoomIndicator();
         }
       }
@@ -192,8 +206,10 @@ export default function App() {
         e.preventDefault();
         const delta = e.deltaY > 0 ? -1 : 1;
         const current = useSettingsStore.getState().fontSize;
-        const next = Math.min(Math.max(current + delta, 10), 48);
+        const next = Math.min(Math.max(current + delta, 11), 22);
+        if (next === current) {return;}
         setFontSize(next);
+        api.settings.updateOne("font_size", next).catch(() => {});
         triggerZoomIndicator();
       }
     };

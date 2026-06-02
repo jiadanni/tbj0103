@@ -7,7 +7,12 @@ import {
   type BackgroundTaskPromptEvent,
 } from "../lib/api";
 import { useChatStore } from "../stores/chatStore";
+import { useSettingsStore } from "../stores/settingsStore";
 import { Tooltip } from "./Tooltip";
+
+const ZOOM_MIN = 11;
+const ZOOM_MAX = 22;
+const ZOOM_DEFAULT = 16;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -305,6 +310,47 @@ function JobPromptPill({
         </button>
       </Tooltip>
     </div>
+  );
+}
+
+/** Zoom slider — binds to the global font-size setting (11–22 px). */
+function ZoomSlider() {
+  const fontSize = useSettingsStore((s) => s.fontSize);
+  const setFontSize = useSettingsStore((s) => s.setFontSize);
+
+  const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, fontSize || ZOOM_DEFAULT));
+  const percent = Math.round(((clamped - ZOOM_MIN) / (ZOOM_MAX - ZOOM_MIN)) * 100);
+
+  const commit = (next: number) => {
+    const bounded = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(next)));
+    if (bounded === fontSize) { return; }
+    setFontSize(bounded);
+    api.settings.updateOne("font_size", bounded).catch(() => {});
+  };
+
+  return (
+    <Tooltip content={`Zoom — ${clamped}px (double-click to reset)`}>
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs text-[var(--text-secondary)] leading-none font-medium">Zoom:</span>
+        <input
+          type="range"
+          min={ZOOM_MIN}
+          max={ZOOM_MAX}
+          step={1}
+          value={clamped}
+          onChange={(e) => commit(parseInt(e.target.value, 10))}
+          onDoubleClick={() => commit(ZOOM_DEFAULT)}
+          aria-label="App zoom level"
+          className="h-1.5 w-20 cursor-pointer appearance-none rounded-full bg-[color-mix(in_srgb,var(--border-color),transparent_50%)] accent-[var(--accent-color)]"
+          style={{
+            background: `linear-gradient(to right, rgba(var(--accent-color-rgb),0.6) 0%, rgba(var(--accent-color-rgb),0.6) ${percent}%, color-mix(in srgb, var(--border-color), transparent 50%) ${percent}%, color-mix(in srgb, var(--border-color), transparent 50%) 100%)`,
+          }}
+        />
+        <span className="text-xs tabular-nums text-[var(--text-secondary)] leading-none w-7 text-right">
+          {clamped}
+        </span>
+      </div>
+    </Tooltip>
   );
 }
 
@@ -634,6 +680,10 @@ export default function StatusBar() {
 
       {/* Right — performance meters (aria-hidden; screen readers get no value from constant churn) */}
       <div className="flex items-center gap-4 shrink-0" aria-hidden="true">
+        <ZoomSlider />
+
+        <span className="h-3.5 w-px bg-[var(--border-color)]" />
+
         {/* CPU — per-core bars when available, fallback to aggregate */}
         {cpuCores.length > 0
           ? <CoreBars cores={cpuCores} aggregate={cpuPct} />
