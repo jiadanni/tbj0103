@@ -14,17 +14,6 @@ export interface WordDefinition {
   y: number;
 }
 
-interface DictApiMeaning {
-  partOfSpeech: string;
-  definitions: { definition: string }[];
-}
-
-interface DictApiEntry {
-  word: string;
-  phonetic?: string;
-  meanings: DictApiMeaning[];
-}
-
 const CACHE = new Map<string, Omit<WordDefinition, "x" | "y"> | "not_found">();
 const TOKEN_CHAR_RE = /[A-Za-z0-9.+#/_-]/;
 
@@ -190,50 +179,7 @@ export function useWordHover(
         return;
       }
 
-      // 3. Check local session cache
-      const cached = CACHE.get(word);
-      if (cached === "not_found") {return;}
-      if (cached) {
-        setDefinition({ ...cached, x, y });
-        return;
-      }
-
-      // Public dictionary fallback is single-word only.
-      if (word.includes(" ")) {
-        CACHE.set(word, "not_found");
-        return;
-      }
-
-      // 4. Fetch from public dictionary API
-      try {
-        const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
-        if (!res.ok) {
-          CACHE.set(word, "not_found");
-          return;
-        }
-        
-        const data = (await res.json()) as DictApiEntry[];
-        const entry = data[0];
-        if (!entry) {
-          CACHE.set(word, "not_found");
-          return;
-        }
-
-        const firstMeaning = entry.meanings[0];
-        const result: Omit<WordDefinition, "x" | "y"> = {
-          word: entry.word,
-          phonetic: entry.phonetic,
-          partOfSpeech: firstMeaning?.partOfSpeech,
-          definition: firstMeaning?.definitions[0]?.definition || "No definition found.",
-          source: "dictionary",
-        };
-
-        CACHE.set(word, result);
-        setDefinition({ ...result, x, y });
-      } catch (err) {
-        console.error("Dictionary API fetch error:", err);
-        CACHE.set(word, "not_found");
-      }
+      CACHE.set(word, "not_found");
     }, 800); // 800ms hover duration
   }, [containerRef, isStreaming, clearTimer, workspaceId]);
 
