@@ -10,6 +10,7 @@ use regex::Regex;
 use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
+use tauri::{AppHandle, Runtime};
 
 const GENERIC_TERMS: &[&str] = &[
     "about", "above", "across", "adjacent", "after", "afterwards", "again", "against", "all",
@@ -254,7 +255,8 @@ pub fn list_terms(
     Ok(results)
 }
 
-pub fn resolve_term(
+pub fn resolve_term<R: Runtime>(
+    app: &AppHandle<R>,
     conn: &Connection,
     workspace_id: &str,
     candidates: &[String],
@@ -262,6 +264,7 @@ pub fn resolve_term(
     let workspace_ids = ancestor_workspace_ids(conn, workspace_id)?;
     let workspace_names = workspace_names_by_id(conn, &workspace_ids)?;
 
+    // 1. Try resolving custom workspace glossary term first
     for candidate in candidates {
         let Some(normalized) = normalize_term(candidate) else {
             continue;
@@ -292,6 +295,13 @@ pub fn resolve_term(
                 resolved.workspace_name = workspace_names.get(&resolved.workspace_id).cloned();
                 return Ok(Some(resolved));
             }
+        }
+    }
+
+    // 2. Fall back to offline dictionary query
+    for candidate in candidates {
+        if let Some(resolved) = crate::services::dictionary_service::lookup_word(app, candidate)? {
+            return Ok(Some(resolved));
         }
     }
 

@@ -6,13 +6,14 @@ use crate::services::workspace_glossary;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
 #[tauri::command]
-pub fn resolve_workspace_glossary_term(
+pub fn resolve_workspace_glossary_term<R: Runtime>(
+    app: AppHandle<R>,
     state: State<DbState>,
     workspace_id: String,
     candidates: Vec<String>,
 ) -> Result<Option<ResolvedWorkspaceGlossaryTerm>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    workspace_glossary::resolve_term(&conn, &workspace_id, &candidates)
+    workspace_glossary::resolve_term(&app, &conn, &workspace_id, &candidates)
 }
 
 #[tauri::command]
