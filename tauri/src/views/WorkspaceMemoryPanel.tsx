@@ -37,6 +37,7 @@ export default function WorkspaceMemoryPanel({ workspaceId, onMemoryCountChange,
   // 0 = current live summary; 1..N = older snapshots (snapshots[index-1])
   const [historyIndex, setHistoryIndex] = useState(0);
   const [restoring, setRestoring] = useState(false);
+  const [deletingFacts, setDeletingFacts] = useState(false);
 
   const loadMemories = useCallback(async () => {
     if (!workspaceId) { return; }
@@ -137,6 +138,19 @@ export default function WorkspaceMemoryPanel({ workspaceId, onMemoryCountChange,
   async function deleteMemory(id: string) {
     await api.memory.delete(id);
     setMemories((prev) => prev.filter((m) => m.id !== id));
+  }
+
+  async function deleteAllFacts() {
+    if (!workspaceId || facts.length === 0) { return; }
+    const confirmed = window.confirm(`Delete all ${facts.length} fact${facts.length === 1 ? "" : "s"} for this workspace? Preferences will be kept.`);
+    if (!confirmed) { return; }
+    setDeletingFacts(true);
+    try {
+      await api.memory.deleteWorkspaceFacts(workspaceId);
+      setMemories((prev) => prev.filter((m) => m.memory_type !== "fact"));
+    } finally {
+      setDeletingFacts(false);
+    }
   }
 
   return (
@@ -270,9 +284,20 @@ export default function WorkspaceMemoryPanel({ workspaceId, onMemoryCountChange,
           {/* Facts */}
           {facts.length > 0 && (
             <div>
-              <h4 className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                Facts ({facts.length})
-              </h4>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h4 className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  Facts ({facts.length})
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => { void deleteAllFacts(); }}
+                  disabled={deletingFacts}
+                  className="inline-flex items-center gap-1 rounded-md border border-red-500/25 px-2 py-1 text-[10px] font-semibold text-red-300 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Trash2 size={11} />
+                  {deletingFacts ? "Deleting..." : "Delete all facts"}
+                </button>
+              </div>
               <div className="space-y-1.5">
                 {facts.map((memory) => (
                   <MemoryItem key={memory.id} memory={memory} onUpdate={updateMemory} onDelete={deleteMemory} />

@@ -15,6 +15,7 @@ const apiMocks = vi.hoisted(() => ({
   listWorkspaces: vi.fn(),
   getSummary: vi.fn(),
   listMemories: vi.fn(),
+  deleteWorkspaceFacts: vi.fn(() => Promise.resolve(0)),
   getMemorySummary: vi.fn(),
   listSummarySnapshots: vi.fn(() => Promise.resolve([])),
   getTopicSignature: vi.fn(),
@@ -40,6 +41,7 @@ vi.mock("@/lib/api", () => ({
     },
     memory: {
       list: apiMocks.listMemories,
+      deleteWorkspaceFacts: apiMocks.deleteWorkspaceFacts,
       getSummary: apiMocks.getMemorySummary,
       listSummarySnapshots: apiMocks.listSummarySnapshots,
     },
@@ -147,6 +149,7 @@ describe("WorkspaceSettingsView", () => {
       recent_activity: [],
     });
     apiMocks.listMemories.mockResolvedValue([]);
+    apiMocks.deleteWorkspaceFacts.mockResolvedValue(0);
     apiMocks.listWorkspaces.mockResolvedValue([]);
     apiMocks.getMemorySummary.mockResolvedValue(null);
     apiMocks.getTopicSignature.mockResolvedValue(null);
@@ -232,6 +235,63 @@ describe("WorkspaceSettingsView", () => {
     fireEvent.click(screen.getByTitle("Rename"));
 
     expect(screen.queryByPlaceholderText("Optional description…")).not.toBeInTheDocument();
+  });
+
+  it("deletes all workspace facts without removing preferences from the memory panel", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    apiMocks.listMemories.mockResolvedValue([
+      {
+        id: "fact-1",
+        workspace_id: "root-1",
+        content: "User is learning Rust ownership.",
+        memory_type: "fact",
+        scope: "workspace",
+        source_session_id: null,
+        is_pinned: false,
+        is_active: true,
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+      {
+        id: "pref-1",
+        workspace_id: "root-1",
+        content: "User prefers concise answers.",
+        memory_type: "preference",
+        scope: "workspace",
+        source_session_id: null,
+        is_pinned: false,
+        is_active: true,
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    ]);
+
+    useWorkspaceStore.setState({
+      workspaces: [
+        makeWorkspace({ id: "root-1", name: "Parent Workspace" }),
+      ],
+      activeWorkspaceId: "root-1",
+      activeParentWorkspaceId: "root-1",
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkspaceSettingsView />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText("User is learning Rust ownership.")).toBeInTheDocument();
+    expect(screen.getByText("User prefers concise answers.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /delete all facts/i }));
+
+    await waitFor(() => {
+      expect(apiMocks.deleteWorkspaceFacts).toHaveBeenCalledWith("root-1");
+    });
+    expect(screen.queryByText("User is learning Rust ownership.")).not.toBeInTheDocument();
+    expect(screen.getByText("User prefers concise answers.")).toBeInTheDocument();
+
+    confirmSpy.mockRestore();
   });
 
   it("shows the created date only in the right-side details area", async () => {

@@ -202,6 +202,17 @@ pub fn delete_memory(state: State<DbState>, id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn delete_workspace_facts(state: State<DbState>, workspace_id: String) -> Result<i64, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM memories WHERE workspace_id = ?1 AND scope = 'workspace' AND memory_type = 'fact'",
+        rusqlite::params![workspace_id],
+    )
+    .map(|count| count as i64)
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn get_active_memories(
     state: State<DbState>,
     workspace_id: String,
