@@ -68,6 +68,12 @@ const TYPE_COLORS: Record<string, string> = {
   other: "#94a3b8",
 };
 
+type WorkspaceAnalyzableStatus = {
+  ready: boolean;
+  item_count: number;
+  char_count: number;
+};
+
 function colorFor(type: string) {
   return TYPE_COLORS[type.toLowerCase()] ?? TYPE_COLORS.other;
 }
@@ -275,9 +281,11 @@ export default function KnowledgeGraphView({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState("");
   const [analyzeResult, setAnalyzeResult] = useState<AnalysisResult | null>(null);
-  const [workspaceReady, setWorkspaceReady] = useState<boolean | null>(null);
+  const [workspaceAnalyzable, setWorkspaceAnalyzable] = useState<WorkspaceAnalyzableStatus | null>(null);
   const [descendantProgress, setDescendantProgress] = useState<DescendantAnalysisProgress | null>(null);
   const [chunkProgress, setChunkProgress] = useState<WorkspaceAnalysisProgress | null>(null);
+  const [confirmUndoOpen, setConfirmUndoOpen] = useState(false);
+  const [undoBusy, setUndoBusy] = useState(false);
 
   const [conceptSearch, setConceptSearch] = useState("");
   const [selectedConcept, setSelectedConcept] = useState<ConceptNode | null>(null);
@@ -416,12 +424,12 @@ export default function KnowledgeGraphView({
 
   useEffect(() => {
     if (!activeWorkspaceId) {
-      setWorkspaceReady(null);
+      setWorkspaceAnalyzable(null);
       return;
     }
     api.knowledge.checkWorkspaceAnalyzable(activeWorkspaceId)
-      .then((result) => setWorkspaceReady(result.ready))
-      .catch(() => setWorkspaceReady(null));
+      .then((result) => setWorkspaceAnalyzable(result))
+      .catch(() => setWorkspaceAnalyzable(null));
   }, [activeWorkspaceId]);
 
   const loadProposals = useCallback(async () => {
@@ -611,20 +619,24 @@ export default function KnowledgeGraphView({
 
   async function handleUndo() {
     if (!activeWorkspaceId) { return; }
+    setUndoBusy(true);
     try {
       await api.graph.undoLastAnalysis(activeWorkspaceId);
+      setConfirmUndoOpen(false);
       void loadGraph();
       void loadSummary();
       void loadProposals();
       setSuccessDialog({
-        title: "Analysis undone",
-        description: "Reverted the last analysis changes successfully.",
+        title: "AI analysis output removed",
+        description: "Removed the latest AI-generated concepts and links for this workspace.",
       });
     } catch (err) {
       setErrorDialog({
-        title: "Undo failed",
+        title: "Failed to remove AI analysis output",
         description: err instanceof Error ? err.message : String(err),
       });
+    } finally {
+      setUndoBusy(false);
     }
   }
 
@@ -759,7 +771,11 @@ export default function KnowledgeGraphView({
   const hasModels = availableModels.length > 0;
   const isDemoWithoutModels = isDemoMode && !hasModels;
   const canRunAiActions = hasModels || isDemoWithoutModels;
-  const insufficientData = workspaceReady === false && !includeDescendants;
+  const insufficientData = workspaceAnalyzable?.ready === false && !includeDescendants;
+  const hasAiInferredGraph = nodes.length > 0 || links.length > 0 || (overview?.concepts ?? 0) > 0;
+  const sourceMaterialSummary = workspaceAnalyzable
+    ? `${workspaceAnalyzable.item_count} source item${workspaceAnalyzable.item_count === 1 ? "" : "s"}, ${workspaceAnalyzable.char_count.toLocaleString()} characters`
+    : "";
   const analyzeButtonLabel = isAnalyzing
     ? (descendantProgress
       ? `Analyzing ${descendantProgress.workspace_name} (${descendantProgress.index + 1}/${descendantProgress.total})…`
@@ -772,11 +788,13 @@ export default function KnowledgeGraphView({
   const analyzeHelpText = isDemoWithoutModels
     ? "Demo data is preloaded. No local models are installed on this machine, so AI actions use simulated demo output."
     : insufficientData
-      ? "Not enough workspace material yet to build a useful graph. Add more chat, notes, or documents first."
+      ? hasAiInferredGraph
+        ? `This workspace has existing AI-inferred topics, but not enough source material for a fresh analysis${sourceMaterialSummary ? ` (${sourceMaterialSummary})` : ""}. Add source material or reset stale AI-inferred data from Preferences > Data Controls.`
+        : `Not enough source material for AI analysis${sourceMaterialSummary ? ` (${sourceMaterialSummary})` : ""}. Add more chat, notes, or documents first.`
       : includeDescendants
         ? "Runs analysis on each sub-workspace sequentially. The merged graph updates as each workspace completes. Yields to active chat."
         : hasModels
-          ? "Use this to extract topics and links from what you have already read, asked, and captured."
+          ? "Extract AI-inferred topics and links from the source material you have already read, asked, and captured."
           : "No local AI models are available yet. Install or connect a model to analyze this workspace.";
   const cardHelpText = isDemoWithoutModels
     ? "Demo mode can generate sample flashcards locally for this topic."
@@ -1135,13 +1153,13 @@ export default function KnowledgeGraphView({
                     Refresh Overview
                   </button>
                   <button
-                    onClick={handleUndo}
-                    disabled={isAnalyzing}
+                    onClick={() => setConfirmUndoOpen(true)}
+                    disabled={isAnalyzing || undoBusy}
                     className="inline-flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm text-red-400 transition-colors hover:bg-red-500/20 hover:border-red-500/50"
-                    title="Undo the last analysis job and revert its additions/updates"
+                    title="Remove the latest AI-generated concepts and links for this workspace"
                   >
                     <Trash2 size={14} />
-                    Undo Last Analysis
+                    Remove Latest AI Output
                   </button>
                 </div>
                 {analyzeError && (
@@ -1742,6 +1760,22 @@ export default function KnowledgeGraphView({
           title={successDialog.title}
           description={successDialog.description}
           onConfirm={() => setSuccessDialog(null)}
+        />
+      )}
+
+      {confirmUndoOpen && (
+        <ConfirmDialog
+          title="Remove latest AI output?"
+          description="This removes the latest AI-generated concepts, links, and updates for the current workspace. It does not compare versions or reset all stale AI-inferred data."
+          confirmLabel="Remove Latest Output"
+          tone="danger"
+          busy={undoBusy}
+          onConfirm={() => { void handleUndo(); }}
+          onCancel={() => {
+            if (!undoBusy) {
+              setConfirmUndoOpen(false);
+            }
+          }}
         />
       )}
 

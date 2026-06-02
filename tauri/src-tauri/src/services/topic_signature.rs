@@ -26,6 +26,14 @@ const GENERIC_TOPIC_TAGS: &[&str] = &[
     "questions",
     "answer",
     "answers",
+    "what",
+    "when",
+    "where",
+    "why",
+    "how",
+    "who",
+    "mean",
+    "means",
     "help",
     "explain",
     "explaining",
@@ -47,9 +55,22 @@ const GENERIC_TOPIC_TAGS: &[&str] = &[
     "debug",
     "implementation",
     "implement",
+    "dependency",
+    "dependencies",
+    "management",
     "feature",
     "features",
     "system",
+    "systems",
+    "programming",
+    "language",
+    "languages",
+    "memory",
+    "space",
+    "abstraction",
+    "allocation",
+    "collection",
+    "collections",
     "using",
     "used",
     "use",
@@ -127,6 +148,7 @@ const GENERIC_TOPIC_TAGS: &[&str] = &[
     "next",
     "new",
     "old",
+    "already",
     "generic",
     "either",
     "consuming",
@@ -423,6 +445,8 @@ mod tests {
         assert!(is_specific_topic_tag("anaconda"));
         assert!(is_specific_topic_tag("linux"));
         assert!(is_specific_topic_tag("java"));
+        assert!(is_specific_topic_tag("rust"));
+        assert!(is_specific_topic_tag("cargo"));
     }
 
     #[test]
@@ -440,6 +464,32 @@ fixing anaconda path issue on linux for java tooling\n";
         assert!(!tags.iter().any(|tag| tag == "line"));
         assert!(!tags.iter().any(|tag| tag == "module"));
         assert!(!tags.iter().any(|tag| tag == "command"));
+    }
+
+    #[test]
+    fn rejects_question_words_and_roadmap_noise() {
+        assert!(!is_specific_topic_tag("what"));
+        assert!(!is_specific_topic_tag("programming"));
+        assert!(!is_specific_topic_tag("language"));
+        assert!(!is_specific_topic_tag("memory"));
+        assert!(!is_specific_topic_tag("space"));
+
+        let text = "\
+what what what programming language memory space abstraction allocation collections\n\
+rust cargo toml ownership borrow checker cargo dependency management\n";
+
+        let tags = extract_specific_tags(text, 10);
+
+        assert!(tags.iter().any(|tag| tag == "rust"));
+        assert!(tags.iter().any(|tag| tag == "cargo"));
+        assert!(!tags.iter().any(|tag| tag == "what"));
+        assert!(!tags.iter().any(|tag| tag == "programming"));
+        assert!(!tags.iter().any(|tag| tag == "language"));
+        assert!(!tags.iter().any(|tag| tag == "memory"));
+        assert!(!tags.iter().any(|tag| tag == "space"));
+        assert!(!tags.iter().any(|tag| tag == "abstraction"));
+        assert!(!tags.iter().any(|tag| tag == "allocation"));
+        assert!(!tags.iter().any(|tag| tag == "collections"));
     }
 
     #[test]

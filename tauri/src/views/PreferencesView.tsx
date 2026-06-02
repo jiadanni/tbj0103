@@ -7,8 +7,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
-import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Sparkles, Columns2, ChevronLeft, ChevronRight, BarChart2, Library, History, Search, Paperclip, Send, FileEdit, ArrowUpDown, UserCircle } from "lucide-react";
-import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat, type CoreSettings, type AiSettings, type AdvancedSettings } from "../lib/api";
+import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Sparkles, Columns2, ChevronLeft, ChevronRight, BarChart2, Library, History, Search, Paperclip, Send, FileEdit, ArrowUpDown, UserCircle, SlidersHorizontal, RotateCcw, Loader2 } from "lucide-react";
+import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat, type CoreSettings, type AiSettings, type AdvancedSettings, type KnowledgeResetOptions, type KnowledgeResetResult } from "../lib/api";
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
 import { groupModelsByFamily } from "../lib/modelFamilyGrouping";
@@ -49,6 +49,7 @@ const TABS: { id: PreferencesSection; label: string; Icon: React.ElementType }[]
   { id: "webai", label: "Browser Automation", Icon: Globe },
   { id: "security", label: "Security", Icon: ShieldCheck },
   { id: "workspaces", label: "Workspaces", Icon: LayoutGrid },
+  { id: "data", label: "Data Controls", Icon: SlidersHorizontal },
   { id: "backup", label: "Backup", Icon: HardDrive },
   { id: "import", label: "Import", Icon: FolderInput },
   { id: "mcp", label: "MCP", Icon: Network },
@@ -114,6 +115,7 @@ const TAB_KEYWORDS: Record<string, string[]> = {
     "Multi-device Sync", "Enable sync", "Remote URL", "Last synced", "Git",
   ],
   workspaces: ["Workspaces", "Workspace management"],
+  data: ["Data Controls", "Reset AI-Inferred Workspace Data", "Derived data", "Global maintenance"],
   backup: ["Workspace Backup", "Global Backup", "Backup directory", "Schedule"],
   import: ["Import", "Migrate"],
   mcp: ["Model Context Protocol", "MCP Server", "Server Name", "Command"],
@@ -1396,6 +1398,336 @@ function useIsLargeScreen() {
   return isLarge;
 }
 
+function handleLinuxPreferencesWheel(event: React.WheelEvent<HTMLDivElement>) {
+  if (!isLinux || event.ctrlKey) { return; }
+  const element = event.currentTarget;
+  if (element.scrollHeight <= element.clientHeight) { return; }
+  if (Math.abs(event.deltaY) < Math.abs(event.deltaX)) { return; }
+
+  const maxScrollTop = element.scrollHeight - element.clientHeight;
+  const multiplier = event.deltaMode === 1 ? 48 : event.deltaMode === 2 ? element.clientHeight : 2.8;
+  const nextScrollTop = Math.max(0, Math.min(maxScrollTop, element.scrollTop + event.deltaY * multiplier));
+  if (nextScrollTop === element.scrollTop) { return; }
+
+  event.preventDefault();
+  element.scrollTop = nextScrollTop;
+}
+
+const DEFAULT_DATA_RESET_OPTIONS: KnowledgeResetOptions = {
+  clear_graph: true,
+  clear_topic_signatures: true,
+  clear_prompt_bank: true,
+  clear_analysis_jobs: true,
+  clear_legacy_topics: true,
+  delete_generated_cards: true,
+};
+
+function totalKnowledgeResetRows(result: KnowledgeResetResult | null): number {
+  if (!result) {
+    return 0;
+  }
+  return result.concept_nodes
+    + result.concept_links
+    + result.concept_mentions
+    + result.graph_statistics
+    + result.analyze_jobs
+    + result.analyze_job_chunks
+    + result.change_proposals
+    + result.flashcard_topics
+    + result.generated_cards_deleted
+    + result.generated_cards_detached
+    + result.learning_goals_detached
+    + result.topic_signatures_cleared
+    + result.prompt_bank_prompts
+    + result.prompt_bank_jobs;
+}
+
+function formatKnowledgeResetResult(result: KnowledgeResetResult): string {
+  const rows = totalKnowledgeResetRows(result);
+  return `${rows} AI-inferred row${rows === 1 ? "" : "s"} reset across ${result.workspace_count} workspace${result.workspace_count === 1 ? "" : "s"}. Source material was preserved.`;
+}
+
+function KnowledgeResetCountGrid({ result }: { result: KnowledgeResetResult }) {
+  const items = [
+    ["Workspaces", result.workspace_count],
+    ["Concepts", result.concept_nodes],
+    ["Links", result.concept_links],
+    ["Mentions", result.concept_mentions],
+    ["Analysis jobs", result.analyze_jobs + result.analyze_job_chunks],
+    ["Proposals", result.change_proposals],
+    ["Legacy topics", result.flashcard_topics],
+    ["Cards deleted", result.generated_cards_deleted],
+    ["Cards detached", result.generated_cards_detached],
+    ["Goals detached", result.learning_goals_detached],
+    ["Topic signatures", result.topic_signatures_cleared],
+    ["Prompt bank", result.prompt_bank_prompts + result.prompt_bank_jobs],
+  ];
+
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      {items.map(([label, value]) => (
+        <div key={label} className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
+          <div className="text-sm font-semibold text-[var(--text-primary)]">{value}</div>
+          <div className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">{label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DataControlsPreferences() {
+  const [options, setOptions] = useState<KnowledgeResetOptions>({ ...DEFAULT_DATA_RESET_OPTIONS });
+  const [preview, setPreview] = useState<KnowledgeResetResult | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const optionGroups: Array<{
+    title: string;
+    rows: Array<{ key: keyof KnowledgeResetOptions; label: string; description: string }>;
+  }> = [
+    {
+      title: "Workspace Map",
+      rows: [
+        { key: "clear_graph", label: "Graph and roadmap", description: "Concepts, links, mentions, graph statistics, and concept proposals." },
+        { key: "clear_topic_signatures", label: "Topic signatures", description: "Workspace topic fingerprints that can re-seed old concepts." },
+      ],
+    },
+    {
+      title: "Chat",
+      rows: [
+        { key: "clear_prompt_bank", label: "Prompt bank", description: "Stored starter prompts and prompt-bank jobs." },
+      ],
+    },
+    {
+      title: "AI Analysis",
+      rows: [
+        { key: "clear_analysis_jobs", label: "Analysis jobs", description: "Analyze Workspace job and chunk history." },
+      ],
+    },
+    {
+      title: "Learning",
+      rows: [
+        { key: "clear_legacy_topics", label: "Legacy topics", description: "Flashcard topic rows from older topic systems." },
+        { key: "delete_generated_cards", label: "Generated concept/topic cards", description: "If disabled, cards are kept but stale concept/topic links are detached." },
+      ],
+    },
+  ];
+
+  async function loadPreview(nextOptions: KnowledgeResetOptions) {
+    setLoadingPreview(true);
+    setError(null);
+    try {
+      const result = await api.graph.resetKnowledgeState({
+        scope: "all_workspaces",
+        options: nextOptions,
+        dryRun: true,
+      });
+      setPreview(result);
+    } catch (err) {
+      setPreview(null);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoadingPreview(false);
+    }
+  }
+
+  async function openResetDialog() {
+    setDialogOpen(true);
+    setSuccess(null);
+    await loadPreview(options);
+  }
+
+  async function updateOption(key: keyof KnowledgeResetOptions, value: boolean) {
+    const next = { ...options, [key]: value };
+    setOptions(next);
+    if (dialogOpen) {
+      await loadPreview(next);
+    }
+  }
+
+  async function confirmReset() {
+    setRunning(true);
+    setError(null);
+    try {
+      const result = await api.graph.resetKnowledgeState({
+        scope: "all_workspaces",
+        options,
+        dryRun: false,
+      });
+      setPreview(result);
+      setDialogOpen(false);
+      setSuccess(formatKnowledgeResetResult(result));
+      await message(formatKnowledgeResetResult(result), { title: "AI-Inferred Data Reset Complete", kind: "info" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  const busy = loadingPreview || running;
+  const totalRows = totalKnowledgeResetRows(preview);
+
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain px-5 py-4">
+      <div className="max-w-3xl space-y-6">
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-xl font-semibold text-[var(--text-primary)]">Data Controls</h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
+              Global maintenance actions that can affect every workspace. Source chats, notes, files, and workspace records are preserved.
+            </p>
+          </div>
+
+          {success && (
+            <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+              {success}
+            </div>
+          )}
+
+          <div className="rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <h3 className="text-base font-semibold text-[var(--text-primary)]">Reset AI-Inferred Workspace Data</h3>
+                <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">
+                  Clear generated graph, topic, prompt-bank, and analysis state across all workspaces after major concept iteration.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={openResetDialog}
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-red-500 px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+              >
+                <RotateCcw size={15} />
+                Reset AI-Inferred Workspace Data
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      {dialogOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm"
+          onClick={() => {
+            if (!busy) {
+              setDialogOpen(false);
+            }
+          }}
+        >
+          <div
+            className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-red-500/25 bg-[var(--bg-elevated)] shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="border-b border-[var(--border-color)] px-5 py-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-500/12 text-red-400">
+                  <RotateCcw size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-[var(--text-primary)]">Reset AI-Inferred Workspace Data</h3>
+                  <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">
+                    Clear selected AI-inferred data for every workspace. This is for global cleanup, not a single workspace repair.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 overflow-y-auto px-5 py-4">
+              <div className="rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-xs leading-5 text-red-200">
+                This cannot be undone. Source material is preserved, but selected AI-inferred data will be cleared.
+              </div>
+
+              {loadingPreview ? (
+                <div className="flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-4 py-3 text-sm text-[var(--text-secondary)]">
+                  <Loader2 size={14} className="animate-spin" />
+                  Calculating affected data...
+                </div>
+              ) : preview ? (
+                <KnowledgeResetCountGrid result={preview} />
+              ) : null}
+
+              <div className="space-y-2">
+                <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Advanced options</div>
+                <div className="space-y-4">
+                  {optionGroups.map((group) => (
+                    <div key={group.title} className="space-y-2">
+                      <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">{group.title}</div>
+                      <div className="space-y-2">
+                        {group.rows.map((option) => {
+                          const checked = options[option.key] ?? true;
+                          return (
+                            <label
+                              key={option.key}
+                              className="flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2.5"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                disabled={busy}
+                                onChange={(event) => { void updateOption(option.key, event.target.checked); }}
+                                className="mt-1 h-4 w-4 accent-[var(--accent-color)]"
+                              />
+                              <span className="min-w-0">
+                                <span className="block text-sm font-medium text-[var(--text-primary)]">{option.label}</span>
+                                <span className="block text-xs leading-5 text-[var(--text-muted)]">{option.description}</span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {options.delete_generated_cards === false && (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs leading-5 text-amber-200">
+                  Generated cards will be kept as manual cards, but their concept and legacy topic links will be removed.
+                </div>
+              )}
+
+              {error && (
+                <div className="rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-xs leading-5 text-red-200">
+                  {error}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between gap-3 border-t border-[var(--border-color)] px-5 py-4">
+              <div className="text-xs text-[var(--text-muted)]">
+                {preview && !loadingPreview ? `${totalRows} affected derived row${totalRows === 1 ? "" : "s"}` : ""}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDialogOpen(false)}
+                  disabled={busy}
+                  className="rounded-xl border border-[var(--border-color)] px-4 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmReset}
+                  disabled={busy}
+                  className="inline-flex items-center gap-2 rounded-xl bg-red-500 px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {running && <Loader2 size={14} className="animate-spin" />}
+                  Reset AI-Inferred Data
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface PreferencesSplitLayoutProps {
   isLargeScreen: boolean;
   children: React.ReactNode;
@@ -1421,7 +1753,11 @@ function PreferencesSplitLayout({
   if (isLargeScreen && isLinux) {
     return (
       <div className="flex h-full min-h-0 flex-1 overflow-hidden">
-        <div className="h-full min-h-0 basis-[55%] overflow-y-auto overscroll-contain px-5 py-4" data-testid="preferences-options-scroll">
+        <div
+          className="h-full min-h-0 basis-[55%] overflow-y-auto overscroll-contain px-5 py-4"
+          onWheel={handleLinuxPreferencesWheel}
+          data-testid="preferences-options-scroll"
+        >
           <div className="max-w-2xl">
             {children}
           </div>
@@ -1446,6 +1782,7 @@ function PreferencesSplitLayout({
         >
           <div
             className="h-full min-h-0 overflow-y-auto overscroll-contain px-5 py-4"
+            onWheel={handleLinuxPreferencesWheel}
             style={isLinux ? { contain: "layout paint" } : undefined}
             data-testid="preferences-options-scroll"
           >
@@ -1470,7 +1807,11 @@ function PreferencesSplitLayout({
   }
 
   return (
-    <div className="h-full min-h-0 grow shrink max-w-2xl overflow-y-auto overscroll-contain px-5 py-4" data-testid="preferences-options-scroll">
+    <div
+      className="h-full min-h-0 grow shrink max-w-2xl overflow-y-auto overscroll-contain px-5 py-4"
+      onWheel={handleLinuxPreferencesWheel}
+      data-testid="preferences-options-scroll"
+    >
       {children}
     </div>
   );
@@ -5192,6 +5533,12 @@ export default function PreferencesView() {
               <React.Suspense fallback={null}>
                 <WorkspaceSettingsView />
               </React.Suspense>
+            </div>
+          )}
+
+          {activeTab === "data" && (
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <DataControlsPreferences />
             </div>
           )}
 

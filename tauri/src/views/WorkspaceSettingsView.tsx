@@ -7,10 +7,11 @@ import { useNavigate } from "react-router-dom";
 import {
   Plus, Trash2, Pencil, Check, X, LayoutGrid,
   MessageSquare, FileText, Globe, Brain, CreditCard,
-  Database, Sparkles, Save, Loader2, ChevronRight, ChevronDown, ArrowUpDown, BookOpen, FolderPlus
+  Database, Sparkles, Save, Loader2, ChevronRight, ChevronDown, ArrowUpDown, BookOpen, FolderPlus, RotateCcw
 } from "lucide-react";
 import { api } from "../lib/api";
 import ConfirmDialog from "../components/ConfirmDialog";
+import SuccessDialog from "../components/SuccessDialog";
 import { CompactMenuSelect } from "../components/CompactMenuSelect";
 import { TopicsSection } from "../components/TopicsSection";
 import WorkspaceMemoryPanel from "./WorkspaceMemoryPanel";
@@ -18,11 +19,32 @@ import { useWorkspaceStore } from "../stores/workspaceStore";
 import { Tooltip } from "../components/Tooltip";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { Workspace } from "../stores/workspaceStore";
-import type { DashboardSummary, PromptBankStatus, TopicSignature, WorkspaceGlossaryTerm } from "../lib/api";
+import type { DashboardSummary, KnowledgeResetOptions, KnowledgeResetResult, KnowledgeResetScope, PromptBankStatus, TopicSignature, WorkspaceGlossaryTerm } from "../lib/api";
 
 type WorkspaceDialogState =
   | { kind: "last-workspace" }
   | { kind: "delete"; workspace: Workspace };
+
+interface KnowledgeResetDialogState {
+  scope: KnowledgeResetScope;
+  workspaceId?: string;
+  title: string;
+  description: string;
+  options: KnowledgeResetOptions;
+  preview: KnowledgeResetResult | null;
+  loadingPreview: boolean;
+  running: boolean;
+  error: string | null;
+}
+
+const DEFAULT_KNOWLEDGE_RESET_OPTIONS: KnowledgeResetOptions = {
+  clear_graph: true,
+  clear_topic_signatures: true,
+  clear_prompt_bank: true,
+  clear_analysis_jobs: true,
+  clear_legacy_topics: true,
+  delete_generated_cards: true,
+};
 
 function WorkspaceSortMenu() {
   const workspaceSortOrder = useWorkspaceStore((state) => state.workspaceSortOrder);
@@ -77,6 +99,219 @@ function WorkspaceSortMenu() {
   );
 }
 
+function totalResetRows(result: KnowledgeResetResult | null): number {
+  if (!result) {
+    return 0;
+  }
+  return result.concept_nodes
+    + result.concept_links
+    + result.concept_mentions
+    + result.graph_statistics
+    + result.analyze_jobs
+    + result.analyze_job_chunks
+    + result.change_proposals
+    + result.flashcard_topics
+    + result.generated_cards_deleted
+    + result.generated_cards_detached
+    + result.learning_goals_detached
+    + result.topic_signatures_cleared
+    + result.prompt_bank_prompts
+    + result.prompt_bank_jobs;
+}
+
+function formatResetResult(result: KnowledgeResetResult): string {
+  const changed = totalResetRows(result);
+  return `${changed} AI-inferred row${changed === 1 ? "" : "s"} reset across ${result.workspace_count} workspace${result.workspace_count === 1 ? "" : "s"}. Source material was preserved.`;
+}
+
+function ResetCountGrid({ result }: { result: KnowledgeResetResult }) {
+  const items = [
+    ["Workspaces", result.workspace_count],
+    ["Concepts", result.concept_nodes],
+    ["Links", result.concept_links],
+    ["Mentions", result.concept_mentions],
+    ["Analysis jobs", result.analyze_jobs + result.analyze_job_chunks],
+    ["Proposals", result.change_proposals],
+    ["Legacy topics", result.flashcard_topics],
+    ["Cards deleted", result.generated_cards_deleted],
+    ["Cards detached", result.generated_cards_detached],
+    ["Goals detached", result.learning_goals_detached],
+    ["Topic signatures", result.topic_signatures_cleared],
+    ["Prompt bank", result.prompt_bank_prompts + result.prompt_bank_jobs],
+  ];
+
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      {items.map(([label, value]) => (
+        <div key={label} className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
+          <div className="text-sm font-semibold text-[var(--text-primary)]">{value}</div>
+          <div className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">{label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function KnowledgeResetDialog({
+  state,
+  onOptionChange,
+  onConfirm,
+  onCancel,
+}: {
+  state: KnowledgeResetDialogState;
+  onOptionChange: (key: keyof KnowledgeResetOptions, value: boolean) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const busy = state.running || state.loadingPreview;
+  const totalRows = totalResetRows(state.preview);
+  const optionGroups: Array<{
+    title: string;
+    rows: Array<{ key: keyof KnowledgeResetOptions; label: string; description: string }>;
+  }> = [
+    {
+      title: "Workspace Map",
+      rows: [
+        { key: "clear_graph", label: "Graph and roadmap", description: "Concepts, links, mentions, graph statistics, and concept proposals." },
+        { key: "clear_topic_signatures", label: "Topic signatures", description: "Workspace topic fingerprints that can re-seed old concepts." },
+      ],
+    },
+    {
+      title: "Chat",
+      rows: [
+        { key: "clear_prompt_bank", label: "Prompt bank", description: "Stored starter prompts and prompt-bank jobs." },
+      ],
+    },
+    {
+      title: "AI Analysis",
+      rows: [
+        { key: "clear_analysis_jobs", label: "Analysis jobs", description: "Analyze Workspace job and chunk history." },
+      ],
+    },
+    {
+      title: "Learning",
+      rows: [
+        { key: "clear_legacy_topics", label: "Legacy topics", description: "Flashcard topic rows from older topic systems." },
+        { key: "delete_generated_cards", label: "Generated concept/topic cards", description: "If disabled, cards are kept but stale concept/topic links are detached." },
+      ],
+    },
+  ];
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm"
+      onClick={() => {
+        if (!busy) {
+          onCancel();
+        }
+      }}
+    >
+      <div
+        className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-red-500/25 bg-[var(--bg-elevated)] shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="border-b border-[var(--border-color)] px-5 py-4">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-500/12 text-red-400">
+              <RotateCcw size={18} />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-[var(--text-primary)]">{state.title}</h3>
+              <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">{state.description}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-4 overflow-y-auto px-5 py-4">
+          <div className="rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-xs leading-5 text-red-200">
+            This cannot be undone. Source material is preserved, but selected AI-inferred data will be cleared.
+          </div>
+
+          {state.loadingPreview ? (
+            <div className="flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-4 py-3 text-sm text-[var(--text-secondary)]">
+              <Loader2 size={14} className="animate-spin" />
+              Calculating affected data…
+            </div>
+          ) : state.preview ? (
+            <ResetCountGrid result={state.preview} />
+          ) : null}
+
+          <div className="space-y-2">
+            <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Advanced options</div>
+            <div className="space-y-4">
+              {optionGroups.map((group) => (
+                <div key={group.title} className="space-y-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">{group.title}</div>
+                  <div className="space-y-2">
+                    {group.rows.map((option) => {
+                      const checked = state.options[option.key] ?? true;
+                      return (
+                        <label
+                          key={option.key}
+                          className="flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2.5"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={busy}
+                            onChange={(event) => onOptionChange(option.key, event.target.checked)}
+                            className="mt-1 h-4 w-4 accent-[var(--accent-color)]"
+                          />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium text-[var(--text-primary)]">{option.label}</span>
+                            <span className="block text-xs leading-5 text-[var(--text-muted)]">{option.description}</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {state.options.delete_generated_cards === false && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs leading-5 text-amber-200">
+              Generated cards will be kept as manual cards, but their concept and legacy topic links will be removed.
+            </div>
+          )}
+
+          {state.error && (
+            <div className="rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-xs leading-5 text-red-200">
+              {state.error}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between gap-3 border-t border-[var(--border-color)] px-5 py-4">
+          <div className="text-xs text-[var(--text-muted)]">
+            {state.preview && !state.loadingPreview ? `${totalRows} affected derived row${totalRows === 1 ? "" : "s"}` : ""}
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={busy}
+              className="rounded-xl border border-[var(--border-color)] px-4 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={busy}
+              className="inline-flex items-center gap-2 rounded-xl bg-red-500 px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {state.running && <Loader2 size={14} className="animate-spin" />}
+              Reset AI-Inferred Data
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function WorkspaceSettingsView() {
   const workspaces = useWorkspaceStore((s) => s.workspaces);
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
@@ -122,6 +357,8 @@ export default function WorkspaceSettingsView() {
   const [promptBankStatus, setPromptBankStatus] = useState<PromptBankStatus | null>(null);
   const [isLoadingPromptBank, setIsLoadingPromptBank] = useState(false);
   const [isStartingPromptBankJob, setIsStartingPromptBankJob] = useState(false);
+  const [resetDialog, setResetDialog] = useState<KnowledgeResetDialogState | null>(null);
+  const [successDialog, setSuccessDialog] = useState<{ title: string; description: string } | null>(null);
 
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
     try {
@@ -165,6 +402,7 @@ export default function WorkspaceSettingsView() {
   }, [selectedWorkspace, workspaces]);
   const selectedWorkspaceType = selectedWorkspace?.parent_workspace_id ? "Child Workspace" : selectedWorkspace ? "Root Workspace" : null;
   const childCreateParentId = selectedWorkspace?.parent_workspace_id || selectedWorkspace?.id || null;
+  const selectedWorkspaceHasChildren = !!selectedWorkspace && (childWorkspacesByParent[selectedWorkspace.id] ?? []).length > 0;
   const localGlossaryTerms = useMemo(
     () => glossaryTerms.filter((term) => !term.is_inherited),
     [glossaryTerms],
@@ -261,6 +499,129 @@ export default function WorkspaceSettingsView() {
       console.error("Failed to start prompt bank job:", error);
     } finally {
       setIsStartingPromptBankJob(false);
+    }
+  }
+
+  async function reloadSelectedDerivedState() {
+    const updatedWorkspaces = await api.workspace.list();
+    setWorkspaces(updatedWorkspaces);
+    if (!selectedId) {
+      return;
+    }
+
+    const [summary, topicSig, promptStatus] = await Promise.all([
+      api.dashboard.getSummary(selectedId).catch(() => null),
+      api.topicSignature.get(selectedId).catch(() => null),
+      api.workspace.getPromptBankStatus(selectedId).catch(() => null),
+    ]);
+    if (summary) {
+      setStats(summary);
+    }
+    setTopicSignaturesByWorkspace(prev => ({ ...prev, [selectedId]: topicSig }));
+    setPromptBankStatus(promptStatus);
+  }
+
+  function buildResetCopy(scope: KnowledgeResetScope, workspace?: Workspace) {
+    if (scope === "all_workspaces") {
+      return {
+        title: "Reset all AI-inferred workspace data?",
+        description: "Clears generated roadmap, topic, analysis, prompt-bank, and study state for every workspace. Chats, notes, documents, sources, memories, glossary terms, and workspaces are preserved.",
+      };
+    }
+
+    const name = workspace?.name ?? "this workspace";
+    if (scope === "workspace_with_children") {
+      return {
+        title: `Reset AI-inferred data for "${name}" and child workspaces?`,
+        description: "Clears generated data for this workspace and every descendant workspace. Source material is preserved.",
+      };
+    }
+
+    return {
+      title: `Reset AI-inferred data for "${name}"?`,
+      description: "Clears generated data for this workspace only. Source material is preserved.",
+    };
+  }
+
+  async function loadResetPreview(next: KnowledgeResetDialogState) {
+    setResetDialog({ ...next, loadingPreview: true, error: null });
+    try {
+      const preview = await api.graph.resetKnowledgeState({
+        scope: next.scope,
+        workspaceId: next.workspaceId,
+        options: next.options,
+        dryRun: true,
+      });
+      setResetDialog(current => current && current.scope === next.scope && current.workspaceId === next.workspaceId
+        ? { ...current, preview, loadingPreview: false, error: null }
+        : current
+      );
+    } catch (err) {
+      setResetDialog(current => current && current.scope === next.scope && current.workspaceId === next.workspaceId
+        ? { ...current, loadingPreview: false, error: err instanceof Error ? err.message : String(err) }
+        : current
+      );
+    }
+  }
+
+  function openKnowledgeReset(scope: KnowledgeResetScope) {
+    const workspace = selectedWorkspace ?? undefined;
+    const workspaceId = scope === "all_workspaces" ? undefined : workspace?.id;
+    if (scope !== "all_workspaces" && !workspaceId) {
+      return;
+    }
+
+    const copy = buildResetCopy(scope, workspace);
+    const next: KnowledgeResetDialogState = {
+      scope,
+      workspaceId,
+      title: copy.title,
+      description: copy.description,
+      options: { ...DEFAULT_KNOWLEDGE_RESET_OPTIONS },
+      preview: null,
+      loadingPreview: true,
+      running: false,
+      error: null,
+    };
+    void loadResetPreview(next);
+  }
+
+  function updateResetOption(key: keyof KnowledgeResetOptions, value: boolean) {
+    if (!resetDialog || resetDialog.running) {
+      return;
+    }
+    const next: KnowledgeResetDialogState = {
+      ...resetDialog,
+      options: { ...resetDialog.options, [key]: value },
+      preview: null,
+    };
+    void loadResetPreview(next);
+  }
+
+  async function confirmKnowledgeReset() {
+    if (!resetDialog || resetDialog.running || resetDialog.loadingPreview) {
+      return;
+    }
+
+    setResetDialog({ ...resetDialog, running: true, error: null });
+    try {
+      const result = await api.graph.resetKnowledgeState({
+        scope: resetDialog.scope,
+        workspaceId: resetDialog.workspaceId,
+        options: resetDialog.options,
+        dryRun: false,
+      });
+      setResetDialog(null);
+      await reloadSelectedDerivedState();
+      setSuccessDialog({
+        title: "AI-inferred data reset",
+        description: formatResetResult(result),
+      });
+    } catch (err) {
+      setResetDialog(current => current
+        ? { ...current, running: false, error: err instanceof Error ? err.message : String(err) }
+        : current
+      );
     }
   }
 
@@ -1039,6 +1400,48 @@ export default function WorkspaceSettingsView() {
               </div>
 
               <div className="space-y-3 py-5">
+                <button
+                  onClick={() => toggleSection("knowledge-reset")}
+                  className="flex w-full items-center justify-between"
+                >
+                  <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-2">
+                    <RotateCcw size={12} /> AI-Inferred Data Reset
+                  </h3>
+                  <ChevronDown size={14} className={`text-[var(--text-muted)] transition-transform ${collapsedSections["knowledge-reset"] ? "-rotate-90" : ""}`} />
+                </button>
+                {!collapsedSections["knowledge-reset"] && (
+                  <div className="space-y-3 rounded-xl border border-red-500/20 bg-red-500/5 p-4">
+                    <div>
+                      <div className="text-sm font-medium text-[var(--text-primary)]">Reset AI-inferred data for this workspace</div>
+                      <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
+                        Clears stale generated roadmap, topic, prompt-bank, analysis, and study state while preserving chats, notes, documents, memories, and glossary terms.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openKnowledgeReset("workspace")}
+                        className="inline-flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/15"
+                      >
+                        <RotateCcw size={13} />
+                        Reset Selected Workspace Data
+                      </button>
+                      {selectedWorkspaceHasChildren && (
+                        <button
+                          type="button"
+                          onClick={() => openKnowledgeReset("workspace_with_children")}
+                          className="inline-flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/15"
+                        >
+                          <RotateCcw size={13} />
+                          Reset Selected + Children Data
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-3 py-5">
                 <div className="flex items-center justify-between">
                   <button
                     onClick={() => toggleSection("glossary")}
@@ -1135,6 +1538,7 @@ export default function WorkspaceSettingsView() {
                 </div>
                 </>)}
               </div>
+
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-[var(--text-muted)] gap-4 animate-in fade-in duration-700">
@@ -1147,6 +1551,7 @@ export default function WorkspaceSettingsView() {
               </div>
             </div>
           )}
+
         </div>
       </div>
 
@@ -1193,6 +1598,27 @@ export default function WorkspaceSettingsView() {
               setDialogBusy(false);
             }
           }}
+        />
+      )}
+
+      {resetDialog && (
+        <KnowledgeResetDialog
+          state={resetDialog}
+          onOptionChange={updateResetOption}
+          onConfirm={() => { void confirmKnowledgeReset(); }}
+          onCancel={() => {
+            if (!resetDialog.running && !resetDialog.loadingPreview) {
+              setResetDialog(null);
+            }
+          }}
+        />
+      )}
+
+      {successDialog && (
+        <SuccessDialog
+          title={successDialog.title}
+          description={successDialog.description}
+          onConfirm={() => setSuccessDialog(null)}
         />
       )}
     </div>

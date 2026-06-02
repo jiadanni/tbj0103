@@ -220,6 +220,36 @@ export interface KnowledgeSettings {
   confidence_threshold: number;
 }
 
+export type KnowledgeResetScope = "workspace" | "workspace_with_children" | "all_workspaces";
+
+export interface KnowledgeResetOptions {
+  clear_graph?: boolean;
+  clear_topic_signatures?: boolean;
+  clear_prompt_bank?: boolean;
+  clear_analysis_jobs?: boolean;
+  clear_legacy_topics?: boolean;
+  delete_generated_cards?: boolean;
+}
+
+export interface KnowledgeResetResult {
+  dry_run: boolean;
+  workspace_count: number;
+  concept_nodes: number;
+  concept_links: number;
+  concept_mentions: number;
+  graph_statistics: number;
+  analyze_jobs: number;
+  analyze_job_chunks: number;
+  change_proposals: number;
+  flashcard_topics: number;
+  generated_cards_deleted: number;
+  generated_cards_detached: number;
+  learning_goals_detached: number;
+  topic_signatures_cleared: number;
+  prompt_bank_prompts: number;
+  prompt_bank_jobs: number;
+}
+
 export interface LearningCard {
   id: string; workspace_id: string; front: string; back: string;
   source_type: string; source_id?: string; topic_id?: string;
@@ -1284,6 +1314,19 @@ export const api = {
     upsertFromTopicTag: (workspaceId: string, name: string) =>
       invoke<string>("upsert_concept_from_tag", { workspaceId, name }),
     undoLastAnalysis: (workspaceId: string) => invoke<void>("undo_last_analysis", { workspaceId }),
+    resetKnowledgeState: (req: {
+      scope: KnowledgeResetScope;
+      workspaceId?: string;
+      options?: KnowledgeResetOptions;
+      dryRun?: boolean;
+    }) => invoke<KnowledgeResetResult>("reset_knowledge_state", {
+      req: {
+        scope: req.scope,
+        workspace_id: req.workspaceId,
+        options: req.options,
+        dry_run: req.dryRun,
+      },
+    }),
     listChangeProposals: (workspaceId: string) => invoke<ChangeProposal[]>("list_change_proposals", { workspaceId }),
     applyChangeProposal: (id: string) => invoke<void>("apply_change_proposal", { id }),
     dismissChangeProposal: (id: string) => invoke<void>("dismiss_change_proposal", { id }),

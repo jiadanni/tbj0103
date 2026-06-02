@@ -550,6 +550,7 @@ pub fn run() {
             commands::knowledge_graph::get_learning_path,
             commands::knowledge_graph::extract_and_link_concepts,
             commands::knowledge_graph::undo_last_analysis,
+            commands::knowledge_graph::reset_knowledge_state,
             commands::knowledge_graph::list_change_proposals,
             commands::knowledge_graph::apply_change_proposal,
             commands::knowledge_graph::dismiss_change_proposal,

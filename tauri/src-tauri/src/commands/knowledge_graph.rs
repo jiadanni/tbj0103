@@ -5,7 +5,7 @@ use crate::models::knowledge_graph::{
 };
 use crate::services::concept_extractor;
 use crate::services::concept_hierarchy::normalize_concept_name;
-use crate::services::workspace_hierarchy::workspace_filter_sql;
+use crate::services::workspace_hierarchy::{descendant_workspace_ids, workspace_filter_sql};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -858,6 +858,388 @@ pub fn undo_last_analysis(state: State<DbState>, workspace_id: String) -> Result
     Ok(())
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KnowledgeResetScope {
+    Workspace,
+    WorkspaceWithChildren,
+    AllWorkspaces,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct KnowledgeResetOptions {
+    pub clear_graph: Option<bool>,
+    pub clear_topic_signatures: Option<bool>,
+    pub clear_prompt_bank: Option<bool>,
+    pub clear_analysis_jobs: Option<bool>,
+    pub clear_legacy_topics: Option<bool>,
+    pub delete_generated_cards: Option<bool>,
+}
+
+impl Default for KnowledgeResetOptions {
+    fn default() -> Self {
+        Self {
+            clear_graph: Some(true),
+            clear_topic_signatures: Some(true),
+            clear_prompt_bank: Some(true),
+            clear_analysis_jobs: Some(true),
+            clear_legacy_topics: Some(true),
+            delete_generated_cards: Some(true),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct KnowledgeResetRequest {
+    pub scope: KnowledgeResetScope,
+    pub workspace_id: Option<String>,
+    pub options: Option<KnowledgeResetOptions>,
+    pub dry_run: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct KnowledgeResetResult {
+    pub dry_run: bool,
+    pub workspace_count: i64,
+    pub concept_nodes: i64,
+    pub concept_links: i64,
+    pub concept_mentions: i64,
+    pub graph_statistics: i64,
+    pub analyze_jobs: i64,
+    pub analyze_job_chunks: i64,
+    pub change_proposals: i64,
+    pub flashcard_topics: i64,
+    pub generated_cards_deleted: i64,
+    pub generated_cards_detached: i64,
+    pub learning_goals_detached: i64,
+    pub topic_signatures_cleared: i64,
+    pub prompt_bank_prompts: i64,
+    pub prompt_bank_jobs: i64,
+}
+
+#[tauri::command]
+pub fn reset_knowledge_state(
+    state: State<DbState>,
+    req: KnowledgeResetRequest,
+) -> Result<KnowledgeResetResult, String> {
+    let mut conn = state.0.get().map_err(|e| e.to_string())?;
+    reset_knowledge_state_inner(&mut conn, req)
+}
+
+fn reset_knowledge_state_inner(
+    conn: &mut rusqlite::Connection,
+    req: KnowledgeResetRequest,
+) -> Result<KnowledgeResetResult, String> {
+    let dry_run = req.dry_run.unwrap_or(false);
+    let workspace_ids = resolve_reset_workspace_ids(conn, &req)?;
+    let options = req.options.unwrap_or_default();
+    if workspace_ids.is_empty() {
+        return Ok(KnowledgeResetResult {
+            dry_run,
+            ..Default::default()
+        });
+    }
+
+    let mut result = preview_knowledge_reset(conn, &workspace_ids, &options)?;
+    result.dry_run = dry_run;
+    result.workspace_count = workspace_ids.len() as i64;
+
+    if dry_run {
+        return Ok(result);
+    }
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let applied = apply_knowledge_reset(&tx, &workspace_ids, &options)?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(KnowledgeResetResult {
+        dry_run: false,
+        workspace_count: workspace_ids.len() as i64,
+        ..applied
+    })
+}
+
+fn resolve_reset_workspace_ids(
+    conn: &rusqlite::Connection,
+    req: &KnowledgeResetRequest,
+) -> Result<Vec<String>, String> {
+    match req.scope {
+        KnowledgeResetScope::Workspace => {
+            let id = req
+                .workspace_id
+                .as_deref()
+                .ok_or_else(|| "workspace_id is required for workspace reset".to_string())?;
+            Ok(vec![id.to_string()])
+        }
+        KnowledgeResetScope::WorkspaceWithChildren => {
+            let id = req
+                .workspace_id
+                .as_deref()
+                .ok_or_else(|| "workspace_id is required for workspace-with-children reset".to_string())?;
+            descendant_workspace_ids(conn, id)
+        }
+        KnowledgeResetScope::AllWorkspaces => {
+            let mut stmt = conn
+                .prepare("SELECT id FROM workspaces")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |row| row.get::<_, String>(0))
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())
+        }
+    }
+}
+
+fn placeholders(count: usize) -> String {
+    std::iter::repeat("?")
+        .take(count)
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn count_sql(
+    conn: &rusqlite::Connection,
+    sql: &str,
+    workspace_ids: &[String],
+) -> Result<i64, String> {
+    conn.query_row(
+        sql,
+        rusqlite::params_from_iter(workspace_ids.iter().map(|s| s.as_str())),
+        |row| row.get::<_, i64>(0),
+    )
+    .map_err(|e| e.to_string())
+}
+
+fn execute_sql(
+    conn: &rusqlite::Connection,
+    sql: &str,
+    workspace_ids: &[String],
+) -> Result<i64, String> {
+    conn.execute(
+        sql,
+        rusqlite::params_from_iter(workspace_ids.iter().map(|s| s.as_str())),
+    )
+    .map(|count| count as i64)
+    .map_err(|e| e.to_string())
+}
+
+fn scoped_concept_subquery(in_clause: &str) -> String {
+    format!("SELECT id FROM concept_nodes WHERE workspace_id IN ({in_clause})")
+}
+
+fn scoped_job_subquery(in_clause: &str) -> String {
+    format!("SELECT id FROM analyze_jobs WHERE workspace_id IN ({in_clause})")
+}
+
+fn count_by_workspace(
+    conn: &rusqlite::Connection,
+    table: &str,
+    workspace_ids: &[String],
+) -> Result<i64, String> {
+    let in_clause = placeholders(workspace_ids.len());
+    count_sql(
+        conn,
+        &format!("SELECT COUNT(*) FROM {table} WHERE workspace_id IN ({in_clause})"),
+        workspace_ids,
+    )
+}
+
+fn delete_by_workspace(
+    conn: &rusqlite::Connection,
+    table: &str,
+    workspace_ids: &[String],
+) -> Result<i64, String> {
+    let in_clause = placeholders(workspace_ids.len());
+    execute_sql(
+        conn,
+        &format!("DELETE FROM {table} WHERE workspace_id IN ({in_clause})"),
+        workspace_ids,
+    )
+}
+
+fn preview_knowledge_reset(
+    conn: &rusqlite::Connection,
+    workspace_ids: &[String],
+    options: &KnowledgeResetOptions,
+) -> Result<KnowledgeResetResult, String> {
+    let mut result = KnowledgeResetResult::default();
+    let in_clause = placeholders(workspace_ids.len());
+    let concept_subquery = scoped_concept_subquery(&in_clause);
+    let job_subquery = scoped_job_subquery(&in_clause);
+
+    if options.clear_graph.unwrap_or(true) {
+        result.concept_nodes = count_by_workspace(conn, "concept_nodes", workspace_ids)?;
+        result.concept_links = count_sql(
+            conn,
+            &format!(
+                "WITH scoped_concepts AS ({concept_subquery}) \
+                 SELECT COUNT(*) FROM concept_links \
+                 WHERE source_id IN (SELECT id FROM scoped_concepts) \
+                    OR target_id IN (SELECT id FROM scoped_concepts)"
+            ),
+            workspace_ids,
+        )?;
+        result.concept_mentions = count_sql(
+            conn,
+            &format!("SELECT COUNT(*) FROM concept_mentions WHERE concept_id IN ({concept_subquery})"),
+            workspace_ids,
+        )?;
+        result.graph_statistics = count_by_workspace(conn, "graph_statistics", workspace_ids)?;
+        result.change_proposals = count_by_workspace(conn, "concept_change_proposals", workspace_ids)?;
+        result.learning_goals_detached = count_sql(
+            conn,
+            &format!(
+                "SELECT COUNT(*) FROM learning_goals WHERE concept_id IN ({concept_subquery})"
+            ),
+            workspace_ids,
+        )?;
+    }
+
+    if options.clear_analysis_jobs.unwrap_or(true) {
+        result.analyze_jobs = count_by_workspace(conn, "analyze_jobs", workspace_ids)?;
+        result.analyze_job_chunks = count_sql(
+            conn,
+            &format!("SELECT COUNT(*) FROM analyze_job_chunks WHERE job_id IN ({job_subquery})"),
+            workspace_ids,
+        )?;
+    }
+
+    if options.clear_legacy_topics.unwrap_or(true) {
+        result.flashcard_topics = count_by_workspace(conn, "flashcard_topics", workspace_ids)?;
+    }
+
+    if options.delete_generated_cards.unwrap_or(true) {
+        result.generated_cards_deleted = count_sql(
+            conn,
+            &format!(
+                "SELECT COUNT(*) FROM learning_cards \
+                 WHERE workspace_id IN ({in_clause}) \
+                   AND (source_type = 'concept' OR topic_id IS NOT NULL OR source_type = 'chat_topic')"
+            ),
+            workspace_ids,
+        )?;
+    } else {
+        result.generated_cards_detached = count_sql(
+            conn,
+            &format!(
+                "SELECT COUNT(*) FROM learning_cards \
+                 WHERE workspace_id IN ({in_clause}) \
+                   AND (source_type = 'concept' OR topic_id IS NOT NULL OR source_type = 'chat_topic')"
+            ),
+            workspace_ids,
+        )?;
+    }
+
+    if options.clear_topic_signatures.unwrap_or(true) {
+        result.topic_signatures_cleared = count_sql(
+            conn,
+            &format!(
+                "SELECT COUNT(*) FROM workspaces \
+                 WHERE id IN ({in_clause}) AND (topic_signature != '{{}}' OR signature_updated_at IS NOT NULL)"
+            ),
+            workspace_ids,
+        )?;
+    }
+
+    if options.clear_prompt_bank.unwrap_or(true) {
+        result.prompt_bank_prompts = count_by_workspace(conn, "workspace_prompt_bank", workspace_ids)?;
+        result.prompt_bank_jobs = count_by_workspace(conn, "workspace_prompt_bank_jobs", workspace_ids)?;
+    }
+
+    Ok(result)
+}
+
+fn apply_knowledge_reset(
+    conn: &rusqlite::Connection,
+    workspace_ids: &[String],
+    options: &KnowledgeResetOptions,
+) -> Result<KnowledgeResetResult, String> {
+    let mut result = KnowledgeResetResult::default();
+    let in_clause = placeholders(workspace_ids.len());
+    let concept_subquery = scoped_concept_subquery(&in_clause);
+    let job_subquery = scoped_job_subquery(&in_clause);
+
+    if options.delete_generated_cards.unwrap_or(true) {
+        result.generated_cards_deleted = execute_sql(
+            conn,
+            &format!(
+                "DELETE FROM learning_cards \
+                 WHERE workspace_id IN ({in_clause}) \
+                   AND (source_type = 'concept' OR topic_id IS NOT NULL OR source_type = 'chat_topic')"
+            ),
+            workspace_ids,
+        )?;
+    } else {
+        result.generated_cards_detached = execute_sql(
+            conn,
+            &format!(
+                "UPDATE learning_cards \
+                 SET source_type = 'manual', source_id = NULL, topic_id = NULL \
+                 WHERE workspace_id IN ({in_clause}) \
+                   AND (source_type = 'concept' OR topic_id IS NOT NULL OR source_type = 'chat_topic')"
+            ),
+            workspace_ids,
+        )?;
+    }
+
+    if options.clear_graph.unwrap_or(true) {
+        result.learning_goals_detached = execute_sql(
+            conn,
+            &format!("UPDATE learning_goals SET concept_id = NULL WHERE concept_id IN ({concept_subquery})"),
+            workspace_ids,
+        )?;
+        result.concept_mentions = execute_sql(
+            conn,
+            &format!("DELETE FROM concept_mentions WHERE concept_id IN ({concept_subquery})"),
+            workspace_ids,
+        )?;
+        result.concept_links = execute_sql(
+            conn,
+            &format!(
+                "WITH scoped_concepts AS ({concept_subquery}) \
+                 DELETE FROM concept_links \
+                 WHERE source_id IN (SELECT id FROM scoped_concepts) \
+                    OR target_id IN (SELECT id FROM scoped_concepts)"
+            ),
+            workspace_ids,
+        )?;
+        result.change_proposals = delete_by_workspace(conn, "concept_change_proposals", workspace_ids)?;
+        result.graph_statistics = delete_by_workspace(conn, "graph_statistics", workspace_ids)?;
+        result.concept_nodes = delete_by_workspace(conn, "concept_nodes", workspace_ids)?;
+    }
+
+    if options.clear_analysis_jobs.unwrap_or(true) {
+        result.analyze_job_chunks = execute_sql(
+            conn,
+            &format!("DELETE FROM analyze_job_chunks WHERE job_id IN ({job_subquery})"),
+            workspace_ids,
+        )?;
+        result.analyze_jobs = delete_by_workspace(conn, "analyze_jobs", workspace_ids)?;
+    }
+
+    if options.clear_legacy_topics.unwrap_or(true) {
+        result.flashcard_topics = delete_by_workspace(conn, "flashcard_topics", workspace_ids)?;
+    }
+
+    if options.clear_topic_signatures.unwrap_or(true) {
+        result.topic_signatures_cleared = execute_sql(
+            conn,
+            &format!(
+                "UPDATE workspaces SET topic_signature = '{{}}', signature_updated_at = NULL \
+                 WHERE id IN ({in_clause}) AND (topic_signature != '{{}}' OR signature_updated_at IS NOT NULL)"
+            ),
+            workspace_ids,
+        )?;
+    }
+
+    if options.clear_prompt_bank.unwrap_or(true) {
+        result.prompt_bank_prompts = delete_by_workspace(conn, "workspace_prompt_bank", workspace_ids)?;
+        result.prompt_bank_jobs = delete_by_workspace(conn, "workspace_prompt_bank_jobs", workspace_ids)?;
+    }
+
+    Ok(result)
+}
+
 #[tauri::command]
 pub fn list_change_proposals(
     state: State<DbState>,
@@ -1092,4 +1474,265 @@ pub fn get_knowledge_settings(state: State<DbState>) -> Result<KnowledgeSettings
         supersede_mode: sup_mode,
         confidence_threshold: threshold,
     })
+}
+
+#[cfg(test)]
+mod knowledge_reset_tests {
+    use super::*;
+    use crate::db::test_utils::tests::setup_test_db;
+    use rusqlite::Connection;
+
+    fn ensure_reset_test_tables(conn: &Connection) {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS analyze_jobs (
+                id TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL,
+                model TEXT NOT NULL,
+                total_chunks INTEGER NOT NULL,
+                completed_chunks INTEGER NOT NULL DEFAULT 0,
+                failed_chunks INTEGER NOT NULL DEFAULT 0,
+                chunk_budget INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                error TEXT
+            );
+            CREATE TABLE IF NOT EXISTS analyze_job_chunks (
+                job_id TEXT NOT NULL,
+                chunk_index INTEGER NOT NULL,
+                label TEXT NOT NULL,
+                char_count INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                nodes_created INTEGER NOT NULL DEFAULT 0,
+                links_created INTEGER NOT NULL DEFAULT 0,
+                error TEXT,
+                finished_at TEXT,
+                PRIMARY KEY (job_id, chunk_index)
+            );",
+        )
+        .unwrap();
+    }
+
+    fn insert_workspace(conn: &Connection, id: &str, parent_id: Option<&str>) {
+        let now = chrono::Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT INTO workspaces (id, name, description, icon, is_hidden, parent_workspace_id, topic_signature, signature_updated_at, created_at, updated_at, order_index)
+             VALUES (?1, ?2, '', '📁', 0, ?3, '{\"auto_detected_tags\":[]}', ?4, ?4, ?4, 0)",
+            rusqlite::params![id, id, parent_id, now],
+        )
+        .unwrap();
+    }
+
+    fn insert_reset_fixture(conn: &Connection, workspace_id: &str, suffix: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
+        let concept_id = format!("concept-{suffix}");
+        let concept_2_id = format!("concept-2-{suffix}");
+        let link_id = format!("link-{suffix}");
+        let mention_id = format!("mention-{suffix}");
+        let job_id = format!("job-{suffix}");
+        let proposal_id = format!("proposal-{suffix}");
+        let topic_id = format!("topic-{suffix}");
+        let graph_id = format!("stats-{suffix}");
+        let prompt_id = format!("prompt-{suffix}");
+        let prompt_job_id = format!("prompt-job-{suffix}");
+        let goal_id = format!("goal-{suffix}");
+        let card_concept_id = format!("card-concept-{suffix}");
+        let card_topic_id = format!("card-topic-{suffix}");
+        let card_manual_id = format!("card-manual-{suffix}");
+        let note_id = format!("note-{suffix}");
+
+        conn.execute(
+            "INSERT INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, created_at, updated_at, hierarchy_level)
+             VALUES (?1, ?2, ?3, '', 'topic', '[]', '[]', '[]', ?4, ?4, 'concept')",
+            rusqlite::params![concept_id, workspace_id, format!("Concept {suffix}"), now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, created_at, updated_at, hierarchy_level)
+             VALUES (?1, ?2, ?3, '', 'topic', '[]', '[]', '[]', ?4, ?4, 'concept')",
+            rusqlite::params![concept_2_id, workspace_id, format!("Concept 2 {suffix}"), now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO concept_links (id, source_id, target_id, link_type, strength, context, created_at)
+             VALUES (?1, ?2, ?3, 'related', 0.5, '', ?4)",
+            rusqlite::params![link_id, concept_id, concept_2_id, now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO concept_mentions (id, concept_id, source_type, source_id, context, created_at)
+             VALUES (?1, ?2, 'note', ?3, '', ?4)",
+            rusqlite::params![mention_id, concept_id, note_id, now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO analyze_jobs (id, workspace_id, model, total_chunks, completed_chunks, failed_chunks, chunk_budget, status, started_at)
+             VALUES (?1, ?2, 'test-model', 1, 1, 0, 2000, 'completed', ?3)",
+            rusqlite::params![job_id, workspace_id, now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO analyze_job_chunks (job_id, chunk_index, label, char_count, status)
+             VALUES (?1, 0, 'Batch 1/1', 100, 'completed')",
+            rusqlite::params![job_id],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO concept_change_proposals (id, workspace_id, job_id, proposal_type, target_node_id, payload, created_at)
+             VALUES (?1, ?2, ?3, 'upgrade', ?4, '{}', ?5)",
+            rusqlite::params![proposal_id, workspace_id, job_id, concept_id, now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO graph_statistics (id, workspace_id, total_concepts, total_links, updated_at)
+             VALUES (?1, ?2, 2, 1, ?3)",
+            rusqlite::params![graph_id, workspace_id, now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO flashcard_topics (id, workspace_id, topic, created_at)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![topic_id, workspace_id, format!("Topic {suffix}"), now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, source_id, created_at)
+             VALUES (?1, ?2, 'front', 'back', 'concept', ?3, ?4)",
+            rusqlite::params![card_concept_id, workspace_id, concept_id, now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, topic_id, created_at)
+             VALUES (?1, ?2, 'front', 'back', 'chat_topic', ?3, ?4)",
+            rusqlite::params![card_topic_id, workspace_id, topic_id, now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, created_at)
+             VALUES (?1, ?2, 'front', 'back', 'manual', ?3)",
+            rusqlite::params![card_manual_id, workspace_id, now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO learning_goals (id, workspace_id, title, concept_id, created_at, updated_at)
+             VALUES (?1, ?2, 'Goal', ?3, ?4, ?4)",
+            rusqlite::params![goal_id, workspace_id, concept_id, now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO workspace_prompt_bank (id, workspace_id, prompt, normalized_prompt, created_at, updated_at)
+             VALUES (?1, ?2, 'Prompt', ?3, ?4, ?4)",
+            rusqlite::params![prompt_id, workspace_id, format!("prompt-{suffix}"), now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO workspace_prompt_bank_jobs (id, workspace_id, status, created_at, updated_at)
+             VALUES (?1, ?2, 'completed', ?3, ?3)",
+            rusqlite::params![prompt_job_id, workspace_id, now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO project_notes (id, workspace_id, title, content, created_at, updated_at)
+             VALUES (?1, ?2, 'Note', 'Source material', ?3, ?3)",
+            rusqlite::params![note_id, workspace_id, now],
+        )
+        .unwrap();
+    }
+
+    fn count(conn: &Connection, sql: &str) -> i64 {
+        conn.query_row(sql, [], |row| row.get::<_, i64>(0)).unwrap()
+    }
+
+    #[test]
+    fn reset_workspace_clears_derived_state_and_preserves_source_material() {
+        let pool = setup_test_db();
+        let mut conn = pool.get().unwrap();
+        ensure_reset_test_tables(&conn);
+        insert_workspace(&conn, "ws-1", None);
+        insert_workspace(&conn, "ws-2", None);
+        insert_reset_fixture(&conn, "ws-1", "one");
+        insert_reset_fixture(&conn, "ws-2", "two");
+
+        let preview = reset_knowledge_state_inner(&mut conn, KnowledgeResetRequest {
+            scope: KnowledgeResetScope::Workspace,
+            workspace_id: Some("ws-1".to_string()),
+            options: None,
+            dry_run: Some(true),
+        })
+        .unwrap();
+        assert_eq!(preview.concept_nodes, 2);
+        assert_eq!(preview.generated_cards_deleted, 2);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = 'ws-1'"), 2);
+
+        let result = reset_knowledge_state_inner(&mut conn, KnowledgeResetRequest {
+            scope: KnowledgeResetScope::Workspace,
+            workspace_id: Some("ws-1".to_string()),
+            options: None,
+            dry_run: Some(false),
+        })
+        .unwrap();
+        assert_eq!(result.concept_nodes, 2);
+        assert_eq!(result.learning_goals_detached, 1);
+
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = 'ws-1'"), 0);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM analyze_jobs WHERE workspace_id = 'ws-1'"), 0);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM workspace_prompt_bank WHERE workspace_id = 'ws-1'"), 0);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM flashcard_topics WHERE workspace_id = 'ws-1'"), 0);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = 'ws-1' AND source_type != 'manual'"), 0);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = 'ws-1'"), 1);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM project_notes WHERE workspace_id = 'ws-1'"), 1);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM learning_goals WHERE workspace_id = 'ws-1' AND concept_id IS NULL"), 1);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = 'ws-2'"), 2);
+    }
+
+    #[test]
+    fn reset_workspace_with_children_includes_descendants() {
+        let pool = setup_test_db();
+        let mut conn = pool.get().unwrap();
+        ensure_reset_test_tables(&conn);
+        insert_workspace(&conn, "root", None);
+        insert_workspace(&conn, "child", Some("root"));
+        insert_workspace(&conn, "sibling", None);
+        insert_reset_fixture(&conn, "root", "root");
+        insert_reset_fixture(&conn, "child", "child");
+        insert_reset_fixture(&conn, "sibling", "sibling");
+
+        let result = reset_knowledge_state_inner(&mut conn, KnowledgeResetRequest {
+            scope: KnowledgeResetScope::WorkspaceWithChildren,
+            workspace_id: Some("root".to_string()),
+            options: None,
+            dry_run: Some(false),
+        })
+        .unwrap();
+
+        assert_eq!(result.workspace_count, 2);
+        assert_eq!(result.concept_nodes, 4);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id IN ('root', 'child')"), 0);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = 'sibling'"), 2);
+    }
+
+    #[test]
+    fn reset_can_detach_generated_cards_instead_of_deleting_them() {
+        let pool = setup_test_db();
+        let mut conn = pool.get().unwrap();
+        ensure_reset_test_tables(&conn);
+        insert_workspace(&conn, "ws-1", None);
+        insert_reset_fixture(&conn, "ws-1", "one");
+
+        let result = reset_knowledge_state_inner(&mut conn, KnowledgeResetRequest {
+            scope: KnowledgeResetScope::Workspace,
+            workspace_id: Some("ws-1".to_string()),
+            options: Some(KnowledgeResetOptions {
+                delete_generated_cards: Some(false),
+                ..Default::default()
+            }),
+            dry_run: Some(false),
+        })
+        .unwrap();
+
+        assert_eq!(result.generated_cards_deleted, 0);
+        assert_eq!(result.generated_cards_detached, 2);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = 'ws-1'"), 3);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = 'ws-1' AND source_type = 'manual' AND source_id IS NULL AND topic_id IS NULL"), 3);
+    }
 }
