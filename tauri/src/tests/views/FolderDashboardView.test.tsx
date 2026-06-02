@@ -7,6 +7,9 @@ import FolderDashboardView from "@/views/FolderDashboardView";
 
 const mocks = vi.hoisted(() => ({
   getSummary: vi.fn(),
+  getLayout: vi.fn(),
+  setLayout: vi.fn(),
+  resetLayout: vi.fn(),
   listTopics: vi.fn(),
 }));
 
@@ -14,6 +17,9 @@ vi.mock("@/lib/api", () => ({
   api: {
     dashboard: {
       getSummary: mocks.getSummary,
+      getLayout: mocks.getLayout,
+      setLayout: mocks.setLayout,
+      resetLayout: mocks.resetLayout,
     },
     flashcard: {
       listTopics: mocks.listTopics,
@@ -69,6 +75,19 @@ describe("FolderDashboardView", () => {
     });
 
     mocks.listTopics.mockResolvedValue([]);
+    mocks.getLayout.mockResolvedValue({
+      version: 1,
+      sections: [
+        { id: "continue_learning", hidden: false },
+        { id: "knowledge_health", hidden: false },
+        { id: "recent_activity", hidden: false },
+        { id: "goals", hidden: false },
+        { id: "suggestions", hidden: false },
+        { id: "weak_concepts", hidden: false },
+      ],
+    });
+    mocks.setLayout.mockResolvedValue(undefined);
+    mocks.resetLayout.mockResolvedValue({ version: 1, sections: [] });
     mocks.getSummary.mockResolvedValue({
       workspace_id: "ws-1",
       workspace_name: "Linux",
@@ -88,6 +107,9 @@ describe("FolderDashboardView", () => {
           folder_id: "proj-1",
           folder_name: "Containers",
           updated_at: "2026-04-06T09:00:00Z",
+          message_count: 4,
+          last_snippet: "Let me know once you've checked the unshare flags.",
+          last_role: "assistant",
           route: { path: "/chat/session-1", state: null },
         },
       ],

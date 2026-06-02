@@ -6,21 +6,30 @@ import {
   BarChart2,
   BookOpen,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Clock3,
+  Eye,
+  EyeOff,
   FileText,
   Globe,
   Lightbulb,
   MessageSquare,
   Network,
   RefreshCw,
+  RotateCcw,
   Search,
+  Settings2,
   Sparkles,
   Target,
+  X,
   Zap,
 } from "lucide-react";
 import {
   api,
   type DashboardActivity,
+  type DashboardLayout,
+  type DashboardLayoutSection,
   type DashboardRoute,
   type DashboardSummary,
   type FlashcardTopic,
@@ -171,6 +180,8 @@ export default function FolderDashboardView() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [layout, setLayout] = useState<DashboardLayout | null>(null);
+  const [editMode, setEditMode] = useState(false);
   // Map of lowercased topic label -> flashcard_topics row id, so dashboard
   // topic chips can deep-link into the Quizzes tab with a real topic_id.
   const [topicIdByLabel, setTopicIdByLabel] = useState<Map<string, string>>(new Map());
@@ -189,6 +200,7 @@ export default function FolderDashboardView() {
     [workspaces, activeWorkspaceId],
   );
   const continueLearningList = summary?.continue_learning ?? [];
+  const resumeItem = continueLearningList[0];
 
   useEffect(() => {
     let cancelled = false;
@@ -245,6 +257,51 @@ export default function FolderDashboardView() {
       .catch(() => { /* non-fatal — chips simply won't deep-link */ });
     return () => { cancelled = true; };
   }, [activeWorkspaceId]);
+
+  useEffect(() => {
+    if (!activeWorkspaceId) { setLayout(null); return; }
+    let cancelled = false;
+    api.dashboard
+      .getLayout(activeWorkspaceId)
+      .then((next) => { if (!cancelled) { setLayout(next); } })
+      .catch(() => { /* non-fatal — falls back to default below */ });
+    return () => { cancelled = true; };
+  }, [activeWorkspaceId]);
+
+  const persistLayout = (next: DashboardLayout) => {
+    setLayout(next);
+    if (activeWorkspaceId) {
+      void api.dashboard.setLayout(activeWorkspaceId, next).catch(() => { /* swallow */ });
+    }
+  };
+
+  const moveSection = (id: string, dir: -1 | 1) => {
+    if (!layout) { return; }
+    const idx = layout.sections.findIndex((s) => s.id === id);
+    if (idx < 0) { return; }
+    const target = idx + dir;
+    if (target < 0 || target >= layout.sections.length) { return; }
+    const next = { ...layout, sections: layout.sections.slice() };
+    [next.sections[idx], next.sections[target]] = [next.sections[target], next.sections[idx]];
+    persistLayout(next);
+  };
+
+  const toggleSectionHidden = (id: string) => {
+    if (!layout) { return; }
+    const next = {
+      ...layout,
+      sections: layout.sections.map((s) => (s.id === id ? { ...s, hidden: !s.hidden } : s)),
+    };
+    persistLayout(next);
+  };
+
+  const resetLayout = async () => {
+    if (!activeWorkspaceId) { return; }
+    try {
+      const next = await api.dashboard.resetLayout(activeWorkspaceId);
+      setLayout(next);
+    } catch { /* swallow */ }
+  };
 
   const goalsLimit = useResponsiveLimit(3, 5, 8);
   const activityLimit = useResponsiveLimit(5, 10, 15);
@@ -391,6 +448,30 @@ export default function FolderDashboardView() {
                 <Network size={15} />
                 View Topic Map
               </button>
+              <button
+                type="button"
+                onClick={() => setEditMode((v) => !v)}
+                className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-colors ${
+                  editMode
+                    ? "border-[var(--accent-color)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
+                    : "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)] hover:border-[var(--accent-color)]"
+                }`}
+                title="Customize dashboard layout"
+              >
+                {editMode ? <X size={15} /> : <Settings2 size={15} />}
+                {editMode ? "Done" : "Customize"}
+              </button>
+              {editMode && (
+                <button
+                  type="button"
+                  onClick={() => { void resetLayout(); }}
+                  className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-muted)] transition-colors hover:text-[var(--accent-color)]"
+                  title="Reset to default order"
+                >
+                  <RotateCcw size={14} />
+                  Reset
+                </button>
+              )}
             </div>
           </div>
         </header>
@@ -403,42 +484,57 @@ export default function FolderDashboardView() {
           <MetricCard label="Completed Goals" value={effectiveSummary.overview.completed_goals} accent="bg-emerald-400" />
         </div>
 
-        <div className="gap-4 columns-1 lg:columns-2 xl:columns-3 [&>section]:mb-4 [&>section]:break-inside-avoid">
+        {(() => {
+          const renderers: Record<string, { title: string; available: boolean; render: () => ReactNode }> = {
+            continue_learning: {
+              title: "Continue Learning",
+              available: true,
+              render: () => (
             <Section title="Continue Learning">
-              {continueLearningList.length > 0 ? (
-                <div className="flex-1 flex flex-col">
-                  <ol className="relative ml-2 flex flex-col gap-4 border-l border-[var(--border-color)] pl-4">
-                    {continueLearningList.map((item, idx) => {
-                      const isActive = idx === 0;
-                      return (
-                        <li key={item.session_id} className="relative">
-                          <span
-                            className={`absolute -left-[21px] top-1.5 inline-block h-3 w-3 rounded-full border-2 ${
-                              isActive
-                                ? "border-[var(--accent-color)] bg-[var(--bg-elevated)]"
-                                : "border-[var(--border-color)] bg-[var(--bg-elevated)]"
-                            }`}
-                            aria-hidden
-                          />
-                          <button
-                            onClick={() => openRoute(item.route)}
-                            className="block w-full text-left transition-colors hover:text-[var(--accent-color)]"
-                          >
-                            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
-                              {isActive ? "Active Thread" : "Historical Context"}
-                            </div>
-                            <div className="mt-0.5 truncate text-sm font-medium text-[var(--text-primary)]">
-                              {item.title}
-                            </div>
-                            <div className="text-xs text-[var(--text-secondary)]">
-                              {item.folder_name || "Workspace thread"} · {timeAgo(item.updated_at)}
-                            </div>
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ol>
-                </div>
+              {resumeItem ? (
+                <button
+                  onClick={() => openRoute(resumeItem.route)}
+                  className="group block w-full rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4 text-left transition-colors hover:border-[var(--accent-color)]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--accent-color)]">
+                        Pick up where you left off
+                      </div>
+                      <div className="mt-1 truncate text-base font-semibold text-[var(--text-primary)]">
+                        {resumeItem.title}
+                      </div>
+                      <div className="mt-0.5 text-xs text-[var(--text-secondary)]">
+                        {resumeItem.folder_name || "Workspace thread"} · {timeAgo(resumeItem.updated_at)}
+                        {resumeItem.message_count > 0
+                          ? ` · ${resumeItem.message_count} message${resumeItem.message_count === 1 ? "" : "s"}`
+                          : ""}
+                      </div>
+                    </div>
+                    <ArrowRight
+                      size={16}
+                      className="mt-1 shrink-0 text-[var(--text-muted)] transition-transform group-hover:translate-x-0.5 group-hover:text-[var(--accent-color)]"
+                    />
+                  </div>
+                  {resumeItem.last_snippet ? (
+                    <div className="mt-3 rounded-xl border border-[var(--border-color)]/60 bg-[var(--bg-elevated)]/60 p-3">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
+                        {resumeItem.last_role === "user"
+                          ? "You said"
+                          : resumeItem.last_role === "assistant"
+                            ? "Last reply"
+                            : "Last message"}
+                      </div>
+                      <div className="mt-1 line-clamp-3 text-xs text-[var(--text-secondary)]">
+                        {resumeItem.last_snippet}
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-[var(--accent-color)]">
+                    Continue thread
+                    <ArrowRight size={12} />
+                  </div>
+                </button>
               ) : (
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-xs text-[var(--text-secondary)]">
@@ -454,7 +550,12 @@ export default function FolderDashboardView() {
                 </div>
               )}
             </Section>
-
+              ),
+            },
+            goals: {
+              title: "Goals In Motion",
+              available: true,
+              render: () => (
             <Section title="Goals In Motion" eyebrow="Progress">
               {effectiveSummary.goals.length > 0 ? (
                 <div className="space-y-3">
@@ -505,8 +606,12 @@ export default function FolderDashboardView() {
                 </div>
               )}
             </Section>
-
-          {visibleSuggestions.length > 0 && (
+              ),
+            },
+            suggestions: {
+              title: "Suggested Next Steps",
+              available: visibleSuggestions.length > 0,
+              render: () => (
             <Section title="Suggested Next Steps" eyebrow="For you">
               <div className="space-y-2">
                 {visibleSuggestions.map((suggestion) => (
@@ -531,9 +636,12 @@ export default function FolderDashboardView() {
                 ))}
               </div>
             </Section>
-          )}
-
-          {visibleWeakConcepts.length > 0 && (
+              ),
+            },
+            weak_concepts: {
+              title: "Weak Topics",
+              available: visibleWeakConcepts.length > 0,
+              render: () => (
             <Section title="Weak Topics" eyebrow="Needs review">
               <div className="space-y-2">
                 {visibleWeakConcepts.map((concept) => (
@@ -562,9 +670,12 @@ export default function FolderDashboardView() {
                 ))}
               </div>
             </Section>
-          )}
-
-          {hasKnowledgeHealth && (
+              ),
+            },
+            knowledge_health: {
+              title: "Knowledge Health",
+              available: hasKnowledgeHealth,
+              render: () => (
             <Section title="Knowledge Health" eyebrow="Snapshot">
               <div className="mb-3 grid gap-2 sm:grid-cols-3">
                 <HealthBar
@@ -619,9 +730,13 @@ export default function FolderDashboardView() {
                 </div>
               )}
             </Section>
-          )}
-
-          <Section title="Recent Activity">
+              ),
+            },
+            recent_activity: {
+              title: "Recent Activity",
+              available: true,
+              render: () => (
+            <Section title="Recent Activity">
             {visibleActivity.length > 0 ? (
               <div className="space-y-1">
                 {visibleActivity.map((item) => {
@@ -656,7 +771,105 @@ export default function FolderDashboardView() {
               </div>
             )}
           </Section>
-        </div>
+              ),
+            },
+          };
+
+          const order = (layout?.sections ?? []).filter((s) => renderers[s.id]);
+          const missing = Object.keys(renderers).filter((id) => !order.some((s) => s.id === id));
+          const fullOrder: DashboardLayoutSection[] = [
+            ...order,
+            ...missing.map((id) => ({ id, hidden: false })),
+          ];
+
+          const visible = fullOrder.filter((s) => !s.hidden && renderers[s.id].available);
+          const hidden = fullOrder.filter((s) => s.hidden || !renderers[s.id].available);
+
+          // Distribute visible sections across 3 columns in order to avoid the
+          // CSS multi-column "tall single column" gap. Falls back to 1/2 columns
+          // at smaller breakpoints via responsive grid.
+          const cols: DashboardLayoutSection[][] = [[], [], []];
+          visible.forEach((s, i) => { cols[i % 3].push(s); });
+
+          const renderSlot = (s: DashboardLayoutSection) => {
+            const entry = renderers[s.id];
+            const isHidden = s.hidden || !entry.available;
+            return (
+              <div key={s.id} className="relative">
+                {editMode && (
+                  <div className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] px-1 py-0.5 shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => moveSection(s.id, -1)}
+                      disabled={fullOrder.indexOf(s) === 0}
+                      title="Move up"
+                      className="rounded-full p-1 text-[var(--text-muted)] transition-colors hover:text-[var(--accent-color)] disabled:opacity-30"
+                    >
+                      <ChevronUp size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveSection(s.id, 1)}
+                      disabled={fullOrder.indexOf(s) === fullOrder.length - 1}
+                      title="Move down"
+                      className="rounded-full p-1 text-[var(--text-muted)] transition-colors hover:text-[var(--accent-color)] disabled:opacity-30"
+                    >
+                      <ChevronDown size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleSectionHidden(s.id)}
+                      title={isHidden ? "Show" : "Hide"}
+                      className="rounded-full p-1 text-[var(--text-muted)] transition-colors hover:text-[var(--accent-color)]"
+                    >
+                      {isHidden ? <Eye size={12} /> : <EyeOff size={12} />}
+                    </button>
+                  </div>
+                )}
+                {entry.available ? entry.render() : (
+                  <Section title={entry.title}>
+                    <div className="text-xs text-[var(--text-muted)]">Nothing to show right now.</div>
+                  </Section>
+                )}
+              </div>
+            );
+          };
+
+          return (
+            <>
+              <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 xl:grid-cols-3">
+                {cols.map((colSections, ci) => (
+                  <div key={ci} className="flex flex-col gap-4">
+                    {colSections.map((s) => renderSlot(s))}
+                  </div>
+                ))}
+              </div>
+              {editMode && hidden.length > 0 && (
+                <div className="mt-2 rounded-2xl border border-dashed border-[var(--border-color)] bg-[var(--bg-elevated)]/60 p-3">
+                  <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
+                    Hidden sections
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {hidden.map((s) => (
+                      <div key={s.id} className="flex items-center justify-between gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 px-3 py-2">
+                        <div className="text-xs text-[var(--text-secondary)]">{renderers[s.id].title}</div>
+                        <button
+                          type="button"
+                          onClick={() => toggleSectionHidden(s.id)}
+                          disabled={!renderers[s.id].available}
+                          title={renderers[s.id].available ? "Show" : "No data yet"}
+                          className="rounded-full p-1 text-[var(--text-muted)] transition-colors hover:text-[var(--accent-color)] disabled:opacity-30"
+                        >
+                          <Eye size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         <footer className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text-secondary)]">
           <BarChart2 size={15} className="text-[var(--text-muted)]" />

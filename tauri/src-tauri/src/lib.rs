@@ -510,6 +510,9 @@ pub fn run() {
             commands::folder::move_folder_to_workspace,
             commands::dashboard::get_dashboard_summary,
             commands::dashboard::get_review_topics,
+            commands::dashboard::get_dashboard_layout,
+            commands::dashboard::set_dashboard_layout,
+            commands::dashboard::reset_dashboard_layout,
             // Artifact commands
             commands::artifact::create_artifact,
             commands::artifact::get_artifact,
@@ -727,6 +730,7 @@ pub fn run() {
             commands::memory::list_global_memories,
             commands::memory::update_memory,
             commands::memory::delete_memory,
+            commands::memory::delete_workspace_facts,
             commands::memory::get_active_memories,
             commands::memory::extract_memories,
             commands::memory::delete_all_memories,

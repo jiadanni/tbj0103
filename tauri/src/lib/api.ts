@@ -928,6 +928,9 @@ export interface DashboardContinueLearning {
   folder_id?: string | null;
   folder_name?: string | null;
   updated_at: string;
+  message_count: number;
+  last_snippet?: string | null;
+  last_role?: string | null;
   route: DashboardRoute;
 }
 
@@ -994,6 +997,16 @@ export interface DashboardActivity {
   subtitle: string;
   timestamp: string;
   route: DashboardRoute;
+}
+
+export interface DashboardLayoutSection {
+  id: string;
+  hidden: boolean;
+}
+
+export interface DashboardLayout {
+  version: number;
+  sections: DashboardLayoutSection[];
 }
 
 export interface DashboardSummary {
@@ -1090,6 +1103,12 @@ export const api = {
       ),
     getReviewTopics: (workspaceId: string, options?: { includeDescendants?: boolean }) =>
       invoke<ReviewTopic[]>("get_review_topics", { workspaceId, includeDescendants: options?.includeDescendants }),
+    getLayout: (workspaceId: string) =>
+      invoke<DashboardLayout>("get_dashboard_layout", { workspaceId }),
+    setLayout: (workspaceId: string, layout: DashboardLayout) =>
+      invoke<void>("set_dashboard_layout", { workspaceId, layout }),
+    resetLayout: (workspaceId: string) =>
+      invoke<DashboardLayout>("reset_dashboard_layout", { workspaceId }),
   },
 
   chat: {
@@ -1948,6 +1967,8 @@ export const api = {
     update: (id: string, fields: { content?: string; memory_type?: Memory["memory_type"]; is_pinned?: boolean; is_active?: boolean }) =>
       invoke<Memory>("update_memory", { req: { id, ...fields } }),
     delete: (id: string) => invoke<void>("delete_memory", { id }),
+    deleteWorkspaceFacts: (workspaceId: string) =>
+      invoke<number>("delete_workspace_facts", { workspaceId }),
     deleteAll: (workspaceId: string, scope: Memory["scope"]) =>
       invoke<void>("delete_all_memories", { workspaceId, scope }),
     deactivateAll: (workspaceId: string, scope: Memory["scope"]) =>

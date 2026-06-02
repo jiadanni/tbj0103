@@ -24,6 +24,9 @@ pub struct DashboardContinueLearning {
     pub folder_id: Option<String>,
     pub folder_name: Option<String>,
     pub updated_at: String,
+    pub message_count: i64,
+    pub last_snippet: Option<String>,
+    pub last_role: Option<String>,
     pub route: DashboardRoute,
 }
 
@@ -102,6 +105,18 @@ pub struct DashboardActivity {
     pub subtitle: String,
     pub timestamp: String,
     pub route: DashboardRoute,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DashboardLayoutSection {
+    pub id: String,
+    pub hidden: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DashboardLayout {
+    pub version: i32,
+    pub sections: Vec<DashboardLayoutSection>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

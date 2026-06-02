@@ -1,14 +1,104 @@
+use crate::commands::settings::get_setting;
 use crate::db::DbState;
 use crate::logging;
 use crate::models::dashboard::{
     DashboardActivity, DashboardConceptFocus, DashboardContinueLearning, DashboardGoalSummary,
-    DashboardKnowledgeHealth, DashboardOverview, DashboardReviewSummary, DashboardRoute,
-    DashboardSuggestion, DashboardSummary, ReviewTopic,
+    DashboardKnowledgeHealth, DashboardLayout, DashboardLayoutSection, DashboardOverview,
+    DashboardReviewSummary, DashboardRoute, DashboardSuggestion, DashboardSummary, ReviewTopic,
 };
 use crate::models::workspace::TopicSignature;
 use crate::services::workspace_hierarchy::workspace_filter_sql;
 use rusqlite::params;
 use tauri::State;
+
+const DEFAULT_LAYOUT_KEY: &str = "dashboard.layout.default";
+fn workspace_layout_key(workspace_id: &str) -> String {
+    format!("dashboard.layout.workspace.{workspace_id}")
+}
+
+fn default_layout() -> DashboardLayout {
+    DashboardLayout {
+        version: 1,
+        sections: vec![
+            DashboardLayoutSection { id: "continue_learning".into(), hidden: false },
+            DashboardLayoutSection { id: "knowledge_health".into(), hidden: false },
+            DashboardLayoutSection { id: "recent_activity".into(), hidden: false },
+            DashboardLayoutSection { id: "goals".into(), hidden: false },
+            DashboardLayoutSection { id: "suggestions".into(), hidden: false },
+            DashboardLayoutSection { id: "weak_concepts".into(), hidden: false },
+        ],
+    }
+}
+
+fn parse_layout(raw: &str) -> Option<DashboardLayout> {
+    serde_json::from_str::<DashboardLayout>(raw).ok().map(|mut layout| {
+        // Merge in any sections from the default that aren't in the stored layout
+        // (so new sections added in future releases appear automatically).
+        let default = default_layout();
+        let known: std::collections::HashSet<String> =
+            layout.sections.iter().map(|s| s.id.clone()).collect();
+        for section in default.sections {
+            if !known.contains(&section.id) {
+                layout.sections.push(section);
+            }
+        }
+        layout
+    })
+}
+
+#[tauri::command]
+pub fn get_dashboard_layout(
+    state: State<DbState>,
+    workspace_id: String,
+) -> Result<DashboardLayout, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    if let Some(raw) = get_setting(&conn, &workspace_layout_key(&workspace_id)) {
+        if let Some(layout) = parse_layout(&raw) {
+            return Ok(layout);
+        }
+    }
+    if let Some(raw) = get_setting(&conn, DEFAULT_LAYOUT_KEY) {
+        if let Some(layout) = parse_layout(&raw) {
+            return Ok(layout);
+        }
+    }
+    Ok(default_layout())
+}
+
+#[tauri::command]
+pub fn set_dashboard_layout(
+    state: State<DbState>,
+    workspace_id: String,
+    layout: DashboardLayout,
+) -> Result<(), String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let value = serde_json::to_string(&layout).map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+        params![workspace_layout_key(&workspace_id), value],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn reset_dashboard_layout(
+    state: State<DbState>,
+    workspace_id: String,
+) -> Result<DashboardLayout, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM settings WHERE key = ?1",
+        params![workspace_layout_key(&workspace_id)],
+    )
+    .map_err(|e| e.to_string())?;
+    if let Some(raw) = get_setting(&conn, DEFAULT_LAYOUT_KEY) {
+        if let Some(layout) = parse_layout(&raw) {
+            return Ok(layout);
+        }
+    }
+    Ok(default_layout())
+}
 
 fn route(path: impl Into<String>, state: Option<serde_json::Value>) -> DashboardRoute {
     DashboardRoute {
@@ -248,7 +338,14 @@ fn get_dashboard_summary_inner(
                     s.title,
                     NULLIF(s.folder_id, ''),
                     p.name,
-                    COALESCE(s.last_accessed_at, s.updated_at) AS last_seen
+                    COALESCE(s.last_accessed_at, s.updated_at) AS last_seen,
+                    COALESCE(s.message_count, 0) AS msg_count,
+                    (SELECT m.content FROM messages m
+                       WHERE m.session_id = s.id
+                       ORDER BY m.created_at DESC LIMIT 1) AS last_content,
+                    (SELECT m.role FROM messages m
+                       WHERE m.session_id = s.id
+                       ORDER BY m.created_at DESC LIMIT 1) AS last_role
              FROM chat_sessions s
              LEFT JOIN folders p ON p.id = s.folder_id
              WHERE s.workspace_id {ws_cond}
@@ -256,18 +353,31 @@ fn get_dashboard_summary_inner(
                AND s.is_incognito = 0
                AND s.exclude_from_analytics = 0
              ORDER BY last_seen DESC
-             LIMIT 3"
+             LIMIT 1"
         ))
         .map_err(|e| e.to_string())?;
     let continue_learning = continue_learning_stmt
         .query_map(params![&workspace_id], |row| {
             let session_id = row.get::<_, String>(0)?;
+            let raw_snippet: Option<String> = row.get(6)?;
+            let last_snippet = raw_snippet.map(|s| {
+                let collapsed = s.split_whitespace().collect::<Vec<_>>().join(" ");
+                if collapsed.chars().count() > 160 {
+                    let truncated: String = collapsed.chars().take(157).collect();
+                    format!("{truncated}…")
+                } else {
+                    collapsed
+                }
+            });
             Ok(DashboardContinueLearning {
                 session_id: session_id.clone(),
                 title: row.get(1)?,
                 folder_id: row.get(2)?,
                 folder_name: row.get(3)?,
                 updated_at: row.get(4)?,
+                message_count: row.get(5)?,
+                last_snippet,
+                last_role: row.get(7)?,
                 route: route(format!("/chat/{session_id}"), None),
             })
         })
