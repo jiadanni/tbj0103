@@ -494,51 +494,32 @@ export default function FolderDashboardView() {
               {resumeItem ? (
                 <button
                   onClick={() => openRoute(resumeItem.route)}
-                  className="group block w-full rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4 text-left transition-colors hover:border-[var(--accent-color)]"
+                  className="group block w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3 text-left transition-colors hover:border-[var(--accent-color)]"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--accent-color)]">
-                        Pick up where you left off
-                      </div>
-                      <div className="mt-1 truncate text-base font-semibold text-[var(--text-primary)]">
+                      <div className="truncate text-sm font-semibold text-[var(--text-primary)]">
                         {resumeItem.title}
                       </div>
-                      <div className="mt-0.5 text-xs text-[var(--text-secondary)]">
-                        {resumeItem.folder_name || "Workspace thread"} · {timeAgo(resumeItem.updated_at)}
-                        {resumeItem.message_count > 0
-                          ? ` · ${resumeItem.message_count} message${resumeItem.message_count === 1 ? "" : "s"}`
-                          : ""}
+                      <div className="mt-0.5 text-xs text-[var(--text-muted)]">
+                        {timeAgo(resumeItem.updated_at)}
                       </div>
+                      {resumeItem.last_snippet ? (
+                        <div className="mt-2 line-clamp-2 text-xs leading-5 text-[var(--text-secondary)]">
+                          {resumeItem.last_snippet}
+                        </div>
+                      ) : null}
                     </div>
                     <ArrowRight
                       size={16}
                       className="mt-1 shrink-0 text-[var(--text-muted)] transition-transform group-hover:translate-x-0.5 group-hover:text-[var(--accent-color)]"
                     />
                   </div>
-                  {resumeItem.last_snippet ? (
-                    <div className="mt-3 rounded-xl border border-[var(--border-color)]/60 bg-[var(--bg-elevated)]/60 p-3">
-                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
-                        {resumeItem.last_role === "user"
-                          ? "You said"
-                          : resumeItem.last_role === "assistant"
-                            ? "Last reply"
-                            : "Last message"}
-                      </div>
-                      <div className="mt-1 line-clamp-3 text-xs text-[var(--text-secondary)]">
-                        {resumeItem.last_snippet}
-                      </div>
-                    </div>
-                  ) : null}
-                  <div className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-[var(--accent-color)]">
-                    Continue thread
-                    <ArrowRight size={12} />
-                  </div>
                 </button>
               ) : (
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-xs text-[var(--text-secondary)]">
-                    Nothing to resume yet — start with search or chat.
+                    Nothing to resume yet.
                   </div>
                   <button
                     onClick={() => navigate("/chat")}
