@@ -16,15 +16,19 @@ import { Tooltip } from "../components/Tooltip";
 import DailyNotesView from "./DailyNotesView";
 import type { NotesSubView } from "../components/navigationItems";
 
+type NoteSurfaceSelection =
+  | { kind: "daily" }
+  | { kind: "note"; noteId: string | null };
+
 export default function NoteEditorView() {
   const location = useLocation();
-  const [activeSubView, setActiveSubView] = useState<NotesSubView>("notes");
+  const [selection, setSelection] = useState<NoteSurfaceSelection>({ kind: "note", noteId: null });
 
-  // Handle external subview switching via router state
+  // Handle external subview switching via router state.
   useEffect(() => {
     const state = location.state as { subView?: NotesSubView } | null;
     if (state?.subView) {
-      setActiveSubView(state.subView);
+      setSelection(state.subView === "daily" ? { kind: "daily" } : { kind: "note", noteId: null });
       window.history.replaceState({}, document.title);
     }
   }, [location.state]);
@@ -62,6 +66,12 @@ export default function NoteEditorView() {
     setTags(selected.tags ?? []);
   }, [selected]);
 
+  useEffect(() => {
+    if (selection.kind !== "note" || !selection.noteId) {return;}
+    const match = notes.find((note) => note.id === selection.noteId) ?? null;
+    setSelected(match);
+  }, [notes, selection]);
+
   // Auto-save with 1.5s debounce
   const autoSave = useCallback(() => {
     if (!selected) {return;}
@@ -91,6 +101,7 @@ export default function NoteEditorView() {
       const note = await api.note.create(activeWorkspaceId, "Untitled Note");
       setNotes((prev) => [note, ...prev]);
       setSelected(note);
+      setSelection({ kind: "note", noteId: note.id });
     } finally {
       setCreating(false);
     }
@@ -107,7 +118,10 @@ export default function NoteEditorView() {
     })) {return;}
     await api.note.delete(id);
     setNotes((prev) => prev.filter((n) => n.id !== id));
-    if (selected?.id === id) {setSelected(null);}
+    if (selected?.id === id) {
+      setSelected(null);
+      setSelection({ kind: "note", noteId: null });
+    }
   }
 
   function addTag() {
@@ -138,35 +152,9 @@ export default function NoteEditorView() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Subview tabs */}
-      <div className="flex items-center gap-1.5 px-4 py-2 border-b border-[var(--border-color)] bg-[var(--bg-primary)] flex-shrink-0">
-        {[
-          { id: "notes" as NotesSubView, label: "Workspace Notes", Icon: FileText },
-          { id: "daily" as NotesSubView, label: "Daily Notes", Icon: Calendar },
-        ].map(({ id, label, Icon }) => (
-          <button
-            key={id}
-            onClick={() => setActiveSubView(id)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${
-              activeSubView === id
-                ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]"
-            }`}
-          >
-            <Icon size={14} />
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {activeSubView === "daily" ? (
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <DailyNotesView />
-        </div>
-      ) : (
-    <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
       {/* Left pane: note list */}
-      <div className="w-64 flex flex-col border-r border-[var(--border-color)] bg-[var(--bg-sidebar)] shrink-0">
+      <div className="w-72 flex flex-col border-r border-[var(--border-color)] bg-[var(--bg-sidebar)] shrink-0">
         <div className="flex items-center gap-2 px-3 py-2.5 border-b border-[var(--border-color)]">
           <div className="flex-1 flex items-center gap-1.5 bg-[var(--bg-elevated)] rounded-lg px-2 py-1">
             <Search size={12} className="text-[var(--text-muted)]" />
@@ -188,18 +176,53 @@ export default function NoteEditorView() {
           </Tooltip>
         </div>
 
+        <div className="border-b border-[var(--border-color)] px-2 py-2">
+          <button
+            onClick={() => {
+              setSelection({ kind: "daily" });
+              setSelected(null);
+            }}
+            className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-medium transition-colors ${
+              selection.kind === "daily"
+                ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+            }`}
+          >
+            <Calendar size={14} />
+            <div>
+              <div>Calendar</div>
+              <div className="text-[10px] text-[var(--text-muted)]">Browse notes by day</div>
+            </div>
+          </button>
+        </div>
+
         <div className="flex-1 overflow-y-auto">
+          <div className="px-3 pt-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
+            Notes
+          </div>
           {!activeWorkspaceId ? (
             <p className="p-4 text-xs text-[var(--text-muted)] text-center">Select a workspace to view notes.</p>
           ) : filtered.length === 0 ? (
             <p className="p-4 text-xs text-[var(--text-muted)] text-center">No notes yet. Click + to create one.</p>
           ) : (
             filtered.map((note) => (
-              <button
+              <div
                 key={note.id}
-                onClick={() => setSelected(note)}
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  setSelected(note);
+                  setSelection({ kind: "note", noteId: note.id });
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setSelected(note);
+                    setSelection({ kind: "note", noteId: note.id });
+                  }
+                }}
                 className={`w-full text-left px-3 py-2.5 border-b border-[var(--border-color)] transition-colors ${
-                  selected?.id === note.id
+                  selection.kind === "note" && selected?.id === note.id
                     ? "bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
                     : "hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]"
                 }`}
@@ -227,14 +250,18 @@ export default function NoteEditorView() {
                     ))}
                   </div>
                 )}
-              </button>
+              </div>
             ))
           )}
         </div>
       </div>
 
       {/* Right pane: editor */}
-      {selected ? (
+      {selection.kind === "daily" ? (
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <DailyNotesView />
+        </div>
+      ) : selected ? (
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* Note header */}
           <div className="flex items-center gap-3 px-5 py-3 border-b border-[var(--border-color)] shrink-0">
@@ -322,8 +349,7 @@ export default function NoteEditorView() {
           </div>
         </div>
       )}
-    </div>
-      )}
+      </div>
     </div>
   );
 }

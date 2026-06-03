@@ -20,7 +20,6 @@ import {
   Minimize2,
   Network,
   Plus,
-  RefreshCw,
   Search,
   Sparkles,
   Target,
@@ -232,8 +231,6 @@ export default function KnowledgeGraphView({
   const [workspaceAnalyzable, setWorkspaceAnalyzable] = useState<WorkspaceAnalyzableStatus | null>(null);
   const [descendantProgress, setDescendantProgress] = useState<DescendantAnalysisProgress | null>(null);
   const [chunkProgress, setChunkProgress] = useState<WorkspaceAnalysisProgress | null>(null);
-  const [confirmUndoOpen, setConfirmUndoOpen] = useState(false);
-  const [undoBusy, setUndoBusy] = useState(false);
 
   const [conceptSearch, setConceptSearch] = useState("");
   const [selectedConcept, setSelectedConcept] = useState<ConceptNode | null>(null);
@@ -576,29 +573,6 @@ export default function KnowledgeGraphView({
     }
   }
 
-  async function handleUndo() {
-    if (!activeWorkspaceId) { return; }
-    setUndoBusy(true);
-    try {
-      await api.graph.undoLastAnalysis(activeWorkspaceId);
-      setConfirmUndoOpen(false);
-      void loadGraph();
-      void loadSummary();
-      void loadProposals();
-      setSuccessDialog({
-        title: "AI analysis output removed",
-        description: "Removed the latest AI-generated concepts and links for this workspace.",
-      });
-    } catch (err) {
-      setErrorDialog({
-        title: "Failed to remove AI analysis output",
-        description: err instanceof Error ? err.message : String(err),
-      });
-    } finally {
-      setUndoBusy(false);
-    }
-  }
-
   async function createConcept() {
     if (!activeWorkspaceId || !newConceptName.trim()) { return; }
 
@@ -697,10 +671,6 @@ export default function KnowledgeGraphView({
     } finally {
       setIsGeneratingCards(false);
     }
-  }
-
-  function refreshKnowledge() {
-    void Promise.all([loadGraph(), loadSummary()]);
   }
 
   if (!activeWorkspaceId) {
@@ -1086,33 +1056,15 @@ export default function KnowledgeGraphView({
               <div className="flex flex-col items-end gap-2">
                 <div className="flex flex-wrap gap-2 xl:justify-end">
                   <button
-                    onClick={handleAnalyze}
+                    type="button"
+                    onClick={() => { void handleAnalyze(); }}
                     disabled={isAnalyzing || !canRunAiActions || insufficientData}
-                    className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent-color)] px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                     title={insufficientData ? analyzeHelpText : undefined}
+                    className="inline-flex items-center gap-2 rounded-xl border border-[rgba(var(--accent-color-rgb),0.35)] bg-[var(--accent-color)] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[var(--accent-color)]/90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {isAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
                     {analyzeButtonLabel}
                   </button>
-                  <button
-                    onClick={refreshKnowledge}
-                    disabled={summaryLoading}
-                    className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-1.5 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
-                  >
-                    <RefreshCw size={14} className={summaryLoading ? "animate-spin" : ""} />
-                    Refresh Overview
-                  </button>
-                  {hasAiInferredGraph && (
-                    <button
-                      onClick={() => setConfirmUndoOpen(true)}
-                      disabled={isAnalyzing || undoBusy}
-                      className="inline-flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm text-red-400 transition-colors hover:bg-red-500/20 hover:border-red-500/50"
-                      title="Remove the latest AI-generated concepts and links for this workspace"
-                    >
-                      <Trash2 size={14} />
-                      Remove Latest AI Output
-                    </button>
-                  )}
                 </div>
                 {analyzeError && (
                   <p className="max-w-xs text-right text-xs text-red-400">{analyzeError}</p>
@@ -1514,22 +1466,6 @@ export default function KnowledgeGraphView({
           title={successDialog.title}
           description={successDialog.description}
           onConfirm={() => setSuccessDialog(null)}
-        />
-      )}
-
-      {confirmUndoOpen && (
-        <ConfirmDialog
-          title="Remove latest AI output?"
-          description="This removes the latest AI-generated concepts, links, and updates for the current workspace. It does not compare versions or reset all stale AI-inferred data."
-          confirmLabel="Remove Latest Output"
-          tone="danger"
-          busy={undoBusy}
-          onConfirm={() => { void handleUndo(); }}
-          onCancel={() => {
-            if (!undoBusy) {
-              setConfirmUndoOpen(false);
-            }
-          }}
         />
       )}
 

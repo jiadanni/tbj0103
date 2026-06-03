@@ -157,6 +157,17 @@ pub struct ConceptMention {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoadmapSnapshot {
+    pub id: String,
+    pub workspace_id: String,
+    pub source_job_id: Option<String>,
+    pub source_model: Option<String>,
+    pub concept_count: i64,
+    pub link_count: i64,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphStatistics {
     pub id: String,
     pub workspace_id: Option<String>,

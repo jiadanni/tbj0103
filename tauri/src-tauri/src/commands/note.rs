@@ -1,6 +1,6 @@
 use crate::db::DbState;
 use crate::models::note::{
-    CreateNoteRequest, DailyNote, GetOrCreateDailyNoteRequest, NoteTemplate, ProjectNote,
+    CreateNoteRequest, GetOrCreateDailyNoteRequest, NoteTemplate, ProjectNote,
     UpdateNoteRequest,
 };
 use crate::services::workspace_hierarchy::workspace_filter_sql;
@@ -21,6 +21,10 @@ pub fn create_note(state: State<DbState>, req: CreateNoteRequest) -> Result<Proj
         tags: req.tags.unwrap_or_default(),
         created_at: now.clone(),
         updated_at: now,
+        date: None,
+        mood: None,
+        productivity: None,
+        template_id: None,
     };
     let tags_json = serde_json::to_string(&note.tags).unwrap_or_default();
     conn.execute(
@@ -71,6 +75,10 @@ pub fn list_notes(
                 tags: serde_json::from_str(&tags_json).unwrap_or_default(),
                 created_at: row.get(6)?,
                 updated_at: row.get(7)?,
+                date: None,
+                mood: None,
+                productivity: None,
+                template_id: None,
             })
         })
         .map_err(|e| e.to_string())?
@@ -96,6 +104,10 @@ pub fn get_note(state: State<DbState>, id: String) -> Result<Option<ProjectNote>
                 tags: serde_json::from_str(&tags_json).unwrap_or_default(),
                 created_at: row.get(6)?,
                 updated_at: row.get(7)?,
+                date: None,
+                mood: None,
+                productivity: None,
+                template_id: None,
             })
         },
     );
@@ -149,7 +161,7 @@ pub fn delete_note(state: State<DbState>, id: String) -> Result<(), String> {
 pub fn get_or_create_daily_note(
     state: State<DbState>,
     req: GetOrCreateDailyNoteRequest,
-) -> Result<DailyNote, String> {
+) -> Result<ProjectNote, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let date = req
         .date
@@ -158,22 +170,25 @@ pub fn get_or_create_daily_note(
     let result = conn.query_row(
         "SELECT id, workspace_id, date, content, mood, productivity, template_id, created_at, updated_at FROM daily_notes WHERE workspace_id = ?1 AND date = ?2",
         rusqlite::params![req.workspace_id, date],
-        |row| Ok(DailyNote {
+        |row| Ok(ProjectNote {
             id: row.get(0)?,
             workspace_id: row.get(1)?,
-            date: row.get(2)?,
+            title: row.get(2)?,
             content: row.get(3)?,
+            note_type: "daily".to_string(),
+            tags: vec![],
+            created_at: row.get(7)?,
+            updated_at: row.get(8)?,
+            date: row.get(2)?,
             mood: row.get(4)?,
             productivity: row.get(5)?,
             template_id: row.get(6)?,
-            created_at: row.get(7)?,
-            updated_at: row.get(8)?,
         }),
     );
     match result {
         Ok(note) => Ok(note),
         Err(rusqlite::Error::QueryReturnedNoRows) => {
-            let note = DailyNote::new(req.workspace_id, date);
+            let note = ProjectNote::new_daily(req.workspace_id, date);
             conn.execute(
                 "INSERT INTO daily_notes (id, workspace_id, date, content, mood, productivity, template_id, created_at, updated_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
@@ -192,7 +207,7 @@ pub fn list_daily_notes_in_range(
     start_date: String,
     end_date: String,
     include_descendants: Option<bool>,
-) -> Result<Vec<DailyNote>, String> {
+) -> Result<Vec<ProjectNote>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let (cte, ws_cond) = workspace_filter_sql(include_descendants.unwrap_or(false));
     let sql = format!(
@@ -206,16 +221,19 @@ pub fn list_daily_notes_in_range(
         .query_map(
             rusqlite::params![workspace_id, start_date, end_date],
             |row| {
-                Ok(DailyNote {
+                Ok(ProjectNote {
                     id: row.get(0)?,
                     workspace_id: row.get(1)?,
-                    date: row.get(2)?,
+                    title: row.get(2)?,
                     content: row.get(3)?,
+                    note_type: "daily".to_string(),
+                    tags: vec![],
+                    created_at: row.get(7)?,
+                    updated_at: row.get(8)?,
+                    date: row.get(2)?,
                     mood: row.get(4)?,
                     productivity: row.get(5)?,
                     template_id: row.get(6)?,
-                    created_at: row.get(7)?,
-                    updated_at: row.get(8)?,
                 })
             },
         )

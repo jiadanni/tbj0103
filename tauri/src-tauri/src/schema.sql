@@ -196,6 +196,17 @@ CREATE TABLE IF NOT EXISTS graph_statistics (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS roadmap_snapshots (
+    id TEXT PRIMARY KEY NOT NULL,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    source_job_id TEXT REFERENCES analyze_jobs(id) ON DELETE SET NULL,
+    source_model TEXT,
+    concept_count INTEGER NOT NULL DEFAULT 0,
+    link_count INTEGER NOT NULL DEFAULT 0,
+    payload TEXT NOT NULL CHECK (json_valid(payload)),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Note templates & daily notes (from NoteTemplate.swift)
 CREATE TABLE IF NOT EXISTS note_templates (
     id TEXT PRIMARY KEY NOT NULL,
@@ -1144,6 +1155,7 @@ CREATE INDEX IF NOT EXISTS idx_concept_links_source ON concept_links(source_id);
 CREATE INDEX IF NOT EXISTS idx_concept_links_target ON concept_links(target_id);
 CREATE INDEX IF NOT EXISTS idx_concept_links_source_target ON concept_links(source_id, target_id);
 CREATE INDEX IF NOT EXISTS idx_concept_mentions_concept ON concept_mentions(concept_id);
+CREATE INDEX IF NOT EXISTS idx_roadmap_snapshots_workspace_created ON roadmap_snapshots(workspace_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_learning_goals_workspace ON learning_goals(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_learning_cards_review ON learning_cards(next_review_date);
 CREATE INDEX IF NOT EXISTS idx_learning_cards_workspace_review ON learning_cards(workspace_id, next_review_date);

@@ -229,6 +229,16 @@ export interface ChangeProposal {
   created_at: string;
 }
 
+export interface RoadmapSnapshot {
+  id: string;
+  workspace_id: string;
+  source_job_id: string | null;
+  source_model: string | null;
+  concept_count: number;
+  link_count: number;
+  created_at: string;
+}
+
 export interface KnowledgeSettings {
   upgrade_mode: string;
   supersede_mode: string;
@@ -253,6 +263,7 @@ export interface KnowledgeResetResult {
   concept_links: number;
   concept_mentions: number;
   graph_statistics: number;
+  roadmap_snapshots: number;
   analyze_jobs: number;
   analyze_job_chunks: number;
   change_proposals: number;
@@ -353,11 +364,7 @@ export interface SuggestedConcept {
 export interface ProjectNote {
   id: string; workspace_id: string; title: string; content: string;
   note_type: string; tags: string[]; created_at: string; updated_at: string;
-}
-
-export interface DailyNote {
-  id: string; workspace_id: string; date: string; content: string;
-  mood?: number; productivity?: number; created_at: string; updated_at: string;
+  date?: string; mood?: number; productivity?: number; template_id?: string | null;
 }
 
 export interface NoteTemplate {
@@ -1325,6 +1332,10 @@ export const api = {
     upsertFromTopicTag: (workspaceId: string, name: string) =>
       invoke<string>("upsert_concept_from_tag", { workspaceId, name }),
     undoLastAnalysis: (workspaceId: string) => invoke<void>("undo_last_analysis", { workspaceId }),
+    listRoadmapSnapshots: (workspaceId: string) =>
+      invoke<RoadmapSnapshot[]>("list_roadmap_snapshots", { workspaceId }),
+    restoreRoadmapSnapshot: (snapshotId: string) =>
+      invoke<void>("restore_roadmap_snapshot", { snapshotId }),
     resetKnowledgeState: (req: {
       scope: KnowledgeResetScope;
       workspaceId?: string;
@@ -1433,11 +1444,11 @@ export const api = {
     update: (id: string, fields: Partial<ProjectNote>) => invoke<void>("update_note", { req: { id, ...fields } }),
     delete: (id: string) => invoke<void>("delete_note", { id }),
     getDailyNote: (workspaceId: string, date?: string) =>
-      invoke<DailyNote>("get_or_create_daily_note", { req: { workspace_id: workspaceId, date } }),
+      invoke<ProjectNote>("get_or_create_daily_note", { req: { workspace_id: workspaceId, date } }),
     updateDailyNote: (id: string, content?: string, mood?: number, productivity?: number) =>
       invoke<void>("update_daily_note", { id, content, mood: mood !== undefined ? mood : null, productivity: productivity !== undefined ? productivity : null }),
     listDailyNotesInRange: (workspaceId: string, startDate: string, endDate: string, opts?: { includeDescendants?: boolean }) =>
-      invoke<DailyNote[]>("list_daily_notes_in_range", { workspaceId, startDate, endDate, includeDescendants: opts?.includeDescendants }),
+      invoke<ProjectNote[]>("list_daily_notes_in_range", { workspaceId, startDate, endDate, includeDescendants: opts?.includeDescendants }),
     listTemplates: (workspaceId: string, opts?: { includeDescendants?: boolean }) => invoke<NoteTemplate[]>("list_templates", { workspaceId, includeDescendants: opts?.includeDescendants }),
     createTemplate: (workspaceId: string, name: string, content: string) =>
       invoke<NoteTemplate>("create_template", { workspaceId, name, content }),

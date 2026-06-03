@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState, lazy, Suspense } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
   ArrowRight,
-  ClipboardCheck,
-  Map as MapIcon,
   MessageSquare,
   RefreshCw,
   Search,
@@ -18,30 +16,9 @@ import { useWorkspaceStore } from "../stores/workspaceStore";
 const RoadmapPane = lazy(() =>
   import("./KnowledgeGraphView").then((m) => ({ default: m.RoadmapPane })),
 );
-const ReviewPane = lazy(() =>
-  import("./FlashcardReviewView").then((m) => ({ default: m.ReviewPane })),
-);
-const QuizzesPane = lazy(() =>
-  import("./QuizzesPane").then((m) => ({ default: m.QuizzesPane })),
-);
 const GoalsPane = lazy(() =>
   import("./LearningPathView").then((m) => ({ default: m.GoalsPane })),
 );
-
-type HubTab = "map" | "practice";
-type PracticeMode = "review" | "quiz";
-
-function parseTab(value: string | null): HubTab {
-  if (value === "map" || value === "practice") { return value; }
-  if (value === "roadmap" || value === "goals") { return "map"; }
-  if (value === "review" || value === "quizzes") { return "practice"; }
-  return "map";
-}
-
-function parseInitialPracticeMode(value: string | null): PracticeMode {
-  if (value === "quizzes" || value === "quiz") { return "quiz"; }
-  return "review";
-}
 
 function timeAgo(iso: string | undefined | null) {
   if (!iso) { return "recently"; }
@@ -66,10 +43,10 @@ function MetricCard({
   accent?: string;
 }) {
   return (
-    <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3">
-      <div className={`mb-2 h-0.5 w-6 rounded-full ${accent}`} />
-      <div className="text-2xl font-semibold text-[var(--text-primary)]">{value}</div>
-      <div className="mt-0.5 text-xs text-[var(--text-muted)]">{label}</div>
+    <div className="h-[72px] w-[110px] rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-2">
+      <div className={`mb-1 h-0.5 w-4 rounded-full ${accent}`} />
+      <div className="text-xs font-semibold leading-none text-[var(--text-primary)]">{value}</div>
+      <div className="mt-1 text-[10px] text-[var(--text-muted)]">{label}</div>
     </div>
   );
 }
@@ -79,18 +56,6 @@ export default function FolderDashboardView() {
   const { activeWorkspaceId } = useScopedWorkspace();
   const includeDescendants = useBubbleUpFlag();
   const workspaces = useWorkspaceStore((state) => state.workspaces);
-
-  const [searchParams, setSearchParams] = useSearchParams();
-  const initialTab = useMemo(() => parseTab(searchParams.get("tab")), [searchParams]);
-  const [activeTab, setActiveTab] = useState<HubTab>(initialTab);
-  const initialMode = useMemo(() => parseInitialPracticeMode(searchParams.get("tab")), [searchParams]);
-  const [practiceMode, setPracticeMode] = useState<PracticeMode>(initialMode);
-
-  const initialQuizTopic = useMemo(() => searchParams.get("topic") ?? undefined, [searchParams]);
-  const initialQuizKindRaw = useMemo(() => searchParams.get("kind"), [searchParams]);
-  const initialQuizKind = initialQuizKindRaw === "pop" || initialQuizKindRaw === "exam"
-    ? initialQuizKindRaw
-    : undefined;
 
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -125,16 +90,6 @@ export default function FolderDashboardView() {
       .finally(() => { if (!cancelled) { setIsLoading(false); } });
     return () => { cancelled = true; };
   }, [activeWorkspaceId, includeDescendants]);
-
-  // Keep the URL in sync so tab state is bookmarkable.
-  useEffect(() => {
-    const current = parseTab(searchParams.get("tab"));
-    if (current !== activeTab) {
-      const next = new URLSearchParams(searchParams);
-      next.set("tab", activeTab);
-      setSearchParams(next, { replace: true });
-    }
-  }, [activeTab, searchParams, setSearchParams]);
 
   function handleSearchSubmit() {
     navigate("/chat", {
@@ -238,8 +193,8 @@ export default function FolderDashboardView() {
 
       {/* Top strip: metric tiles + Continue Learning side-by-side on wide screens */}
       <div className="border-b border-[var(--border-color)] bg-[var(--bg-primary)] px-4 py-3">
-        <div className="grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(22rem,1fr)]">
+          <div className="flex flex-wrap gap-2">
             <MetricCard label="Due Review" value={summary.review.topics_due_for_review} />
             <MetricCard label="Active Goals" value={summary.overview.active_goals} />
             <MetricCard label="Topics" value={summary.overview.concepts} />
@@ -288,81 +243,21 @@ export default function FolderDashboardView() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1.5 overflow-x-auto border-b border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 pt-2">
-        {([
-          { id: "map" as const, label: "Map", Icon: MapIcon },
-          { id: "practice" as const, label: "Practice", Icon: ClipboardCheck },
-        ]).map(({ id, label, Icon }) => (
-          <button
-            key={id}
-            onClick={() => setActiveTab(id)}
-            className={`flex items-center gap-2 whitespace-nowrap px-3.5 py-2.5 text-sm rounded-t-lg border-b-2 transition-colors ${
-              activeTab === id
-                ? "border-[var(--accent-color)] text-[var(--accent-color)] font-medium"
-                : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-            }`}
-          >
-            <Icon size={15} />
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab content fills remaining height */}
       <div className="flex-1 min-h-0 overflow-hidden">
         <Suspense fallback={<div className="p-4 text-sm text-[var(--text-muted)]">Loading…</div>}>
-          {activeTab === "map" && (
-            <div className="flex h-full flex-col overflow-hidden">
-              <div className="border-b border-[var(--border-color)] bg-[var(--bg-primary)]/40 px-4 py-2">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)] mb-1.5">
-                  Workspace goals
-                </div>
-                <div className="max-h-40 overflow-y-auto">
-                  <GoalsPane />
-                </div>
+          <div className="flex h-full flex-col overflow-hidden">
+            <div className="border-b border-[var(--border-color)] bg-[var(--bg-primary)]/40 px-4 py-2">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)] mb-1.5">
+                Workspace goals
               </div>
-              <div className="flex-1 min-h-0 overflow-hidden">
-                <RoadmapPane hideSidebar />
+              <div className="max-h-40 overflow-y-auto">
+                <GoalsPane />
               </div>
             </div>
-          )}
-          {activeTab === "practice" && (
-            <div className="flex h-full flex-col overflow-hidden">
-              <div className="flex gap-2 border-b border-[var(--border-color)] bg-[var(--bg-primary)]/40 px-4 py-3">
-                <button
-                  onClick={() => setPracticeMode("review")}
-                  className={`flex-1 rounded-xl border px-4 py-3 text-sm font-medium transition-colors ${
-                    practiceMode === "review"
-                      ? "border-[var(--accent-color)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
-                      : "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:border-[var(--accent-color)]"
-                  }`}
-                >
-                  Review flashcards
-                </button>
-                <button
-                  onClick={() => setPracticeMode("quiz")}
-                  className={`flex-1 rounded-xl border px-4 py-3 text-sm font-medium transition-colors ${
-                    practiceMode === "quiz"
-                      ? "border-[var(--accent-color)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
-                      : "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:border-[var(--accent-color)]"
-                  }`}
-                >
-                  Take a quiz
-                </button>
-              </div>
-              <div className="flex-1 min-h-0 overflow-hidden">
-                {practiceMode === "review" && <ReviewPane hideSidebar />}
-                {practiceMode === "quiz" && (
-                  <QuizzesPane
-                    hideSidebar
-                    initialTopicId={initialQuizTopic}
-                    initialKind={initialQuizKind}
-                  />
-                )}
-              </div>
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <RoadmapPane hideSidebar />
             </div>
-          )}
+          </div>
         </Suspense>
       </div>
     </div>

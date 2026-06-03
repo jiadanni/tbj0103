@@ -42,6 +42,10 @@ vi.mock("../../components/SmartTextEditor", () => ({
   ),
 }));
 
+vi.mock("../../views/DailyNotesView", () => ({
+  default: () => <div>Daily Notes View</div>,
+}));
+
 // Mock API
 vi.mock("../../lib/api", () => ({
   api: {
@@ -119,6 +123,25 @@ describe("NoteEditorView", () => {
     await waitFor(() => {
       expect(api.note.create).toHaveBeenCalledWith("ws-1", "Untitled Note");
       expect(screen.getByText("Untitled Note")).toBeDefined();
+    });
+  });
+
+  it("shows the calendar entry in the merged notes navigation", async () => {
+    render(
+      <MemoryRouter>
+        <NoteEditorView />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Calendar")).toBeInTheDocument();
+      expect(screen.getByText("Notes")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Calendar"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Daily Notes View")).toBeInTheDocument();
     });
   });
 });

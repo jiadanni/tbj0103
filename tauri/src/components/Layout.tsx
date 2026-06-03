@@ -29,12 +29,11 @@ import StatusBar from "./StatusBar";
 import { useNavigationHistory } from "../hooks/useNavigationHistory";
 
 // Lazy-load heavy views that import large dependencies (d3, CodeMirror, etc.)
-// FolderDashboardView is the home surface: tiles + continue-learning above
-// Map / Practice tabs. Legacy /graph, /flashcards, /learning all redirect into
-// it via the routes below.
+// FolderDashboardView is the home surface, while PracticeView owns review/quiz.
 const ChatView = React.lazy(() => import("../views/ChatView"));
 const HistoryView = React.lazy(() => import("../views/HistoryView"));
 const FolderDashboardView = React.lazy(() => import("../views/FolderDashboardView"));
+const PracticeView = React.lazy(() => import("../views/PracticeView"));
 const PreferencesView = React.lazy(() => import("../views/PreferencesView"));
 const SourceBrowserView = React.lazy(() => import("../views/SourceBrowserView"));
 const NoteEditorView = React.lazy(() => import("../views/NoteEditorView"));
@@ -1662,8 +1661,8 @@ function paneViewToPath(view: import("../stores/workspaceStore").PaneView, chatS
     case "documents":
     case "webcapture":
       return "/sources";
-    case "graph": return "/folder?tab=map";
-    case "flashcards": return "/folder?tab=practice";
+    case "graph": return "/folder";
+    case "flashcards": return "/practice";
     case "settings": return "/preferences";
     case "memory": return "/memory";
     case "folder": return "/folder";
@@ -1821,6 +1820,7 @@ function AppRoutes() {
       <Route path="/chat" element={<ChatView />} />
       <Route path="/chat/:sessionId" element={<ChatView />} />
       <Route path="/notes" element={<NoteEditorView />} />
+      <Route path="/practice" element={<PracticeView />} />
       <Route path="/sources" element={<SourceBrowserView />} />
       <Route path="/learning" element={<Navigate to="/folder" replace />} />
       <Route path="/review-topics" element={<ReviewTopicsView />} />
@@ -1830,8 +1830,8 @@ function AppRoutes() {
       <Route path="/help" element={<HelpView />} />
       
       {/* Legacy redirects */}
-      <Route path="/graph" element={<Navigate to="/folder?tab=map" replace />} />
-      <Route path="/flashcards" element={<Navigate to="/folder?tab=practice" replace />} />
+      <Route path="/graph" element={<Navigate to="/folder" replace />} />
+      <Route path="/flashcards" element={<Navigate to="/practice" replace />} />
       <Route path="/documents" element={<Navigate to="/sources" replace />} />
       <Route path="/webcapture" element={<Navigate to="/sources" replace />} />
       <Route path="/grounded" element={<Navigate to="/chat" replace />} />
@@ -1839,8 +1839,8 @@ function AppRoutes() {
       <Route path="/daily" element={<Navigate to="/notes" state={{ subView: "daily" }} replace />} />
 
       <Route path="/plugins" element={<Navigate to="/preferences" state={{ settingsTab: "app" }} replace />} />
-      <Route path="/backlinks" element={<Navigate to="/folder?tab=map" replace />} />
-      <Route path="/dedup" element={<Navigate to="/folder?tab=map" replace />} />
+      <Route path="/backlinks" element={<Navigate to="/folder" replace />} />
+      <Route path="/dedup" element={<Navigate to="/folder" replace />} />
       <Route path="/settings" element={<Navigate to="/preferences" state={{ settingsTab: "app" }} replace />} />
       <Route path="/workspaces" element={<Navigate to="/preferences" state={{ settingsTab: "workspaces" }} replace />} />
       <Route path="/backup" element={<Navigate to="/preferences" state={{ settingsTab: "backup" }} replace />} />

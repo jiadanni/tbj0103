@@ -22,19 +22,6 @@ pub struct TemplateVariable {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DailyNote {
-    pub id: String,
-    pub workspace_id: String,
-    pub date: String,
-    pub content: String,
-    pub mood: Option<i64>,
-    pub productivity: Option<i64>,
-    pub template_id: Option<String>,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LearningPath {
     pub id: String,
     pub workspace_id: String,
@@ -67,6 +54,10 @@ pub struct ProjectNote {
     pub tags: Vec<String>,
     pub created_at: String,
     pub updated_at: String,
+    pub date: Option<String>,
+    pub mood: Option<i64>,
+    pub productivity: Option<i64>,
+    pub template_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,19 +84,23 @@ pub struct GetOrCreateDailyNoteRequest {
     pub template_id: Option<String>,
 }
 
-impl DailyNote {
-    pub fn new(workspace_id: impl Into<String>, date: impl Into<String>) -> Self {
+impl ProjectNote {
+    pub fn new_daily(workspace_id: impl Into<String>, date: impl Into<String>) -> Self {
         let now = chrono::Utc::now().to_rfc3339();
+        let date = date.into();
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             workspace_id: workspace_id.into(),
-            date: date.into(),
+            title: date.clone(),
             content: String::new(),
+            note_type: "daily".to_string(),
+            tags: vec![],
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            date: Some(date),
             mood: None,
             productivity: None,
             template_id: None,
-            created_at: now.clone(),
-            updated_at: now,
         }
     }
 }

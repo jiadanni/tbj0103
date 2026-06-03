@@ -19,7 +19,7 @@ import { useWorkspaceStore } from "../stores/workspaceStore";
 import { Tooltip } from "../components/Tooltip";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { Workspace } from "../stores/workspaceStore";
-import type { DashboardSummary, KnowledgeResetOptions, KnowledgeResetResult, KnowledgeResetScope, PromptBankStatus, TopicSignature, WorkspaceGlossaryTerm } from "../lib/api";
+import type { DashboardSummary, KnowledgeResetOptions, KnowledgeResetResult, KnowledgeResetScope, PromptBankStatus, RoadmapSnapshot, TopicSignature, WorkspaceGlossaryTerm } from "../lib/api";
 
 type WorkspaceDialogState =
   | { kind: "last-workspace" }
@@ -33,6 +33,12 @@ interface KnowledgeResetDialogState {
   options: KnowledgeResetOptions;
   preview: KnowledgeResetResult | null;
   loadingPreview: boolean;
+  running: boolean;
+  error: string | null;
+}
+
+interface SnapshotRestoreDialogState {
+  snapshot: RoadmapSnapshot;
   running: boolean;
   error: string | null;
 }
@@ -107,6 +113,7 @@ function totalResetRows(result: KnowledgeResetResult | null): number {
     + result.concept_links
     + result.concept_mentions
     + result.graph_statistics
+    + result.roadmap_snapshots
     + result.analyze_jobs
     + result.analyze_job_chunks
     + result.change_proposals
@@ -130,6 +137,7 @@ function ResetCountGrid({ result }: { result: KnowledgeResetResult }) {
     ["Concepts", result.concept_nodes],
     ["Links", result.concept_links],
     ["Mentions", result.concept_mentions],
+    ["Snapshots", result.roadmap_snapshots],
     ["Analysis jobs", result.analyze_jobs + result.analyze_job_chunks],
     ["Proposals", result.change_proposals],
     ["Legacy topics", result.flashcard_topics],
@@ -352,6 +360,9 @@ export default function WorkspaceSettingsView() {
   const [promptBankStatus, setPromptBankStatus] = useState<PromptBankStatus | null>(null);
   const [isLoadingPromptBank, setIsLoadingPromptBank] = useState(false);
   const [isStartingPromptBankJob, setIsStartingPromptBankJob] = useState(false);
+  const [roadmapSnapshots, setRoadmapSnapshots] = useState<RoadmapSnapshot[]>([]);
+  const [isLoadingRoadmapSnapshots, setIsLoadingRoadmapSnapshots] = useState(false);
+  const [restoreSnapshotDialog, setRestoreSnapshotDialog] = useState<SnapshotRestoreDialogState | null>(null);
   const [resetDialog, setResetDialog] = useState<KnowledgeResetDialogState | null>(null);
   const [successDialog, setSuccessDialog] = useState<{ title: string; description: string } | null>(null);
 
@@ -483,6 +494,39 @@ export default function WorkspaceSettingsView() {
     };
   }, [selectedId]);
 
+  useEffect(() => {
+    if (!selectedId) {
+      setRoadmapSnapshots([]);
+      return;
+    }
+
+    const workspaceId = selectedId;
+    let cancelled = false;
+    async function loadRoadmapSnapshots() {
+      setIsLoadingRoadmapSnapshots(true);
+      try {
+        const snapshots = await api.graph.listRoadmapSnapshots(workspaceId);
+        if (!cancelled) {
+          setRoadmapSnapshots(snapshots);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Failed to load roadmap snapshots:", err);
+          setRoadmapSnapshots([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingRoadmapSnapshots(false);
+        }
+      }
+    }
+
+    void loadRoadmapSnapshots();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId]);
+
   async function startPromptBankJob() {
     if (!selectedId || isStartingPromptBankJob) { return; }
     setIsStartingPromptBankJob(true);
@@ -509,11 +553,35 @@ export default function WorkspaceSettingsView() {
       api.topicSignature.get(selectedId).catch(() => null),
       api.workspace.getPromptBankStatus(selectedId).catch(() => null),
     ]);
+    const snapshots = await api.graph.listRoadmapSnapshots(selectedId).catch(() => []);
     if (summary) {
       setStats(summary);
     }
     setTopicSignaturesByWorkspace(prev => ({ ...prev, [selectedId]: topicSig }));
     setPromptBankStatus(promptStatus);
+    setRoadmapSnapshots(snapshots);
+  }
+
+  async function confirmSnapshotRestore() {
+    if (!restoreSnapshotDialog || restoreSnapshotDialog.running) {
+      return;
+    }
+
+    setRestoreSnapshotDialog({ ...restoreSnapshotDialog, running: true, error: null });
+    try {
+      await api.graph.restoreRoadmapSnapshot(restoreSnapshotDialog.snapshot.id);
+      setRestoreSnapshotDialog(null);
+      await reloadSelectedDerivedState();
+      setSuccessDialog({
+        title: "Knowledge map restored",
+        description: `Restored the roadmap snapshot from ${formatDate(restoreSnapshotDialog.snapshot.created_at)}.`,
+      });
+    } catch (err) {
+      setRestoreSnapshotDialog(current => current
+        ? { ...current, running: false, error: err instanceof Error ? err.message : String(err) }
+        : current
+      );
+    }
   }
 
   function buildResetCopy(scope: KnowledgeResetScope, workspace?: Workspace) {
@@ -897,6 +965,16 @@ export default function WorkspaceSettingsView() {
 
   function formatDate(iso: string) {
     return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  }
+
+  function formatDateTime(iso: string) {
+    return new Date(iso).toLocaleString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
   }
 
   return (
@@ -1396,6 +1474,72 @@ export default function WorkspaceSettingsView() {
 
               <div className="space-y-3 py-5">
                 <button
+                  onClick={() => toggleSection("roadmap-history")}
+                  className="flex w-full items-center justify-between"
+                >
+                  <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-2">
+                    <RotateCcw size={12} /> Knowledge Map History
+                  </h3>
+                  <ChevronDown size={14} className={`text-[var(--text-muted)] transition-transform ${collapsedSections["roadmap-history"] ? "-rotate-90" : ""}`} />
+                </button>
+                {!collapsedSections["roadmap-history"] && (
+                  <div className="space-y-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium text-[var(--text-primary)]">
+                          Analysis snapshots
+                        </div>
+                        <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
+                          Each completed `Analyze Workspace` run saves a roadmap snapshot automatically. Cleanup stays on by default and removes snapshots older than 60 days.
+                        </p>
+                      </div>
+                      <div className="text-xs text-[var(--text-muted)]">
+                        {roadmapSnapshots.length} snapshot{roadmapSnapshots.length === 1 ? "" : "s"}
+                      </div>
+                    </div>
+
+                    {isLoadingRoadmapSnapshots ? (
+                      <div className="flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-3 text-xs text-[var(--text-secondary)]">
+                        <Loader2 size={13} className="animate-spin" />
+                        Loading roadmap history…
+                      </div>
+                    ) : roadmapSnapshots.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-[var(--border-color)] px-3 py-4 text-xs text-[var(--text-secondary)]">
+                        No roadmap snapshots yet. Run `Analyze Workspace` to create the first restore point.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {roadmapSnapshots.map((snapshot) => (
+                          <div
+                            key={snapshot.id}
+                            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-3"
+                          >
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium text-[var(--text-primary)]">
+                                {formatDateTime(snapshot.created_at)}
+                              </div>
+                              <div className="mt-1 text-xs text-[var(--text-secondary)]">
+                                {snapshot.concept_count} concepts · {snapshot.link_count} links{snapshot.source_model ? ` · ${snapshot.source_model}` : ""}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setRestoreSnapshotDialog({ snapshot, running: false, error: null })}
+                              className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs font-semibold text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--accent-color)]"
+                            >
+                              <RotateCcw size={12} />
+                              Restore Snapshot
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-3 py-5">
+                <button
                   onClick={() => toggleSection("knowledge-reset")}
                   className="flex w-full items-center justify-between"
                 >
@@ -1604,6 +1748,26 @@ export default function WorkspaceSettingsView() {
           onCancel={() => {
             if (!resetDialog.running && !resetDialog.loadingPreview) {
               setResetDialog(null);
+            }
+          }}
+        />
+      )}
+
+      {restoreSnapshotDialog && (
+        <ConfirmDialog
+          title="Restore this roadmap snapshot?"
+          description={
+            restoreSnapshotDialog.error
+              ? restoreSnapshotDialog.error
+              : `This replaces the current knowledge map for "${selectedWorkspace?.name ?? "this workspace"}" with the snapshot from ${formatDateTime(restoreSnapshotDialog.snapshot.created_at)}.`
+          }
+          confirmLabel="Restore Snapshot"
+          tone="danger"
+          busy={restoreSnapshotDialog.running}
+          onConfirm={() => { void confirmSnapshotRestore(); }}
+          onCancel={() => {
+            if (!restoreSnapshotDialog.running) {
+              setRestoreSnapshotDialog(null);
             }
           }}
         />

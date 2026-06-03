@@ -45,6 +45,7 @@ function formatRelativeTime(dateStr: string | undefined): string {
 
 const COMMANDS: CommandItem[] = [
   { label: "Go to Dashboard",          value: "dashboard",      path: "/folder"       },
+  { label: "Go to Practice",           value: "practice",       path: "/practice"     },
   { label: "Go to Chat",               value: "chat",           path: "/chat"          },
   { label: "Chat Sessions",            value: "chat-sessions",  path: "/chat",         state: { subView: "sessions" as ChatSubView } },
   { label: "Go to Notes",              value: "notes",          path: "/notes"         },

@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart2,
+  ClipboardCheck,
   FileEdit,
   History,
   Library,
@@ -15,6 +16,7 @@ export interface NavigationItem {
 
 export const PRIMARY_NAV_ITEMS: NavigationItem[] = [
   { path: "/folder", icon: BarChart2, label: "Dashboard" },
+  { path: "/practice", icon: ClipboardCheck, label: "Practice" },
   { path: "/chat", icon: MessageSquare, label: "Chat" },
   { path: "/notes", icon: FileEdit, label: "Notes" },
   { path: "/sources", icon: Library, label: "Sources" },

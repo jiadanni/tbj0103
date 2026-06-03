@@ -24,7 +24,7 @@ import {
   Star,
   CalendarPlus,
 } from "lucide-react";
-import { api, type DailyNote, type NoteTemplate } from "../lib/api";
+import { api, type ProjectNote, type NoteTemplate } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useBubbleUpFlag } from "../lib/workspacePane";
 import SmartTextEditor from "../components/SmartTextEditor";
@@ -52,7 +52,7 @@ export default function DailyNotesView() {
   const includeDescendants = useBubbleUpFlag();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [note, setNote] = useState<DailyNote | null>(null);
+  const [note, setNote] = useState<ProjectNote | null>(null);
   const [content, setContent] = useState("");
   const [mood, setMood] = useState<number | undefined>(undefined);
   const [productivity, setProductivity] = useState<number | undefined>(undefined);
@@ -60,9 +60,9 @@ export default function DailyNotesView() {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
   // Calendar dot indicators — dates that have notes this month
-  const [monthNotes, setMonthNotes] = useState<DailyNote[]>([]);
+  const [monthNotes, setMonthNotes] = useState<ProjectNote[]>([]);
   const datesWithNotes = useMemo(
-    () => new Set(monthNotes.map((n) => n.date)),
+    () => new Set(monthNotes.map((n) => n.date).filter((value): value is string => Boolean(value))),
     [monthNotes]
   );
 

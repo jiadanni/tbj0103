@@ -79,6 +79,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v65_workspace_prompt_bank",
     "v66_knowledge_graph_model_upgrade",
     "v67_lower_summarization_min_messages",
+    "v68_roadmap_snapshots",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -1904,6 +1905,30 @@ fn run_migrations(conn: &Connection) -> Result<()> {
              WHERE key = 'summarization_min_messages'
                AND value = '10';
              INSERT INTO _migrations(name) VALUES('v67_lower_summarization_min_messages');",
+        )?;
+    }
+
+    let applied_v68: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v68_roadmap_snapshots'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v68 == 0 {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS roadmap_snapshots (
+                id TEXT PRIMARY KEY NOT NULL,
+                workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                source_job_id TEXT REFERENCES analyze_jobs(id) ON DELETE SET NULL,
+                source_model TEXT,
+                concept_count INTEGER NOT NULL DEFAULT 0,
+                link_count INTEGER NOT NULL DEFAULT 0,
+                payload TEXT NOT NULL CHECK (json_valid(payload)),
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_roadmap_snapshots_workspace_created
+                ON roadmap_snapshots(workspace_id, created_at DESC);
+            INSERT INTO _migrations(name) VALUES('v68_roadmap_snapshots');",
         )?;
     }
 

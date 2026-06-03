@@ -1,4 +1,5 @@
 use crate::db::DbState;
+use crate::commands::knowledge_graph::snapshot_workspace_roadmap;
 use crate::ollama::client::{OllamaClient, OllamaMessage};
 use crate::services::concept_hierarchy::{is_valid_parent_pair, normalize_concept_name};
 use crate::services::context_assembler::context_size_for_model;
@@ -1669,6 +1670,14 @@ async fn analyze_workspace_chunked_impl(
             "UPDATE analyze_jobs SET status = ?1, completed_at = ?2 WHERE id = ?3",
             rusqlite::params![status, final_now, job_id],
         );
+        if status == "completed" {
+            snapshot_workspace_roadmap(
+                &conn,
+                &req.workspace_id,
+                Some(&job_id),
+                Some(req.model.as_str()),
+            )?;
+        }
     }
 
     // Gate: if every chunk failed, surface that as an error so the UI doesn't

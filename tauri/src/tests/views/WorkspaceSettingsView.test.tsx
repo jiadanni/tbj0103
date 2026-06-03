@@ -24,6 +24,8 @@ const apiMocks = vi.hoisted(() => ({
   upsertGlossaryTerm: vi.fn(),
   deleteGlossaryTerm: vi.fn(),
   refreshGlossary: vi.fn(),
+  listRoadmapSnapshots: vi.fn(() => Promise.resolve([])),
+  restoreRoadmapSnapshot: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("@/lib/api", () => ({
@@ -47,6 +49,10 @@ vi.mock("@/lib/api", () => ({
     },
     topicSignature: {
       get: apiMocks.getTopicSignature,
+    },
+    graph: {
+      listRoadmapSnapshots: apiMocks.listRoadmapSnapshots,
+      restoreRoadmapSnapshot: apiMocks.restoreRoadmapSnapshot,
     },
     workspaceGlossary: {
       list: apiMocks.listGlossaryTerms,
@@ -146,6 +152,7 @@ describe("WorkspaceSettingsView", () => {
     apiMocks.getMemorySummary.mockResolvedValue(null);
     apiMocks.getTopicSignature.mockResolvedValue(null);
     apiMocks.listGlossaryTerms.mockResolvedValue([]);
+    apiMocks.listRoadmapSnapshots.mockResolvedValue([]);
   });
 
   it("renders parent and child workspaces and shows parent context for a selected child", async () => {

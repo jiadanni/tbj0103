@@ -70,6 +70,7 @@ vi.mock("@/views/KnowledgeGraphView", () => ({ default: () => <div>Graph View</d
 vi.mock("@/views/DailyNotesView", () => ({ default: () => <div>Daily Notes View</div> }));
 vi.mock("@/views/FlashcardReviewView", () => ({ default: () => <div>Flashcards View</div> }));
 vi.mock("@/views/FolderDashboardView", () => ({ default: () => <div>Project Dashboard</div> }));
+vi.mock("@/views/PracticeView", () => ({ default: () => <div>Practice View</div> }));
 vi.mock("@/views/PreferencesView", () => ({ default: () => <div>Preferences View</div> }));
 vi.mock("@/views/DocumentBrowserView", () => ({ default: () => <div>Documents View</div> }));
 vi.mock("@/views/SourceBrowserView", () => ({ default: () => <div>Sources View</div> }));

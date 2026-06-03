@@ -1,7 +1,7 @@
 use crate::db::DbState;
 use crate::models::knowledge_graph::{
-    ConceptLink, ConceptNode, CreateConceptRequest, CreateLinkRequest, GraphStatistics,
-    HierarchyLevel,
+    ConceptLink, ConceptMention, ConceptNode, CreateConceptRequest, CreateLinkRequest,
+    GraphStatistics, HierarchyLevel, RoadmapSnapshot,
 };
 use crate::services::concept_extractor;
 use crate::services::concept_hierarchy::normalize_concept_name;
@@ -34,6 +34,42 @@ fn row_to_concept(row: &rusqlite::Row) -> rusqlite::Result<ConceptNode> {
         hierarchy_level: level_str.parse().unwrap_or_default(),
     })
 }
+
+fn row_to_link(row: &rusqlite::Row) -> rusqlite::Result<ConceptLink> {
+    let type_str: String = row.get(3)?;
+    Ok(ConceptLink {
+        id: row.get(0)?,
+        source_id: row.get(1)?,
+        target_id: row.get(2)?,
+        link_type: type_str
+            .parse()
+            .unwrap_or(crate::models::knowledge_graph::LinkType::Related),
+        strength: row.get(4)?,
+        context: row.get(5)?,
+        created_at: row.get(6)?,
+    })
+}
+
+fn row_to_mention(row: &rusqlite::Row) -> rusqlite::Result<ConceptMention> {
+    Ok(ConceptMention {
+        id: row.get(0)?,
+        concept_id: row.get(1)?,
+        source_type: row.get(2)?,
+        source_id: row.get(3)?,
+        context: row.get(4)?,
+        created_at: row.get(5)?,
+    })
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RoadmapSnapshotPayload {
+    nodes: Vec<ConceptNode>,
+    links: Vec<ConceptLink>,
+    mentions: Vec<ConceptMention>,
+    graph_statistics: Option<GraphStatistics>,
+}
+
+const SNAPSHOT_RETENTION_DAYS: i64 = 60;
 
 #[tauri::command]
 pub fn create_concept(
@@ -379,20 +415,7 @@ pub fn list_concept_links(
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let items = stmt
-        .query_map(rusqlite::params![workspace_id, limit, offset], |row| {
-            let type_str: String = row.get(3)?;
-            Ok(ConceptLink {
-                id: row.get(0)?,
-                source_id: row.get(1)?,
-                target_id: row.get(2)?,
-                link_type: type_str
-                    .parse()
-                    .unwrap_or(crate::models::knowledge_graph::LinkType::Related),
-                strength: row.get(4)?,
-                context: row.get(5)?,
-                created_at: row.get(6)?,
-            })
-        })
+        .query_map(rusqlite::params![workspace_id, limit, offset], row_to_link)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -447,6 +470,282 @@ pub fn get_graph_stats(
         density,
         updated_at: chrono::Utc::now().to_rfc3339(),
     })
+}
+
+fn load_graph_stats(
+    conn: &rusqlite::Connection,
+    workspace_id: &str,
+) -> Result<Option<GraphStatistics>, String> {
+    conn.query_row(
+        "SELECT id, workspace_id, total_concepts, total_links, avg_degree, density, updated_at
+         FROM graph_statistics WHERE workspace_id = ?1",
+        rusqlite::params![workspace_id],
+        |row| {
+            Ok(GraphStatistics {
+                id: row.get(0)?,
+                workspace_id: row.get(1)?,
+                total_concepts: row.get(2)?,
+                total_links: row.get(3)?,
+                avg_degree: row.get(4)?,
+                density: row.get(5)?,
+                updated_at: row.get(6)?,
+            })
+        },
+    )
+    .map(Some)
+    .or_else(|err| match err {
+        rusqlite::Error::QueryReturnedNoRows => Ok(None),
+        other => Err(other.to_string()),
+    })
+}
+
+fn load_snapshot_payload(
+    conn: &rusqlite::Connection,
+    workspace_id: &str,
+) -> Result<RoadmapSnapshotPayload, String> {
+    let mut node_stmt = conn
+        .prepare(
+            "SELECT id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json,
+                    x_position, y_position, review_count, created_at, updated_at, hierarchy_level
+             FROM concept_nodes
+             WHERE workspace_id = ?1
+             ORDER BY created_at ASC, id ASC",
+        )
+        .map_err(|e| e.to_string())?;
+    let nodes = node_stmt
+        .query_map(rusqlite::params![workspace_id], row_to_concept)
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    let mut link_stmt = conn
+        .prepare(
+            "SELECT cl.id, cl.source_id, cl.target_id, cl.link_type, cl.strength, cl.context, cl.created_at
+             FROM concept_links cl
+             JOIN concept_nodes cn ON cn.id = cl.source_id
+             WHERE cn.workspace_id = ?1
+             ORDER BY cl.created_at ASC, cl.id ASC",
+        )
+        .map_err(|e| e.to_string())?;
+    let links = link_stmt
+        .query_map(rusqlite::params![workspace_id], row_to_link)
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    let mut mention_stmt = conn
+        .prepare(
+            "SELECT cm.id, cm.concept_id, cm.source_type, cm.source_id, cm.context, cm.created_at
+             FROM concept_mentions cm
+             JOIN concept_nodes cn ON cn.id = cm.concept_id
+             WHERE cn.workspace_id = ?1
+             ORDER BY cm.created_at ASC, cm.id ASC",
+        )
+        .map_err(|e| e.to_string())?;
+    let mentions = mention_stmt
+        .query_map(rusqlite::params![workspace_id], row_to_mention)
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    Ok(RoadmapSnapshotPayload {
+        nodes,
+        links,
+        mentions,
+        graph_statistics: load_graph_stats(conn, workspace_id)?,
+    })
+}
+
+pub(crate) fn snapshot_workspace_roadmap(
+    conn: &rusqlite::Connection,
+    workspace_id: &str,
+    source_job_id: Option<&str>,
+    source_model: Option<&str>,
+) -> Result<(), String> {
+    let payload = load_snapshot_payload(conn, workspace_id)?;
+    let snapshot_id = uuid::Uuid::new_v4().to_string();
+    let payload_json = serde_json::to_string(&payload).map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().to_rfc3339();
+
+    conn.execute(
+        "INSERT INTO roadmap_snapshots (
+            id, workspace_id, source_job_id, source_model, concept_count, link_count, payload, created_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        rusqlite::params![
+            snapshot_id,
+            workspace_id,
+            source_job_id,
+            source_model,
+            payload.nodes.len() as i64,
+            payload.links.len() as i64,
+            payload_json,
+            now,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "DELETE FROM roadmap_snapshots
+         WHERE workspace_id = ?1
+           AND julianday(created_at) < julianday('now', ?2)",
+        rusqlite::params![workspace_id, format!("-{} days", SNAPSHOT_RETENTION_DAYS)],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn list_roadmap_snapshots(
+    state: State<DbState>,
+    workspace_id: String,
+) -> Result<Vec<RoadmapSnapshot>, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, workspace_id, source_job_id, source_model, concept_count, link_count, created_at
+             FROM roadmap_snapshots
+             WHERE workspace_id = ?1
+             ORDER BY created_at DESC, id DESC",
+        )
+        .map_err(|e| e.to_string())?;
+    let items = stmt
+        .query_map(rusqlite::params![workspace_id], |row| {
+            Ok(RoadmapSnapshot {
+                id: row.get(0)?,
+                workspace_id: row.get(1)?,
+                source_job_id: row.get(2)?,
+                source_model: row.get(3)?,
+                concept_count: row.get(4)?,
+                link_count: row.get(5)?,
+                created_at: row.get(6)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(items)
+}
+
+#[tauri::command]
+pub fn restore_roadmap_snapshot<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<DbState>,
+    snapshot_id: String,
+) -> Result<(), String> {
+    let mut conn = state.0.get().map_err(|e| e.to_string())?;
+    let (workspace_id, payload_json): (String, String) = conn
+        .query_row(
+            "SELECT workspace_id, payload FROM roadmap_snapshots WHERE id = ?1",
+            rusqlite::params![snapshot_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| e.to_string())?;
+    let payload: RoadmapSnapshotPayload =
+        serde_json::from_str(&payload_json).map_err(|e| e.to_string())?;
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM concept_change_proposals WHERE workspace_id = ?1",
+        rusqlite::params![workspace_id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM graph_statistics WHERE workspace_id = ?1",
+        rusqlite::params![workspace_id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM concept_nodes WHERE workspace_id = ?1",
+        rusqlite::params![workspace_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    for node in &payload.nodes {
+        let type_str = node.concept_type.to_string();
+        let level_str = node.hierarchy_level.to_string();
+        let tags_json = serde_json::to_string(&node.tags).unwrap_or_default();
+        let aliases_json = serde_json::to_string(&node.aliases).unwrap_or_default();
+        let refs_json = serde_json::to_string(&node.references).unwrap_or_default();
+        tx.execute(
+            "INSERT INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at, hierarchy_level)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            rusqlite::params![
+                &node.id,
+                &node.workspace_id,
+                &node.name,
+                &node.concept_description,
+                type_str,
+                tags_json,
+                aliases_json,
+                refs_json,
+                node.x_position,
+                node.y_position,
+                node.review_count,
+                &node.created_at,
+                &node.updated_at,
+                level_str,
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    for link in &payload.links {
+        tx.execute(
+            "INSERT INTO concept_links (id, source_id, target_id, link_type, strength, context, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![
+                &link.id,
+                &link.source_id,
+                &link.target_id,
+                link.link_type.to_string(),
+                link.strength,
+                &link.context,
+                &link.created_at,
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    for mention in &payload.mentions {
+        tx.execute(
+            "INSERT INTO concept_mentions (id, concept_id, source_type, source_id, context, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                &mention.id,
+                &mention.concept_id,
+                &mention.source_type,
+                &mention.source_id,
+                &mention.context,
+                &mention.created_at,
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    if let Some(stats) = &payload.graph_statistics {
+        tx.execute(
+            "INSERT INTO graph_statistics (id, workspace_id, total_concepts, total_links, avg_degree, density, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![
+                &stats.id,
+                stats.workspace_id.clone(),
+                stats.total_concepts,
+                stats.total_links,
+                stats.avg_degree,
+                stats.density,
+                &stats.updated_at,
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+    let _ = app.emit("knowledge-state-reset", &serde_json::json!({
+        "restored_snapshot_id": snapshot_id,
+        "workspace_id": workspace_id,
+    }));
+    let _ = app.emit("workspaces-changed", ());
+    Ok(())
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -905,6 +1204,7 @@ pub struct KnowledgeResetResult {
     pub concept_links: i64,
     pub concept_mentions: i64,
     pub graph_statistics: i64,
+    pub roadmap_snapshots: i64,
     pub analyze_jobs: i64,
     pub analyze_job_chunks: i64,
     pub change_proposals: i64,
@@ -1090,6 +1390,7 @@ fn preview_knowledge_reset(
             workspace_ids,
         )?;
         result.graph_statistics = count_by_workspace(conn, "graph_statistics", workspace_ids)?;
+        result.roadmap_snapshots = count_by_workspace(conn, "roadmap_snapshots", workspace_ids)?;
         result.change_proposals = count_by_workspace(conn, "concept_change_proposals", workspace_ids)?;
         result.learning_goals_detached = count_sql(
             conn,
@@ -1210,6 +1511,7 @@ fn apply_knowledge_reset(
         )?;
         result.change_proposals = delete_by_workspace(conn, "concept_change_proposals", workspace_ids)?;
         result.graph_statistics = delete_by_workspace(conn, "graph_statistics", workspace_ids)?;
+        result.roadmap_snapshots = delete_by_workspace(conn, "roadmap_snapshots", workspace_ids)?;
         result.concept_nodes = delete_by_workspace(conn, "concept_nodes", workspace_ids)?;
     }
 
@@ -1516,6 +1818,11 @@ mod knowledge_reset_tests {
             );",
         )
         .unwrap();
+        let _ = conn.execute_batch(
+            "ALTER TABLE learning_goals ADD COLUMN concept_id TEXT;
+             ALTER TABLE learning_cards ADD COLUMN topic_id TEXT;
+             ALTER TABLE learning_cards ADD COLUMN source_id TEXT;",
+        );
     }
 
     fn insert_workspace(conn: &Connection, id: &str, parent_id: Option<&str>) {
@@ -1545,6 +1852,7 @@ mod knowledge_reset_tests {
         let card_topic_id = format!("card-topic-{suffix}");
         let card_manual_id = format!("card-manual-{suffix}");
         let note_id = format!("note-{suffix}");
+        let snapshot_id = format!("snapshot-{suffix}");
 
         conn.execute(
             "INSERT INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, created_at, updated_at, hierarchy_level)
@@ -1592,6 +1900,12 @@ mod knowledge_reset_tests {
             "INSERT INTO graph_statistics (id, workspace_id, total_concepts, total_links, updated_at)
              VALUES (?1, ?2, 2, 1, ?3)",
             rusqlite::params![graph_id, workspace_id, now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO roadmap_snapshots (id, workspace_id, source_job_id, source_model, concept_count, link_count, payload, created_at)
+             VALUES (?1, ?2, ?3, 'test-model', 2, 1, '{\"nodes\":[],\"links\":[],\"mentions\":[],\"graph_statistics\":null}', ?4)",
+            rusqlite::params![snapshot_id, workspace_id, job_id, now],
         )
         .unwrap();
         conn.execute(
@@ -1666,6 +1980,7 @@ mod knowledge_reset_tests {
         })
         .unwrap();
         assert_eq!(preview.concept_nodes, 2);
+        assert_eq!(preview.roadmap_snapshots, 1);
         assert_eq!(preview.generated_cards_deleted, 2);
         assert_eq!(count(&conn, "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = 'ws-1'"), 2);
 
@@ -1681,6 +1996,7 @@ mod knowledge_reset_tests {
 
         assert_eq!(count(&conn, "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = 'ws-1'"), 0);
         assert_eq!(count(&conn, "SELECT COUNT(*) FROM analyze_jobs WHERE workspace_id = 'ws-1'"), 0);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM roadmap_snapshots WHERE workspace_id = 'ws-1'"), 0);
         assert_eq!(count(&conn, "SELECT COUNT(*) FROM workspace_prompt_bank WHERE workspace_id = 'ws-1'"), 0);
         assert_eq!(count(&conn, "SELECT COUNT(*) FROM flashcard_topics WHERE workspace_id = 'ws-1'"), 0);
         assert_eq!(count(&conn, "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = 'ws-1' AND source_type != 'manual'"), 0);
@@ -1739,5 +2055,129 @@ mod knowledge_reset_tests {
         assert_eq!(result.generated_cards_detached, 2);
         assert_eq!(count(&conn, "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = 'ws-1'"), 3);
         assert_eq!(count(&conn, "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = 'ws-1' AND source_type = 'manual' AND source_id IS NULL AND topic_id IS NULL"), 3);
+    }
+
+    #[test]
+    fn snapshot_restore_replaces_workspace_graph_state() {
+        let pool = setup_test_db();
+        let mut conn = pool.get().unwrap();
+        ensure_reset_test_tables(&conn);
+        insert_workspace(&conn, "ws-1", None);
+        insert_reset_fixture(&conn, "ws-1", "one");
+
+        snapshot_workspace_roadmap(&conn, "ws-1", Some("job-one"), Some("test-model")).unwrap();
+        let snapshot_id: String = conn
+            .query_row(
+                "SELECT id FROM roadmap_snapshots WHERE workspace_id = 'ws-1' ORDER BY created_at DESC, id DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        conn.execute("DELETE FROM concept_nodes WHERE workspace_id = 'ws-1'", []).unwrap();
+        conn.execute("DELETE FROM graph_statistics WHERE workspace_id = 'ws-1'", []).unwrap();
+        conn.execute(
+            "INSERT INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, created_at, updated_at, hierarchy_level)
+             VALUES ('replacement-node', 'ws-1', 'Replacement', '', 'topic', '[]', '[]', '[]', datetime('now'), datetime('now'), 'concept')",
+            [],
+        )
+        .unwrap();
+
+        let payload_json: String = conn
+            .query_row(
+                "SELECT payload FROM roadmap_snapshots WHERE id = ?1",
+                rusqlite::params![snapshot_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let payload: RoadmapSnapshotPayload = serde_json::from_str(&payload_json).unwrap();
+
+        let tx = conn.transaction().unwrap();
+        tx.execute("DELETE FROM concept_change_proposals WHERE workspace_id = 'ws-1'", [])
+            .unwrap();
+        tx.execute("DELETE FROM graph_statistics WHERE workspace_id = 'ws-1'", [])
+            .unwrap();
+        tx.execute("DELETE FROM concept_nodes WHERE workspace_id = 'ws-1'", [])
+            .unwrap();
+        for node in &payload.nodes {
+            tx.execute(
+                "INSERT INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at, hierarchy_level)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                rusqlite::params![
+                    &node.id,
+                    &node.workspace_id,
+                    &node.name,
+                    &node.concept_description,
+                    node.concept_type.to_string(),
+                    serde_json::to_string(&node.tags).unwrap(),
+                    serde_json::to_string(&node.aliases).unwrap(),
+                    serde_json::to_string(&node.references).unwrap(),
+                    node.x_position,
+                    node.y_position,
+                    node.review_count,
+                    &node.created_at,
+                    &node.updated_at,
+                    node.hierarchy_level.to_string(),
+                ],
+            )
+            .unwrap();
+        }
+        for link in &payload.links {
+            tx.execute(
+                "INSERT INTO concept_links (id, source_id, target_id, link_type, strength, context, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                rusqlite::params![
+                    &link.id,
+                    &link.source_id,
+                    &link.target_id,
+                    link.link_type.to_string(),
+                    link.strength,
+                    &link.context,
+                    &link.created_at,
+                ],
+            )
+            .unwrap();
+        }
+        for mention in &payload.mentions {
+            tx.execute(
+                "INSERT INTO concept_mentions (id, concept_id, source_type, source_id, context, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![
+                    &mention.id,
+                    &mention.concept_id,
+                    &mention.source_type,
+                    &mention.source_id,
+                    &mention.context,
+                    &mention.created_at,
+                ],
+            )
+            .unwrap();
+        }
+        if let Some(stats) = &payload.graph_statistics {
+            tx.execute(
+                "INSERT INTO graph_statistics (id, workspace_id, total_concepts, total_links, avg_degree, density, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                rusqlite::params![
+                    &stats.id,
+                    stats.workspace_id.clone(),
+                    stats.total_concepts,
+                    stats.total_links,
+                    stats.avg_degree,
+                    stats.density,
+                    &stats.updated_at,
+                ],
+            )
+            .unwrap();
+        }
+        tx.commit().unwrap();
+
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = 'ws-1'"), 2);
+        assert_eq!(
+            count(&conn, "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = 'ws-1' AND name = 'Replacement'"),
+            0
+        );
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM concept_links"), 1);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM concept_mentions"), 1);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM graph_statistics WHERE workspace_id = 'ws-1'"), 1);
     }
 }

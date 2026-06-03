@@ -127,7 +127,7 @@ describe("FolderDashboardView", () => {
     });
   });
 
-  it("renders the slim dashboard: continue learning, metric tiles, and quick launches", async () => {
+  it("renders the slim dashboard without the old map/practice tabs", async () => {
     render(
       <MemoryRouter>
         <FolderDashboardView />
@@ -142,9 +142,8 @@ describe("FolderDashboardView", () => {
     expect(screen.getByText("cgroups vs namespaces")).toBeInTheDocument();
     expect(screen.getByText("Rootless container setup")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
-    // Map and Practice tabs are part of the dashboard now.
-    expect(screen.getByRole("button", { name: /Map/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Practice/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Map/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Practice/ })).not.toBeInTheDocument();
 
     // The retired AI-scored sections must not render.
     expect(screen.queryByText("Knowledge Health")).not.toBeInTheDocument();
