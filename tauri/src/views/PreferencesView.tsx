@@ -200,6 +200,18 @@ function normalizePreferencesSection(section: string | undefined): PreferencesSe
 }
 
 const IMMEDIATE_SAVE_EXCEPTIONS = new Set<keyof AppSettings>([]);
+const SPLIT_LAYOUT_TABS: PreferencesSection[] = [
+  "app",
+  "navigation",
+  "appearance",
+  "ai",
+  "chat",
+  "learning",
+  "about-you",
+  "webai",
+  "security",
+  "sync",
+];
 
 function Toggle({ on, onToggle, disabled = false }: { on: boolean; onToggle: () => void; disabled?: boolean }) {
   return (
@@ -3529,11 +3541,11 @@ export default function PreferencesView() {
         )}
 
         <div className={`flex h-full min-h-0 flex-1 overflow-hidden ${
-          ["app", "navigation", "appearance", "ai", "chat", "learning", "about-you", "webai", "security", "sync"].includes(activeTab)
+          SPLIT_LAYOUT_TABS.includes(activeTab)
             ? "flex-row"
             : "flex-col"
         }`}>
-          {["app", "navigation", "appearance", "ai", "chat", "learning", "about-you", "webai", "security", "sync"].includes(activeTab) && (
+          {SPLIT_LAYOUT_TABS.includes(activeTab) && (
             <PreferencesSplitLayout
               isLargeScreen={isLargeScreen}
               dbSettings={dbSettings}
@@ -5170,18 +5182,6 @@ export default function PreferencesView() {
                   />
                 )}
 
-                {/* ── Scheduled Tasks ── */}
-                {activeTab === "scheduled-tasks" && (
-                  <ScheduledTasksCard
-                    ollamaModels={ollamaModels}
-                    aiModels={aiModels}
-                    modelLabels={modelLabels}
-                    dbSettings={dbSettings}
-                    set={set}
-                    systemGuidance={systemGuidance}
-                  />
-                )}
-
                 {/* ── Browser Automation ── */}
                 {activeTab === "webai" && (
                   <section data-pref-section>
@@ -5726,6 +5726,21 @@ export default function PreferencesView() {
 
                 </div>
             </PreferencesSplitLayout>
+          )}
+
+          {activeTab === "scheduled-tasks" && (
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <div className="max-w-4xl px-5 py-4">
+                <ScheduledTasksCard
+                  ollamaModels={ollamaModels}
+                  aiModels={aiModels}
+                  modelLabels={modelLabels}
+                  dbSettings={dbSettings}
+                  set={set}
+                  systemGuidance={systemGuidance}
+                />
+              </div>
+            </div>
           )}
 
           {/* ── Full-bleed tabs (workspaces, backup, import) ── */}

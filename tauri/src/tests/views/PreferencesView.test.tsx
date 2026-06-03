@@ -498,4 +498,20 @@ describe("PreferencesView", () => {
       expect(apiMocks.settingsUpdate).toHaveBeenCalled();
     });
   });
+
+  it("renders the Scheduled Tasks tab content", async () => {
+    render(
+      <MemoryRouter initialEntries={["/settings"]}>
+        <PreferencesView />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("Gemma 4");
+
+    fireEvent.click(screen.getByText("Scheduled Tasks"));
+
+    expect(await screen.findByText("Confirmation timeout")).toBeInTheDocument();
+    expect(screen.getByText("Memory Extraction")).toBeInTheDocument();
+    expect(screen.getAllByText("Heavy (opt-in)").length).toBeGreaterThan(0);
+  });
 });
