@@ -1,5 +1,5 @@
-import React from "react";
-import { ChevronDown } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import type { ComposerSuggestionRow, ComposerSuggestion } from "../lib/composerSuggestions";
 import { Tooltip } from "./Tooltip";
 
@@ -21,11 +21,110 @@ export default function ComposerSuggestionRows({
   onToggleCollapse,
 }: ComposerSuggestionRowsProps) {
   const allSuggestions = rows.flatMap((row) => row.suggestions);
-  if (allSuggestions.length === 0) {return null;}
-
   const quickSendGroup = allSuggestions.filter(s => s.action === "send_immediately");
   const insertGroup = allSuggestions.filter(s => s.action !== "send_immediately");
   const isFollowUpVariant = variant === "follow-up";
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const [canPageBackward, setCanPageBackward] = useState(false);
+  const [canPageForward, setCanPageForward] = useState(false);
+
+  const pagingTargets = useMemo(() => {
+    const targets: Array<{ key: string; suggestion?: ComposerSuggestion; isDivider?: boolean }> = quickSendGroup.map((suggestion) => ({
+      key: suggestion.id,
+      suggestion,
+    }));
+
+    if (quickSendGroup.length > 0 && insertGroup.length > 0) {
+      targets.push({ key: "divider", isDivider: true });
+    }
+
+    targets.push(...insertGroup.map((suggestion) => ({
+      key: suggestion.id,
+      suggestion,
+    })));
+
+    return targets;
+  }, [insertGroup, quickSendGroup]);
+
+  const updatePagingState = useCallback(() => {
+    if (isFollowUpVariant) { return; }
+
+    const container = scrollContainerRef.current;
+    if (!container) { return; }
+
+    const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+    setCanPageBackward(container.scrollLeft > 4);
+    setCanPageForward(container.scrollLeft < maxScrollLeft - 4);
+  }, [isFollowUpVariant]);
+
+  useEffect(() => {
+    if (isFollowUpVariant) { return; }
+
+    const container = scrollContainerRef.current;
+    if (!container) { return; }
+
+    updatePagingState();
+
+    const handleScroll = () => updatePagingState();
+    container.addEventListener("scroll", handleScroll, { passive: true });
+
+    const resizeObserver = new ResizeObserver(() => updatePagingState());
+    resizeObserver.observe(container);
+    Array.from(container.children).forEach((child) => resizeObserver.observe(child));
+
+    return () => {
+      container.removeEventListener("scroll", handleScroll);
+      resizeObserver.disconnect();
+    };
+  }, [pagingTargets, isFollowUpVariant, updatePagingState]);
+
+  const scrollToSuggestionIndex = useCallback((targetIndex: number) => {
+    const container = scrollContainerRef.current;
+    if (!container) { return; }
+
+    const children = Array.from(container.children) as HTMLElement[];
+    const target = children[targetIndex];
+    if (!target) { return; }
+
+    const nextLeft = target.offsetLeft;
+    if (typeof container.scrollTo === "function") {
+      container.scrollTo({
+        left: nextLeft,
+        behavior: "smooth",
+      });
+      return;
+    }
+
+    container.scrollLeft = nextLeft;
+    updatePagingState();
+  }, [updatePagingState]);
+
+  const pageSuggestions = useCallback((direction: -1 | 1) => {
+    const container = scrollContainerRef.current;
+    if (!container) { return; }
+
+    const children = Array.from(container.children) as HTMLElement[];
+    if (children.length === 0) { return; }
+
+    const currentScrollLeft = container.scrollLeft;
+    const currentIndex = children.findIndex((child) => child.offsetLeft >= currentScrollLeft - 4);
+    const baseIndex = currentIndex === -1 ? 0 : currentIndex;
+    const targetIndex = Math.max(0, Math.min(children.length - 1, baseIndex + direction));
+
+    scrollToSuggestionIndex(targetIndex);
+  }, [scrollToSuggestionIndex]);
+
+  const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    if (isFollowUpVariant) { return; }
+
+    const dominantDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+    if (Math.abs(dominantDelta) < 12) { return; }
+
+    event.preventDefault();
+    pageSuggestions(dominantDelta > 0 ? 1 : -1);
+  }, [isFollowUpVariant, pageSuggestions]);
+
+  if (allSuggestions.length === 0) {return null;}
 
   const renderSuggestion = (suggestion: ComposerSuggestion) => {
     const isImmediate = suggestion.action === "send_immediately";
@@ -60,19 +159,52 @@ export default function ComposerSuggestionRows({
 
   return (
     <div className={`${isFollowUpVariant ? "px-0 py-0" : "px-1.5 pt-1 pb-0.5"} flex items-center gap-2 group`}>
-      <div className={`flex-1 min-w-0 flex gap-2.5 scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
-        isFollowUpVariant
-          ? "h-auto flex-wrap items-start overflow-visible"
-          : "h-8 items-center overflow-x-hidden group-hover:overflow-x-auto [scroll-snap-type:x_mandatory]"
-      }`}>
+      {!isFollowUpVariant && (
+        <Tooltip content="Previous suggestions">
+          <button
+            type="button"
+            onClick={() => pageSuggestions(-1)}
+            disabled={!canPageBackward}
+            className="shrink-0 flex h-7 w-7 items-center justify-center rounded-full bg-[var(--bg-secondary)] text-[var(--text-muted)] transition-all hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-default disabled:opacity-35 disabled:hover:bg-[var(--bg-secondary)] disabled:hover:text-[var(--text-muted)]"
+            aria-label="Previous suggestions"
+          >
+            <ChevronLeft size={13} />
+          </button>
+        </Tooltip>
+      )}
+
+      <div
+        data-testid={isFollowUpVariant ? undefined : "composer-suggestion-scroller"}
+        ref={scrollContainerRef}
+        onWheel={handleWheel}
+        className={`flex-1 min-w-0 flex gap-2.5 scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+          isFollowUpVariant
+            ? "h-auto flex-wrap items-start overflow-visible"
+            : "h-8 items-center overflow-x-auto [scroll-snap-type:x_mandatory]"
+        }`}
+      >
         {quickSendGroup.map(renderSuggestion)}
 
         {quickSendGroup.length > 0 && insertGroup.length > 0 && (
-          <div className="shrink-0 text-[var(--text-muted)] font-bold leading-none select-none">·</div>
+          <div className="shrink-0 [scroll-snap-align:start] text-[var(--text-muted)] font-bold leading-none select-none">·</div>
         )}
 
         {insertGroup.map(renderSuggestion)}
       </div>
+
+      {!isFollowUpVariant && (
+        <Tooltip content="Next suggestions">
+          <button
+            type="button"
+            onClick={() => pageSuggestions(1)}
+            disabled={!canPageForward}
+            className="shrink-0 flex h-7 w-7 items-center justify-center rounded-full bg-[var(--bg-secondary)] text-[var(--text-muted)] transition-all hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-default disabled:opacity-35 disabled:hover:bg-[var(--bg-secondary)] disabled:hover:text-[var(--text-muted)]"
+            aria-label="Next suggestions"
+          >
+            <ChevronRight size={13} />
+          </button>
+        </Tooltip>
+      )}
 
       {onToggleCollapse && (
         <Tooltip content="Hide suggestions">
