@@ -2,7 +2,7 @@ use crate::db::DbState;
 use crate::models::learning_goal::{
     CreateLearningGoalRequest, LearningGoal, UpdateLearningGoalRequest,
 };
-use crate::services::workspace_hierarchy::workspace_filter_sql;
+use crate::services::workspace_hierarchy::{workspace_filter_sql, ANCESTORS_CTE_PREFIX};
 use tauri::State;
 
 #[tauri::command]
@@ -35,9 +35,15 @@ pub fn list_learning_goals(
     state: State<DbState>,
     workspace_id: String,
     include_descendants: Option<bool>,
+    include_ancestors: Option<bool>,
 ) -> Result<Vec<LearningGoal>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    let (cte, ws_cond) = workspace_filter_sql(include_descendants.unwrap_or(false));
+    let inherit = include_ancestors.unwrap_or(false);
+    let (cte, ws_cond) = if inherit {
+        (ANCESTORS_CTE_PREFIX, "IN (SELECT id FROM ws_ancestors)")
+    } else {
+        workspace_filter_sql(include_descendants.unwrap_or(false))
+    };
     let sql = format!(
         "{cte}SELECT id, workspace_id, title, goal_description, progress, is_completed, due_date, created_at, updated_at
          FROM learning_goals WHERE workspace_id {ws_cond}

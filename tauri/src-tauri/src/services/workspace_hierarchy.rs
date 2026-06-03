@@ -38,6 +38,17 @@ WITH RECURSIVE ws_tree(id) AS (\
     JOIN ws_tree t ON w.parent_workspace_id = t.id\
 ) ";
 
+/// CTE prefix yielding the workspace itself plus all ancestors (walks parents
+/// upward). Bind `?1` to the leaf workspace ID. After this prefix, use
+/// `workspace_id IN (SELECT id FROM ws_ancestors)` in the WHERE clause.
+pub const ANCESTORS_CTE_PREFIX: &str = "\
+WITH RECURSIVE ws_ancestors(id, parent_workspace_id) AS (\
+    SELECT id, parent_workspace_id FROM workspaces WHERE id = ?1 \
+    UNION ALL \
+    SELECT w.id, w.parent_workspace_id FROM workspaces w \
+    JOIN ws_ancestors a ON a.parent_workspace_id = w.id\
+) ";
+
 /// Return all descendant workspace IDs (including the root itself).
 pub fn descendant_workspace_ids(conn: &Connection, root_id: &str) -> Result<Vec<String>, String> {
     let mut stmt = conn

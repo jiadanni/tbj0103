@@ -10,6 +10,10 @@ const mocks = vi.hoisted(() => ({
   getLayout: vi.fn(),
   setLayout: vi.fn(),
   resetLayout: vi.fn(),
+  listGoals: vi.fn(() => Promise.resolve([])),
+  createGoal: vi.fn(),
+  updateGoal: vi.fn(),
+  deleteGoal: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => ({
@@ -20,6 +24,12 @@ vi.mock("@/lib/api", () => ({
       getLayout: mocks.getLayout,
       setLayout: mocks.setLayout,
       resetLayout: mocks.resetLayout,
+    },
+    learningGoal: {
+      list: mocks.listGoals,
+      create: mocks.createGoal,
+      update: mocks.updateGoal,
+      delete: mocks.deleteGoal,
     },
   },
 }));
@@ -176,5 +186,28 @@ describe("FolderDashboardView", () => {
         searchQuery: "hello local AI",
       },
     });
+  });
+
+  it("shows the last message for the highlighted continue-learning row", async () => {
+    render(
+      <MemoryRouter>
+        <FolderDashboardView />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(mocks.getSummary).toHaveBeenCalledWith("ws-1", { includeDescendants: false });
+    });
+
+    expect(screen.queryByText("Let me know once you've checked the unshare flags.")).not.toBeInTheDocument();
+
+    const row = screen.getByRole("button", { name: /cgroups vs namespaces/i });
+    fireEvent.mouseEnter(row);
+
+    expect(screen.getByText("Let me know once you've checked the unshare flags.")).toBeInTheDocument();
+
+    fireEvent.mouseLeave(row);
+
+    expect(screen.queryByText("Let me know once you've checked the unshare flags.")).not.toBeInTheDocument();
   });
 });

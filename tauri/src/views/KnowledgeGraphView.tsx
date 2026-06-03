@@ -1079,29 +1079,30 @@ export default function KnowledgeGraphView({
             </div>
           </header>
 
-          <div className="flex flex-wrap gap-2">
-            {[
-              { icon: <Brain size={12} />, label: "Topics", value: overview?.concepts ?? nodes.length, onClick: () => navigate("/graph") },
-              { icon: <Network size={12} />, label: "Links", value: links.length, onClick: () => navigate("/graph") },
-              { icon: <Clock3 size={12} />, label: "Due Review", value: review?.topics_due_for_review ?? 0, onClick: () => navigate("/review-topics") },
-              { icon: <Target size={12} />, label: "Active Goals", value: overview?.active_goals ?? 0, onClick: () => navigate("/learning") },
-            ].map(({ icon, label, value, onClick }) => (
-              <button
-                key={label}
-                onClick={onClick}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-xs text-[var(--text-secondary)] hover:border-[var(--border-color-hover)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)] transition-all"
-              >
-                <span className="text-[var(--accent-color)] flex items-center">{icon}</span>
-                {summaryLoading ? <Loader2 size={10} className="animate-spin text-[var(--text-muted)]" /> : <span className="font-semibold text-[var(--text-primary)]">{value}</span>}
-                <span className="text-[var(--text-muted)]">{label}</span>
-              </button>
-            ))}
-          </div>
+          {!hideSidebar && (
+            <div className="flex flex-wrap gap-2">
+              {[
+                { icon: <Brain size={12} />, label: "Topics", value: overview?.concepts ?? nodes.length, onClick: () => navigate("/graph") },
+                { icon: <Network size={12} />, label: "Links", value: links.length, onClick: () => navigate("/graph") },
+                { icon: <Clock3 size={12} />, label: "Due Review", value: review?.topics_due_for_review ?? 0, onClick: () => navigate("/review-topics") },
+                { icon: <Target size={12} />, label: "Active Goals", value: overview?.active_goals ?? 0, onClick: () => navigate("/learning") },
+              ].map(({ icon, label, value, onClick }) => (
+                <button
+                  key={label}
+                  onClick={onClick}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-xs text-[var(--text-secondary)] hover:border-[var(--border-color-hover)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)] transition-all"
+                >
+                  <span className="text-[var(--accent-color)] flex items-center">{icon}</span>
+                  {summaryLoading ? <Loader2 size={10} className="animate-spin text-[var(--text-muted)]" /> : <span className="font-semibold text-[var(--text-primary)]">{value}</span>}
+                  <span className="text-[var(--text-muted)]">{label}</span>
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(340px,0.95fr)]">
             <Section
               title="Knowledge Map"
-              eyebrow="Roadmap"
             >
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
