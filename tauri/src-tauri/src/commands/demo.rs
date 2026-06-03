@@ -296,13 +296,12 @@ def self_attention(query, key, value, mask=None):
 
     // AI Workspace: Learning Goal
     conn.execute(
-        "INSERT INTO learning_goals (id, workspace_id, title, goal_description, progress, is_completed, due_date, prerequisite_ids, related_chat_ids, created_at, updated_at)
-         VALUES (?1, ?2, 'Master Transformer Architecture', 'Deep understanding of self-attention, multi-head attention, and positional encoding.', 0.45, 0, ?3, '[]', ?4, ?5, ?6)",
+        "INSERT INTO learning_goals (id, workspace_id, title, goal_description, progress, is_completed, due_date, created_at, updated_at)
+         VALUES (?1, ?2, 'Master Transformer Architecture', 'Deep understanding of self-attention, multi-head attention, and positional encoding.', 0.45, 0, ?3, ?4, ?5)",
         rusqlite::params![
             DEMO_GOAL_AI_TRANSFORMER,
             DEMO_WS_AI,
             (chrono::Utc::now() + chrono::Duration::days(14)).format("%Y-%m-%d").to_string(),
-            format!("[\"{}\"]", "demo-chat-session-transformers-001"),
             now,
             now
         ],
@@ -816,8 +815,8 @@ Notable achievements:
 
     // Rome Workspace: Learning Goal
     conn.execute(
-        "INSERT INTO learning_goals (id, workspace_id, title, goal_description, progress, is_completed, due_date, prerequisite_ids, related_chat_ids, created_at, updated_at)
-         VALUES (?1, ?2, 'Analyze the Punic Wars', 'Detailed study of the three conflicts between Rome and Carthage.', 0.2, 0, ?3, '[]', '[]', ?4, ?5)",
+        "INSERT INTO learning_goals (id, workspace_id, title, goal_description, progress, is_completed, due_date, created_at, updated_at)
+         VALUES (?1, ?2, 'Analyze the Punic Wars', 'Detailed study of the three conflicts between Rome and Carthage.', 0.2, 0, ?3, ?4, ?5)",
         rusqlite::params![
             DEMO_GOAL_ROME_PUNIC,
             DEMO_WS_ROME,
@@ -878,7 +877,6 @@ pub fn deactivate_demo_mode(state: State<DbState>) -> Result<(), String> {
         "DELETE FROM daily_notes WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
         "DELETE FROM learning_goals WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
         "DELETE FROM learning_cards WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
-        "DELETE FROM learning_paths WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
         "DELETE FROM memories WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",
         "DELETE FROM memory_embeddings WHERE memory_id LIKE 'demo-%'",
         "DELETE FROM artifacts WHERE id LIKE 'demo-%' OR workspace_id LIKE 'demo-%'",

@@ -1,172 +1,43 @@
 /**
- * LearningPathView — learning goals with progress tracking.
- * Mirrors LearningPathView.swift.
+ * LearningPathView — workspace-level learning goals with manual progress
+ * tracking. Goals are flat (no concept anchoring, no prerequisites) and the
+ * user moves the progress slider themselves.
  */
-import { useEffect, useMemo, useState } from "react";
-import { Plus, Check, Trash2, Target, Sparkles, Loader2, X, Zap } from "lucide-react";
-import { api, type LearningGoal, type ConceptNode } from "../lib/api";
+import { useEffect, useState } from "react";
+import { Plus, Check, Trash2, Target } from "lucide-react";
+import { api, type LearningGoal } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useBubbleUpFlag } from "../lib/workspacePane";
-import { useSettingsStore } from "../stores/settingsStore";
-import WorkspaceSurveyModal, {
-  type WorkspaceSurvey,
-  formatSurveyForPrompt,
-} from "../components/WorkspaceSurveyModal";
-import { resolveAboutYou, formatAboutYouForPrompt } from "../lib/aboutYou";
 
-type GenerateStep = "analyze" | "suggest" | "save" | null;
-
-interface Props {
-  /** When set, list is filtered to goals tagged with this concept and new
-   * goals default to it. Supplied by `LearningHubView` via the Goals tab. */
-  conceptId?: string | null;
-  /** Called when the user clicks the "clear filter" affordance on the banner. */
-  onClearConceptFilter?: () => void;
-}
-
-export default function LearningPathView({ conceptId = null, onClearConceptFilter }: Props = {}) {
-  const { activeWorkspaceId, workspaces } = useWorkspaceStore();
+export default function LearningPathView() {
+  const { activeWorkspaceId } = useWorkspaceStore();
   const includeDescendants = useBubbleUpFlag();
-  const { preferredModel, ollamaUrl } = useSettingsStore();
   const [goals, setGoals] = useState<LearningGoal[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [newDue, setNewDue] = useState("");
 
-  // Concept lookup (for the filter banner) — fetched once per workspace.
-  const [concepts, setConcepts] = useState<ConceptNode[]>([]);
-  const selectedConceptName = useMemo(() => {
-    if (!conceptId) {return null;}
-    return concepts.find((c) => c.id === conceptId)?.name ?? null;
-  }, [conceptId, concepts]);
-
-  // Survey state
-  const [showSurvey, setShowSurvey] = useState(false);
-  const [generateStep, setGenerateStep] = useState<GenerateStep>(null);
-  const [generateError, setGenerateError] = useState<string | null>(null);
-  const [lastGeneratedCount, setLastGeneratedCount] = useState<number | null>(null);
-
-  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId) ?? null;
-  const existingSurvey: WorkspaceSurvey | null = (() => {
-    if (!activeWorkspace?.survey_data) { return null; }
-    try { return JSON.parse(activeWorkspace.survey_data) as WorkspaceSurvey; }
-    catch { return null; }
-  })();
-
   useEffect(() => {
     if (!activeWorkspaceId) { return; }
     api.learningGoal
-      .list(activeWorkspaceId, { includeDescendants, conceptId })
+      .list(activeWorkspaceId, { includeDescendants })
       .then(setGoals)
       .catch(() => {});
-  }, [activeWorkspaceId, includeDescendants, conceptId]);
-
-  useEffect(() => {
-    if (!activeWorkspaceId) { return; }
-    api.graph.listConcepts(activeWorkspaceId).then(setConcepts).catch(() => {});
-  }, [activeWorkspaceId]);
-
-  async function handleSurveySubmit(survey: WorkspaceSurvey) {
-    if (!activeWorkspaceId || !activeWorkspace) { return; }
-    setShowSurvey(false);
-    setGenerateError(null);
-    setLastGeneratedCount(null);
-
-    const surveyJson = JSON.stringify(survey);
-    let surveyText = formatSurveyForPrompt(survey);
-    // Prepend About You profile so generated goals are tailored to the user.
-    try {
-      const aboutYou = useSettingsStore.getState().aboutYou;
-      const profile = resolveAboutYou(activeWorkspace.about_you ?? "", aboutYou);
-      const aboutBlock = formatAboutYouForPrompt(profile);
-      if (aboutBlock) {
-        surveyText = `${aboutBlock}\n\n${surveyText}`;
-      }
-    } catch {
-      // Non-fatal: fall back to survey-only context.
-    }
-    const model = preferredModel;
-
-    // Merge survey context into prompt_instructions, replacing any prior survey block.
-    const SURVEY_START = "<!-- survey-context -->";
-    const SURVEY_END = "<!-- /survey-context -->";
-    const surveyBlock = `${SURVEY_START}\n${surveyText}\n${SURVEY_END}`;
-    const existing = activeWorkspace.prompt_instructions ?? "";
-    const stripped = existing
-      .replace(new RegExp(`${SURVEY_START}[\\s\\S]*?${SURVEY_END}\\n?`, "g"), "")
-      .trimEnd();
-    const mergedInstructions = stripped ? `${stripped}\n\n${surveyBlock}` : surveyBlock;
-
-    try {
-      // 1. Persist survey + update prompt_instructions
-      setGenerateStep("save");
-      await api.workspace.update(
-        activeWorkspaceId,
-        activeWorkspace.name,
-        activeWorkspace.description,
-        mergedInstructions,
-        surveyJson,
-      );
-
-      // 2. Analyze workspace (seeds concept graph; skip on root/overview workspaces)
-      setGenerateStep("analyze");
-      if (!includeDescendants) {
-        try {
-          await api.knowledge.analyzeWorkspace(activeWorkspaceId, model, {
-            ollamaUrl: ollamaUrl || undefined,
-            surveyContext: surveyText,
-          });
-        } catch {
-          // analyze may fail on truly empty workspaces without survey content for JSON — not fatal
-        }
-      }
-
-      // 3. Suggest learning goals (model resolved server-side via
-      //    Background Tasks > Goal Suggestion → background → preferred).
-      setGenerateStep("suggest");
-      const suggested = await api.knowledge.suggestGoals(
-        activeWorkspaceId,
-        undefined,
-        ollamaUrl || undefined,
-        surveyText,
-      );
-
-      // 4. Bulk-create goals that don't already exist
-      const existingTitles = new Set(goals.map((g) => g.title.trim().toLowerCase()));
-      let created = 0;
-      const newGoals: LearningGoal[] = [];
-      for (const s of suggested) {
-        if (!existingTitles.has(s.title.trim().toLowerCase())) {
-          const g = await api.learningGoal.create(activeWorkspaceId, s.title.trim(), { conceptId });
-          // Patch description if provided
-          if (s.description) {
-            try {
-              await api.learningGoal.update(g.id, { goal_description: s.description });
-              newGoals.push({ ...g, goal_description: s.description });
-            } catch {
-              newGoals.push(g);
-            }
-          } else {
-            newGoals.push(g);
-          }
-          created++;
-        }
-      }
-
-      setGoals((prev) => [...newGoals, ...prev]);
-      setLastGeneratedCount(created);
-    } catch (err) {
-      setGenerateError(String(err));
-    } finally {
-      setGenerateStep(null);
-    }
-  }
+  }, [activeWorkspaceId, includeDescendants]);
 
   async function createGoal() {
     if (!newTitle.trim() || !activeWorkspaceId) { return; }
-    const goal = await api.learningGoal.create(activeWorkspaceId, newTitle.trim(), { conceptId });
-    setGoals((prev) => [goal, ...prev]);
+    const goal = await api.learningGoal.create(activeWorkspaceId, newTitle.trim());
+    if (newDesc.trim() || newDue) {
+      try {
+        await api.learningGoal.update(goal.id, {
+          goal_description: newDesc.trim() || undefined,
+          due_date: newDue || undefined,
+        });
+      } catch { /* swallow — list refresh would surface the truth */ }
+    }
+    setGoals((prev) => [{ ...goal, goal_description: newDesc.trim(), due_date: newDue || undefined }, ...prev]);
     setNewTitle("");
     setNewDesc("");
     setNewDue("");
@@ -198,107 +69,23 @@ export default function LearningPathView({ conceptId = null, onClearConceptFilte
   const incomplete = goals.filter((g) => !g.is_completed);
   const complete = goals.filter((g) => g.is_completed);
 
-  const isGenerating = generateStep !== null;
-
-  const generateStatusLabel: Record<NonNullable<GenerateStep>, string> = {
-    save: "Saving workspace context…",
-    analyze: "Analyzing workspace…",
-    suggest: "Generating learning goals…",
-  };
-
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-color)]">
         <h1 className="text-sm font-semibold text-[var(--text-primary)]">Learning Goals</h1>
-        <div className="flex items-center gap-2">
-          {activeWorkspaceId && existingSurvey && (
-            <button
-              onClick={() => { handleSurveySubmit(existingSurvey); }}
-              disabled={isGenerating}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg bg-[var(--accent-color)]/15 border border-[var(--accent-color)]/40 text-[var(--accent-color)] hover:bg-[var(--accent-color)]/25 disabled:opacity-40"
-              title="Generate goals from saved roadmap setup"
-            >
-              <Zap size={12} />
-              Generate Now
-            </button>
-          )}
-          {activeWorkspaceId && (
-            <button
-              onClick={() => { setShowSurvey(true); }}
-              disabled={isGenerating}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
-            >
-              <Sparkles size={12} />
-              {existingSurvey ? "Edit Roadmap Setup" : "Setup Roadmap"}
-            </button>
-          )}
-          <button
-            onClick={() => setShowCreate(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90"
-          >
-            <Plus size={12} /> New Goal
-          </button>
-        </div>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90"
+        >
+          <Plus size={12} /> New Goal
+        </button>
       </div>
-
-      {/* Generation status bar */}
-      {isGenerating && generateStep && (
-        <div className="flex items-center gap-2 px-5 py-2 bg-[var(--accent-color)]/10 border-b border-[var(--border-color)]">
-          <Loader2 size={12} className="animate-spin text-[var(--accent-color)]" />
-          <span className="text-xs text-[var(--accent-color)]">
-            {generateStatusLabel[generateStep]}
-          </span>
-        </div>
-      )}
-
-      {/* Error bar */}
-      {generateError && (
-        <div className="flex items-center justify-between px-5 py-2 bg-red-500/10 border-b border-[var(--border-color)]">
-          <span className="text-xs text-red-400 truncate">{generateError}</span>
-          <button onClick={() => setGenerateError(null)} className="text-xs text-red-400 hover:opacity-80 ml-2 flex-shrink-0">
-            Dismiss
-          </button>
-        </div>
-      )}
-
-      {/* Success toast */}
-      {lastGeneratedCount !== null && !isGenerating && (
-        <div className="flex items-center justify-between px-5 py-2 bg-green-500/10 border-b border-[var(--border-color)]">
-          <span className="text-xs text-green-400">
-            {lastGeneratedCount === 0
-              ? "No new goals to add — all suggestions already exist."
-              : `Added ${lastGeneratedCount} new learning goal${lastGeneratedCount !== 1 ? "s" : ""}.`}
-          </span>
-          <button onClick={() => setLastGeneratedCount(null)} className="text-xs text-green-400 hover:opacity-80 ml-2 flex-shrink-0">
-            ×
-          </button>
-        </div>
-      )}
-
-      {/* Concept-filter banner — surfaced when the Learning hub sidebar selects a concept. */}
-      {conceptId && (
-        <div className="flex items-center justify-between px-5 py-2 bg-[var(--accent-color)]/10 border-b border-[var(--border-color)]">
-          <span className="text-xs text-[var(--accent-color)]">
-            Showing goals for: <strong>{selectedConceptName ?? "(unknown topic)"}</strong>
-          </span>
-          {onClearConceptFilter && (
-            <button
-              onClick={onClearConceptFilter}
-              className="flex items-center gap-1 text-xs text-[var(--accent-color)] hover:opacity-80 ml-2 flex-shrink-0"
-              title="Show all goals"
-            >
-              <X size={12} /> Clear filter
-            </button>
-          )}
-        </div>
-      )}
 
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
         {!activeWorkspaceId && (
           <p className="text-[var(--text-muted)] text-sm">Select a workspace first.</p>
         )}
 
-        {/* Active goals */}
         {incomplete.length > 0 && (
           <section>
             <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-3">
@@ -318,7 +105,6 @@ export default function LearningPathView({ conceptId = null, onClearConceptFilte
           </section>
         )}
 
-        {/* Completed */}
         {complete.length > 0 && (
           <section>
             <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-3">
@@ -338,50 +124,20 @@ export default function LearningPathView({ conceptId = null, onClearConceptFilte
           </section>
         )}
 
-        {goals.length === 0 && activeWorkspaceId && !isGenerating && (
+        {goals.length === 0 && activeWorkspaceId && (
           <div className="flex flex-col items-center gap-3 py-12 text-center">
             <Target size={32} className="text-[var(--text-muted)]" />
             <p className="text-sm text-[var(--text-muted)]">No learning goals yet.</p>
-            <div className="flex gap-2">
-              {existingSurvey && (
-                <button
-                  onClick={() => handleSurveySubmit(existingSurvey)}
-                  className="px-4 py-2 bg-[var(--accent-color)] text-white rounded-lg text-sm hover:opacity-90 flex items-center gap-1.5"
-                >
-                  <Zap size={13} /> Generate Now
-                </button>
-              )}
-              <button
-                onClick={() => setShowSurvey(true)}
-                className={`px-4 py-2 rounded-lg text-sm flex items-center gap-1.5 ${
-                  existingSurvey
-                    ? "border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                    : "bg-[var(--accent-color)] text-white hover:opacity-90"
-                }`}
-              >
-                <Sparkles size={13} /> {existingSurvey ? "Edit Setup" : "Generate with AI"}
-              </button>
-              <button
-                onClick={() => setShowCreate(true)}
-                className="px-4 py-2 border border-[var(--border-color)] text-[var(--text-secondary)] rounded-lg text-sm hover:bg-[var(--bg-hover)]"
-              >
-                Add manually
-              </button>
-            </div>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="px-4 py-2 bg-[var(--accent-color)] text-white rounded-lg text-sm hover:opacity-90 flex items-center gap-1.5"
+            >
+              <Plus size={13} /> Add a goal
+            </button>
           </div>
         )}
       </div>
 
-      {/* Survey modal */}
-      {showSurvey && (
-        <WorkspaceSurveyModal
-          initialData={existingSurvey}
-          onSubmit={handleSurveySubmit}
-          onClose={() => setShowSurvey(false)}
-        />
-      )}
-
-      {/* Create modal */}
       {showCreate && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
@@ -461,7 +217,6 @@ function GoalCard({
               Due: {new Date(goal.due_date).toLocaleDateString()}
             </p>
           )}
-          {/* Progress bar */}
           <div className="mt-2 flex items-center gap-2">
             <div className="flex-1 h-1.5 bg-[var(--bg-hover)] rounded-full overflow-hidden">
               <div
@@ -491,6 +246,5 @@ function GoalCard({
   );
 }
 
-/** Named export used by `LearningHubView` (Goals tab). Currently aliases the
- * full view; chrome stripping is a follow-up. */
+/** Named export used by `LearningHubView` (Map tab — goals strip). */
 export const GoalsPane = LearningPathView;

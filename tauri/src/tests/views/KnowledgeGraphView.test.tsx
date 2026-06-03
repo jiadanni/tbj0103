@@ -218,9 +218,10 @@ describe("KnowledgeGraphView", () => {
       expect(mocks.getSummary).toHaveBeenCalledWith("ws-1");
     });
 
-    expect(await screen.findByText("Suggested Next Steps")).toBeInTheDocument();
-    expect(screen.getByText("Knowledge Map")).toBeInTheDocument();
-    expect(screen.getByText("Knowledge Health")).toBeInTheDocument();
+    expect(await screen.findByText("Knowledge Map")).toBeInTheDocument();
+    expect(screen.queryByText("Suggested Next Steps")).not.toBeInTheDocument();
+    expect(screen.queryByText("Knowledge Health")).not.toBeInTheDocument();
+    expect(screen.queryByText("Topic Focus")).not.toBeInTheDocument();
     expect(screen.getByTestId("knowledge-map")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Backlinks" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Deduplication" })).not.toBeInTheDocument();
@@ -307,76 +308,8 @@ describe("KnowledgeGraphView", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText("Suggested Next Steps");
+    await screen.findByText("Knowledge Map");
     expect(screen.queryByText(/another review pass/)).not.toBeInTheDocument();
-  });
-
-  it("renders singular topic-review wording with top topic name", async () => {
-    mocks.getSummary.mockResolvedValueOnce({
-      workspace_id: "ws-1",
-      workspace_name: "Linux",
-      overview: { chat_sessions: 1, notes: 1, sources: 1, concepts: 1, flashcards: 0, active_goals: 0, completed_goals: 0 },
-      continue_learning: [],
-      review: {
-        due_today: 0,
-        total_cards: 0,
-        learned: 0,
-        avg_ease: 2.5,
-        under_reviewed_concepts: 0,
-        weak_concepts: [],
-        route: { path: "/graph", state: null },
-        topics_due_for_review: 1,
-        top_due_topic: "Closures",
-      },
-      goals: [],
-      progression: [],
-      knowledge_health: { stalled_goals: 0, unprocessed_sources: 0, isolated_concepts: 0, active_topic_tags: [] },
-      recent_activity: [],
-    });
-
-    render(
-      <MemoryRouter initialEntries={[{ pathname: "/graph", state: null }]}>
-        <KnowledgeGraphView />
-      </MemoryRouter>,
-    );
-
-    expect(
-      await screen.findByText(/1 topic needs another review pass\.\s*Start with .Closures.\./),
-    ).toBeInTheDocument();
-  });
-
-  it("renders plural topic-review wording without top topic when null", async () => {
-    mocks.getSummary.mockResolvedValueOnce({
-      workspace_id: "ws-1",
-      workspace_name: "Linux",
-      overview: { chat_sessions: 1, notes: 1, sources: 1, concepts: 1, flashcards: 0, active_goals: 0, completed_goals: 0 },
-      continue_learning: [],
-      review: {
-        due_today: 0,
-        total_cards: 0,
-        learned: 0,
-        avg_ease: 2.5,
-        under_reviewed_concepts: 0,
-        weak_concepts: [],
-        route: { path: "/graph", state: null },
-        topics_due_for_review: 5,
-        top_due_topic: null,
-      },
-      goals: [],
-      progression: [],
-      knowledge_health: { stalled_goals: 0, unprocessed_sources: 0, isolated_concepts: 0, active_topic_tags: [] },
-      recent_activity: [],
-    });
-
-    render(
-      <MemoryRouter initialEntries={[{ pathname: "/graph", state: null }]}>
-        <KnowledgeGraphView />
-      </MemoryRouter>,
-    );
-
-    const text = await screen.findByText(/5 topics need another review pass\./);
-    expect(text).toBeInTheDocument();
-    expect(text.textContent ?? "").not.toContain("Start with");
   });
 
   it("renders the proposals review panel and applies a proposal", async () => {

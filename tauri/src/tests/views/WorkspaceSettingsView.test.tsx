@@ -137,16 +137,8 @@ describe("WorkspaceSettingsView", () => {
         concepts: 4,
         flashcards: 5,
       },
-      review: { due_flashcards: 0, overdue_flashcards: 0, due_goals: 0 },
-      goals: [],
-      progression: [],
-      knowledge_health: {
-        stalled_goals: 0,
-        unprocessed_sources: 0,
-        isolated_concepts: 0,
-        active_topic_tags: [],
-      },
-      recent_activity: [],
+      review: { due_today: 0, total_cards: 0, learned: 0, avg_ease: 2.5, route: { path: "/review-topics", state: null }, topics_due_for_review: 0, top_due_topic: null },
+      continue_learning: [],
     });
     apiMocks.listMemories.mockResolvedValue([]);
     apiMocks.deleteWorkspaceFacts.mockResolvedValue(0);

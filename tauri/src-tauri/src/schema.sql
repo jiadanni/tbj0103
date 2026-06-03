@@ -116,9 +116,6 @@ CREATE TABLE IF NOT EXISTS learning_goals (
     progress REAL NOT NULL DEFAULT 0.0 CHECK(progress >= 0.0 AND progress <= 1.0),
     is_completed INTEGER NOT NULL DEFAULT 0,
     due_date TEXT,
-    prerequisite_ids TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(prerequisite_ids)),
-    related_chat_ids TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(related_chat_ids)),
-    concept_id TEXT REFERENCES concept_nodes(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -294,26 +291,6 @@ CREATE TABLE IF NOT EXISTS quiz_answers (
     graded_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(question_id)
-);
-
-CREATE TABLE IF NOT EXISTS learning_paths (
-    id TEXT PRIMARY KEY NOT NULL,
-    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-    title TEXT NOT NULL,
-    path_description TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS path_milestones (
-    id TEXT PRIMARY KEY NOT NULL,
-    path_id TEXT NOT NULL REFERENCES learning_paths(id) ON DELETE CASCADE,
-    title TEXT NOT NULL,
-    milestone_description TEXT NOT NULL DEFAULT '',
-    is_completed INTEGER NOT NULL DEFAULT 0,
-    order_index INTEGER NOT NULL DEFAULT 0,
-    completed_at TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Folder sources (from ProjectSource.swift)
@@ -1194,8 +1171,6 @@ CREATE INDEX IF NOT EXISTS idx_thought_queue_status ON thought_queue(workspace_i
 CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(workspace_id, is_active, scope);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_parent ON chat_sessions(parent_session_id);
 CREATE INDEX IF NOT EXISTS idx_note_templates_workspace ON note_templates(workspace_id);
-CREATE INDEX IF NOT EXISTS idx_learning_paths_workspace ON learning_paths(workspace_id);
-CREATE INDEX IF NOT EXISTS idx_path_milestones_path ON path_milestones(path_id);
 CREATE INDEX IF NOT EXISTS idx_calendar_alarms_workspace ON calendar_alarms(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_thought_queue_session ON thought_queue(session_id);
 CREATE INDEX IF NOT EXISTS idx_memories_project ON memories(folder_id);

@@ -1,77 +1,69 @@
 /**
- * LearningHubView — consolidates the legacy `/graph` (Knowledge), `/flashcards`
- * (Review), and `/learning` (Goals) routes into a single surface with three tabs
- * sharing the `concept_nodes` tree as the spine. The legacy routes redirect here
- * with a `?tab=` query param so existing bookmarks keep working.
+ * LearningHubView — two surfaces under one route.
  *
- * Layout: persistent shared concept tree sidebar on the left controls
- * `selectedConceptId`, which feeds into each tab's pane:
- *   - Roadmap pane focuses the corresponding concept in its detail panel
- *   - Review pane filters cards to `source_id = <concept>`
- *   - Goals pane currently ignores it (no concept_id column yet)
+ * Map: workspace goals across the top, knowledge map below.
+ * Practice: user chooses Review (SM-2 flashcards) or Quiz (AI-generated
+ * questions); recent sessions appear below.
+ *
+ * Legacy ?tab values (roadmap / review / goals / quizzes) are normalized into
+ * the new two-tab vocabulary so old bookmarks keep working.
  */
 import { useEffect, useState, useMemo, lazy, Suspense } from "react";
-import { useSearchParams, useLocation } from "react-router-dom";
-import { ClipboardCheck, GraduationCap, Map, Target } from "lucide-react";
-import LearningHubSidebar from "../components/LearningHubSidebar";
-import { useWorkspaceStore } from "../stores/workspaceStore";
+import { useSearchParams } from "react-router-dom";
+import { Map, ClipboardCheck } from "lucide-react";
 
-// Lazy-load each pane so its heavy deps (d3, CodeMirror, etc.) only ship when
-// the matching tab is first opened. `React.lazy` needs a default export, so we
-// adapt each named pane alias via `.then`.
-const ReviewPane = lazy(() =>
-  import("./FlashcardReviewView").then((m) => ({ default: m.ReviewPane })),
-);
 const RoadmapPane = lazy(() =>
   import("./KnowledgeGraphView").then((m) => ({ default: m.RoadmapPane })),
 );
-const GoalsPane = lazy(() =>
-  import("./LearningPathView").then((m) => ({ default: m.GoalsPane })),
+const ReviewPane = lazy(() =>
+  import("./FlashcardReviewView").then((m) => ({ default: m.ReviewPane })),
 );
 const QuizzesPane = lazy(() =>
   import("./QuizzesPane").then((m) => ({ default: m.QuizzesPane })),
 );
+const GoalsPane = lazy(() =>
+  import("./LearningPathView").then((m) => ({ default: m.GoalsPane })),
+);
 
-type HubTab = "roadmap" | "review" | "goals" | "quizzes";
+type HubTab = "map" | "practice";
+type PracticeMode = "review" | "quiz";
 
 const TABS: { id: HubTab; label: string; Icon: typeof Map }[] = [
-  { id: "roadmap", label: "Roadmap", Icon: Map },
-  { id: "review", label: "Review", Icon: GraduationCap },
-  { id: "quizzes", label: "Quizzes", Icon: ClipboardCheck },
-  { id: "goals", label: "Goals", Icon: Target },
+  { id: "map", label: "Map", Icon: Map },
+  { id: "practice", label: "Practice", Icon: ClipboardCheck },
 ];
 
 function parseTab(value: string | null): HubTab {
-  if (value === "roadmap" || value === "review" || value === "goals" || value === "quizzes") {
-    return value;
-  }
-  return "roadmap";
+  if (value === "map" || value === "practice") { return value; }
+  // Legacy values from the four-tab hub.
+  if (value === "roadmap" || value === "goals") { return "map"; }
+  if (value === "review" || value === "quizzes") { return "practice"; }
+  return "map";
+}
+
+function parseInitialPracticeMode(value: string | null): PracticeMode {
+  if (value === "quizzes" || value === "quiz") { return "quiz"; }
+  return "review";
 }
 
 export default function LearningHubView() {
-  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTab = useMemo(() => parseTab(searchParams.get("tab")), [searchParams]);
   const [activeTab, setActiveTab] = useState<HubTab>(initialTab);
-  
-  // Initialize selectedConceptId from navigation state (e.g., when navigating from weak concepts or review topics)
-  const initialConceptIdFromState = useMemo(
-    () => (location.state as { focusConceptId?: string } | null)?.focusConceptId ?? null,
-    [location.state],
+  const initialMode = useMemo(
+    () => parseInitialPracticeMode(searchParams.get("tab")),
+    [searchParams],
   );
-  const [selectedConceptId, setSelectedConceptId] = useState<string | null>(initialConceptIdFromState);
-  
-  const { activeWorkspaceId } = useWorkspaceStore();
+  const [practiceMode, setPracticeMode] = useState<PracticeMode>(initialMode);
 
-  // Deep-link payload for the Quizzes tab. Read once at mount; we clear them
-  // from the URL after consuming so a re-render doesn't relaunch the quiz.
+  // Deep-link payload for the Quizzes pane.
   const initialQuizTopic = useMemo(() => searchParams.get("topic") ?? undefined, [searchParams]);
   const initialQuizKindRaw = useMemo(() => searchParams.get("kind"), [searchParams]);
   const initialQuizKind = initialQuizKindRaw === "pop" || initialQuizKindRaw === "exam"
     ? initialQuizKindRaw
     : undefined;
 
-  // Keep the URL in sync so tab state is bookmarkable and shareable.
+  // Keep the URL in sync so tabs are bookmarkable.
   useEffect(() => {
     const current = parseTab(searchParams.get("tab"));
     if (current !== activeTab) {
@@ -81,18 +73,8 @@ export default function LearningHubView() {
     }
   }, [activeTab, searchParams, setSearchParams]);
 
-  // Update selectedConceptId when navigation state changes (e.g., when clicking different weak concepts)
-  useEffect(() => {
-    const stateConceptId = (location.state as { focusConceptId?: string } | null)?.focusConceptId ?? null;
-    if (stateConceptId !== null) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSelectedConceptId(stateConceptId);
-    }
-  }, [location.state]);
-
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* Tab bar — pattern lifted from PreferencesView. */}
       <div className="flex gap-1.5 overflow-x-auto border-b border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 pt-2">
         {TABS.map(({ id, label, Icon }) => (
           <button
@@ -110,35 +92,60 @@ export default function LearningHubView() {
         ))}
       </div>
 
-      <div className="flex-1 min-h-0 flex overflow-hidden">
-        <LearningHubSidebar
-          workspaceId={activeWorkspaceId}
-          selectedConceptId={selectedConceptId}
-          onSelect={setSelectedConceptId}
-        />
-        <div className="flex-1 min-w-0 overflow-hidden">
-          <Suspense fallback={<div className="p-4 text-sm text-[var(--text-muted)]">Loading…</div>}>
-            {activeTab === "roadmap" && (
-              <RoadmapPane hideSidebar selectedConceptId={selectedConceptId} />
-            )}
-            {activeTab === "review" && (
-              <ReviewPane hideSidebar conceptId={selectedConceptId} />
-            )}
-            {activeTab === "goals" && (
-              <GoalsPane
-                conceptId={selectedConceptId}
-                onClearConceptFilter={() => setSelectedConceptId(null)}
-              />
-            )}
-            {activeTab === "quizzes" && (
-              <QuizzesPane
-                hideSidebar
-                initialTopicId={initialQuizTopic}
-                initialKind={initialQuizKind}
-              />
-            )}
-          </Suspense>
-        </div>
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <Suspense fallback={<div className="p-4 text-sm text-[var(--text-muted)]">Loading…</div>}>
+          {activeTab === "map" && (
+            <div className="flex h-full flex-col overflow-hidden">
+              <div className="border-b border-[var(--border-color)] bg-[var(--bg-primary)]/40 px-4 py-3">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)] mb-2">
+                  Workspace goals
+                </div>
+                <div className="max-h-44 overflow-y-auto">
+                  <GoalsPane />
+                </div>
+              </div>
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <RoadmapPane hideSidebar />
+              </div>
+            </div>
+          )}
+          {activeTab === "practice" && (
+            <div className="flex h-full flex-col overflow-hidden">
+              <div className="flex gap-2 border-b border-[var(--border-color)] bg-[var(--bg-primary)]/40 px-4 py-3">
+                <button
+                  onClick={() => setPracticeMode("review")}
+                  className={`flex-1 rounded-xl border px-4 py-3 text-sm font-medium transition-colors ${
+                    practiceMode === "review"
+                      ? "border-[var(--accent-color)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
+                      : "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:border-[var(--accent-color)]"
+                  }`}
+                >
+                  Review flashcards
+                </button>
+                <button
+                  onClick={() => setPracticeMode("quiz")}
+                  className={`flex-1 rounded-xl border px-4 py-3 text-sm font-medium transition-colors ${
+                    practiceMode === "quiz"
+                      ? "border-[var(--accent-color)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
+                      : "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:border-[var(--accent-color)]"
+                  }`}
+                >
+                  Take a quiz
+                </button>
+              </div>
+              <div className="flex-1 min-h-0 overflow-hidden">
+                {practiceMode === "review" && <ReviewPane hideSidebar />}
+                {practiceMode === "quiz" && (
+                  <QuizzesPane
+                    hideSidebar
+                    initialTopicId={initialQuizTopic}
+                    initialKind={initialQuizKind}
+                  />
+                )}
+              </div>
+            </div>
+          )}
+        </Suspense>
       </div>
     </div>
   );

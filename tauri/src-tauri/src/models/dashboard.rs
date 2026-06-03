@@ -31,28 +31,16 @@ pub struct DashboardContinueLearning {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DashboardConceptFocus {
-    pub concept_id: String,
-    pub name: String,
-    pub review_count: i64,
-    pub reason: String,
-    pub route: DashboardRoute,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DashboardReviewSummary {
     pub due_today: i64,
     pub total_cards: i64,
     pub learned: i64,
     pub avg_ease: f64,
-    pub under_reviewed_concepts: i64,
-    pub weak_concepts: Vec<DashboardConceptFocus>,
     pub route: DashboardRoute,
-    /// Distinct topic count where any of: latest quiz score < 0.7 (last 30d),
-    /// stale + under-reinforced, or backed by an at-risk learning_goal.
+    /// Distinct topic count where flashcards are due today.
     #[serde(default)]
     pub topics_due_for_review: i64,
-    /// Highest-priority topic name (priority: grade -> goal -> stale).
+    /// Highest-priority topic name (currently: any due topic).
     #[serde(default)]
     pub top_due_topic: Option<String>,
 }
@@ -61,51 +49,12 @@ pub struct DashboardReviewSummary {
 pub struct ReviewTopic {
     pub concept_id: String,
     pub name: String,
-    /// One of: "grade", "goal", "stale".
+    /// Currently always "stale" since AI-scored "grade" / "goal" reasons were removed.
     pub reason_kind: String,
     /// Human-readable detail used by the view.
     pub detail: String,
-    /// Lower = higher priority (grade=0, goal=1, stale=2).
+    /// Lower = higher priority.
     pub priority: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DashboardGoalSummary {
-    pub id: String,
-    pub title: String,
-    pub progress: f64,
-    pub is_completed: bool,
-    pub due_date: Option<String>,
-    pub updated_at: String,
-    pub route: DashboardRoute,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DashboardSuggestion {
-    pub id: String,
-    pub kind: String,
-    pub title: String,
-    pub description: String,
-    pub route: DashboardRoute,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DashboardKnowledgeHealth {
-    pub stalled_goals: i64,
-    pub unprocessed_sources: i64,
-    pub isolated_concepts: i64,
-    pub active_topic_tags: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DashboardActivity {
-    pub id: String,
-    pub kind: String,
-    pub title: String,
-    pub subtitle: String,
-    pub timestamp: String,
-    pub last_response_snippet: Option<String>,
-    pub route: DashboardRoute,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -127,8 +76,4 @@ pub struct DashboardSummary {
     pub overview: DashboardOverview,
     pub continue_learning: Vec<DashboardContinueLearning>,
     pub review: DashboardReviewSummary,
-    pub goals: Vec<DashboardGoalSummary>,
-    pub progression: Vec<DashboardSuggestion>,
-    pub knowledge_health: DashboardKnowledgeHealth,
-    pub recent_activity: Vec<DashboardActivity>,
 }

@@ -723,7 +723,6 @@ pub fn run() {
             commands::ai_knowledge::analyze_workspace,
             commands::ai_knowledge::analyze_workspace_chunked,
             commands::ai_knowledge::analyze_descendants,
-            commands::ai_knowledge::suggest_learning_goals,
             // Memory commands
             commands::memory::create_memory,
             commands::memory::list_memories,

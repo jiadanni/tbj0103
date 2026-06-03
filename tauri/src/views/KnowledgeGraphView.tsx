@@ -11,12 +11,10 @@ import SuccessDialog from "../components/SuccessDialog";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { writeFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import {
-  ArrowRight,
   Brain,
   ChevronDown,
   Clock3,
   Download,
-  FileText,
   Loader2,
   Maximize2,
   Minimize2,
@@ -37,7 +35,6 @@ import {
   type ChangeProposal,
   type ConceptLink,
   type ConceptNode,
-  type DashboardRoute,
   type DashboardSummary,
   type DescendantAnalysisProgress,
   type LearningCard,
@@ -75,40 +72,6 @@ type WorkspaceAnalyzableStatus = {
 
 function colorFor(type: string) {
   return TYPE_COLORS[type.toLowerCase()] ?? TYPE_COLORS.other;
-}
-
-function timeAgo(iso: string | undefined | null) {
-  if (!iso) { return "recently"; }
-  const parsed = new Date(iso).getTime();
-  if (isNaN(parsed)) { return "recently"; }
-  const diffMs = Date.now() - parsed;
-  const minutes = Math.floor(diffMs / 60000);
-  if (minutes < 1) { return "just now"; }
-  if (minutes < 60) { return `${minutes}m ago`; }
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) { return `${hours}h ago`; }
-  return `${Math.floor(hours / 24)}d ago`;
-}
-
-function normalizeKnowledgeRoute(route: DashboardRoute): { path: string; state?: Record<string, unknown> } {
-  if (route.path === "/backlinks" || route.path === "/dedup") {
-    return { path: "/graph" };
-  }
-
-  return route.state ? { path: route.path, state: route.state } : { path: route.path };
-}
-
-function suggestionIcon(kind: string) {
-  switch (kind) {
-    case "review":
-      return <Brain size={16} className="text-emerald-400" />;
-    case "goal":
-      return <Target size={16} className="text-[var(--accent-color)]" />;
-    case "source":
-      return <FileText size={16} className="text-amber-400" />;
-    default:
-      return <Sparkles size={16} className="text-[var(--accent-color)]" />;
-  }
 }
 
 
@@ -736,11 +699,6 @@ export default function KnowledgeGraphView({
     }
   }
 
-  function openRoute(route: DashboardRoute) {
-    const nextRoute = normalizeKnowledgeRoute(route);
-    navigate(nextRoute.path, nextRoute.state ? { state: nextRoute.state } : undefined);
-  }
-
   function refreshKnowledge() {
     void Promise.all([loadGraph(), loadSummary()]);
   }
@@ -760,9 +718,6 @@ export default function KnowledgeGraphView({
 
   const overview = summary?.overview;
   const review = summary?.review;
-  const weakConcepts = review?.weak_concepts ?? [];
-  const progression = summary?.progression.slice(0, 3) ?? [];
-  const continueLearning = summary?.continue_learning?.[0] ?? null;
   const hasModels = availableModels.length > 0;
   const isDemoWithoutModels = isDemoMode && !hasModels;
   const canRunAiActions = hasModels || isDemoWithoutModels;
@@ -1178,8 +1133,6 @@ export default function KnowledgeGraphView({
               { icon: <Network size={12} />, label: "Links", value: links.length, onClick: () => navigate("/graph") },
               { icon: <Clock3 size={12} />, label: "Due Review", value: review?.topics_due_for_review ?? 0, onClick: () => navigate("/review-topics") },
               { icon: <Target size={12} />, label: "Active Goals", value: overview?.active_goals ?? 0, onClick: () => navigate("/learning") },
-              { icon: <Network size={12} />, label: "Isolated Topics", value: summary?.knowledge_health.isolated_concepts ?? 0, onClick: () => navigate("/graph") },
-              { icon: <FileText size={12} />, label: "Unprocessed Sources", value: summary?.knowledge_health.unprocessed_sources ?? 0, onClick: () => navigate("/sources") },
             ].map(({ icon, label, value, onClick }) => (
               <button
                 key={label}
@@ -1464,160 +1417,17 @@ export default function KnowledgeGraphView({
                 </Section>
               )}
 
-              <Section
-                title="Suggested Next Steps"
-                eyebrow="Actions"
-                collapsed={collapsedSections["suggested"]}
-                onToggle={() => toggleSection("suggested")}
-              >
-                <div className="space-y-3">
-                  {continueLearning && (
-                    <button
-                      onClick={() => openRoute(continueLearning.route)}
-                      className="flex w-full items-start justify-between gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-4 text-left transition-colors hover:border-[var(--accent-color)]"
-                    >
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium text-[var(--text-primary)]">Continue learning</div>
-                        <div className="mt-1 truncate text-sm text-[var(--text-secondary)]">{continueLearning.title}</div>
-                        <div className="mt-2 text-xs text-[var(--text-muted)]">Updated {timeAgo(continueLearning.updated_at)}</div>
-                      </div>
-                      <ArrowRight size={16} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
-                    </button>
-                  )}
-
-                  {review && review.topics_due_for_review > 0 && (
-                    <button
-                      onClick={() => openRoute({ path: "/review-topics", state: null })}
-                      className="flex w-full items-start justify-between gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-4 text-left transition-colors hover:border-[var(--accent-color)]"
-                    >
-                      <div>
-                        <div className="text-sm font-medium text-[var(--text-primary)]">Review what is due now</div>
-                        <div className="mt-1 text-sm text-[var(--text-secondary)]">
-                          {review.topics_due_for_review} topic{review.topics_due_for_review === 1 ? "" : "s"} {review.topics_due_for_review === 1 ? "needs" : "need"} another review pass.
-                          {review.top_due_topic ? ` Start with “${review.top_due_topic}”.` : ""}
-                        </div>
-                      </div>
-                      <ArrowRight size={16} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
-                    </button>
-                  )}
-
-                  {progression.map((item) => (
-                    <button
-                      key={item.id}
-                      onClick={() => openRoute(item.route)}
-                      className="flex w-full items-start gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-4 text-left transition-colors hover:border-[var(--accent-color)]"
-                    >
-                      <div className="mt-0.5 shrink-0">{suggestionIcon(item.kind)}</div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium text-[var(--text-primary)]">{item.title}</div>
-                        <div className="mt-1 text-sm text-[var(--text-secondary)]">{item.description}</div>
-                      </div>
-                      <ArrowRight size={16} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
-                    </button>
-                  ))}
-
-                  {!continueLearning && progression.length === 0 && (!review || review.topics_due_for_review === 0) && (
-                    <div className="rounded-2xl border border-dashed border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-4">
-                      <div className="text-sm font-medium text-[var(--text-primary)]">No urgent next step yet</div>
-                      <div className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                        Search naturally, capture a few notes or documents, then analyze the workspace to make this page more useful.
-                      </div>
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <button
-                          onClick={() => navigate("/chat")}
-                          className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
-                        >
-                          <Search size={14} />
-                          Search or chat
-                        </button>
-                        <button
-                          onClick={() => navigate("/documents")}
-                          className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
-                        >
-                          <FileText size={14} />
-                          Open sources
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </Section>
-
-              <Section
-                title="Knowledge Health"
-                eyebrow="Signals"
-                collapsed={collapsedSections["health"]}
-                onToggle={() => toggleSection("health")}
-              >
-                <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
-                  <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3">
-                    <div className="text-xs text-[var(--text-muted)]">Stalled goals</div>
-                    <div className="mt-1 text-xl font-semibold text-[var(--text-primary)]">
-                      {summary?.knowledge_health.stalled_goals ?? 0}
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3">
-                    <div className="text-xs text-[var(--text-muted)]">Weak topics</div>
-                    <div className="mt-1 text-xl font-semibold text-[var(--text-primary)]">
-                      {weakConcepts.length}
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3">
-                    <div className="text-xs text-[var(--text-muted)]">Topics in review</div>
-                    <div className="mt-1 text-xl font-semibold text-[var(--text-primary)]">
-                      {review?.topics_due_for_review ?? 0}
-                    </div>
-                  </div>
-                </div>
-
-                {weakConcepts.length > 0 && (
-                  <div className="mt-4">
-                    <div className="text-xs font-medium text-[var(--text-primary)]">Needs reinforcement</div>
-                    <div className="mt-2 space-y-2">
-                      {weakConcepts.slice(0, 3).map((concept) => (
-                        <button
-                          key={concept.concept_id}
-                          onClick={() => openRoute(concept.route)}
-                          className="flex w-full items-start justify-between gap-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-3 text-left transition-colors hover:border-[var(--accent-color)]"
-                        >
-                          <div>
-                            <div className="text-sm font-medium text-[var(--text-primary)]">{concept.name}</div>
-                            <div className="mt-1 text-xs text-[var(--text-secondary)]">{concept.reason}</div>
-                          </div>
-                          <ArrowRight size={15} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {(summary?.knowledge_health.active_topic_tags.length ?? 0) > 0 && (
-                  <div className="mt-4">
-                    <div className="text-xs font-medium text-[var(--text-primary)]">Active topics</div>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {summary?.knowledge_health.active_topic_tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="rounded-full bg-[var(--accent-color)]/10 px-2.5 py-1 text-xs text-[var(--accent-color)]"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </Section>
             </div>
           </div>
 
-          <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-            <Section
-              title="Topic Focus"
-              eyebrow="Signals"
-              collapsed={collapsedSections["conceptFocus"]}
-              onToggle={() => toggleSection("conceptFocus")}
-            >
-              {selectedConcept ? (
+          {selectedConcept && (
+            <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+              <Section
+                title="Selected Topic"
+                eyebrow="Detail"
+                collapsed={collapsedSections["conceptFocus"]}
+                onToggle={() => toggleSection("conceptFocus")}
+              >
                 <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -1642,30 +1452,9 @@ export default function KnowledgeGraphView({
                       : "Select generate cards in the sidebar if you want reinforcement for this topic."}
                   </div>
                 </div>
-              ) : weakConcepts.length > 0 ? (
-                <div className="space-y-2">
-                  {weakConcepts.slice(0, 4).map((concept) => (
-                    <button
-                      key={concept.concept_id}
-                      onClick={() => openRoute(concept.route)}
-                      className="flex w-full items-start gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 px-3 py-2 text-left transition-colors hover:border-[var(--accent-color)]"
-                    >
-                      <Brain size={16} className="mt-0.5 shrink-0 text-[var(--accent-color)]" />
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium text-[var(--text-primary)]">{concept.name}</div>
-                        <div className="mt-1 text-sm text-[var(--text-secondary)]">{concept.reason}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-dashed border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-4 text-sm leading-6 text-[var(--text-secondary)]">
-                  Pick a concept from the sidebar or click a node in the map to inspect it more closely.
-                </div>
-              )}
-            </Section>
-
-          </div>
+              </Section>
+            </div>
+          )}
         </div>
       </div>
 

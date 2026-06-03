@@ -21,7 +21,7 @@ pub struct BackupInfo {
     pub chat_count: i64,
 }
 
-const BACKUP_TABLES: [(&str, &str); 17] = [
+const BACKUP_TABLES: [(&str, &str); 15] = [
     (
         "folders",
         "SELECT id, workspace_id, name, folder_description, custom_instructions, color, icon, created_at, updated_at
@@ -57,8 +57,8 @@ const BACKUP_TABLES: [(&str, &str); 17] = [
     ),
     (
         "learning_goals",
-        "SELECT id, workspace_id, title, goal_description, progress, is_completed, due_date, prerequisite_ids,
-                related_chat_ids, created_at, updated_at
+        "SELECT id, workspace_id, title, goal_description, progress, is_completed, due_date,
+                created_at, updated_at
          FROM learning_goals
          WHERE workspace_id = ?1
          ORDER BY created_at ASC",
@@ -107,20 +107,6 @@ const BACKUP_TABLES: [(&str, &str); 17] = [
          FROM learning_cards
          WHERE workspace_id = ?1
          ORDER BY created_at ASC",
-    ),
-    (
-        "learning_paths",
-        "SELECT id, workspace_id, title, path_description, created_at, updated_at
-         FROM learning_paths
-         WHERE workspace_id = ?1
-         ORDER BY created_at ASC",
-    ),
-    (
-        "path_milestones",
-        "SELECT id, path_id, title, milestone_description, is_completed, order_index, completed_at, created_at
-         FROM path_milestones
-         WHERE path_id IN (SELECT id FROM learning_paths WHERE workspace_id = ?1)
-         ORDER BY order_index ASC, created_at ASC",
     ),
     (
         "sources",
@@ -203,7 +189,7 @@ const OPTIONAL_BACKUP_TABLES: [(&str, &str); 6] = [
     ),
 ];
 
-const RESTORE_TABLE_ORDER: [&str; 23] = [
+const RESTORE_TABLE_ORDER: [&str; 21] = [
     "folders",
     "chat_sessions",
     "messages",
@@ -215,8 +201,6 @@ const RESTORE_TABLE_ORDER: [&str; 23] = [
     "note_templates",
     "daily_notes",
     "learning_cards",
-    "learning_paths",
-    "path_milestones",
     "sources",
     "source_chunks",
     "audio_transcriptions",

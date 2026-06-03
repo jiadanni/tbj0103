@@ -18,16 +18,14 @@ pub fn create_learning_goal(
     if let Some(date) = req.due_date {
         g.due_date = Some(date);
     }
-    if let Some(prereqs) = req.prerequisite_ids {
-        g.prerequisite_ids = prereqs;
-    }
-    g.concept_id = req.concept_id;
-    let prereq_json = serde_json::to_string(&g.prerequisite_ids).unwrap_or_default();
-    let chat_json = serde_json::to_string(&g.related_chat_ids).unwrap_or_default();
+    // Existing user databases still carry the dead columns prerequisite_ids,
+    // related_chat_ids, concept_id from earlier schemas. Insert harmless
+    // defaults for them so the CHECK constraints and FK relationships keep
+    // accepting writes; fresh installs simply ignore the unknown column names.
     conn.execute(
-        "INSERT INTO learning_goals (id, workspace_id, title, goal_description, progress, is_completed, due_date, prerequisite_ids, related_chat_ids, concept_id, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-        rusqlite::params![g.id, g.workspace_id, g.title, g.goal_description, g.progress, g.is_completed as i32, g.due_date, prereq_json, chat_json, g.concept_id, g.created_at, g.updated_at],
+        "INSERT INTO learning_goals (id, workspace_id, title, goal_description, progress, is_completed, due_date, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        rusqlite::params![g.id, g.workspace_id, g.title, g.goal_description, g.progress, g.is_completed as i32, g.due_date, g.created_at, g.updated_at],
     ).map_err(|e| e.to_string())?;
     Ok(g)
 }
@@ -37,21 +35,17 @@ pub fn list_learning_goals(
     state: State<DbState>,
     workspace_id: String,
     include_descendants: Option<bool>,
-    concept_id: Option<String>,
 ) -> Result<Vec<LearningGoal>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let (cte, ws_cond) = workspace_filter_sql(include_descendants.unwrap_or(false));
     let sql = format!(
-        "{cte}SELECT id, workspace_id, title, goal_description, progress, is_completed, due_date, prerequisite_ids, related_chat_ids, concept_id, created_at, updated_at
+        "{cte}SELECT id, workspace_id, title, goal_description, progress, is_completed, due_date, created_at, updated_at
          FROM learning_goals WHERE workspace_id {ws_cond}
-           AND (?2 IS NULL OR concept_id = ?2)
          ORDER BY created_at DESC"
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let items = stmt
-        .query_map(rusqlite::params![workspace_id, concept_id], |row| {
-            let prereq_json: String = row.get(7)?;
-            let chat_json: String = row.get(8)?;
+        .query_map(rusqlite::params![workspace_id], |row| {
             Ok(LearningGoal {
                 id: row.get(0)?,
                 workspace_id: row.get(1)?,
@@ -60,11 +54,8 @@ pub fn list_learning_goals(
                 progress: row.get(4)?,
                 is_completed: row.get::<_, i32>(5)? != 0,
                 due_date: row.get(6)?,
-                prerequisite_ids: serde_json::from_str(&prereq_json).unwrap_or_default(),
-                related_chat_ids: serde_json::from_str(&chat_json).unwrap_or_default(),
-                concept_id: row.get(9)?,
-                created_at: row.get(10)?,
-                updated_at: row.get(11)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -80,10 +71,6 @@ pub fn update_learning_goal(
 ) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
-    let prereq_json = req
-        .prerequisite_ids
-        .as_ref()
-        .map(|v| serde_json::to_string(v).unwrap_or_default());
     conn.execute(
         "UPDATE learning_goals SET
             title = COALESCE(?1, title),
@@ -91,18 +78,14 @@ pub fn update_learning_goal(
             progress = COALESCE(?3, progress),
             is_completed = COALESCE(?4, is_completed),
             due_date = COALESCE(?5, due_date),
-            prerequisite_ids = COALESCE(?6, prerequisite_ids),
-            concept_id = COALESCE(?7, concept_id),
-            updated_at = ?8
-         WHERE id = ?9",
+            updated_at = ?6
+         WHERE id = ?7",
         rusqlite::params![
             req.title,
             req.goal_description,
             req.progress,
             req.is_completed.map(|b| b as i32),
             req.due_date,
-            prereq_json,
-            req.concept_id,
             now,
             req.id
         ],

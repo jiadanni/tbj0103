@@ -3,23 +3,18 @@ import { useNavigate } from "react-router-dom";
 import {
   ArrowRight,
   BarChart2,
-  CheckCircle2,
   ChevronDown,
   ChevronUp,
   Clock3,
   Eye,
   EyeOff,
-  Lightbulb,
   MessageSquare,
   Network,
   RefreshCw,
   RotateCcw,
   Search,
   Settings2,
-  Sparkles,
-  Target,
   X,
-  Zap,
 } from "lucide-react";
 import {
   api,
@@ -27,7 +22,6 @@ import {
   type DashboardLayoutSection,
   type DashboardRoute,
   type DashboardSummary,
-  type FlashcardTopic,
 } from "../lib/api";
 import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
 import { useWorkspaceStore } from "../stores/workspaceStore";
@@ -63,15 +57,8 @@ function timeAgo(iso: string | undefined | null) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-function progressLabel(progress: number) {
-  return `${Math.round(progress * 100)}%`;
-}
-
 type MetricDashVariant = "dot" | "bar" | "none";
 
-// Single knob for the small accent indicator above each metric card's value.
-// "dot" is the legacy circle (can visually collide with the card border on
-// narrow widths); "bar" is a short horizontal stripe; "none" hides it.
 const METRIC_DASH_VARIANT: MetricDashVariant = "bar";
 
 function MetricCard({
@@ -134,6 +121,16 @@ function normalizeKnowledgeRoute(route: DashboardRoute): DashboardRoute {
 
 const LEARNING_ACTIVITY_SECTION_ID = "learning_activity";
 const LEGACY_ACTIVITY_SECTION_IDS = new Set(["continue_learning", "recent_activity"]);
+// Sections retired when the AI-scored panels were removed. The renderer drops
+// any layout entry with these ids so old persisted layouts don't carry phantom
+// slots forward.
+const RETIRED_SECTION_IDS = new Set([
+  "quiz_topics",
+  "goals",
+  "suggestions",
+  "weak_concepts",
+  "knowledge_health",
+]);
 
 function normalizeDashboardLayout(layout: DashboardLayout): DashboardLayout {
   const legacySections = layout.sections.filter((section) => LEGACY_ACTIVITY_SECTION_IDS.has(section.id));
@@ -160,6 +157,8 @@ function normalizeDashboardLayout(layout: DashboardLayout): DashboardLayout {
       continue;
     }
 
+    if (RETIRED_SECTION_IDS.has(section.id)) { continue; }
+
     sections.push(section);
   }
 
@@ -178,9 +177,6 @@ export default function FolderDashboardView() {
   const [searchQuery, setSearchQuery] = useState("");
   const [layout, setLayout] = useState<DashboardLayout | null>(null);
   const [editMode, setEditMode] = useState(false);
-  // Map of lowercased topic label -> flashcard_topics row id, so dashboard
-  // topic chips can deep-link into the Quizzes tab with a real topic_id.
-  const [topicIdByLabel, setTopicIdByLabel] = useState<Map<string, string>>(new Map());
 
   function handleSearchSubmit() {
     navigate("/chat", {
@@ -233,25 +229,6 @@ export default function FolderDashboardView() {
     };
   }, [activeWorkspaceId, includeDescendants]);
 
-  // Fetch flashcard topics so chip clicks can resolve a label → topic_id.
-  useEffect(() => {
-    if (!activeWorkspaceId) {
-      setTopicIdByLabel(new Map());
-      return;
-    }
-    let cancelled = false;
-    api.flashcard
-      .listTopics(activeWorkspaceId, true)
-      .then((rows: FlashcardTopic[]) => {
-        if (cancelled) { return; }
-        const m = new Map<string, string>();
-        for (const r of rows) { m.set(r.topic.toLowerCase(), r.id); }
-        setTopicIdByLabel(m);
-      })
-      .catch(() => { /* non-fatal — chips simply won't deep-link */ });
-    return () => { cancelled = true; };
-  }, [activeWorkspaceId]);
-
   useEffect(() => {
     if (!activeWorkspaceId) { setLayout(null); return; }
     let cancelled = false;
@@ -298,23 +275,11 @@ export default function FolderDashboardView() {
     } catch { /* swallow */ }
   };
 
-  const goalsLimit = useResponsiveLimit(3, 5, 8);
   const activityLimit = useResponsiveLimit(5, 10, 15);
-  const suggestionsLimit = useResponsiveLimit(3, 6, 10);
-  const weakConceptsLimit = useResponsiveLimit(3, 6, 10);
 
   function openRoute(route: DashboardRoute) {
     const normalized = normalizeKnowledgeRoute(route);
     navigate(normalized.path, normalized.state ? { state: routeState(normalized) } : undefined);
-  }
-
-  function openQuizForTag(tag: string) {
-    const id = topicIdByLabel.get(tag.toLowerCase());
-    if (id) {
-      navigate(`/learning?tab=quizzes&topic=${encodeURIComponent(id)}&kind=pop`);
-    } else {
-      navigate(`/learning?tab=quizzes`);
-    }
   }
 
   function refreshSummary() {
@@ -333,7 +298,7 @@ export default function FolderDashboardView() {
         <div className="max-w-lg rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-6 text-center">
           <h1 className="text-xl font-semibold text-[var(--text-primary)]">No workspace selected</h1>
           <p className="mt-2 text-sm text-[var(--text-secondary)]">
-            Pick a workspace to see your learning overview, progression suggestions, and review queue.
+            Pick a workspace to see your learning overview and recent activity.
           </p>
         </div>
       </div>
@@ -372,12 +337,7 @@ export default function FolderDashboardView() {
   const effectiveSummary = summary;
   if (!effectiveSummary) { return null; }
 
-  const visibleGoals = effectiveSummary.goals.slice(0, goalsLimit);
   const visibleContinueThreads = effectiveSummary.continue_learning.slice(0, activityLimit);
-  const visibleSuggestions = effectiveSummary.progression.slice(0, suggestionsLimit);
-  const visibleWeakConcepts = effectiveSummary.review.weak_concepts.slice(0, weakConceptsLimit);
-  const knowledgeHealth = effectiveSummary.knowledge_health;
-  const hasQuizTopics = knowledgeHealth.active_topic_tags.length > 0;
 
   return (
     <div className="h-full overflow-y-auto">
@@ -424,7 +384,7 @@ export default function FolderDashboardView() {
               </button>
               <button
                 id="dashboard-review-button"
-                onClick={() => openRoute({ path: "/review-topics", state: null })}
+                onClick={() => navigate("/learning?tab=practice")}
                 className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-4 py-2 text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
               >
                 <Clock3 size={15} />
@@ -432,7 +392,7 @@ export default function FolderDashboardView() {
               </button>
               <button
                 type="button"
-                onClick={() => navigate("/graph")}
+                onClick={() => navigate("/learning?tab=map")}
                 className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-4 py-2 text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)]"
                 title="View Topic Map"
               >
@@ -470,8 +430,8 @@ export default function FolderDashboardView() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <MetricCard label="Due Review" value={effectiveSummary.review.topics_due_for_review} accent="bg-[var(--accent-color)]" />
           <MetricCard label="Active Goals" value={effectiveSummary.overview.active_goals} accent="bg-[var(--accent-color)]" />
-          <MetricCard label="Topics Tracked" value={effectiveSummary.overview.concepts} accent="bg-[var(--accent-color)]" />
-          <MetricCard label="Sources Captured" value={effectiveSummary.overview.sources} accent="bg-[var(--accent-color)]" />
+          <MetricCard label="Topics" value={effectiveSummary.overview.concepts} accent="bg-[var(--accent-color)]" />
+          <MetricCard label="Sources" value={effectiveSummary.overview.sources} accent="bg-[var(--accent-color)]" />
           <MetricCard label="Completed Goals" value={effectiveSummary.overview.completed_goals} accent="bg-emerald-400" />
         </div>
 
@@ -541,151 +501,6 @@ export default function FolderDashboardView() {
             </Section>
               ),
             },
-            goals: {
-              title: "Goals In Motion",
-              available: true,
-              render: () => (
-            <Section title="Goals In Motion" eyebrow="Progress">
-              {effectiveSummary.goals.length > 0 ? (
-                <div className="space-y-3">
-                  {visibleGoals.map((goal) => (
-                    <button
-                      key={goal.id}
-                      onClick={() => openRoute(goal.route)}
-                      className="block w-full rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-4 text-left transition-colors hover:border-[var(--accent-color)]"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-sm font-medium text-[var(--text-primary)]">{goal.title}</div>
-                          <div className="mt-1 text-xs text-[var(--text-secondary)]">
-                            {goal.is_completed ? "Completed" : `Updated ${timeAgo(goal.updated_at)}`}
-                            {goal.due_date ? ` • Due ${goal.due_date}` : ""}
-                          </div>
-                        </div>
-                        {goal.is_completed ? (
-                          <CheckCircle2 size={16} className="shrink-0 text-emerald-400" />
-                        ) : (
-                          <Target size={16} className="shrink-0 text-[var(--accent-color)]" />
-                        )}
-                      </div>
-                      <div className="mt-3 h-2 rounded-full bg-[var(--bg-sidebar)]">
-                        <div
-                          className={`h-2 rounded-full ${goal.is_completed ? "bg-emerald-400" : "bg-[var(--accent-color)]"}`}
-                          style={{ width: `${Math.max(goal.is_completed ? 100 : goal.progress * 100, 6)}%` }}
-                        />
-                      </div>
-                      <div className="mt-2 text-xs text-[var(--text-muted)]">
-                        {goal.is_completed ? "Done" : progressLabel(goal.progress)}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-xs text-[var(--text-secondary)]">
-                    No goals yet — capture one when you&apos;re ready.
-                  </div>
-                  <button
-                    onClick={() => navigate("/graph")}
-                    className="shrink-0 inline-flex items-center gap-1.5 rounded-lg text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--accent-color)]"
-                  >
-                    <Target size={12} />
-                    Open knowledge
-                  </button>
-                </div>
-              )}
-            </Section>
-              ),
-            },
-            suggestions: {
-              title: "Suggested Next Steps",
-              available: visibleSuggestions.length > 0,
-              render: () => (
-            <Section title="Suggested Next Steps" eyebrow="For you">
-              <div className="space-y-2">
-                {visibleSuggestions.map((suggestion) => (
-                  <button
-                    key={suggestion.id}
-                    onClick={() => openRoute(suggestion.route)}
-                    className="block w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3 text-left transition-colors hover:border-[var(--accent-color)]"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]">
-                        <Lightbulb size={14} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium text-[var(--text-primary)]">{suggestion.title}</div>
-                        {suggestion.description && (
-                          <div className="mt-0.5 text-xs text-[var(--text-secondary)]">{suggestion.description}</div>
-                        )}
-                      </div>
-                      <ArrowRight size={13} className="mt-1 shrink-0 text-[var(--text-muted)]" />
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </Section>
-              ),
-            },
-            weak_concepts: {
-              title: "Weak Topics",
-              available: visibleWeakConcepts.length > 0,
-              render: () => (
-            <Section title="Weak Topics" eyebrow="Needs review">
-              <div className="space-y-2">
-                {visibleWeakConcepts.map((concept) => (
-                  <button
-                    key={concept.concept_id}
-                    onClick={() => openRoute(concept.route)}
-                    className="block w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3 text-left transition-colors hover:border-[var(--accent-color)]"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-500">
-                        <Zap size={14} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <div className="truncate text-sm font-medium text-[var(--text-primary)]">{concept.name}</div>
-                          <span className="shrink-0 rounded-full bg-[var(--bg-sidebar)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
-                            {concept.review_count}×
-                          </span>
-                        </div>
-                        {concept.reason && (
-                          <div className="mt-0.5 text-xs text-[var(--text-secondary)]">{concept.reason}</div>
-                        )}
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </Section>
-              ),
-            },
-            quiz_topics: {
-              title: "Quick Quizzes",
-              available: hasQuizTopics,
-              render: () => (
-            <Section title="Quick Quizzes" eyebrow="For You">
-              <div className="flex flex-wrap gap-1.5">
-                {knowledgeHealth.active_topic_tags.map((tag) => {
-                  const hasTopic = topicIdByLabel.has(tag.toLowerCase());
-                  return (
-                    <button
-                      key={tag}
-                      type="button"
-                      onClick={() => openQuizForTag(tag)}
-                      title={hasTopic ? `Start a pop quiz on ${tag}` : "Open Quizzes"}
-                      className="inline-flex items-center gap-1 rounded-full bg-[rgba(var(--accent-color-rgb),0.12)] px-2 py-0.5 text-[11px] text-[var(--accent-color)] hover:bg-[rgba(var(--accent-color-rgb),0.2)] transition-colors"
-                    >
-                      <Sparkles size={10} />
-                      {tag}
-                    </button>
-                  );
-                })}
-              </div>
-            </Section>
-              ),
-            },
           };
 
           const order = (layout?.sections ?? []).filter((s) => renderers[s.id]);
@@ -698,9 +513,6 @@ export default function FolderDashboardView() {
           const visible = fullOrder.filter((s) => !s.hidden && renderers[s.id].available);
           const hidden = fullOrder.filter((s) => s.hidden || !renderers[s.id].available);
 
-          // Distribute visible sections across 3 columns in order to avoid the
-          // CSS multi-column "tall single column" gap. Falls back to 1/2 columns
-          // at smaller breakpoints via responsive grid.
           const cols: DashboardLayoutSection[][] = [[], [], []];
           visible.forEach((s, i) => { cols[i % 3].push(s); });
 

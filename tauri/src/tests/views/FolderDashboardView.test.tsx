@@ -10,7 +10,6 @@ const mocks = vi.hoisted(() => ({
   getLayout: vi.fn(),
   setLayout: vi.fn(),
   resetLayout: vi.fn(),
-  listTopics: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => ({
@@ -21,9 +20,6 @@ vi.mock("@/lib/api", () => ({
       getLayout: mocks.getLayout,
       setLayout: mocks.setLayout,
       resetLayout: mocks.resetLayout,
-    },
-    flashcard: {
-      listTopics: mocks.listTopics,
     },
   },
 }));
@@ -75,15 +71,10 @@ describe("FolderDashboardView", () => {
       activeWorkspaceId: "ws-1",
     });
 
-    mocks.listTopics.mockResolvedValue([]);
     mocks.getLayout.mockResolvedValue({
       version: 1,
       sections: [
         { id: "learning_activity", hidden: false },
-        { id: "quiz_topics", hidden: false },
-        { id: "goals", hidden: false },
-        { id: "suggestions", hidden: false },
-        { id: "weak_concepts", hidden: false },
       ],
     });
     mocks.setLayout.mockResolvedValue(undefined);
@@ -129,61 +120,14 @@ describe("FolderDashboardView", () => {
         total_cards: 9,
         learned: 6,
         avg_ease: 2.4,
-        under_reviewed_concepts: 3,
-        weak_concepts: [
-          {
-            concept_id: "concept-1",
-            name: "PID namespaces",
-            review_count: 0,
-            reason: "Not reinforced yet",
-            route: { path: "/graph", state: null },
-          },
-        ],
-        route: { path: "/graph", state: null },
+        route: { path: "/review-topics", state: null },
         topics_due_for_review: 3,
         top_due_topic: "PID namespaces",
       },
-      goals: [
-        {
-          id: "goal-1",
-          title: "Explain Linux container isolation",
-          progress: 0.65,
-          is_completed: false,
-          due_date: null,
-          updated_at: "2026-04-05T10:00:00Z",
-          route: { path: "/graph", state: null },
-        },
-      ],
-      progression: [
-        {
-          id: "review-due",
-          kind: "review",
-          title: "Review what is due now",
-          description: "3 topics need another review pass. Start with \"PID namespaces\".",
-          route: { path: "/review-topics", state: null },
-        },
-      ],
-      knowledge_health: {
-        stalled_goals: 1,
-        unprocessed_sources: 2,
-        isolated_concepts: 4,
-        active_topic_tags: ["Linux", "Containers"],
-      },
-      recent_activity: [
-        {
-          id: "note-1",
-          kind: "note",
-          title: "OCI notes",
-          subtitle: "manual",
-          timestamp: "2026-04-06T08:00:00Z",
-          last_response_snippet: null,
-          route: { path: "/notes", state: null },
-        },
-      ],
     });
   });
 
-  it("renders progression, review, and goal sections from the dashboard summary", async () => {
+  it("renders the slim dashboard: continue learning, metric tiles, and quick launches", async () => {
     render(
       <MemoryRouter>
         <FolderDashboardView />
@@ -195,23 +139,18 @@ describe("FolderDashboardView", () => {
     });
 
     expect(await screen.findByText("Continue Learning")).toBeInTheDocument();
-    expect(screen.queryByText("Learning Activity")).not.toBeInTheDocument();
-    expect(screen.queryByText("Recent Activity")).not.toBeInTheDocument();
     expect(screen.getByText("cgroups vs namespaces")).toBeInTheDocument();
     expect(screen.getByText("Rootless container setup")).toBeInTheDocument();
     expect(screen.getByText("Rootless containers still need subordinate UID and GID ranges configured.")).toBeInTheDocument();
-    expect(screen.getByText("Goals In Motion")).toBeInTheDocument();
-    expect(screen.getByText("Explain Linux container isolation")).toBeInTheDocument();
-    expect(screen.getAllByText("Linux").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Review" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Review/ })).toBeInTheDocument();
+
+    // The retired AI-scored sections must not render.
     expect(screen.queryByText("Knowledge Health")).not.toBeInTheDocument();
-    expect(screen.getByText("Quick Quizzes")).toBeInTheDocument();
-    const quizChips = screen.getAllByTitle("Open Quizzes");
-    expect(quizChips).toHaveLength(2);
-    expect(quizChips.map((b) => b.textContent?.trim())).toEqual(
-      expect.arrayContaining(["Linux", "Containers"]),
-    );
+    expect(screen.queryByText("Quick Quizzes")).not.toBeInTheDocument();
+    expect(screen.queryByText("Suggested Next Steps")).not.toBeInTheDocument();
+    expect(screen.queryByText("Weak Topics")).not.toBeInTheDocument();
+    expect(screen.queryByText("Goals In Motion")).not.toBeInTheDocument();
   });
 
   it("navigates to /chat with createNewChat and searchQuery when search is executed", async () => {

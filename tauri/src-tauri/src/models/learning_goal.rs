@@ -9,9 +9,6 @@ pub struct LearningGoal {
     pub progress: f64,
     pub is_completed: bool,
     pub due_date: Option<String>,
-    pub prerequisite_ids: Vec<String>,
-    pub related_chat_ids: Vec<String>,
-    pub concept_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -22,8 +19,6 @@ pub struct CreateLearningGoalRequest {
     pub title: String,
     pub goal_description: Option<String>,
     pub due_date: Option<String>,
-    pub prerequisite_ids: Option<Vec<String>>,
-    pub concept_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,8 +29,6 @@ pub struct UpdateLearningGoalRequest {
     pub progress: Option<f64>,
     pub is_completed: Option<bool>,
     pub due_date: Option<String>,
-    pub prerequisite_ids: Option<Vec<String>>,
-    pub concept_id: Option<String>,
 }
 
 impl LearningGoal {
@@ -49,9 +42,6 @@ impl LearningGoal {
             progress: 0.0,
             is_completed: false,
             due_date: None,
-            prerequisite_ids: vec![],
-            related_chat_ids: vec![],
-            concept_id: None,
             created_at: now.clone(),
             updated_at: now,
         }

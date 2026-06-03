@@ -202,8 +202,6 @@ export interface PromptBankStatus {
 export interface LearningGoal {
   id: string; workspace_id: string; title: string; goal_description: string;
   progress: number; is_completed: boolean; due_date?: string;
-  prerequisite_ids: string[]; related_chat_ids: string[];
-  concept_id?: string | null;
   created_at: string; updated_at: string;
 }
 
@@ -863,12 +861,6 @@ export interface LearningPathItem {
   unmet_prereqs: number;
 }
 
-export interface SuggestedGoal {
-  title: string;
-  description: string;
-  related_concepts: string[];
-}
-
 export interface AiModel {
   id: string; name: string; model_id: string; provider: string;
   role_tags: string[];
@@ -951,70 +943,25 @@ export interface DashboardContinueLearning {
   route: DashboardRoute;
 }
 
-export interface DashboardConceptFocus {
-  concept_id: string;
-  name: string;
-  review_count: number;
-  reason: string;
-  route: DashboardRoute;
-}
-
 export interface DashboardReviewSummary {
   due_today: number;
   total_cards: number;
   learned: number;
   avg_ease: number;
-  under_reviewed_concepts: number;
-  weak_concepts: DashboardConceptFocus[];
   route: DashboardRoute;
-  /** Distinct topic count where a quiz, goal, or staleness signal flags review. */
+  /** Distinct topic count with at least one flashcard due today. */
   topics_due_for_review: number;
-  /** Highest-priority topic name (grade > goal > stale). */
+  /** Single topic name surfaced as the "next up" hint. */
   top_due_topic: string | null;
 }
 
 export interface ReviewTopic {
   concept_id: string;
   name: string;
-  /** "grade" | "goal" | "stale". */
+  /** Currently always "stale" since AI-scored grade/goal reasons were removed. */
   reason_kind: string;
   detail: string;
   priority: number;
-}
-
-export interface DashboardGoalSummary {
-  id: string;
-  title: string;
-  progress: number;
-  is_completed: boolean;
-  due_date?: string | null;
-  updated_at: string;
-  route: DashboardRoute;
-}
-
-export interface DashboardSuggestion {
-  id: string;
-  kind: string;
-  title: string;
-  description: string;
-  route: DashboardRoute;
-}
-
-export interface DashboardKnowledgeHealth {
-  stalled_goals: number;
-  unprocessed_sources: number;
-  isolated_concepts: number;
-  active_topic_tags: string[];
-}
-
-export interface DashboardActivity {
-  id: string;
-  kind: string;
-  title: string;
-  subtitle: string;
-  timestamp: string;
-  last_response_snippet?: string | null;
-  route: DashboardRoute;
 }
 
 export interface DashboardLayoutSection {
@@ -1033,10 +980,6 @@ export interface DashboardSummary {
   overview: DashboardOverview;
   continue_learning: DashboardContinueLearning[];
   review: DashboardReviewSummary;
-  goals: DashboardGoalSummary[];
-  progression: DashboardSuggestion[];
-  knowledge_health: DashboardKnowledgeHealth;
-  recent_activity: DashboardActivity[];
 }
 
 // ----- Workspaces -----
@@ -1402,10 +1345,10 @@ export const api = {
   },
 
   learningGoal: {
-    create: (workspaceId: string, title: string, opts?: { conceptId?: string | null }) =>
-      invoke<LearningGoal>("create_learning_goal", { req: { workspace_id: workspaceId, title, concept_id: opts?.conceptId ?? null } }),
-    list: (workspaceId: string, opts?: { includeDescendants?: boolean; conceptId?: string | null }) =>
-      invoke<LearningGoal[]>("list_learning_goals", { workspaceId, includeDescendants: opts?.includeDescendants, conceptId: opts?.conceptId ?? null }),
+    create: (workspaceId: string, title: string) =>
+      invoke<LearningGoal>("create_learning_goal", { req: { workspace_id: workspaceId, title } }),
+    list: (workspaceId: string, opts?: { includeDescendants?: boolean }) =>
+      invoke<LearningGoal[]>("list_learning_goals", { workspaceId, includeDescendants: opts?.includeDescendants }),
     update: (id: string, fields: Partial<LearningGoal>) =>
       invoke<void>("update_learning_goal", { req: { id, ...fields } }),
     delete: (id: string) => invoke<void>("delete_learning_goal", { id }),
@@ -1921,10 +1864,6 @@ export const api = {
     checkWorkspaceAnalyzable: (workspaceId: string) =>
       invoke<{ ready: boolean; item_count: number; char_count: number }>("check_workspace_analyzable", {
         workspaceId,
-      }),
-    suggestGoals: (workspaceId: string, model?: string, ollamaUrl?: string, surveyContext?: string) =>
-      invoke<SuggestedGoal[]>("suggest_learning_goals", {
-        req: { workspace_id: workspaceId, model: model || undefined, ollama_url: ollamaUrl, survey_context: surveyContext },
       }),
     analyzeDescendants: (workspaceId: string, model: string, opts?: { ollamaUrl?: string; focusTopic?: string }) =>
       invoke<DescendantAnalysisProgress[]>("analyze_descendants", {

@@ -9,7 +9,6 @@ use serde_json::Value;
 use std::collections::HashMap;
 /// AI-powered knowledge graph analysis commands.
 /// analyze_workspace — infers concepts & relationships from workspace content via Ollama.
-/// suggest_learning_goals — proposes goals from the existing concept landscape.
 use tauri::{AppHandle, Emitter, Manager, State};
 
 #[derive(Debug, Clone, Serialize)]
@@ -27,32 +26,12 @@ pub struct AnalysisResult {
     pub failed_chunks: Option<usize>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SuggestedGoal {
-    pub title: String,
-    pub description: String,
-    pub related_concepts: Vec<String>,
-}
-
 #[derive(Debug, Deserialize)]
 pub struct AnalyzeWorkspaceRequest {
     pub workspace_id: String,
     pub model: String,
     pub ollama_url: Option<String>,
     pub focus_topic: Option<String>,
-    pub survey_context: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct SuggestGoalsRequest {
-    pub workspace_id: String,
-    /// Optional explicit model override. When `None` or empty, the backend
-    /// resolves the goal-suggestion model via
-    /// `get_model_for_job("goal_suggestion_model")` (per-job → background →
-    /// preferred chain).
-    #[serde(default)]
-    pub model: Option<String>,
-    pub ollama_url: Option<String>,
     pub survey_context: Option<String>,
 }
 
@@ -240,13 +219,6 @@ fn level_dedup_key(level: &str, name_lower: &str) -> String {
 /// object is found.
 fn extract_first_json_object(input: &str) -> Option<&str> {
     extract_first_json_container(input, '{', '}')
-}
-
-/// Extract the first complete JSON array `[...]` from `input` by tracking
-/// bracket depth, skipping string contents.  Returns `None` if no complete
-/// array is found.
-fn extract_first_json_array(input: &str) -> Option<&str> {
-    extract_first_json_container(input, '[', ']')
 }
 
 fn extract_first_json_container(input: &str, open: char, close: char) -> Option<&str> {
@@ -1854,126 +1826,6 @@ pub async fn analyze_descendants(
     Ok(results)
 }
 
-#[tauri::command]
-pub async fn suggest_learning_goals(
-    state: State<'_, DbState>,
-    req: SuggestGoalsRequest,
-) -> Result<Vec<SuggestedGoal>, String> {
-    // Gather existing concepts and goals, and resolve the effective model.
-    let (concept_names, existing_goal_titles, resolved_model) = {
-        let conn = state.0.get().map_err(|e| e.to_string())?;
-
-        let explicit_model = req
-            .model
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string);
-        let resolved_model = explicit_model
-            .or_else(|| crate::services::model_settings::get_model_for_job(&conn, "goal_suggestion_model"))
-            .ok_or_else(|| {
-                "No model configured for goal suggestion. Set a Goal Suggestion model in Preferences > Models > Background Tasks, or a Background / preferred model.".to_string()
-            })?;
-
-        let mut concepts: Vec<String> = Vec::new();
-        if let Ok(mut stmt) = conn.prepare(
-            "SELECT name FROM concept_nodes WHERE workspace_id = ?1 ORDER BY review_count DESC, created_at DESC LIMIT 50",
-        ) {
-            let _ = stmt.query_map(rusqlite::params![req.workspace_id], |row| {
-                row.get::<_, String>(0)
-            }).map(|rows| {
-                concepts = rows.flatten().collect();
-            });
-        }
-
-        let mut goals: Vec<String> = Vec::new();
-        if let Ok(mut stmt) =
-            conn.prepare("SELECT title FROM learning_goals WHERE workspace_id = ?1")
-        {
-            let _ = stmt
-                .query_map(rusqlite::params![req.workspace_id], |row| {
-                    row.get::<_, String>(0)
-                })
-                .map(|rows| {
-                    goals = rows.flatten().collect();
-                });
-        }
-
-        (concepts, goals, resolved_model)
-    };
-
-    if concept_names.is_empty() && req.survey_context.is_none() {
-        return Ok(vec![]);
-    }
-
-    let existing_clause = if existing_goal_titles.is_empty() {
-        String::new()
-    } else {
-        format!(
-            "\nAlready existing goals (do NOT repeat): {}",
-            existing_goal_titles.join(", ")
-        )
-    };
-
-    let prompt = if concept_names.is_empty() {
-        // Survey-only path: generate goals purely from the learner context
-        let survey = req.survey_context.as_deref().unwrap_or("");
-        format!(
-            "You are a learning coach helping a learner set their first goals for a new workspace.\n\
-            Learner context:\n{survey}{existing}\n\n\
-            Suggest 3-5 concrete, actionable learning goals tailored to this learner.\n\
-            Respond with ONLY valid JSON array (no markdown):\n\
-            [{{\"title\":\"...\",\"description\":\"...\",\"related_concepts\":[\"...\",\"...\"]}}]\n\
-            - title: actionable goal (start with a verb)\n\
-            - description: 1-2 sentences\n\
-            - related_concepts: 2-4 specific topics from the learner context",
-            survey = survey,
-            existing = existing_clause,
-        )
-    } else {
-        let survey_clause = req
-            .survey_context
-            .as_deref()
-            .filter(|s| !s.trim().is_empty())
-            .map(|s| format!("\nLearner context:\n{s}\n"))
-            .unwrap_or_default();
-        format!(
-            "You are a learning coach. Based on the following concepts a learner has been studying, suggest 3-5 concrete learning goals.\n\
-            Concepts: {concepts}{survey}{existing}\n\n\
-            Respond with ONLY valid JSON array (no markdown):\n\
-            [{{\"title\":\"...\",\"description\":\"...\",\"related_concepts\":[\"...\",\"...\"]}}]\n\
-            - title: actionable goal (start with a verb)\n\
-            - description: 1-2 sentences\n\
-            - related_concepts: 2-4 concepts from the list above",
-            concepts = concept_names.join(", "),
-            survey = survey_clause,
-            existing = existing_clause,
-        )
-    };
-
-    let client = OllamaClient::new(req.ollama_url)?;
-    let messages = vec![OllamaMessage {
-        role: "user".to_string(),
-        content: prompt,
-    }];
-    let raw = client.send_message("ai_knowledge", &resolved_model, messages).await?;
-
-    let trimmed = raw.trim();
-    let json_str = match extract_first_json_array(trimmed) {
-        Some(s) => s,
-        None => {
-            return Err(format!(
-                "AI response did not contain valid JSON array. Raw: {}",
-                &raw[..raw.len().min(300)]
-            ))
-        }
-    };
-
-    let goals: Vec<SuggestedGoal> = serde_json::from_str(json_str)
-        .map_err(|e| format!("Failed to parse suggested goals: {e}"))?;
-
-    Ok(goals)
-}
 
 #[cfg(test)]
 mod tests {
