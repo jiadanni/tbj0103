@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Menu, Plus, FileText, Settings } from "lucide-react";
+import { Menu, Plus, FileText, Settings, BookOpen } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Tooltip } from "./Tooltip";
 
@@ -64,6 +64,12 @@ export default function AppHeaderMenu() {
               className="w-full text-left px-4 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] flex items-center gap-2"
             >
               <Settings size={14} /> Preferences...
+            </button>
+            <button
+              onClick={() => handleAction(() => navigate("/help", { replace: true }))}
+              className="w-full text-left px-4 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] flex items-center gap-2"
+            >
+              <BookOpen size={14} /> Help
             </button>
           </div>
         </div>
