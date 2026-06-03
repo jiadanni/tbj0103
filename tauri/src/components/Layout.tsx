@@ -29,15 +29,15 @@ import StatusBar from "./StatusBar";
 import { useNavigationHistory } from "../hooks/useNavigationHistory";
 
 // Lazy-load heavy views that import large dependencies (d3, CodeMirror, etc.)
-// `/graph`, `/flashcards`, `/learning` now all funnel into LearningHubView,
-// which in turn lazily imports the underlying panes via named exports.
+// FolderDashboardView is the home surface: tiles + continue-learning above
+// Map / Practice tabs. Legacy /graph, /flashcards, /learning all redirect into
+// it via the routes below.
 const ChatView = React.lazy(() => import("../views/ChatView"));
 const HistoryView = React.lazy(() => import("../views/HistoryView"));
 const FolderDashboardView = React.lazy(() => import("../views/FolderDashboardView"));
 const PreferencesView = React.lazy(() => import("../views/PreferencesView"));
 const SourceBrowserView = React.lazy(() => import("../views/SourceBrowserView"));
 const NoteEditorView = React.lazy(() => import("../views/NoteEditorView"));
-const LearningHubView = React.lazy(() => import("../views/LearningHubView"));
 const LogsView = React.lazy(() => import("../views/LogsView"));
 const ReviewTopicsView = React.lazy(() => import("../views/ReviewTopicsView"));
 const HelpView = React.lazy(() => import("../views/HelpView"));
@@ -1662,8 +1662,8 @@ function paneViewToPath(view: import("../stores/workspaceStore").PaneView, chatS
     case "documents":
     case "webcapture":
       return "/sources";
-    case "graph": return "/learning?tab=roadmap";
-    case "flashcards": return "/learning?tab=review";
+    case "graph": return "/folder?tab=map";
+    case "flashcards": return "/folder?tab=practice";
     case "settings": return "/preferences";
     case "memory": return "/memory";
     case "folder": return "/folder";
@@ -1822,7 +1822,7 @@ function AppRoutes() {
       <Route path="/chat/:sessionId" element={<ChatView />} />
       <Route path="/notes" element={<NoteEditorView />} />
       <Route path="/sources" element={<SourceBrowserView />} />
-      <Route path="/learning" element={<LearningHubView />} />
+      <Route path="/learning" element={<Navigate to="/folder" replace />} />
       <Route path="/review-topics" element={<ReviewTopicsView />} />
       <Route path="/history" element={<HistoryView />} />
       <Route path="/logs" element={<LogsView />} />
@@ -1830,8 +1830,8 @@ function AppRoutes() {
       <Route path="/help" element={<HelpView />} />
       
       {/* Legacy redirects */}
-      <Route path="/graph" element={<Navigate to="/learning?tab=roadmap" replace />} />
-      <Route path="/flashcards" element={<Navigate to="/learning?tab=review" replace />} />
+      <Route path="/graph" element={<Navigate to="/folder?tab=map" replace />} />
+      <Route path="/flashcards" element={<Navigate to="/folder?tab=practice" replace />} />
       <Route path="/documents" element={<Navigate to="/sources" replace />} />
       <Route path="/webcapture" element={<Navigate to="/sources" replace />} />
       <Route path="/grounded" element={<Navigate to="/chat" replace />} />
@@ -1839,8 +1839,8 @@ function AppRoutes() {
       <Route path="/daily" element={<Navigate to="/notes" state={{ subView: "daily" }} replace />} />
 
       <Route path="/plugins" element={<Navigate to="/preferences" state={{ settingsTab: "app" }} replace />} />
-      <Route path="/backlinks" element={<Navigate to="/learning?tab=roadmap" replace />} />
-      <Route path="/dedup" element={<Navigate to="/learning?tab=roadmap" replace />} />
+      <Route path="/backlinks" element={<Navigate to="/folder?tab=map" replace />} />
+      <Route path="/dedup" element={<Navigate to="/folder?tab=map" replace />} />
       <Route path="/settings" element={<Navigate to="/preferences" state={{ settingsTab: "app" }} replace />} />
       <Route path="/workspaces" element={<Navigate to="/preferences" state={{ settingsTab: "workspaces" }} replace />} />
       <Route path="/backup" element={<Navigate to="/preferences" state={{ settingsTab: "backup" }} replace />} />

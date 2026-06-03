@@ -141,9 +141,10 @@ describe("FolderDashboardView", () => {
     expect(await screen.findByText("Continue Learning")).toBeInTheDocument();
     expect(screen.getByText("cgroups vs namespaces")).toBeInTheDocument();
     expect(screen.getByText("Rootless container setup")).toBeInTheDocument();
-    expect(screen.getByText("Rootless containers still need subordinate UID and GID ranges configured.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Review/ })).toBeInTheDocument();
+    // Map and Practice tabs are part of the dashboard now.
+    expect(screen.getByRole("button", { name: /Map/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Practice/ })).toBeInTheDocument();
 
     // The retired AI-scored sections must not render.
     expect(screen.queryByText("Knowledge Health")).not.toBeInTheDocument();
