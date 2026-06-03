@@ -32,7 +32,59 @@ import { useAiModelSync } from "../hooks/useAiModelSync";
 import { usePrefsWindowMode } from "../lib/prefsWindowMode";
 import { parseAboutYou, serializeAboutYou, EMPTY_ABOUT_YOU, type AboutYouProfile } from "../lib/aboutYou";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import ChatMessageBubble from "../components/ChatMessageBubble";
+import type { Message } from "../stores/chatStore";
 
+
+const NOOP = () => undefined;
+const PREVIEW_MARKDOWN_COMPONENTS: Record<string, React.ElementType> = {};
+const PREVIEW_PARENT_WORKSPACES: Array<{ id: string; name: string; index: number }> = [
+  { id: "preview-ws-1", name: "General", index: 1 },
+  { id: "preview-ws-2", name: "Learning", index: 2 },
+  { id: "preview-ws-3", name: "Projects", index: 3 },
+  { id: "preview-ws-4", name: "Reading", index: 4 },
+  { id: "preview-ws-5", name: "Research", index: 5 },
+];
+const PREVIEW_CHILD_WORKSPACES: Array<{ id: string; name: string }> = [
+  { id: "preview-child-1", name: "Overview" },
+  { id: "preview-child-2", name: "Notes" },
+  { id: "preview-child-3", name: "Resources" },
+  { id: "preview-child-4", name: "Tasks" },
+];
+const PREVIEW_CHAT_TITLES: Array<{ title: string; active: boolean }> = [
+  { title: "Speed of light", active: true },
+  { title: "Why is the sky blue?", active: false },
+  { title: "Photosynthesis basics", active: false },
+  { title: "Newton's laws", active: false },
+  { title: "Gravity explained", active: false },
+];
+const PREVIEW_RELATED_LINKS: string[] = [
+  "Wave-particle duality",
+  "Refraction basics",
+  "Photons explained",
+];
+const PREVIEW_COMPOSER_SUGGESTION = "How does light travel through glass?";
+const PREVIEW_COMPOSER_FOLLOWUPS: string[] = [
+  "What causes a rainbow?",
+  "Is the speed of light constant in all media?",
+];
+const PREVIEW_USER_MESSAGE: Message = {
+  id: "preview-user",
+  session_id: "preview",
+  role: "user",
+  content: "What is the speed of light?",
+  created_at: "2026-01-01T00:00:00Z",
+};
+const PREVIEW_ASSISTANT_MESSAGE: Message = {
+  id: "preview-assistant",
+  session_id: "preview",
+  role: "assistant",
+  content: "The speed of light in a vacuum is approximately 299,792,458 meters per second.",
+  model_name: "gemma2-9b",
+  tokens_used: 120,
+  duration_ms: 2500,
+  created_at: "2026-01-01T00:00:01Z",
+};
 
 const MIN_FONT_SIZE = 11;
 const MAX_FONT_SIZE = 22;
@@ -847,70 +899,35 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
   const composerMode = overrides.composerMode !== undefined && overrides.composerMode !== null ? overrides.composerMode : dbComposerMode;
   const [singleWindowMode] = usePrefsWindowMode();
 
-  const [hoveredTerm, setHoveredTerm] = useState(false);
-
   const showLeftSidebar = workspaceNavigation === "sidebar";
   const themeClass = `theme-${overrides.theme !== undefined && overrides.theme !== null ? overrides.theme : dbSettings.theme || "system"}`;
   const accentColor = overrides.accentColor !== undefined && overrides.accentColor !== null ? overrides.accentColor : dbSettings.accent_color || "#007AFF";
   const fontSize = overrides.fontSize !== undefined && overrides.fontSize !== null ? overrides.fontSize : dbSettings.font_size || 14;
   const scaledFontSize = Math.max(9, Math.min(20, Math.round(fontSize * 0.9)));
 
-  const rawWorkspaces = useWorkspaceStore((s) => s.workspaces);
-  const storeWorkspaces = useMemo(() => rawWorkspaces || [], [rawWorkspaces]);
-  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId) || null;
-
-  const activeWorkspaceChildren = useMemo(() => {
-    if (storeWorkspaces.length === 0) {
-      return [];
-    }
-    return storeWorkspaces.filter((w) => w.parent_workspace_id === activeWorkspaceId);
-  }, [storeWorkspaces, activeWorkspaceId]);
+  const activeWorkspaceChildren = PREVIEW_CHILD_WORKSPACES;
 
   const parentWorkspaces = useMemo(() => {
-    let list = storeWorkspaces.filter((w) => !w.parent_workspace_id).map((w) => ({
-      id: w.id,
-      name: w.name,
-      created_at: w.created_at,
-      updated_at: w.updated_at,
-      index: 0
-    }));
-
-    if (list.length === 0) {
-      list = [
-        { id: "ws-1", name: "React", created_at: "2026-01-01", updated_at: "2026-05-30", index: 1 },
-        { id: "ws-2", name: "Frontend", created_at: "2026-01-02", updated_at: "2026-05-29", index: 2 },
-        { id: "ws-3", name: "Linux", created_at: "2026-01-03", updated_at: "2026-05-28", index: 3 },
-        { id: "ws-4", name: "Python", created_at: "2026-01-04", updated_at: "2026-05-27", index: 4 },
-        { id: "ws-5", name: "Git", created_at: "2026-01-05", updated_at: "2026-05-26", index: 5 },
-        { id: "ws-6", name: "Databases", created_at: "2026-01-06", updated_at: "2026-05-25", index: 6 },
-        { id: "ws-7", name: "C", created_at: "2026-01-07", updated_at: "2026-05-24", index: 7 },
-        { id: "ws-8", name: "Binary", created_at: "2026-01-08", updated_at: "2026-05-23", index: 8 },
-        { id: "ws-9", name: "Rust", created_at: "2026-01-09", updated_at: "2026-05-22", index: 9 },
-      ];
-    }
+    const list = PREVIEW_PARENT_WORKSPACES.map((w) => ({ ...w }));
 
     if (workspaceSortOrder === "name-asc") {
       list.sort((a, b) => a.name.localeCompare(b.name));
     } else if (workspaceSortOrder === "name-desc") {
       list.sort((a, b) => b.name.localeCompare(a.name));
     } else if (workspaceSortOrder === "created-newest") {
-      list.sort((a, b) => (a.index && b.index) ? b.index - a.index : new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+      list.sort((a, b) => b.index - a.index);
     } else if (workspaceSortOrder === "created-oldest") {
-      list.sort((a, b) => (a.index && b.index) ? a.index - b.index : new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+      list.sort((a, b) => a.index - b.index);
     } else if (workspaceSortOrder === "updated-newest" || workspaceSortOrder === "last-message-newest") {
-      list.sort((a, b) => (a.index && b.index) ? a.index - b.index : new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime());
+      list.sort((a, b) => a.index - b.index);
     } else if (workspaceSortOrder === "updated-oldest") {
-      list.sort((a, b) => (a.index && b.index) ? b.index - a.index : new Date(a.updated_at || 0).getTime() - new Date(b.updated_at || 0).getTime());
+      list.sort((a, b) => b.index - a.index);
     }
 
     return list.map((w) => ({ id: w.id, name: w.name }));
-  }, [storeWorkspaces, workspaceSortOrder]);
+  }, [workspaceSortOrder]);
 
-  const activeWorkspace = useMemo(() => {
-    return storeWorkspaces.find((w) => w.id === activeWorkspaceId);
-  }, [storeWorkspaces, activeWorkspaceId]);
-
-  const activeWorkspaceName = activeWorkspace?.name || parentWorkspaces[0]?.name || "React";
+  const activeWorkspaceName = parentWorkspaces[0]?.name || "General";
 
   return (
     <div className="flex flex-col items-center justify-center w-full h-full">
@@ -1156,13 +1173,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                 <span className="truncate">Search...</span>
               </div>
               <div className="flex flex-col gap-0.5 overflow-y-auto max-h-[220px]">
-                {[
-                  { title: "SPAs: Advantages and Challenges", active: true },
-                  { title: "Flexbox CSS Basics", active: false },
-                  { title: "NPM sudo permissions", active: false },
-                  { title: "Inner HTML discussion", active: false },
-                  { title: "React getting started", active: false },
-                ].map((s, idx) => (
+                {PREVIEW_CHAT_TITLES.map((s, idx) => (
                   <div
                     key={idx}
                     className={`px-1.5 py-1 rounded text-[0.6em] truncate leading-tight select-none cursor-pointer ${
@@ -1184,8 +1195,8 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
               {/* Chat View Pane Header */}
               <div className="h-8.5 px-3 border-b border-[var(--border-color)]/60 bg-[var(--bg-primary)] flex items-center justify-between shrink-0 select-none">
                 <div className="flex flex-col min-w-0">
-                  <span className="text-[0.5em] font-bold text-[var(--text-muted)] uppercase tracking-wider leading-none mb-0.5">FRONTEND</span>
-                  <span className="text-[0.7em] font-semibold text-[var(--text-primary)] truncate">SPAs: Advantages and Challenges</span>
+                  <span className="text-[0.5em] font-bold text-[var(--text-muted)] uppercase tracking-wider leading-none mb-0.5">{activeWorkspaceName.toUpperCase()}</span>
+                  <span className="text-[0.7em] font-semibold text-[var(--text-primary)] truncate">{PREVIEW_CHAT_TITLES[0].title}</span>
                 </div>
                 <div className="flex items-center gap-1 text-[0.65em] text-[var(--text-secondary)] font-medium">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
@@ -1196,9 +1207,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
               {/* Related link pills list below header */}
               <div className="h-6.5 px-3 bg-[var(--bg-elevated)]/25 border-b border-[var(--border-color)]/30 flex items-center gap-2 shrink-0 overflow-x-hidden text-[0.55em] select-none">
                 <span className="font-bold text-[var(--text-muted)] text-[0.5em] uppercase tracking-wider shrink-0">RELATED</span>
-                {[
-                  "Inner HTML discussion", "Flexbox CSS Basics", "React getting started"
-                ].map((lnk) => (
+                {PREVIEW_RELATED_LINKS.map((lnk) => (
                   <span key={lnk} className="px-1.5 py-0.5 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-color)]/40 text-[var(--text-secondary)] hover:text-[var(--accent-color)] cursor-pointer whitespace-nowrap">
                     {lnk}
                   </span>
@@ -1206,79 +1215,57 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
               </div>
 
               <div className="flex-1 overflow-y-auto p-3 space-y-3 flex flex-col min-h-0 justify-end relative">
-                <div className={`flex flex-col gap-0.5 ${
-                  chatMessageStyle === "minimal" ? "items-start" : "items-end"
-                }`}>
-                  {chatMessageStyle === "minimal" && (
-                    <span className="text-[0.55em] font-semibold text-[var(--text-muted)] tracking-wide">
-                      {dbSettings.user_chat_label || "You"}
-                    </span>
-                  )}
-                  <div
-                    className={`text-[0.8em] break-words ${
-                      chatMessageStyle === "minimal"
-                        ? "w-full py-0.5 text-[var(--text-primary)]"
-                        : chatMessageStyle === "flat"
-                          ? "w-fit max-w-[85%] rounded border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-[var(--text-primary)]"
-                          : "w-fit max-w-[85%] rounded-lg rounded-tr-sm bg-[var(--accent-color)] text-white px-2 py-1"
-                    }`}
-                  >
-                    What is the speed of light?
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-0.5 items-start">
-                  {chatMessageStyle === "minimal" && (
-                    <span className="text-[0.55em] font-semibold text-[var(--text-muted)] tracking-wide">
-                      {dbSettings.assistant_chat_label || "Assistant"}
-                    </span>
-                  )}
-                  <div
-                    className={`text-[0.8em] break-words relative ${
-                      chatMessageStyle === "minimal"
-                        ? "w-full py-0.5 text-[var(--text-primary)]"
-                        : chatMessageStyle === "flat"
-                          ? "w-full rounded border-l border-[var(--accent-color)] bg-[var(--bg-elevated)]/40 px-2 py-1 text-[var(--text-primary)]"
-                          : "w-full rounded-lg rounded-tl-sm bg-[var(--bg-secondary)] px-2 py-1 text-[var(--text-primary)]"
-                    }`}
-                  >
-                    {dbSettings.hover_definition_scan_enabled ? (
-                      <span>
-                        The{" "}
-                        <span
-                          onMouseEnter={() => setHoveredTerm(true)}
-                          onMouseLeave={() => setHoveredTerm(false)}
-                          className="underline decoration-dotted decoration-[var(--accent-color)] underline-offset-2 cursor-help font-semibold"
-                        >
-                          speed of light
-                        </span>{" "}
-                        in a vacuum is approximately 299,792,458 meters per second.
-                      </span>
-                    ) : (
-                      "The speed of light in a vacuum is approximately 299,792,458 meters per second."
-                    )}
-
-                    {hoveredTerm && dbSettings.hover_definition_scan_enabled && (
-                      <div className="absolute bottom-full left-4 bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-lg p-2 shadow-xl text-[0.65em] max-w-[200px] z-50 mb-1.5 pointer-events-none">
-                        <div className="font-semibold text-[var(--accent-color)]">Glossary: Speed of Light</div>
-                        <p className="text-[var(--text-secondary)] mt-0.5 leading-snug">
-                          A fundamental physical constant. The maximum speed at which all conventional matter and information in the universe can travel.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {showGenInfo && (
-                    <div className="text-[0.55em] text-[var(--text-muted)] mt-0.5 flex flex-wrap items-center gap-1 select-none pl-0.5">
-                      {showGenInfoModel && <span>gemma2-9b</span>}
-                      {showGenInfoModel && (showGenInfoTokenCount || showGenInfoDuration || showGenInfoSpeed) && <span>•</span>}
-                      {showGenInfoTokenCount && <span>120 tok</span>}
-                      {showGenInfoTokenCount && (showGenInfoDuration || showGenInfoSpeed) && <span>•</span>}
-                      {showGenInfoDuration && <span>2.5s</span>}
-                      {showGenInfoDuration && showGenInfoSpeed && <span>•</span>}
-                      {showGenInfoSpeed && <span className="text-[var(--accent-color)] font-medium">48 tok/s</span>}
-                    </div>
-                  )}
+                <div className="text-[0.8em]">
+                  <ChatMessageBubble
+                    msg={PREVIEW_USER_MESSAGE}
+                    isLastMessage={false}
+                    isStreaming={false}
+                    chatMessageStyle={chatMessageStyle}
+                    expandChatToWindowWidth={false}
+                    showGenInfo={false}
+                    isEditing={false}
+                    editValue=""
+                    isCopied={false}
+                    isThoughtExpanded={false}
+                    sources={undefined}
+                    isSourcesExpanded={false}
+                    contextSources={null}
+                    markdownComponents={PREVIEW_MARKDOWN_COMPONENTS}
+                    onCopy={NOOP}
+                    onStartEdit={NOOP}
+                    onSubmitEdit={NOOP}
+                    onSetEditContent={NOOP}
+                    onCancelEdit={NOOP}
+                    onToggleThought={NOOP}
+                    onToggleSources={NOOP}
+                  />
+                  <ChatMessageBubble
+                    msg={PREVIEW_ASSISTANT_MESSAGE}
+                    isLastMessage={true}
+                    isStreaming={false}
+                    chatMessageStyle={chatMessageStyle}
+                    expandChatToWindowWidth={false}
+                    showGenInfo={showGenInfo}
+                    showGenInfoModel={showGenInfoModel}
+                    showGenInfoTokenCount={showGenInfoTokenCount}
+                    showGenInfoDuration={showGenInfoDuration}
+                    showGenInfoSpeed={showGenInfoSpeed}
+                    isEditing={false}
+                    editValue=""
+                    isCopied={false}
+                    isThoughtExpanded={false}
+                    sources={undefined}
+                    isSourcesExpanded={false}
+                    contextSources={null}
+                    markdownComponents={PREVIEW_MARKDOWN_COMPONENTS}
+                    onCopy={NOOP}
+                    onStartEdit={NOOP}
+                    onSubmitEdit={NOOP}
+                    onSetEditContent={NOOP}
+                    onCancelEdit={NOOP}
+                    onToggleThought={NOOP}
+                    onToggleSources={NOOP}
+                  />
                 </div>
               </div>
 
@@ -1287,16 +1274,16 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                   <div className="flex gap-1 overflow-x-hidden relative items-center py-0.5 select-none">
                     {showComposerWorkspaceSuggestions && (
                       <span className="text-[0.55em] px-2 py-0.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] whitespace-nowrap truncate max-w-[120px]">
-                        {"What's the best frontend framework?"}
+                        {PREVIEW_COMPOSER_SUGGESTION}
                       </span>
                     )}
                     {showComposerChatFollowUps && (
                       <>
                         <span className="text-[0.55em] px-2 py-0.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] whitespace-nowrap truncate max-w-[120px]">
-                          How do I create a responsive layout?
+                          {PREVIEW_COMPOSER_FOLLOWUPS[0]}
                         </span>
                         <span className="text-[0.55em] px-2 py-0.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] whitespace-nowrap flex items-center gap-0.5 truncate max-w-[120px]">
-                          What are some popular CSS frameworks... <ChevronDown size={8} />
+                          {PREVIEW_COMPOSER_FOLLOWUPS[1]} <ChevronDown size={8} />
                         </span>
                       </>
                     )}
@@ -3794,10 +3781,10 @@ export default function PreferencesView() {
                         </div>
                         <input
                           type="number"
-                          min={4}
+                          min={1}
                           max={100}
                           value={dbSettings.summarization_min_messages}
-                          onChange={(e) => set("summarization_min_messages", Math.max(4, Math.min(100, Number(e.target.value) || 10)))}
+                          onChange={(e) => set("summarization_min_messages", Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
                           className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
                         />
                       </div>
