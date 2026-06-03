@@ -805,3 +805,27 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     },
   };
 });
+
+// Register a context provider so every IPC log line carries the active
+// workspace id and its parent workspace id (subworkspace -> workspace chain).
+// Register IPC log context lazily so every [ipc] line carries the active
+// workspace id and its parent workspace id (subworkspace -> workspace chain).
+// Dynamic import keeps test mocks of "../lib/api" that omit this export from
+// throwing at module load.
+void (async () => {
+  try {
+    const mod = await import("../lib/api");
+    mod.setIpcWorkspaceContextProvider?.(() => {
+      const state = useWorkspaceStore.getState();
+      const workspaceId = state.activeWorkspaceId ?? undefined;
+      if (!workspaceId) {return {};}
+      const ws = state.workspaces.find((w) => w.id === workspaceId);
+      return {
+        workspaceId,
+        parentWorkspaceId: ws?.parent_workspace_id ?? undefined,
+      };
+    });
+  } catch {
+    // best-effort observability — never break app load
+  }
+})();
