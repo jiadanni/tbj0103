@@ -58,6 +58,7 @@ pub struct ProjectNote {
     pub mood: Option<i64>,
     pub productivity: Option<i64>,
     pub template_id: Option<String>,
+    pub folder: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,6 +68,7 @@ pub struct CreateNoteRequest {
     pub content: Option<String>,
     pub note_type: Option<String>,
     pub tags: Option<Vec<String>>,
+    pub folder: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,6 +77,7 @@ pub struct UpdateNoteRequest {
     pub title: Option<String>,
     pub content: Option<String>,
     pub tags: Option<Vec<String>>,
+    pub folder: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,6 +104,7 @@ impl ProjectNote {
             mood: None,
             productivity: None,
             template_id: None,
+            folder: None,
         }
     }
 }

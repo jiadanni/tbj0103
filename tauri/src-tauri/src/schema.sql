@@ -402,6 +402,7 @@ CREATE TABLE IF NOT EXISTS project_notes (
     note_type TEXT NOT NULL DEFAULT 'manual'
         CHECK(note_type IN ('manual','ai_generated','quiz')),
     tags TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(tags)),
+    folder TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

@@ -61,6 +61,7 @@ pub async fn convert_chat_to_note(
         mood: None,
         productivity: None,
         template_id: None,
+        folder: None,
     };
     let tags_json = serde_json::to_string(&note.tags).unwrap_or_else(|_| "[]".to_string());
     conn.execute(

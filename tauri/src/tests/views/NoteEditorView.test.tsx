@@ -2,64 +2,79 @@ import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import NoteEditorView from "../../views/NoteEditorView";
-import { api } from "../../lib/api";
 
-// Mock lucide-react
+function makeIcon(testid: string) {
+  const C: React.FC = () => <div data-testid={testid} />;
+  C.displayName = testid;
+  return C;
+}
 vi.mock("lucide-react", () => ({
-  Plus: () => <div data-testid="icon-plus" />,
-  Trash2: () => <div data-testid="icon-trash" />,
-  Tag: () => <div data-testid="icon-tag" />,
-  Search: () => <div data-testid="icon-search" />,
-  FileText: () => <div data-testid="icon-file-text" />,
-  Save: () => <div data-testid="icon-save" />,
-  Calendar: () => <div data-testid="icon-calendar" />,
-  Sparkles: () => <div data-testid="icon-sparkles" />,
-  Loader: () => <div data-testid="icon-loader" />,
-  X: () => <div data-testid="icon-x" />,
+  Plus: makeIcon("icon-plus"),
+  Trash2: makeIcon("icon-trash"),
+  Tag: makeIcon("icon-tag"),
+  Pin: makeIcon("icon-pin"),
+  FileText: makeIcon("icon-file-text"),
+  Save: makeIcon("icon-save"),
+  Calendar: makeIcon("icon-calendar"),
+  Sparkles: makeIcon("icon-sparkles"),
+  Loader: makeIcon("icon-loader"),
+  Upload: makeIcon("icon-upload"),
+  Globe: makeIcon("icon-globe"),
+  Cpu: makeIcon("icon-cpu"),
+  X: makeIcon("icon-x"),
+  ExternalLink: makeIcon("icon-external-link"),
+  File: makeIcon("icon-file"),
+  Image: makeIcon("icon-image"),
+  Type: makeIcon("icon-type"),
+  Palette: makeIcon("icon-palette"),
+  Bell: makeIcon("icon-bell"),
+  UserPlus: makeIcon("icon-user-plus"),
+  MoreVertical: makeIcon("icon-more"),
+  Undo2: makeIcon("icon-undo"),
+  Redo2: makeIcon("icon-redo"),
+  Search: makeIcon("icon-search"),
 }));
 
-// Mock tauri plugins
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   confirm: vi.fn(() => Promise.resolve(true)),
   message: vi.fn(),
+  open: vi.fn(() => Promise.resolve(null)),
 }));
+vi.mock("@tauri-apps/plugin-fs", () => ({ readTextFile: vi.fn(() => Promise.resolve("")) }));
+vi.mock("@tauri-apps/plugin-shell", () => ({ open: vi.fn() }));
 
-// Mock workspace hook
 vi.mock("../../lib/workspacePane", () => ({
   useScopedWorkspace: () => ({ activeWorkspaceId: "ws-1" }),
   useBubbleUpFlag: () => false,
 }));
 
-// Mock SmartTextEditor
 vi.mock("../../components/SmartTextEditor", () => ({
   default: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
-    <textarea 
-      data-testid="smart-editor" 
-      value={value} 
-      onChange={(e) => onChange(e.target.value)} 
-    />
+    <textarea data-testid="smart-editor" value={value} onChange={(e) => onChange(e.target.value)} />
   ),
 }));
 
-vi.mock("../../views/DailyNotesView", () => ({
-  default: () => <div>Daily Notes View</div>,
+vi.mock("../../views/DailyNotesView", () => ({ default: () => <div>Daily Notes View</div> }));
+vi.mock("../../components/Tooltip", () => ({ Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
+
+vi.mock("../../stores/workspaceStore", () => ({
+  useWorkspaceStore: (sel: (s: { isDemoMode: boolean }) => unknown) => sel({ isDemoMode: false }),
+}));
+vi.mock("../../stores/settingsStore", () => ({
+  useSettingsStore: (sel: (s: { preferredModel: string; ollamaUrl: string }) => unknown) =>
+    sel({ preferredModel: "", ollamaUrl: "" }),
 }));
 
-// Mock API
 vi.mock("../../lib/api", () => ({
   api: {
-    note: {
-      list: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-    },
-    dailyNote: {
-      get: vi.fn(() => Promise.resolve(null)),
-    }
+    note: { list: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
+    source: { list: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn(), process: vi.fn() },
+    flashcard: { extractFromContent: vi.fn() },
   },
 }));
+
+import NoteEditorView from "../../views/NoteEditorView";
+import { api } from "../../lib/api";
 
 describe("NoteEditorView", () => {
   const mockNotes = [
@@ -70,6 +85,7 @@ describe("NoteEditorView", () => {
       content: "Content 1",
       note_type: "general",
       tags: ["tag1"],
+      folder: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     },
@@ -78,27 +94,26 @@ describe("NoteEditorView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.note.list).mockResolvedValue(mockNotes as unknown as never[]);
+    vi.mocked(api.source.list).mockResolvedValue([] as unknown as never[]);
   });
 
-  it("lists notes and allows selection", async () => {
-    render(
-      <MemoryRouter>
-        <NoteEditorView />
-      </MemoryRouter>
-    );
-    
-    await waitFor(() => {
-      expect(screen.getByText("First Note")).toBeDefined();
-    });
+  it("renders notes as cards in the Keep-style grid", async () => {
+    render(<MemoryRouter><NoteEditorView /></MemoryRouter>);
+    await waitFor(() => { expect(screen.getByText("First Note")).toBeInTheDocument(); });
+    expect(screen.getByText("Content 1")).toBeInTheDocument();
+    expect(screen.getByText("tag1")).toBeInTheDocument();
+  });
 
+  it("opens a note in the modal when its card is clicked", async () => {
+    render(<MemoryRouter><NoteEditorView /></MemoryRouter>);
+    await waitFor(() => { expect(screen.getByText("First Note")).toBeInTheDocument(); });
     fireEvent.click(screen.getByText("First Note"));
-    
     await waitFor(() => {
       expect((screen.getByTestId("smart-editor") as HTMLTextAreaElement).value).toBe("Content 1");
     });
   });
 
-  it("creates a new note", async () => {
+  it("creates a blank note from the header + button", async () => {
     const newNote = {
       id: "note-2",
       workspace_id: "ws-1",
@@ -106,42 +121,49 @@ describe("NoteEditorView", () => {
       content: "",
       note_type: "general",
       tags: [],
+      folder: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
     vi.mocked(api.note.create).mockResolvedValue(newNote as unknown as never);
 
-    render(
-      <MemoryRouter>
-        <NoteEditorView />
-      </MemoryRouter>
-    );
+    render(<MemoryRouter><NoteEditorView /></MemoryRouter>);
+    await waitFor(() => expect(api.note.list).toHaveBeenCalled());
 
-    const createBtn = screen.getByTestId("icon-plus");
-    fireEvent.click(createBtn);
+    // The Plus icon belongs to the header "New note" button.
+    fireEvent.click(screen.getAllByTestId("icon-plus")[0]);
 
     await waitFor(() => {
       expect(api.note.create).toHaveBeenCalledWith("ws-1", "Untitled Note");
-      expect(screen.getByText("Untitled Note")).toBeDefined();
     });
   });
 
-  it("shows the calendar entry in the merged notes navigation", async () => {
-    render(
-      <MemoryRouter>
-        <NoteEditorView />
-      </MemoryRouter>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("Calendar")).toBeInTheDocument();
-      expect(screen.getByText("Notes")).toBeInTheDocument();
-    });
-
+  it("opens the daily-notes modal from the Calendar button", async () => {
+    render(<MemoryRouter><NoteEditorView /></MemoryRouter>);
+    await waitFor(() => { expect(screen.getByText("Calendar")).toBeInTheDocument(); });
     fireEvent.click(screen.getByText("Calendar"));
+    await waitFor(() => { expect(screen.getByText("Daily Notes View")).toBeInTheDocument(); });
+  });
 
+  it("renders sources alongside notes in the unified grid", async () => {
+    vi.mocked(api.source.list).mockResolvedValue([
+      {
+        id: "src-1",
+        workspace_id: "ws-1",
+        source_type: "document",
+        title: "My Source",
+        content: "",
+        is_processed: false,
+        folder: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    ] as unknown as never[]);
+
+    render(<MemoryRouter><NoteEditorView /></MemoryRouter>);
     await waitFor(() => {
-      expect(screen.getByText("Daily Notes View")).toBeInTheDocument();
+      expect(screen.getByText("First Note")).toBeInTheDocument();
+      expect(screen.getByText("My Source")).toBeInTheDocument();
     });
   });
 });

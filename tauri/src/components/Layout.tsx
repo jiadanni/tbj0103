@@ -35,7 +35,6 @@ const HistoryView = React.lazy(() => import("../views/HistoryView"));
 const FolderDashboardView = React.lazy(() => import("../views/FolderDashboardView"));
 const PracticeView = React.lazy(() => import("../views/PracticeView"));
 const PreferencesView = React.lazy(() => import("../views/PreferencesView"));
-const SourceBrowserView = React.lazy(() => import("../views/SourceBrowserView"));
 const NoteEditorView = React.lazy(() => import("../views/NoteEditorView"));
 const LogsView = React.lazy(() => import("../views/LogsView"));
 const ReviewTopicsView = React.lazy(() => import("../views/ReviewTopicsView"));
@@ -1646,7 +1645,8 @@ function pathToPaneView(pathname: string): import("../stores/workspaceStore").Pa
   switch (segment) {
     case "chat": return "chat";
     case "notes": return "notes";
-    case "documents": return "documents";
+    case "documents": return "notes";
+    case "sources": return "notes";
     case "learning": return "graph";
     default: return "folder";
   }
@@ -1660,7 +1660,7 @@ function paneViewToPath(view: import("../stores/workspaceStore").PaneView, chatS
     case "sources":
     case "documents":
     case "webcapture":
-      return "/sources";
+      return "/notes";
     case "graph": return "/folder";
     case "flashcards": return "/practice";
     case "settings": return "/preferences";
@@ -1821,7 +1821,7 @@ function AppRoutes() {
       <Route path="/chat/:sessionId" element={<ChatView />} />
       <Route path="/notes" element={<NoteEditorView />} />
       <Route path="/practice" element={<PracticeView />} />
-      <Route path="/sources" element={<SourceBrowserView />} />
+      <Route path="/sources" element={<Navigate to="/notes" replace />} />
       <Route path="/learning" element={<Navigate to="/folder" replace />} />
       <Route path="/review-topics" element={<ReviewTopicsView />} />
       <Route path="/history" element={<HistoryView />} />

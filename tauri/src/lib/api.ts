@@ -365,6 +365,7 @@ export interface ProjectNote {
   id: string; workspace_id: string; title: string; content: string;
   note_type: string; tags: string[]; created_at: string; updated_at: string;
   date?: string; mood?: number; productivity?: number; template_id?: string | null;
+  folder?: string | null;
 }
 
 export interface NoteTemplate {
@@ -1358,8 +1359,12 @@ export const api = {
   learningGoal: {
     create: (workspaceId: string, title: string) =>
       invoke<LearningGoal>("create_learning_goal", { req: { workspace_id: workspaceId, title } }),
-    list: (workspaceId: string, opts?: { includeDescendants?: boolean }) =>
-      invoke<LearningGoal[]>("list_learning_goals", { workspaceId, includeDescendants: opts?.includeDescendants }),
+    list: (workspaceId: string, opts?: { includeDescendants?: boolean; includeAncestors?: boolean }) =>
+      invoke<LearningGoal[]>("list_learning_goals", {
+        workspaceId,
+        includeDescendants: opts?.includeDescendants,
+        includeAncestors: opts?.includeAncestors,
+      }),
     update: (id: string, fields: Partial<LearningGoal>) =>
       invoke<void>("update_learning_goal", { req: { id, ...fields } }),
     delete: (id: string) => invoke<void>("delete_learning_goal", { id }),
@@ -1436,8 +1441,8 @@ export const api = {
   },
 
   note: {
-    create: (workspaceId: string, title: string, content?: string) =>
-      invoke<ProjectNote>("create_note", { req: { workspace_id: workspaceId, title, content } }),
+    create: (workspaceId: string, title: string, content?: string, folder?: string | null) =>
+      invoke<ProjectNote>("create_note", { req: { workspace_id: workspaceId, title, content, folder: folder ?? null } }),
     list: (workspaceId: string, opts?: { limit?: number; offset?: number; includeDescendants?: boolean }) =>
       invoke<ProjectNote[]>("list_notes", { workspaceId, limit: opts?.limit, offset: opts?.offset, includeDescendants: opts?.includeDescendants }),
     get: (id: string) => invoke<ProjectNote | null>("get_note", { id }),

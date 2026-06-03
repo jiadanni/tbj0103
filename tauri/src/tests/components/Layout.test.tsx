@@ -729,7 +729,8 @@ describe("Layout", () => {
       </MemoryRouter>
     );
 
-    expect(await screen.findByText("Sources View")).toBeInTheDocument();
+    // /sources is now a compatibility redirect to the unified /notes browser.
+    expect(await screen.findByText("Notes View")).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("Rust"));
 
@@ -820,9 +821,9 @@ describe("Layout", () => {
     expect(trigger).toHaveAttribute("aria-haspopup", "listbox");
 
     fireEvent.click(trigger);
-    fireEvent.click(screen.getByRole("option", { name: "Sources" }));
+    fireEvent.click(screen.getByRole("option", { name: "Notes & Sources" }));
 
-    expect(await screen.findByText("Sources View")).toBeInTheDocument();
+    expect(await screen.findByText("Notes View")).toBeInTheDocument();
   });
 
   it("does not show Preferences in the top-dropdown section options", () => {

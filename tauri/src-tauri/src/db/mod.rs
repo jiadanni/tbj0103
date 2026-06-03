@@ -80,6 +80,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v66_knowledge_graph_model_upgrade",
     "v67_lower_summarization_min_messages",
     "v68_roadmap_snapshots",
+    "v69_project_notes_folder",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -1929,6 +1930,28 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             CREATE INDEX IF NOT EXISTS idx_roadmap_snapshots_workspace_created
                 ON roadmap_snapshots(workspace_id, created_at DESC);
             INSERT INTO _migrations(name) VALUES('v68_roadmap_snapshots');",
+        )?;
+    }
+
+    let applied_v69: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v69_project_notes_folder'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v69 == 0 {
+        // Idempotent guard — older builds may have already added the column via
+        // `schema.sql` running after migrations on existing databases.
+        let has_folder: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('project_notes') WHERE name = 'folder'",
+            [],
+            |row| row.get(0),
+        )?;
+        if has_folder == 0 {
+            conn.execute_batch("ALTER TABLE project_notes ADD COLUMN folder TEXT;")?;
+        }
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v69_project_notes_folder');",
         )?;
     }
 
