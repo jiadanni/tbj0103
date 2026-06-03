@@ -13,6 +13,38 @@ export interface RoadmapNode {
   children?: RoadmapNode[];
 }
 
+function siblingKey(node: RoadmapNode): string {
+  return `${node.hierarchy_level}::${node.name.trim().toLowerCase()}`;
+}
+
+function mergeDuplicateSiblings(nodes: RoadmapNode[]): RoadmapNode[] {
+  const merged = new Map<string, RoadmapNode>();
+  const orderedKeys: string[] = [];
+
+  for (const node of nodes) {
+    const withMergedChildren: RoadmapNode = {
+      ...node,
+      children: mergeDuplicateSiblings(node.children ?? []),
+    };
+    const key = siblingKey(withMergedChildren);
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, withMergedChildren);
+      orderedKeys.push(key);
+      continue;
+    }
+
+    existing.children = mergeDuplicateSiblings([
+      ...(existing.children ?? []),
+      ...(withMergedChildren.children ?? []),
+    ]);
+  }
+
+  return orderedKeys
+    .map((key) => merged.get(key))
+    .filter((node): node is RoadmapNode => Boolean(node));
+}
+
 /** Build a single virtual root with the chapter/section/concept forest as children.
  *
  * Convention: a `part_of` link has `source_id = child`, `target_id = parent`
@@ -56,11 +88,13 @@ export function buildForest(nodes: ConceptNode[], links: ConceptLink[]): Roadmap
     }
   });
 
+  const mergedRoots = mergeDuplicateSiblings(roots);
+
   return {
     id: "__root__",
     name: "Knowledge Map",
     hierarchy_level: "root",
     concept_type: "topic",
-    children: roots,
+    children: mergedRoots,
   };
 }
