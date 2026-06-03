@@ -1033,7 +1033,7 @@ export default function KnowledgeGraphView({
       )}
 
       <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 px-4 py-4 sm:px-6">
+        <div className={`flex w-full flex-col gap-4 px-4 py-4 sm:px-6 ${hideSidebar ? "" : "mx-auto max-w-[1600px]"}`}>
           <header className="rounded-2xl border border-[var(--border-color)] bg-[linear-gradient(135deg,rgba(var(--accent-color-rgb),0.12),rgba(255,255,255,0)_55%),var(--bg-elevated)] px-5 py-3">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div className="max-w-2xl">
@@ -1100,7 +1100,7 @@ export default function KnowledgeGraphView({
             </div>
           )}
 
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(340px,0.95fr)]">
+          <div className={`grid gap-4 ${hideSidebar ? "" : "xl:grid-cols-[minmax(0,1.6fr)_minmax(340px,0.95fr)]"}`}>
             <Section
               title="Knowledge Map"
             >

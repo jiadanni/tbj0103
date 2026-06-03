@@ -45,7 +45,7 @@ function MetricCard({
   accent?: string;
 }) {
   return (
-    <div className="h-[72px] w-[110px] rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-2">
+    <div className="min-w-[88px] rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-2">
       <div className={`mb-1 h-0.5 w-4 rounded-full ${accent}`} />
       <div className="text-xs font-semibold leading-none text-[var(--text-primary)]">{value}</div>
       <div className="mt-1 text-[10px] text-[var(--text-muted)]">{label}</div>
@@ -196,8 +196,8 @@ export default function FolderDashboardView() {
 
       {/* Top strip: metrics + goals + continue learning side-by-side */}
       <div className="border-b border-[var(--border-color)] bg-[var(--bg-primary)] px-4 py-3">
-        <div className="grid items-stretch gap-3 xl:grid-cols-[auto_minmax(18rem,1fr)_minmax(22rem,1fr)]">
-          <div className="flex flex-wrap content-start gap-2">
+        <div className="grid items-stretch gap-3 xl:grid-cols-[minmax(15rem,1fr)_minmax(18rem,1fr)_minmax(22rem,1.4fr)]">
+          <div className="grid grid-cols-3 content-start gap-2 sm:grid-cols-5 xl:grid-cols-2 2xl:grid-cols-3">
             <MetricCard label="Due Review" value={summary.review.topics_due_for_review} />
             <MetricCard label="Active Goals" value={summary.overview.active_goals} />
             <MetricCard label="Topics" value={summary.overview.concepts} />
