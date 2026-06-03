@@ -693,9 +693,15 @@ export default function KnowledgeGraphView({
   const canRunAiActions = hasModels || isDemoWithoutModels;
   const insufficientData = workspaceAnalyzable?.ready === false && !includeDescendants;
   const hasAiInferredGraph = nodes.length > 0 || links.length > 0 || (overview?.concepts ?? 0) > 0;
+  const estimatedAnalyzeTokens = workspaceAnalyzable
+    ? Math.floor(workspaceAnalyzable.char_count / 4)
+    : 0;
   const sourceMaterialSummary = workspaceAnalyzable
     ? `${workspaceAnalyzable.item_count} source item${workspaceAnalyzable.item_count === 1 ? "" : "s"}, ${workspaceAnalyzable.char_count.toLocaleString()} characters`
     : "";
+  const analyzeTokenTooltip = workspaceAnalyzable && !insufficientData && !isDemoWithoutModels
+    ? `~${estimatedAnalyzeTokens.toLocaleString()} tokens (${workspaceAnalyzable.char_count.toLocaleString()} characters)`
+    : undefined;
   const analyzeButtonLabel = isAnalyzing
     ? (descendantProgress
       ? `Analyzing ${descendantProgress.workspace_name} (${descendantProgress.index + 1}/${descendantProgress.total})…`
@@ -803,6 +809,7 @@ export default function KnowledgeGraphView({
             <button
               onClick={handleAnalyze}
               disabled={isAnalyzing || !canRunAiActions || insufficientData}
+              title={analyzeTokenTooltip}
               className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-[var(--accent-color)] px-3 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isAnalyzing ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
@@ -1059,7 +1066,7 @@ export default function KnowledgeGraphView({
                     type="button"
                     onClick={() => { void handleAnalyze(); }}
                     disabled={isAnalyzing || !canRunAiActions || insufficientData}
-                    title={insufficientData ? analyzeHelpText : undefined}
+                    title={insufficientData ? analyzeHelpText : analyzeTokenTooltip}
                     className="inline-flex items-center gap-2 rounded-xl border border-[rgba(var(--accent-color-rgb),0.35)] bg-[var(--accent-color)] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[var(--accent-color)]/90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {isAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
