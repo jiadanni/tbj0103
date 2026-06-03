@@ -247,7 +247,7 @@ function FolderTreeNode({
 
 // ── Main view ───────────────────────────────────────────────────────────
 
-export default function SourceBrowserView() {
+export function SourceBrowserPane() {
   const { activeWorkspaceId } = useScopedWorkspace();
   const includeDescendants = useBubbleUpFlag();
   const [sources, setSources] = useState<Source[]>([]);
@@ -788,4 +788,8 @@ export default function SourceBrowserView() {
       )}
     </div>
   );
+}
+
+export default function SourceBrowserView() {
+  return <SourceBrowserPane />;
 }
