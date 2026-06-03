@@ -604,7 +604,7 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('memory_enabled', 'true'),
     ('memory_extraction_threshold', '5'),
     ('memory_extraction_idle_minutes', '5'),
-    ('summarization_min_messages', '10'),
+    ('summarization_min_messages', '1'),
     ('summarization_max_sessions', '5'),
     ('hover_definition_scan_enabled', 'true'),
     ('hover_definition_scan_max_sessions', '3'),

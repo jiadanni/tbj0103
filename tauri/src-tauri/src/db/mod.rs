@@ -78,6 +78,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v64_cleanup_invalid_part_of",
     "v65_workspace_prompt_bank",
     "v66_knowledge_graph_model_upgrade",
+    "v67_lower_summarization_min_messages",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -1888,6 +1889,21 @@ fn run_migrations(conn: &Connection) -> Result<()> {
                 ('knowledge.supersede_mode', '\"auto\"'),
                 ('knowledge.confidence_threshold', '0.05');
              INSERT INTO _migrations(name) VALUES('v66_knowledge_graph_model_upgrade');"
+        )?;
+    }
+
+    let applied_v67: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v67_lower_summarization_min_messages'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v67 == 0 {
+        conn.execute_batch(
+            "UPDATE settings
+             SET value = '1'
+             WHERE key = 'summarization_min_messages'
+               AND value = '10';
+             INSERT INTO _migrations(name) VALUES('v67_lower_summarization_min_messages');",
         )?;
     }
 

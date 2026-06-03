@@ -1,6 +1,6 @@
 use crate::db::DbState;
 use crate::models::summary::ConversationSummary;
-use crate::services::summarization_service::generate_rolling_summary;
+use crate::services::summarization_service::generate_rolling_summary_with_options;
 use tauri::State;
 
 #[tauri::command]
@@ -9,6 +9,7 @@ pub async fn generate_summary(
     session_id: String,
     workspace_id: String,
     _summary_type: String,
+    force: Option<bool>,
 ) -> Result<(), String> {
     let ollama_url = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
@@ -21,7 +22,14 @@ pub async fn generate_summary(
         .unwrap_or_else(|_| "http://localhost:11434".to_string())
     };
 
-    generate_rolling_summary(&state, &session_id, &workspace_id, Some(ollama_url)).await
+    generate_rolling_summary_with_options(
+        &state,
+        &session_id,
+        &workspace_id,
+        Some(ollama_url),
+        force.unwrap_or(false),
+    )
+    .await
 }
 
 #[tauri::command]

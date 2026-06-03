@@ -1570,8 +1570,8 @@ export const api = {
   },
 
   summary: {
-    generate: (session_id: string, workspace_id: string, summary_type: string) => 
-      invoke<void>("generate_summary", { sessionId: session_id, workspaceId: workspace_id, summaryType: summary_type }),
+    generate: (session_id: string, workspace_id: string, summary_type: string, force = false) =>
+      invoke<void>("generate_summary", { sessionId: session_id, workspaceId: workspace_id, summaryType: summary_type, force }),
     list: (session_id: string) => invoke<ConversationSummary[]>("list_summaries", { sessionId: session_id }),
   },
 

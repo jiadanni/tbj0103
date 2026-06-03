@@ -2522,11 +2522,14 @@ export default function ChatView() {
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const [successDialog, setSuccessDialog] = useState<{ title: string; description: string } | null>(null);
   const [activeChatSummary, setActiveChatSummary] = useState<ConversationSummary | null>(null);
+  const [isChatSummaryOpen, setIsChatSummaryOpen] = useState(false);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const creatingFolderRequestRef = useRef(false);
   const confirmResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
   const messagesScrollContainerRef = useRef<HTMLDivElement>(null);
   const [messagesScrollerElement, setMessagesScrollerElement] = useState<HTMLDivElement | null>(null);
+  const chatSummaryButtonRef = useRef<HTMLButtonElement>(null);
+  const chatSummaryPopoverRef = useRef<HTMLDivElement>(null);
 
   const openConfirmDialog = useCallback((options: ConfirmDialogState) => {
     setConfirmDialog(options);
@@ -2968,10 +2971,12 @@ export default function ChatView() {
   useEffect(() => {
     if (!activeChatId) {
       setActiveChatSummary(null);
+      setIsChatSummaryOpen(false);
       return;
     }
 
     let cancelled = false;
+    setIsChatSummaryOpen(false);
     api.summary.list(activeChatId)
       .then((summaries) => {
         if (cancelled) { return; }
@@ -2984,6 +2989,35 @@ export default function ChatView() {
       });
     return () => { cancelled = true; };
   }, [activeChatId, activeMessages.length]);
+
+  useEffect(() => {
+    if (!isChatSummaryOpen) { return; }
+
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as Node | null;
+      if (
+        target &&
+        (chatSummaryButtonRef.current?.contains(target) || chatSummaryPopoverRef.current?.contains(target))
+      ) {
+        return;
+      }
+      setIsChatSummaryOpen(false);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setIsChatSummaryOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isChatSummaryOpen]);
 
   const pendingPromptText = useChatStore((s) => s.pendingPromptText);
   const setPendingPromptText = useChatStore((s) => s.setPendingPromptText);
@@ -3833,7 +3867,7 @@ export default function ChatView() {
 
     return { sessionId, session };
   }
-  async function generateSessionTitleIfNeeded(sessionId: string, model: string, firstMessage: string, knownSession?: ChatSession) {
+  async function refreshSessionMetadataAfterAssistant(sessionId: string, model: string, firstMessage?: string, knownSession?: ChatSession) {
     const settingsSnapshot = useSettingsStore.getState();
     const mode = settingsSnapshot.chatTitleAutoRefresh;
     if (mode === "disabled") { return; }
@@ -3845,16 +3879,27 @@ export default function ChatView() {
       ?? useChatStore.getState().sessions.find((s) => s.id === sessionId)
       ?? null;
     if (!session) { return; }
+    if (session.is_incognito || session.exclude_from_analytics || session.is_imported) { return; }
 
     const sessionMessages = useChatStore.getState().messages[sessionId] ?? [];
     const userMessageCount = sessionMessages.filter(m => m.role === "user").length;
+    const hasAssistantMessage = sessionMessages.some(m => m.role === "assistant" && m.content.trim().length > 0);
+    const firstUserMessage = firstMessage ?? sessionMessages.find((m) => m.role === "user")?.content ?? "";
+    if (!firstUserMessage.trim()) { return; }
     const isFirstMessage = userMessageCount <= 1;
+    const lastTitleGenCount = session.message_count_at_title_gen ?? 0;
+    const interval = settingsSnapshot.chatTitleRefreshInterval || 5;
+    const shouldRefresh = isFirstMessage || (
+      settingsSnapshot.chatTitleAutoRefresh === "periodic" &&
+      userMessageCount - lastTitleGenCount >= interval
+    );
+    if (!shouldRefresh) { return; }
 
     // Initial title generation on first message
     if (isFirstMessage && effectiveWorkspaceId) {
       try {
-        const aiTitle = await api.ollama.generateTitle(model, firstMessage, ollamaUrl).catch(() => null);
-        const title = resolveChatTitle({ aiTitle, firstMessage });
+        const aiTitle = await api.ollama.generateTitle(model, firstUserMessage, ollamaUrl).catch(() => null);
+        const title = resolveChatTitle({ aiTitle, firstMessage: firstUserMessage });
         // Persist to DB
         await api.chat.updateSession(effectiveWorkspaceId, sessionId, { title });
         // Update scoped sessions list and sidebar
@@ -3868,33 +3913,35 @@ export default function ChatView() {
       } catch {
         // Leave the existing title untouched if persistence fails.
       }
-      return;
+    } else if (settingsSnapshot.chatTitleAutoRefresh === "periodic" && effectiveWorkspaceId) {
+      // Periodic title refresh — only in "periodic" mode, skip if "initial_only"
+      try {
+        // Send conversation context for a better title
+        const conversation = sessionMessages.map(m => ({ role: m.role, content: m.content }));
+        const aiTitle = await api.ollama.generateTitleFromConversation(model, conversation, ollamaUrl).catch(() => null);
+        const title = resolveChatTitle({ aiTitle, firstMessage: firstUserMessage });
+        // Persist to DB
+        await api.chat.updateSession(effectiveWorkspaceId, sessionId, { title });
+        // Update scoped sessions list and sidebar
+        updateSessionInScope({
+          ...session,
+          title,
+          title_generated_at: new Date().toISOString(),
+          message_count_at_title_gen: userMessageCount
+        });
+        setSidebarSessions((prev) => prev.map((item) => item.id === sessionId ? { ...item, title } : item));
+      } catch {
+        // Silently fail if title generation errors
+      }
     }
 
-    // Periodic title refresh — only in "periodic" mode, skip if "initial_only"
-    if (settingsSnapshot.chatTitleAutoRefresh === "periodic" && effectiveWorkspaceId) {
-      const lastTitleGenCount = session.message_count_at_title_gen ?? 0;
-      const interval = settingsSnapshot.chatTitleRefreshInterval || 5;
-
-      if (userMessageCount - lastTitleGenCount >= interval) {
-        try {
-          // Send conversation context for a better title
-          const conversation = sessionMessages.map(m => ({ role: m.role, content: m.content }));
-          const aiTitle = await api.ollama.generateTitleFromConversation(model, conversation, ollamaUrl).catch(() => null);
-          const title = resolveChatTitle({ aiTitle, firstMessage });
-          // Persist to DB
-          await api.chat.updateSession(effectiveWorkspaceId, sessionId, { title });
-          // Update scoped sessions list and sidebar
-          updateSessionInScope({
-            ...session,
-            title,
-            title_generated_at: new Date().toISOString(),
-            message_count_at_title_gen: userMessageCount
-          });
-          setSidebarSessions((prev) => prev.map((item) => item.id === sessionId ? { ...item, title } : item));
-        } catch {
-          // Silently fail if title generation errors
-        }
+    if (hasAssistantMessage) {
+      const workspaceId = session.workspace_id || effectiveWorkspaceId;
+      if (!workspaceId) { return; }
+      await api.summary.generate(sessionId, workspaceId, "rolling", true).catch(() => {});
+      if (useChatStore.getState().activeChatId === sessionId) {
+        const summaries = await api.summary.list(sessionId).catch(() => []);
+        setActiveChatSummary(summaries.find((summary) => summary.content.trim().length > 0) ?? null);
       }
     }
   }
@@ -4133,7 +4180,11 @@ export default function ChatView() {
             setIsStreaming(false);
             clearStreamListener();
             api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
-              .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
+              .then((persisted) => {
+                updateMessage(sid!, persisted);
+                void refreshSessionMetadataAfterAssistant(sid!, modelId, userContent, ensuredSession.session ?? undefined);
+                triggerFollowUps(sid!);
+              })
               .catch(() => { });
             if (tokensUsed && tokensUsed > 0) {
               api.aiModel.recordTokenUsage(modelId, `web_${oneOffWebProviderKey}`, tokensUsed).catch(() => { });
@@ -4162,7 +4213,11 @@ export default function ChatView() {
             setIsStreaming(false);
             clearStreamListener();
             api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
-              .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
+              .then((persisted) => {
+                updateMessage(sid!, persisted);
+                void refreshSessionMetadataAfterAssistant(sid!, modelId, userContent, ensuredSession.session ?? undefined);
+                triggerFollowUps(sid!);
+              })
               .catch(() => { });
             if (tokensUsed && tokensUsed > 0) {
               api.aiModel.recordTokenUsage(modelId, "llamacpp", tokensUsed).catch(() => { });
@@ -4191,7 +4246,11 @@ export default function ChatView() {
             setIsStreaming(false);
             clearStreamListener();
             api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
-              .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
+              .then((persisted) => {
+                updateMessage(sid!, persisted);
+                void refreshSessionMetadataAfterAssistant(sid!, modelId, userContent, ensuredSession.session ?? undefined);
+                triggerFollowUps(sid!);
+              })
               .catch(() => { });
             if (tokensUsed && tokensUsed > 0) {
               api.aiModel.recordTokenUsage(modelId, "mlx", tokensUsed).catch(() => { });
@@ -4220,7 +4279,11 @@ export default function ChatView() {
             setIsStreaming(false);
             clearStreamListener();
             api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
-              .then((persisted) => { updateMessage(sid!, persisted); triggerFollowUps(sid!); })
+              .then((persisted) => {
+                updateMessage(sid!, persisted);
+                void refreshSessionMetadataAfterAssistant(sid!, modelId, userContent, ensuredSession.session ?? undefined);
+                triggerFollowUps(sid!);
+              })
               .catch(() => { });
             if (tokensUsed && tokensUsed > 0) {
               api.aiModel.recordTokenUsage(modelId, "ollama", tokensUsed).catch(() => { });
@@ -4243,7 +4306,6 @@ export default function ChatView() {
     }
     /* eslint-enable @typescript-eslint/no-non-null-assertion */
 
-    await generateSessionTitleIfNeeded(sid, modelId, userContent, ensuredSession.session ?? undefined);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -4615,7 +4677,10 @@ export default function ChatView() {
           setIsStreaming(false);
           clearStreamListener();
           api.chat.addMessage(effectiveWorkspaceId, sid, "assistant", assembled, selectedModel, tokensUsed, durationMs)
-            .then((persisted) => updateMessage(sid, persisted))
+            .then((persisted) => {
+              updateMessage(sid, persisted);
+              void refreshSessionMetadataAfterAssistant(sid, selectedModel, editContent.trim());
+            })
             .catch(() => { });
           if (tokensUsed && tokensUsed > 0) {
             api.aiModel.recordTokenUsage(selectedModel, "ollama", tokensUsed).catch(() => { });
@@ -4692,6 +4757,7 @@ export default function ChatView() {
           api.chat.addMessage(effectiveWorkspaceId, sid, "assistant", assembled, modelId, tokensUsed, durationMs)
             .then((persisted) => {
               updateMessage(sid, persisted);
+              void refreshSessionMetadataAfterAssistant(sid, modelId);
               setMessageVariations((prev) => {
                 const existing: Message[] = prev.get(msgId) ?? [];
                 const updated = [...existing, persisted];
@@ -5083,31 +5149,51 @@ export default function ChatView() {
                           </>
                         )}
                       </div>
-                      <span className="mt-0.5 flex min-w-0 items-center gap-2 truncate text-sm font-medium text-[var(--text-primary)]">
+                      <span className="mt-0.5 flex min-w-0 items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
                         <Tooltip content={activeSession?.title || "New Chat"} position="bottom">
                           <span className="truncate">{activeSession?.title || "New Chat"}</span>
                         </Tooltip>
-                        {activeChatSummary && (
-                          <Tooltip
-                            position="bottom"
-                            className="max-w-sm whitespace-normal text-left leading-relaxed"
-                            content={(
-                              <div className="space-y-1">
-                                <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
-                                  Chat Summary · {activeChatSummary.summary_type}
-                                </div>
-                                <p>{activeChatSummary.content}</p>
-                              </div>
-                            )}
-                          >
-                            <span
+                        <span className="relative inline-flex shrink-0">
+                          <Tooltip content={activeChatSummary ? "Show chat summary" : "No summary available yet"} position="bottom">
+                            <button
+                              ref={chatSummaryButtonRef}
+                              type="button"
                               aria-label="Chat summary"
-                              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--accent-color)]"
+                              aria-haspopup="dialog"
+                              aria-expanded={isChatSummaryOpen}
+                              aria-disabled={!activeChatSummary}
+                              onClick={() => {
+                                if (!activeChatSummary) { return; }
+                                setIsChatSummaryOpen((open) => !open);
+                              }}
+                              className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[var(--text-muted)] transition-colors ${
+                                activeChatSummary
+                                  ? "hover:bg-[var(--bg-hover)] hover:text-[var(--accent-color)]"
+                                  : "cursor-not-allowed opacity-40"
+                              }`}
                             >
                               <Info size={13} />
-                            </span>
+                            </button>
                           </Tooltip>
-                        )}
+                          {activeChatSummary && isChatSummaryOpen && (
+                            <div
+                              ref={chatSummaryPopoverRef}
+                              role="dialog"
+                              aria-label="Chat summary details"
+                              className="absolute left-1/2 top-full z-30 mt-2 w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 text-left shadow-[0_24px_60px_-24px_rgba(15,23,42,0.75)]"
+                            >
+                              <div className="mb-2 flex items-center justify-between gap-3">
+                                <div className="text-xs font-semibold text-[var(--text-primary)]">Chat Summary</div>
+                                <div className="rounded-full bg-[var(--bg-hover)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.06em] text-[var(--text-muted)]">
+                                  {activeChatSummary.summary_type}
+                                </div>
+                              </div>
+                              <p className="max-h-64 overflow-y-auto whitespace-pre-wrap text-xs font-normal leading-relaxed text-[var(--text-secondary)]">
+                                {activeChatSummary.content}
+                              </p>
+                            </div>
+                          )}
+                        </span>
                         {activeSession?.is_incognito && (
                           <Tooltip content="Incognito thread" position="bottom">
                             <span><Ghost size={14} className="text-purple-400" /></span>
@@ -5660,6 +5746,8 @@ export default function ChatView() {
                                       <div className={`flex overflow-hidden rounded-2xl shadow-[0_4px_14px_0_rgba(var(--accent-color-rgb),0.39)] transition-all duration-200 hover:shadow-[0_6px_20px_rgba(var(--accent-color-rgb),0.43)] ${(!input.trim() || !selectedModel) ? "opacity-40" : ""}`}>
                                         <Tooltip content={selectedModel ? `Send with ${modelPickerLabel(selectedModel)}` : "Send"} position="top">
                                           <button
+                                            type="button"
+                                            aria-label="Send message"
                                             onClick={async () => {
                                               setIsModelSendMenuOpen(false);
                                               await sendMessage();

@@ -129,6 +129,7 @@ vi.mock("@/lib/api", () => ({
       process: vi.fn(() => Promise.resolve(1)),
     },
     summary: {
+      generate: vi.fn(() => Promise.resolve(undefined)),
       list: vi.fn(() => Promise.resolve([])),
     },
     topicSignature: {
@@ -550,6 +551,137 @@ describe("ChatView", () => {
     const composerShell = screen.getByTestId("composer-shell");
     expect(composerShell.className).toContain("ring-[var(--border-color)]");
     expect(composerShell.className).toContain("bg-[var(--bg-elevated)]");
+  });
+
+  it("opens the active chat summary from the header icon", async () => {
+    mockActiveChatId = "session-1";
+    (api.summary.list as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "summary-1",
+        session_id: "session-1",
+        workspace_id: "ws-1",
+        summary_type: "rolling",
+        content: "The thread covers Rust ownership and compiler errors.",
+        key_topics: [],
+        message_range_start: 0,
+        message_range_end: 4,
+        token_count: 32,
+        created_at: "",
+        updated_at: "",
+      },
+    ]);
+
+    renderChatView();
+
+    const summaryButton = await screen.findByRole("button", { name: "Chat summary" });
+    await waitFor(() => {
+      expect(summaryButton).toHaveAttribute("aria-disabled", "false");
+    });
+
+    fireEvent.click(summaryButton);
+
+    expect(screen.getByRole("dialog", { name: "Chat summary details" })).toBeInTheDocument();
+    expect(screen.getByText("The thread covers Rust ownership and compiler errors.")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Chat summary details" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("surfaces a disabled chat summary icon when no summary exists", async () => {
+    mockActiveChatId = "session-1";
+    (api.summary.list as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+    renderChatView();
+
+    const summaryButton = await screen.findByRole("button", { name: "Chat summary" });
+    await waitFor(() => {
+      expect(summaryButton).toHaveAttribute("aria-disabled", "true");
+    });
+
+    fireEvent.click(summaryButton);
+
+    expect(screen.queryByRole("dialog", { name: "Chat summary details" })).not.toBeInTheDocument();
+  });
+
+  it("refreshes the rolling summary after the assistant response is persisted", async () => {
+    mockActiveChatId = "session-1";
+    (api.chat.listSessions as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "session-1",
+        title: "Test Session",
+        model_name: "test-model",
+        system_prompt: "",
+        folder_id: "",
+        workspace_id: "ws-1",
+        created_at: "",
+        updated_at: "",
+        is_incognito: false,
+        exclude_from_analytics: false,
+        is_pinned: false,
+        is_deleted: false,
+        message_count_at_title_gen: 0,
+      },
+    ]);
+    (api.chat.addMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_workspaceId: string, sessionId: string, role: "user" | "assistant", content: string, modelName?: string) => ({
+        id: `${role}-persisted`,
+        session_id: sessionId,
+        role,
+        content,
+        model_name: modelName,
+        created_at: "",
+      }),
+    );
+    (api.listenStream as ReturnType<typeof vi.fn>).mockImplementation(async (_sessionId: string, onChunk: (...args: unknown[]) => void) => {
+      onChunk("Assistant answer", false);
+      onChunk("", true, 24, 1200, 100);
+      return () => {};
+    });
+    (api.ollama.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    (api.ollama.generateTitle as ReturnType<typeof vi.fn>).mockResolvedValue("Rust ownership");
+    (api.settings.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      preferred_model: "test-model",
+      web_session_preserve: false,
+      chat_title_auto_refresh: "initial_only",
+    });
+
+    renderChatView();
+
+    const composer = await screen.findByPlaceholderText("Start a new thread…");
+    await screen.findByRole("button", { name: "Active model: Test Model" });
+    useSettingsStore.setState({ chatTitleAutoRefresh: "initial_only" });
+    fireEvent.change(composer, { target: { value: "Explain Rust ownership" } });
+    const sendButton = screen.getByRole("button", { name: "Send message" });
+    await waitFor(() => {
+      expect(sendButton).not.toBeDisabled();
+    });
+    fireEvent.click(sendButton);
+
+    await waitFor(() => {
+      expect(api.chat.addMessage).toHaveBeenCalledWith(
+        "ws-1",
+        "session-1",
+        "assistant",
+        "Assistant answer",
+        "test-model",
+        24,
+        1200,
+      );
+    });
+    await waitFor(() => {
+      expect(api.ollama.generateTitle).toHaveBeenCalledWith(
+        "test-model",
+        "Explain Rust ownership",
+        expect.any(String),
+      );
+    });
+
+    await waitFor(() => {
+      expect(api.summary.generate).toHaveBeenCalledWith("session-1", "ws-1", "rolling", true);
+    });
   });
 
   it("shows the full Ollama model id when the stored label is only the base model name", () => {

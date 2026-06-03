@@ -8,6 +8,16 @@ pub async fn generate_rolling_summary(
     workspace_id: &str,
     ollama_url: Option<String>,
 ) -> Result<(), String> {
+    generate_rolling_summary_with_options(state, session_id, workspace_id, ollama_url, false).await
+}
+
+pub async fn generate_rolling_summary_with_options(
+    state: &DbState,
+    session_id: &str,
+    workspace_id: &str,
+    ollama_url: Option<String>,
+    force: bool,
+) -> Result<(), String> {
     // Skip imported sessions that haven't received new messages
     {
         let conn = state.0.get().map_err(|e| e.to_string())?;
@@ -42,7 +52,7 @@ pub async fn generate_rolling_summary(
         let conn = state.0.get().map_err(|e| e.to_string())?;
         crate::commands::settings::get_setting(&conn, "summarization_min_messages")
             .and_then(|v| v.parse().ok())
-            .unwrap_or(10)
+            .unwrap_or(1)
     };
 
     if messages.len() < min_messages {
@@ -57,7 +67,7 @@ pub async fn generate_rolling_summary(
             rusqlite::params![session_id, messages.len() as i32],
             |row| row.get(0)
         ).unwrap_or(0);
-        if existing_count > 0 {
+        if !force && existing_count > 0 {
             return Ok(());
         }
     }
@@ -98,6 +108,13 @@ pub async fn generate_rolling_summary(
         let conn = state.0.get().map_err(|e| e.to_string())?;
         let id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
+        if force {
+            conn.execute(
+                "DELETE FROM conversation_summaries WHERE session_id = ?1 AND summary_type = 'rolling'",
+                rusqlite::params![session_id],
+            )
+            .map_err(|e| e.to_string())?;
+        }
 
         conn.execute(
             "INSERT INTO conversation_summaries (id, session_id, workspace_id, summary_type, content, message_range_start, message_range_end, created_at, updated_at)
