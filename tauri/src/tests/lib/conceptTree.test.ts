@@ -3,7 +3,7 @@ import { buildForest } from "../../lib/conceptTree";
 import type { ConceptLink, ConceptNode } from "../../lib/api";
 
 describe("buildForest", () => {
-  it("coalesces duplicate uncategorized scaffold nodes into one branch", () => {
+  it("drops the legacy uncategorized scaffold branch", () => {
     const nodes = [
       {
         id: "chapter-1",
@@ -138,13 +138,6 @@ describe("buildForest", () => {
 
     const forest = buildForest(nodes, links);
 
-    expect(forest.children).toHaveLength(1);
-    expect(forest.children?.[0].name).toBe("Uncategorized");
-    expect(forest.children?.[0].children).toHaveLength(1);
-    expect(forest.children?.[0].children?.[0].name).toBe("Topics");
-    expect(forest.children?.[0].children?.[0].children?.map((child) => child.name)).toEqual([
-      "decorators",
-      "lambda",
-    ]);
+    expect(forest.children).toEqual([]);
   });
 });

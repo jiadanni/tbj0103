@@ -13,6 +13,10 @@ export interface RoadmapNode {
   children?: RoadmapNode[];
 }
 
+function isLegacyUncategorizedScaffold(node: Pick<RoadmapNode, "name" | "hierarchy_level">): boolean {
+  return node.hierarchy_level === "chapter" && node.name.trim().toLowerCase() === "uncategorized";
+}
+
 function siblingKey(node: RoadmapNode): string {
   return `${node.hierarchy_level}::${node.name.trim().toLowerCase()}`;
 }
@@ -95,6 +99,6 @@ export function buildForest(nodes: ConceptNode[], links: ConceptLink[]): Roadmap
     name: "Knowledge Map",
     hierarchy_level: "root",
     concept_type: "topic",
-    children: mergedRoots,
+    children: mergedRoots.filter((node) => !isLegacyUncategorizedScaffold(node)),
   };
 }
