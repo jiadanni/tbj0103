@@ -19,7 +19,6 @@ import {
   FileText,
   Loader2,
   Maximize2,
-  MessageSquare,
   Minimize2,
   Network,
   Plus,
@@ -38,7 +37,6 @@ import {
   type ChangeProposal,
   type ConceptLink,
   type ConceptNode,
-  type DashboardActivity,
   type DashboardRoute,
   type DashboardSummary,
   type DescendantAnalysisProgress,
@@ -112,20 +110,6 @@ function suggestionIcon(kind: string) {
       return <Sparkles size={16} className="text-[var(--accent-color)]" />;
   }
 }
-
-function activityIcon(kind: DashboardActivity["kind"]) {
-  switch (kind) {
-    case "chat":
-      return <MessageSquare size={14} className="text-[var(--accent-color)]" />;
-    case "concept":
-      return <Brain size={14} className="text-sky-400" />;
-    case "source":
-      return <FileText size={14} className="text-amber-400" />;
-    default:
-      return <Target size={14} className="text-emerald-400" />;
-  }
-}
-
 
 
 function Section({
@@ -778,7 +762,6 @@ export default function KnowledgeGraphView({
   const review = summary?.review;
   const weakConcepts = review?.weak_concepts ?? [];
   const progression = summary?.progression.slice(0, 3) ?? [];
-  const recentActivity = summary?.recent_activity.slice(0, 5) ?? [];
   const continueLearning = summary?.continue_learning?.[0] ?? null;
   const hasModels = availableModels.length > 0;
   const isDemoWithoutModels = isDemoMode && !hasModels;
@@ -1682,38 +1665,6 @@ export default function KnowledgeGraphView({
               )}
             </Section>
 
-            <Section
-              title="Recent Learning Activity"
-              eyebrow="Recent"
-              collapsed={collapsedSections["recentActivity"]}
-              onToggle={() => toggleSection("recentActivity")}
-            >
-              {recentActivity.length > 0 ? (
-                <div className="space-y-2">
-                  {recentActivity.slice(0, 4).map((item) => (
-                    <button
-                      key={item.id}
-                      onClick={() => openRoute(item.route)}
-                      className="flex w-full items-start gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 px-3 py-2 text-left transition-colors hover:border-[var(--accent-color)]"
-                    >
-                      <div className="mt-0.5 shrink-0">{activityIcon(item.kind)}</div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium text-[var(--text-primary)]">{item.title}</div>
-                        <div className="mt-1 text-sm text-[var(--text-secondary)]">{item.subtitle}</div>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1 text-xs text-[var(--text-muted)]">
-                        <Clock3 size={12} />
-                        {timeAgo(item.timestamp)}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-dashed border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-4 text-sm leading-6 text-[var(--text-secondary)]">
-                  Recent learning activity will appear here after you use search, notes, documents, or review.
-                </div>
-              )}
-            </Section>
           </div>
         </div>
       </div>

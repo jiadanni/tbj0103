@@ -124,27 +124,6 @@ function routeState(route: DashboardRoute) {
   return route.state ?? undefined;
 }
 
-function ratio(good: number, total: number, fallback = 0) {
-  if (total <= 0) { return fallback; }
-  const v = 1 - good / total;
-  return Math.max(0, Math.min(1, v));
-}
-
-function HealthBar({ label, value, accent }: { label: string; value: number; accent: string }) {
-  const pct = Math.round(value * 100);
-  return (
-    <div>
-      <div className="flex items-baseline justify-between text-[11px] text-[var(--text-muted)]">
-        <span>{label}</span>
-        <span className="text-[var(--text-primary)]">{pct}%</span>
-      </div>
-      <div className="mt-1 h-1.5 rounded-full bg-[var(--bg-sidebar)]">
-        <div className={`h-1.5 rounded-full ${accent}`} style={{ width: `${Math.max(pct, 2)}%` }} />
-      </div>
-    </div>
-  );
-}
-
 function normalizeKnowledgeRoute(route: DashboardRoute): DashboardRoute {
   if (route.path === "/graph" || route.path === "/flashcards" || route.path === "/backlinks" || route.path === "/dedup") {
     return { path: "/graph", state: null };
@@ -398,11 +377,7 @@ export default function FolderDashboardView() {
   const visibleSuggestions = effectiveSummary.progression.slice(0, suggestionsLimit);
   const visibleWeakConcepts = effectiveSummary.review.weak_concepts.slice(0, weakConceptsLimit);
   const knowledgeHealth = effectiveSummary.knowledge_health;
-  const hasKnowledgeHealth =
-    knowledgeHealth.stalled_goals > 0 ||
-    knowledgeHealth.unprocessed_sources > 0 ||
-    knowledgeHealth.isolated_concepts > 0 ||
-    knowledgeHealth.active_topic_tags.length > 0;
+  const hasQuizTopics = knowledgeHealth.active_topic_tags.length > 0;
 
   return (
     <div className="h-full overflow-y-auto">
@@ -686,63 +661,28 @@ export default function FolderDashboardView() {
             </Section>
               ),
             },
-            knowledge_health: {
-              title: "Knowledge Health",
-              available: hasKnowledgeHealth,
+            quiz_topics: {
+              title: "Quick Quizzes",
+              available: hasQuizTopics,
               render: () => (
-            <Section title="Knowledge Health" eyebrow="Snapshot">
-              <div className="mb-3 grid gap-2 sm:grid-cols-3">
-                <HealthBar
-                  label="Retention"
-                  value={ratio(effectiveSummary.review.weak_concepts.length, effectiveSummary.overview.concepts, 0.84)}
-                  accent="bg-emerald-400"
-                />
-                <HealthBar
-                  label="Connectivity"
-                  value={ratio(knowledgeHealth.isolated_concepts, effectiveSummary.overview.concepts, 0.62)}
-                  accent="bg-sky-400"
-                />
-                <HealthBar
-                  label="Processing"
-                  value={ratio(knowledgeHealth.unprocessed_sources, effectiveSummary.overview.sources, 0.41)}
-                  accent="bg-amber-400"
-                />
+            <Section title="Quick Quizzes" eyebrow="For You">
+              <div className="flex flex-wrap gap-1.5">
+                {knowledgeHealth.active_topic_tags.map((tag) => {
+                  const hasTopic = topicIdByLabel.has(tag.toLowerCase());
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => openQuizForTag(tag)}
+                      title={hasTopic ? `Start a pop quiz on ${tag}` : "Open Quizzes"}
+                      className="inline-flex items-center gap-1 rounded-full bg-[rgba(var(--accent-color-rgb),0.12)] px-2 py-0.5 text-[11px] text-[var(--accent-color)] hover:bg-[rgba(var(--accent-color-rgb),0.2)] transition-colors"
+                    >
+                      <Sparkles size={10} />
+                      {tag}
+                    </button>
+                  );
+                })}
               </div>
-              {(knowledgeHealth.stalled_goals > 0 || knowledgeHealth.unprocessed_sources > 0 || knowledgeHealth.isolated_concepts > 0) && (
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3">
-                    <div className="text-xl font-semibold text-[var(--text-primary)]">{knowledgeHealth.stalled_goals}</div>
-                    <div className="mt-0.5 text-[11px] text-[var(--text-muted)]">Stalled goals</div>
-                  </div>
-                  <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3">
-                    <div className="text-xl font-semibold text-[var(--text-primary)]">{knowledgeHealth.unprocessed_sources}</div>
-                    <div className="mt-0.5 text-[11px] text-[var(--text-muted)]">Unprocessed sources</div>
-                  </div>
-                  <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3">
-                    <div className="text-xl font-semibold text-[var(--text-primary)]">{knowledgeHealth.isolated_concepts}</div>
-                    <div className="mt-0.5 text-[11px] text-[var(--text-muted)]">Isolated topics</div>
-                  </div>
-                </div>
-              )}
-              {knowledgeHealth.active_topic_tags.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {knowledgeHealth.active_topic_tags.map((tag) => {
-                    const hasTopic = topicIdByLabel.has(tag.toLowerCase());
-                    return (
-                      <button
-                        key={tag}
-                        type="button"
-                        onClick={() => openQuizForTag(tag)}
-                        title={hasTopic ? `Start a pop quiz on ${tag}` : "Open Quizzes"}
-                        className="inline-flex items-center gap-1 rounded-full bg-[rgba(var(--accent-color-rgb),0.12)] px-2 py-0.5 text-[11px] text-[var(--accent-color)] hover:bg-[rgba(var(--accent-color-rgb),0.2)] transition-colors"
-                      >
-                        <Sparkles size={10} />
-                        {tag}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
             </Section>
               ),
             },

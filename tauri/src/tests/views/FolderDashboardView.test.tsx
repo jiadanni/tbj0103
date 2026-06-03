@@ -80,7 +80,7 @@ describe("FolderDashboardView", () => {
       version: 1,
       sections: [
         { id: "learning_activity", hidden: false },
-        { id: "knowledge_health", hidden: false },
+        { id: "quiz_topics", hidden: false },
         { id: "goals", hidden: false },
         { id: "suggestions", hidden: false },
         { id: "weak_concepts", hidden: false },
@@ -205,6 +205,13 @@ describe("FolderDashboardView", () => {
     expect(screen.getAllByText("Linux").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Review" })).toBeInTheDocument();
+    expect(screen.queryByText("Knowledge Health")).not.toBeInTheDocument();
+    expect(screen.getByText("Quick Quizzes")).toBeInTheDocument();
+    const quizChips = screen.getAllByTitle("Open Quizzes");
+    expect(quizChips).toHaveLength(2);
+    expect(quizChips.map((b) => b.textContent?.trim())).toEqual(
+      expect.arrayContaining(["Linux", "Containers"]),
+    );
   });
 
   it("navigates to /chat with createNewChat and searchQuery when search is executed", async () => {

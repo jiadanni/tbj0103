@@ -28,7 +28,7 @@ fn default_layout() -> DashboardLayout {
                 hidden: false,
             },
             DashboardLayoutSection {
-                id: "knowledge_health".into(),
+                id: "quiz_topics".into(),
                 hidden: false,
             },
             DashboardLayoutSection {
