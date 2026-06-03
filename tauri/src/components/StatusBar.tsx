@@ -69,7 +69,15 @@ function MiniBar({ percent, label, sublabel }: { percent: number; label: string;
 }
 
 /** Floating mini bar-chart popup shown when hovering the CPU solid bar. */
-function CoreGraphPopup({ cores, anchorRect }: { cores: number[]; anchorRect: DOMRect }) {
+function CoreGraphPopup({
+  cores,
+  anchorRect,
+  sectionRect,
+}: {
+  cores: number[];
+  anchorRect: DOMRect;
+  sectionRect: DOMRect | null;
+}) {
   const POPUP_BAR_MAX_H = 40;
   const POPUP_BAR_W = 10;
   const GAP = 4;
@@ -80,24 +88,25 @@ function CoreGraphPopup({ cores, anchorRect }: { cores: number[]; anchorRect: DO
     rows.push(cores.slice(i, i + ROW_SIZE));
   }
 
-  const rowCount = rows.length;
   const maxRowLen = Math.max(...rows.map((r) => r.length));
-  const popupW = PADDING * 2 + maxRowLen * (POPUP_BAR_W + GAP) - GAP;
-  const popupH = 24 + rowCount * (POPUP_BAR_MAX_H + 18) + PADDING * 2;
-  const left = anchorRect.left + anchorRect.width / 2 - popupW / 2;
-  const top = anchorRect.top - popupH - 8;
+  const intrinsicW = PADDING * 2 + maxRowLen * (POPUP_BAR_W + GAP) - GAP;
+  const popupW = sectionRect ? sectionRect.width : intrinsicW;
+  const left = sectionRect ? sectionRect.left : anchorRect.left + anchorRect.width / 2 - popupW / 2;
+  // Anchor by bottom so the popup sits flush against the status bar regardless
+  // of its rendered height. anchorRect.top is the status bar's top edge.
+  const bottom = window.innerHeight - anchorRect.top;
 
   return createPortal(
     <div
       style={{
         position: "fixed",
         left: `${Math.max(4, left)}px`,
-        top: `${Math.max(4, top)}px`,
+        bottom: `${bottom}px`,
         width: `${popupW}px`,
         zIndex: 9999,
         padding: `${PADDING}px`,
         pointerEvents: "none",
-        animation: "tooltip-fade-in-top 0.15s cubic-bezier(0.16,1,0.3,1) both",
+        animation: "tooltip-fade-in 0.15s cubic-bezier(0.16,1,0.3,1) both",
       }}
       className="rounded-md border border-[var(--border-color)] bg-[var(--bg-sidebar)] backdrop-blur-sm shadow-lg"
     >
@@ -141,13 +150,27 @@ function CoreGraphPopup({ cores, anchorRect }: { cores: number[]; anchorRect: DO
 function CoreBars({ cores, aggregate }: { cores: number[]; aggregate: number }) {
   const displayed = cores.slice(0, 32);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const [sectionRect, setSectionRect] = useState<DOMRect | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
 
   const showPopup = useCallback(() => {
     timerRef.current = setTimeout(() => {
       if (barRef.current) {
-        setAnchorRect(barRef.current.getBoundingClientRect());
+        const barRect = barRef.current.getBoundingClientRect();
+        let el: HTMLElement | null = barRef.current;
+        let statusTop = barRect.top;
+        while (el) {
+          if (el.getAttribute("aria-label") === "System status bar") {
+            statusTop = el.getBoundingClientRect().top;
+            break;
+          }
+          el = el.parentElement;
+        }
+        // Use the CoreBars row itself as the CPU section bounds.
+        setSectionRect(rowRef.current?.getBoundingClientRect() ?? null);
+        setAnchorRect(new DOMRect(barRect.left, statusTop, barRect.width, barRect.height));
       }
     }, 200);
   }, []);
@@ -155,6 +178,7 @@ function CoreBars({ cores, aggregate }: { cores: number[]; aggregate: number }) 
   const hidePopup = useCallback(() => {
     if (timerRef.current) { clearTimeout(timerRef.current); }
     setAnchorRect(null);
+    setSectionRect(null);
   }, []);
 
   useEffect(() => () => { if (timerRef.current) { clearTimeout(timerRef.current); } }, []);
@@ -162,12 +186,12 @@ function CoreBars({ cores, aggregate }: { cores: number[]; aggregate: number }) 
   return (
     <div
       className="flex items-center gap-1.5"
-      ref={barRef}
+      ref={rowRef}
       onMouseEnter={showPopup}
       onMouseLeave={hidePopup}
     >
       <span className="text-xs text-[var(--text-secondary)] leading-none font-medium">CPU:</span>
-      <div className="relative h-1.5 w-16 rounded-full overflow-hidden bg-[color-mix(in_srgb,var(--border-color),transparent_50%)]">
+      <div ref={barRef} className="relative h-1.5 w-16 rounded-full overflow-hidden bg-[color-mix(in_srgb,var(--border-color),transparent_50%)]">
         <div
           className={`absolute inset-y-0 left-0 rounded-full transition-all duration-700 ${barColor(aggregate)}`}
           style={{ width: `${aggregate}%` }}
@@ -176,7 +200,7 @@ function CoreBars({ cores, aggregate }: { cores: number[]; aggregate: number }) 
       <span className="text-xs tabular-nums text-[var(--text-secondary)] leading-none">
         {aggregate}%
       </span>
-      {anchorRect && <CoreGraphPopup cores={displayed} anchorRect={anchorRect} />}
+      {anchorRect && <CoreGraphPopup cores={displayed} anchorRect={anchorRect} sectionRect={sectionRect} />}
     </div>
   );
 }
