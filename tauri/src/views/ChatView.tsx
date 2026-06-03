@@ -3867,6 +3867,13 @@ export default function ChatView() {
 
     return { sessionId, session };
   }
+
+  function resolveTitleGenerationModel(fallbackModel?: string | null) {
+    const preferredTitleModel = useSettingsStore.getState().backgroundModel?.trim();
+    if (preferredTitleModel) { return preferredTitleModel; }
+    return fallbackModel?.trim() || "";
+  }
+
   async function refreshSessionMetadataAfterAssistant(sessionId: string, model: string, firstMessage?: string, knownSession?: ChatSession) {
     const settingsSnapshot = useSettingsStore.getState();
     const mode = settingsSnapshot.chatTitleAutoRefresh;
@@ -3894,11 +3901,13 @@ export default function ChatView() {
       userMessageCount - lastTitleGenCount >= interval
     );
     if (!shouldRefresh) { return; }
+    const titleModel = resolveTitleGenerationModel(model);
+    if (!titleModel) { return; }
 
     // Initial title generation on first message
     if (isFirstMessage && effectiveWorkspaceId) {
       try {
-        const aiTitle = await api.ollama.generateTitle(model, firstUserMessage, ollamaUrl).catch(() => null);
+        const aiTitle = await api.ollama.generateTitle(titleModel, firstUserMessage, ollamaUrl).catch(() => null);
         const title = resolveChatTitle({ aiTitle, firstMessage: firstUserMessage });
         // Persist to DB
         await api.chat.updateSession(effectiveWorkspaceId, sessionId, { title });
@@ -3918,7 +3927,7 @@ export default function ChatView() {
       try {
         // Send conversation context for a better title
         const conversation = sessionMessages.map(m => ({ role: m.role, content: m.content }));
-        const aiTitle = await api.ollama.generateTitleFromConversation(model, conversation, ollamaUrl).catch(() => null);
+        const aiTitle = await api.ollama.generateTitleFromConversation(titleModel, conversation, ollamaUrl).catch(() => null);
         const title = resolveChatTitle({ aiTitle, firstMessage: firstUserMessage });
         // Persist to DB
         await api.chat.updateSession(effectiveWorkspaceId, sessionId, { title });
@@ -4396,7 +4405,7 @@ export default function ChatView() {
     const firstUserMessage = sessionMessages.find((message) => message.role === "user")?.content?.trim() ?? "";
     if (!firstUserMessage) { return; }
 
-    const model = session.model_name || selectedModel;
+    const model = resolveTitleGenerationModel(session.model_name || selectedModel);
     if (!model) { return; }
 
     try {
