@@ -5,6 +5,7 @@ import {
   type PerformanceStats,
   type BackgroundTaskEvent,
   type BackgroundTaskPromptEvent,
+  type WorkspaceAnalysisProgress,
 } from "../lib/api";
 import { useChatStore } from "../stores/chatStore";
 import { useSettingsStore } from "../stores/settingsStore";
@@ -213,6 +214,7 @@ const JOB_LABELS: Record<string, string> = {
   flashcard_generation: "Flashcard Generation",
   concept_hierarchy: "Topic Linking",
   workspace_prompt_bank: "Starter Prompts",
+  workspace_analysis: "Workspace Analysis",
   git_sync: "Git Sync",
   ai_generating: "Generating…",
   workspace_glossary: "Glossary Refresh",
@@ -453,6 +455,7 @@ export default function StatusBar() {
   // Listen for background task events via the shared api.ts wrapper.
   useEffect(() => {
     let unlistenFn: (() => void) | null = null;
+    let unlistenWorkspaceFn: (() => void) | null = null;
 
     const setup = async () => {
       unlistenFn = await api.listenBackgroundTask((payload: BackgroundTaskEvent) => {
@@ -468,10 +471,26 @@ export default function StatusBar() {
           return next;
         });
       });
+
+      unlistenWorkspaceFn = await api.knowledge.listenWorkspaceProgress((payload: WorkspaceAnalysisProgress) => {
+        setActiveJobs((prev) => {
+          const next = new Map(prev);
+          if (payload.status === "started") {
+            next.delete("workspace_prompt_bank");
+            next.set("workspace_analysis", { model: payload.label });
+          } else {
+            next.delete("workspace_analysis");
+          }
+          return next;
+        });
+      });
     };
 
     void setup();
-    return () => { unlistenFn?.(); };
+    return () => {
+      unlistenFn?.();
+      unlistenWorkspaceFn?.();
+    };
   }, []);
 
   // Listen for background-task-prompt events (confirmation requests).
@@ -595,7 +614,9 @@ export default function StatusBar() {
         setActiveJobs((prev) => {
           const next = new Map(prev);
           const firstJob = activePromptBankJobs[0];
-          if (firstJob) {
+          if (next.has("workspace_analysis")) {
+            next.delete("workspace_prompt_bank");
+          } else if (firstJob) {
             next.set("workspace_prompt_bank", { model: firstJob.model });
           } else {
             next.delete("workspace_prompt_bank");

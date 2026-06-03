@@ -5,14 +5,16 @@ import type {
   BackgroundTaskEvent,
   BackgroundTaskPromptEvent,
   PerformanceStats,
+  WorkspaceAnalysisProgress,
 } from "@/lib/api";
 import { useChatStore } from "@/stores/chatStore";
 
-const { getPerformanceStats, listenBackgroundTask, listenBackgroundTaskPrompt } =
+const { getPerformanceStats, listenBackgroundTask, listenBackgroundTaskPrompt, listenWorkspaceProgress } =
   vi.hoisted(() => ({
     getPerformanceStats: vi.fn(),
     listenBackgroundTask: vi.fn(),
     listenBackgroundTaskPrompt: vi.fn(),
+    listenWorkspaceProgress: vi.fn(),
   }));
 const { listWorkspaces, getPromptBankStatus } = vi.hoisted(() => ({
   listWorkspaces: vi.fn(),
@@ -33,6 +35,9 @@ vi.mock("@/lib/api", () => ({
     workspace: {
       list: listWorkspaces,
       getPromptBankStatus,
+    },
+    knowledge: {
+      listenWorkspaceProgress,
     },
     listenBackgroundTask,
     listenBackgroundTaskPrompt,
@@ -83,6 +88,19 @@ function taskStarted(taskType: string, model?: string): BackgroundTaskEvent {
   };
 }
 
+function workspaceAnalysisStarted(label = "Chunk 1/3"): WorkspaceAnalysisProgress {
+  return {
+    job_id: "job-1",
+    workspace_id: "ws-1",
+    chunk_index: 0,
+    total_chunks: 3,
+    label,
+    status: "started",
+    nodes_created: 0,
+    links_created: 0,
+  };
+}
+
 describe("StatusBar", () => {
   beforeEach(() => {
     setVisibilityState("visible");
@@ -92,6 +110,8 @@ describe("StatusBar", () => {
     listenBackgroundTask.mockResolvedValue(() => {});
     listenBackgroundTaskPrompt.mockReset();
     listenBackgroundTaskPrompt.mockResolvedValue(() => {});
+    listenWorkspaceProgress.mockReset();
+    listenWorkspaceProgress.mockResolvedValue(() => {});
     confirmBackgroundJob.mockReset();
     confirmBackgroundJob.mockResolvedValue(true);
     dismissBackgroundJob.mockReset();
@@ -147,6 +167,25 @@ describe("StatusBar", () => {
     expect(screen.getByText("Summarization")).toBeInTheDocument();
     expect(screen.getByText("Flashcard Generation")).toBeInTheDocument();
     expect(screen.getByText("Starter Prompts")).toBeInTheDocument();
+  });
+
+  it("shows workspace analysis activity in the status bar", async () => {
+    let onWorkspaceProgress: ((event: WorkspaceAnalysisProgress) => void) | undefined;
+    listenWorkspaceProgress.mockImplementation(async (callback: (event: WorkspaceAnalysisProgress) => void) => {
+      onWorkspaceProgress = callback;
+      return () => {};
+    });
+
+    render(<StatusBar />);
+
+    await waitFor(() => expect(onWorkspaceProgress).toBeDefined());
+
+    act(() => {
+      onWorkspaceProgress?.(workspaceAnalysisStarted("Chunk 1/3"));
+    });
+
+    expect(screen.getByText("Workspace Analysis")).toBeInTheDocument();
+    expect(screen.getByText("Chunk 1/3")).toBeInTheDocument();
   });
 
   it("shows a play-button prompt when a job requests confirmation and confirms on click", async () => {
@@ -270,5 +309,39 @@ describe("StatusBar", () => {
 
     expect(await screen.findByText("Starter Prompts")).toBeInTheDocument();
     expect(screen.getByText("llama3")).toBeInTheDocument();
+  });
+
+  it("does not show prompt-bank as a second active job while workspace analysis is running", async () => {
+    let onWorkspaceProgress: ((event: WorkspaceAnalysisProgress) => void) | undefined;
+    listenWorkspaceProgress.mockImplementation(async (callback: (event: WorkspaceAnalysisProgress) => void) => {
+      onWorkspaceProgress = callback;
+      return () => {};
+    });
+    listWorkspaces.mockResolvedValue([{ id: "ws-1" }]);
+    getPromptBankStatus.mockResolvedValue({
+      prompt_count: 70,
+      active_job: {
+        id: "job-1",
+        workspace_id: "ws-1",
+        status: "running",
+        target_count: 120,
+        generated_count: 70,
+        model: "llama3",
+        error: null,
+        started_at: null,
+        completed_at: null,
+      },
+      latest_job: null,
+    });
+
+    render(<StatusBar />);
+
+    await waitFor(() => expect(onWorkspaceProgress).toBeDefined());
+    act(() => {
+      onWorkspaceProgress?.(workspaceAnalysisStarted());
+    });
+
+    expect(await screen.findByText("Workspace Analysis")).toBeInTheDocument();
+    expect(screen.queryByText("Starter Prompts")).not.toBeInTheDocument();
   });
 });
