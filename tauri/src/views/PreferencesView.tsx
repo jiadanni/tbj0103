@@ -33,6 +33,7 @@ import { usePrefsWindowMode } from "../lib/prefsWindowMode";
 import { parseAboutYou, serializeAboutYou, EMPTY_ABOUT_YOU, type AboutYouProfile } from "../lib/aboutYou";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import ChatMessageBubble from "../components/ChatMessageBubble";
+import SuccessDialog from "../components/SuccessDialog";
 import type { Message } from "../stores/chatStore";
 
 
@@ -1477,6 +1478,7 @@ function DataControlsPreferences() {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [successDialog, setSuccessDialog] = useState<{ title: string; description: string } | null>(null);
 
   const optionGroups: Array<{
     title: string;
@@ -1549,7 +1551,10 @@ function DataControlsPreferences() {
       setPreview(result);
       setDialogOpen(false);
       setSuccess(formatKnowledgeResetResult(result));
-      await message(formatKnowledgeResetResult(result), { title: "AI-Inferred Data Reset Complete", kind: "info" });
+      setSuccessDialog({
+        title: "AI-Inferred Data Reset Complete",
+        description: formatKnowledgeResetResult(result),
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1712,6 +1717,13 @@ function DataControlsPreferences() {
             </div>
           </div>
         </div>
+      )}
+      {successDialog && (
+        <SuccessDialog
+          title={successDialog.title}
+          description={successDialog.description}
+          onConfirm={() => setSuccessDialog(null)}
+        />
       )}
     </div>
   );
