@@ -24,11 +24,28 @@ function createRequestId(): string {
   return `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+// Workspace context provider registered by the workspace store at startup.
+// Decoupled via a setter to avoid a circular import (workspaceStore -> api.ts).
+type WorkspaceLogContext = { workspaceId?: string; parentWorkspaceId?: string };
+let workspaceContextProvider: (() => WorkspaceLogContext) | null = null;
+
+export function setIpcWorkspaceContextProvider(provider: () => WorkspaceLogContext): void {
+  workspaceContextProvider = provider;
+}
+
+function currentWorkspaceContext(): WorkspaceLogContext {
+  try {
+    return workspaceContextProvider?.() ?? {};
+  } catch {
+    return {};
+  }
+}
+
 function logIpcEvent(level: "debug" | "error", message: string, payload: ObservabilityMeta): void {
   if (!OBSERVABILITY_ENABLED) {return;}
   // eslint-disable-next-line no-console
   const logger = level === "error" ? console.error : console.log;
-  logger(`[ipc] ${message}`, payload);
+  logger(`[ipc] ${message}`, { ...currentWorkspaceContext(), ...payload });
 }
 
 // Wrap every IPC so command duration is logged. `invoke` is the local name used
@@ -996,6 +1013,7 @@ export interface DashboardActivity {
   title: string;
   subtitle: string;
   timestamp: string;
+  last_response_snippet?: string | null;
   route: DashboardRoute;
 }
 

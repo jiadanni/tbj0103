@@ -1,18 +1,14 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Activity,
   ArrowRight,
   BarChart2,
-  BookOpen,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   Clock3,
   Eye,
   EyeOff,
-  FileText,
-  Globe,
   Lightbulb,
   MessageSquare,
   Network,
@@ -27,7 +23,6 @@ import {
 } from "lucide-react";
 import {
   api,
-  type DashboardActivity,
   type DashboardLayout,
   type DashboardLayoutSection,
   type DashboardRoute,
@@ -53,18 +48,6 @@ function useResponsiveLimit(narrow: number, wide: number, ultrawide: number) {
     return () => window.removeEventListener("resize", compute);
   }, [narrow, wide, ultrawide]);
   return limit;
-}
-
-function activityIcon(kind: string) {
-  switch (kind) {
-    case "chat": return MessageSquare;
-    case "note": return FileText;
-    case "source":
-    case "document": return BookOpen;
-    case "capture":
-    case "web": return Globe;
-    default: return Activity;
-  }
 }
 
 function timeAgo(iso: string | undefined | null) {
@@ -170,6 +153,40 @@ function normalizeKnowledgeRoute(route: DashboardRoute): DashboardRoute {
   return route;
 }
 
+const LEARNING_ACTIVITY_SECTION_ID = "learning_activity";
+const LEGACY_ACTIVITY_SECTION_IDS = new Set(["continue_learning", "recent_activity"]);
+
+function normalizeDashboardLayout(layout: DashboardLayout): DashboardLayout {
+  const legacySections = layout.sections.filter((section) => LEGACY_ACTIVITY_SECTION_IDS.has(section.id));
+  const legacyHidden = legacySections.length > 1
+    ? legacySections.every((section) => section.hidden)
+    : legacySections[0]?.hidden ?? false;
+  let insertedLearningActivity = false;
+  const sections: DashboardLayoutSection[] = [];
+
+  for (const section of layout.sections) {
+    if (LEGACY_ACTIVITY_SECTION_IDS.has(section.id)) {
+      if (!insertedLearningActivity) {
+        sections.push({ id: LEARNING_ACTIVITY_SECTION_ID, hidden: legacyHidden });
+        insertedLearningActivity = true;
+      }
+      continue;
+    }
+
+    if (section.id === LEARNING_ACTIVITY_SECTION_ID) {
+      if (!insertedLearningActivity) {
+        sections.push(section);
+        insertedLearningActivity = true;
+      }
+      continue;
+    }
+
+    sections.push(section);
+  }
+
+  return { ...layout, sections };
+}
+
 
 export default function FolderDashboardView() {
   const navigate = useNavigate();
@@ -199,8 +216,6 @@ export default function FolderDashboardView() {
     () => workspaces.find((item) => item.id === activeWorkspaceId) ?? null,
     [workspaces, activeWorkspaceId],
   );
-  const continueLearningList = summary?.continue_learning ?? [];
-  const resumeItem = continueLearningList[0];
 
   useEffect(() => {
     let cancelled = false;
@@ -263,15 +278,16 @@ export default function FolderDashboardView() {
     let cancelled = false;
     api.dashboard
       .getLayout(activeWorkspaceId)
-      .then((next) => { if (!cancelled) { setLayout(next); } })
+      .then((next) => { if (!cancelled) { setLayout(normalizeDashboardLayout(next)); } })
       .catch(() => { /* non-fatal — falls back to default below */ });
     return () => { cancelled = true; };
   }, [activeWorkspaceId]);
 
   const persistLayout = (next: DashboardLayout) => {
-    setLayout(next);
+    const normalized = normalizeDashboardLayout(next);
+    setLayout(normalized);
     if (activeWorkspaceId) {
-      void api.dashboard.setLayout(activeWorkspaceId, next).catch(() => { /* swallow */ });
+      void api.dashboard.setLayout(activeWorkspaceId, normalized).catch(() => { /* swallow */ });
     }
   };
 
@@ -299,7 +315,7 @@ export default function FolderDashboardView() {
     if (!activeWorkspaceId) { return; }
     try {
       const next = await api.dashboard.resetLayout(activeWorkspaceId);
-      setLayout(next);
+      setLayout(normalizeDashboardLayout(next));
     } catch { /* swallow */ }
   };
 
@@ -378,7 +394,7 @@ export default function FolderDashboardView() {
   if (!effectiveSummary) { return null; }
 
   const visibleGoals = effectiveSummary.goals.slice(0, goalsLimit);
-  const visibleActivity: DashboardActivity[] = effectiveSummary.recent_activity.slice(0, activityLimit);
+  const visibleContinueThreads = effectiveSummary.continue_learning.slice(0, activityLimit);
   const visibleSuggestions = effectiveSummary.progression.slice(0, suggestionsLimit);
   const visibleWeakConcepts = effectiveSummary.review.weak_concepts.slice(0, weakConceptsLimit);
   const knowledgeHealth = effectiveSummary.knowledge_health;
@@ -486,36 +502,53 @@ export default function FolderDashboardView() {
 
         {(() => {
           const renderers: Record<string, { title: string; available: boolean; render: () => ReactNode }> = {
-            continue_learning: {
+            learning_activity: {
               title: "Continue Learning",
               available: true,
               render: () => (
             <Section title="Continue Learning">
-              {resumeItem ? (
-                <button
-                  onClick={() => openRoute(resumeItem.route)}
-                  className="group block w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/70 p-3 text-left transition-colors hover:border-[var(--accent-color)]"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-semibold text-[var(--text-primary)]">
-                        {resumeItem.title}
-                      </div>
-                      <div className="mt-0.5 text-xs text-[var(--text-muted)]">
-                        {timeAgo(resumeItem.updated_at)}
-                      </div>
-                      {resumeItem.last_snippet ? (
-                        <div className="mt-2 line-clamp-2 text-xs leading-5 text-[var(--text-secondary)]">
-                          {resumeItem.last_snippet}
+              {visibleContinueThreads.length > 0 ? (
+                <div className="space-y-1">
+                  {visibleContinueThreads.map((item) => (
+                    <button
+                      key={item.session_id}
+                      onClick={() => openRoute(item.route)}
+                      className="group flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-[var(--bg-primary)] focus-visible:bg-[var(--bg-primary)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-color)]"
+                    >
+                      <MessageSquare size={13} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-semibold text-[var(--text-primary)]">
+                              {item.title}
+                            </div>
+                            <div className="mt-0.5 text-xs text-[var(--text-muted)]">
+                              {item.folder_name ? `${item.folder_name} · ` : ""}{timeAgo(item.updated_at)}
+                            </div>
+                          </div>
+                          <ArrowRight
+                            size={15}
+                            className="mt-0.5 shrink-0 text-[var(--text-muted)] transition-transform group-hover:translate-x-0.5 group-hover:text-[var(--accent-color)]"
+                          />
                         </div>
-                      ) : null}
-                    </div>
-                    <ArrowRight
-                      size={16}
-                      className="mt-1 shrink-0 text-[var(--text-muted)] transition-transform group-hover:translate-x-0.5 group-hover:text-[var(--accent-color)]"
-                    />
-                  </div>
-                </button>
+                        {item.last_snippet ? (
+                          <div className="max-h-0 overflow-hidden opacity-0 transition-all duration-150 group-hover:max-h-24 group-hover:opacity-100 group-focus-visible:max-h-24 group-focus-visible:opacity-100">
+                            <div className="mt-2 line-clamp-2 text-xs leading-5 text-[var(--text-secondary)]">
+                              {item.last_snippet}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => navigate("/history")}
+                    className="mt-2 flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-[11px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-secondary)]"
+                  >
+                    View all
+                    <ArrowRight size={11} />
+                  </button>
+                </div>
               ) : (
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-xs text-[var(--text-secondary)]">
@@ -526,7 +559,7 @@ export default function FolderDashboardView() {
                     className="shrink-0 inline-flex items-center gap-1.5 rounded-lg text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--accent-color)]"
                   >
                     <Search size={12} />
-                    Open search
+                    Open chat
                   </button>
                 </div>
               )}
@@ -711,47 +744,6 @@ export default function FolderDashboardView() {
                 </div>
               )}
             </Section>
-              ),
-            },
-            recent_activity: {
-              title: "Recent Activity",
-              available: true,
-              render: () => (
-            <Section title="Recent Activity">
-            {visibleActivity.length > 0 ? (
-              <div className="space-y-1">
-                {visibleActivity.map((item) => {
-                  const Icon = activityIcon(item.kind);
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => openRoute(item.route)}
-                      className="flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-[var(--bg-primary)]"
-                    >
-                      <Icon size={13} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-xs font-medium text-[var(--text-primary)]">{item.title}</div>
-                        <div className="mt-0.5 text-[11px] text-[var(--text-muted)]">
-                          {item.subtitle ? `${item.subtitle} · ` : ""}{timeAgo(item.timestamp)}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-                <button
-                  onClick={() => navigate("/history")}
-                  className="mt-2 flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-[11px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-secondary)]"
-                >
-                  View all
-                  <ArrowRight size={11} />
-                </button>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-dashed border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-3">
-                <div className="text-xs text-[var(--text-muted)]">No recent activity</div>
-              </div>
-            )}
-          </Section>
               ),
             },
           };

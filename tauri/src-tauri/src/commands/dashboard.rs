@@ -12,6 +12,9 @@ use rusqlite::params;
 use tauri::State;
 
 const DEFAULT_LAYOUT_KEY: &str = "dashboard.layout.default";
+const LEARNING_ACTIVITY_SECTION_ID: &str = "learning_activity";
+const LEGACY_ACTIVITY_SECTION_IDS: [&str; 2] = ["continue_learning", "recent_activity"];
+
 fn workspace_layout_key(workspace_id: &str) -> String {
     format!("dashboard.layout.workspace.{workspace_id}")
 }
@@ -20,30 +23,92 @@ fn default_layout() -> DashboardLayout {
     DashboardLayout {
         version: 1,
         sections: vec![
-            DashboardLayoutSection { id: "continue_learning".into(), hidden: false },
-            DashboardLayoutSection { id: "knowledge_health".into(), hidden: false },
-            DashboardLayoutSection { id: "recent_activity".into(), hidden: false },
-            DashboardLayoutSection { id: "goals".into(), hidden: false },
-            DashboardLayoutSection { id: "suggestions".into(), hidden: false },
-            DashboardLayoutSection { id: "weak_concepts".into(), hidden: false },
+            DashboardLayoutSection {
+                id: LEARNING_ACTIVITY_SECTION_ID.into(),
+                hidden: false,
+            },
+            DashboardLayoutSection {
+                id: "knowledge_health".into(),
+                hidden: false,
+            },
+            DashboardLayoutSection {
+                id: "goals".into(),
+                hidden: false,
+            },
+            DashboardLayoutSection {
+                id: "suggestions".into(),
+                hidden: false,
+            },
+            DashboardLayoutSection {
+                id: "weak_concepts".into(),
+                hidden: false,
+            },
         ],
     }
 }
 
-fn parse_layout(raw: &str) -> Option<DashboardLayout> {
-    serde_json::from_str::<DashboardLayout>(raw).ok().map(|mut layout| {
-        // Merge in any sections from the default that aren't in the stored layout
-        // (so new sections added in future releases appear automatically).
-        let default = default_layout();
-        let known: std::collections::HashSet<String> =
-            layout.sections.iter().map(|s| s.id.clone()).collect();
-        for section in default.sections {
-            if !known.contains(&section.id) {
-                layout.sections.push(section);
+fn normalize_dashboard_layout(mut layout: DashboardLayout) -> DashboardLayout {
+    let legacy_sections: Vec<&DashboardLayoutSection> = layout
+        .sections
+        .iter()
+        .filter(|section| LEGACY_ACTIVITY_SECTION_IDS.contains(&section.id.as_str()))
+        .collect();
+    let legacy_hidden = if legacy_sections.len() > 1 {
+        legacy_sections.iter().all(|section| section.hidden)
+    } else {
+        legacy_sections
+            .first()
+            .map(|section| section.hidden)
+            .unwrap_or(false)
+    };
+
+    let mut inserted_learning_activity = false;
+    let mut normalized = Vec::with_capacity(layout.sections.len() + 1);
+
+    for section in std::mem::take(&mut layout.sections) {
+        if LEGACY_ACTIVITY_SECTION_IDS.contains(&section.id.as_str()) {
+            if !inserted_learning_activity {
+                normalized.push(DashboardLayoutSection {
+                    id: LEARNING_ACTIVITY_SECTION_ID.into(),
+                    hidden: legacy_hidden,
+                });
+                inserted_learning_activity = true;
             }
+            continue;
         }
-        layout
-    })
+
+        if section.id == LEARNING_ACTIVITY_SECTION_ID {
+            if !inserted_learning_activity {
+                normalized.push(section);
+                inserted_learning_activity = true;
+            }
+            continue;
+        }
+
+        normalized.push(section);
+    }
+
+    layout.sections = normalized;
+    layout
+}
+
+fn parse_layout(raw: &str) -> Option<DashboardLayout> {
+    serde_json::from_str::<DashboardLayout>(raw)
+        .ok()
+        .map(|layout| {
+            let mut layout = normalize_dashboard_layout(layout);
+            // Merge in any sections from the default that aren't in the stored layout
+            // (so new sections added in future releases appear automatically).
+            let default = default_layout();
+            let known: std::collections::HashSet<String> =
+                layout.sections.iter().map(|s| s.id.clone()).collect();
+            for section in default.sections {
+                if !known.contains(&section.id) {
+                    layout.sections.push(section);
+                }
+            }
+            layout
+        })
 }
 
 #[tauri::command]
@@ -104,6 +169,19 @@ fn route(path: impl Into<String>, state: Option<serde_json::Value>) -> Dashboard
     DashboardRoute {
         path: path.into(),
         state,
+    }
+}
+
+fn snippet(raw: String, max_chars: usize) -> String {
+    let collapsed = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.chars().count() > max_chars {
+        let truncated: String = collapsed
+            .chars()
+            .take(max_chars.saturating_sub(1))
+            .collect();
+        format!("{truncated}…")
+    } else {
+        collapsed
     }
 }
 
@@ -353,22 +431,14 @@ fn get_dashboard_summary_inner(
                AND s.is_incognito = 0
                AND s.exclude_from_analytics = 0
              ORDER BY last_seen DESC
-             LIMIT 1"
+             LIMIT 12"
         ))
         .map_err(|e| e.to_string())?;
     let continue_learning = continue_learning_stmt
         .query_map(params![&workspace_id], |row| {
             let session_id = row.get::<_, String>(0)?;
             let raw_snippet: Option<String> = row.get(6)?;
-            let last_snippet = raw_snippet.map(|s| {
-                let collapsed = s.split_whitespace().collect::<Vec<_>>().join(" ");
-                if collapsed.chars().count() > 160 {
-                    let truncated: String = collapsed.chars().take(157).collect();
-                    format!("{truncated}…")
-                } else {
-                    collapsed
-                }
-            });
+            let last_snippet = raw_snippet.map(|s| snippet(s, 160));
             Ok(DashboardContinueLearning {
                 session_id: session_id.clone(),
                 title: row.get(1)?,
@@ -419,7 +489,8 @@ fn get_dashboard_summary_inner(
                            n.title AS title,
                            'note' AS kind,
                            COALESCE(n.note_type, '') AS subtitle,
-                           n.updated_at AS timestamp
+                           n.updated_at AS timestamp,
+                           NULL AS last_response
                     FROM project_notes n
                     WHERE n.workspace_id {ws_cond}
                     ORDER BY n.updated_at DESC
@@ -433,7 +504,12 @@ fn get_dashboard_summary_inner(
                            s.title AS title,
                            'chat' AS kind,
                            COALESCE(p.name, '') AS subtitle,
-                           s.updated_at AS timestamp
+                           s.updated_at AS timestamp,
+                           (SELECT m.content FROM messages m
+                              WHERE m.session_id = s.id
+                                AND m.role = 'assistant'
+                                AND NULLIF(TRIM(m.content), '') IS NOT NULL
+                              ORDER BY m.created_at DESC LIMIT 1) AS last_response
                     FROM chat_sessions s
                     LEFT JOIN folders p ON p.id = s.folder_id
                     WHERE s.workspace_id {ws_cond}
@@ -441,7 +517,7 @@ fn get_dashboard_summary_inner(
                       AND s.is_incognito = 0
                       AND s.exclude_from_analytics = 0
                     ORDER BY s.updated_at DESC
-                    LIMIT 6
+                    LIMIT 18
                 )
 
                 UNION ALL
@@ -451,7 +527,8 @@ fn get_dashboard_summary_inner(
                            src.title AS title,
                            'source' AS kind,
                            COALESCE(src.source_type, '') AS subtitle,
-                           src.updated_at AS timestamp
+                           src.updated_at AS timestamp,
+                           NULL AS last_response
                     FROM sources src
                     WHERE src.workspace_id {ws_cond}
                     ORDER BY src.updated_at DESC
@@ -459,13 +536,14 @@ fn get_dashboard_summary_inner(
                 )
              )
              ORDER BY timestamp DESC
-             LIMIT 6"),
+             LIMIT 18"),
         )
         .map_err(|e| e.to_string())?;
     let recent_activity = activity_stmt
         .query_map(params![&workspace_id], |row| {
             let id = row.get::<_, String>(0)?;
             let kind = row.get::<_, String>(2)?;
+            let last_response = row.get::<_, Option<String>>(5)?;
             let route = match kind.as_str() {
                 "chat" => route(format!("/chat/{id}"), None),
                 "concept" => route("/graph", None),
@@ -479,6 +557,7 @@ fn get_dashboard_summary_inner(
                 kind,
                 subtitle: row.get(3)?,
                 timestamp: row.get(4)?,
+                last_response_snippet: last_response.map(|s| snippet(s, 160)),
                 route,
             })
         })

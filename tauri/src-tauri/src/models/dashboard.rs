@@ -104,6 +104,7 @@ pub struct DashboardActivity {
     pub title: String,
     pub subtitle: String,
     pub timestamp: String,
+    pub last_response_snippet: Option<String>,
     pub route: DashboardRoute,
 }
 

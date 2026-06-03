@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/api", () => ({
+  setIpcWorkspaceContextProvider: vi.fn(),
   api: {
     dashboard: {
       getSummary: mocks.getSummary,
@@ -78,9 +79,8 @@ describe("FolderDashboardView", () => {
     mocks.getLayout.mockResolvedValue({
       version: 1,
       sections: [
-        { id: "continue_learning", hidden: false },
+        { id: "learning_activity", hidden: false },
         { id: "knowledge_health", hidden: false },
-        { id: "recent_activity", hidden: false },
         { id: "goals", hidden: false },
         { id: "suggestions", hidden: false },
         { id: "weak_concepts", hidden: false },
@@ -111,6 +111,17 @@ describe("FolderDashboardView", () => {
           last_snippet: "Let me know once you've checked the unshare flags.",
           last_role: "assistant",
           route: { path: "/chat/session-1", state: null },
+        },
+        {
+          session_id: "session-2",
+          title: "Rootless container setup",
+          folder_id: "proj-1",
+          folder_name: "Containers",
+          updated_at: "2026-04-06T08:30:00Z",
+          message_count: 7,
+          last_snippet: "Rootless containers still need subordinate UID and GID ranges configured.",
+          last_role: "assistant",
+          route: { path: "/chat/session-2", state: null },
         },
       ],
       review: {
@@ -165,6 +176,7 @@ describe("FolderDashboardView", () => {
           title: "OCI notes",
           subtitle: "manual",
           timestamp: "2026-04-06T08:00:00Z",
+          last_response_snippet: null,
           route: { path: "/notes", state: null },
         },
       ],
@@ -183,6 +195,11 @@ describe("FolderDashboardView", () => {
     });
 
     expect(await screen.findByText("Continue Learning")).toBeInTheDocument();
+    expect(screen.queryByText("Learning Activity")).not.toBeInTheDocument();
+    expect(screen.queryByText("Recent Activity")).not.toBeInTheDocument();
+    expect(screen.getByText("cgroups vs namespaces")).toBeInTheDocument();
+    expect(screen.getByText("Rootless container setup")).toBeInTheDocument();
+    expect(screen.getByText("Rootless containers still need subordinate UID and GID ranges configured.")).toBeInTheDocument();
     expect(screen.getByText("Goals In Motion")).toBeInTheDocument();
     expect(screen.getByText("Explain Linux container isolation")).toBeInTheDocument();
     expect(screen.getAllByText("Linux").length).toBeGreaterThan(0);
