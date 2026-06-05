@@ -293,6 +293,25 @@ npm run tauri dev
 - `git add -A` and `git add .` are discouraged for the same reason. Prefer `git add <path1> <path2> ...` with explicit filenames so the staging decision is visible in your output.
 - The exception is when the user explicitly asks for "everything" — in that case echo back the file list before committing so the scope is logged.
 
+### Autonomous Commits
+
+**Default to committing completed implementation tasks without waiting for the user to say "commit."** Once a requested code change is implemented end-to-end and the required targeted checks have passed, create a commit proactively.
+
+- Before committing, run `git diff --stat` and confirm only in-scope files are staged.
+- Leave unrelated modified files unstaged, even if they are nearby or were touched earlier in the session.
+- Run the required targeted checks for the languages and surfaces touched by the task before committing.
+- Do not auto-commit review-only, investigation-only, or explicitly no-write tasks.
+- If there is still an unresolved product choice, blocker, or known failing validation, do not commit yet — explain the state first.
+
+### Hook Bypass
+
+**Do not use `git commit --no-verify` by default.** Prefer normal commits so local safety rails keep running.
+
+- `--no-verify` may be used only when the change is tightly scoped, the required targeted checks have already passed in the current session, and the hook is known to rerun broader checks that are unnecessary for the task at hand.
+- Do **not** use `--no-verify` for interface changes, schema or migration changes, IPC/API contract changes, cross-language changes, or tasks touching 3 or more files.
+- Do **not** use `--no-verify` for regression-test changes that are part of proving a bug fix.
+- If `--no-verify` is used, mention it explicitly in the handoff or final response.
+
 ### Commit Message Quality
 
 **Problem:** Large commits (20+ files, 1000+ lines) with vague titles hide actual scope and make history hard to understand.
