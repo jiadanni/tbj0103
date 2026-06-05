@@ -292,6 +292,18 @@ export default function App() {
         // First run or Ollama not available — still OK
         await api.security.unlockApp().catch(() => {});
         setIsAuthenticated(true);
+        // The failure may have come from a settings call in the Promise.all
+        // above, which would otherwise leave the workspace list empty and the
+        // workspace/sub-workspace selectors blank until restart. Best-effort
+        // recover the workspaces on their own so navigation stays usable.
+        try {
+          const recovered = await api.workspace.list();
+          if (!cancelled && recovered.length > 0) {
+            setWorkspaces(recovered);
+          }
+        } catch {
+          // workspace list itself is unavailable — nothing more to do here
+        }
       } finally {
         if (!cancelled) {
           setLoadingMessage("Loading…");

@@ -865,3 +865,25 @@ void (async () => {
     // best-effort observability — never break app load
   }
 })();
+
+// Dev-only: preserve in-memory store state across Vite HMR. Without this, a hot
+// module replacement re-runs `create(...)` with a fresh `workspaces: []`, but the
+// App boot fetch (gated on a stable `setWorkspaces` dep) does not re-run — so the
+// workspace / sub-workspace selectors, which derive from `workspaces`, blank out
+// until a full rebuild. We stash only data fields (not action closures) so the
+// rebound actions stay fresh. No-op in production builds.
+if (import.meta.hot) {
+  const preserved = import.meta.hot.data?.workspaceState as Partial<WorkspaceStore> | undefined;
+  if (preserved) {
+    useWorkspaceStore.setState(preserved);
+  }
+  import.meta.hot.dispose((data) => {
+    const dataOnly: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(useWorkspaceStore.getState())) {
+      if (typeof value !== "function") {
+        dataOnly[key] = value;
+      }
+    }
+    data.workspaceState = dataOnly;
+  });
+}
