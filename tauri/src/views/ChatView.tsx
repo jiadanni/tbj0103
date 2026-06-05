@@ -5080,79 +5080,79 @@ export default function ChatView() {
           {!isComparePanelOpen ? (
             <div className="flex-1 min-w-0 flex min-h-0 flex-col overflow-hidden">
               {!activeChatId ? (
-                <div className="relative flex-1 min-w-0 flex flex-col items-center justify-center gap-4 text-center overflow-hidden">
+                <div className="relative flex-1 min-w-0 flex flex-col items-center justify-center gap-6 text-center overflow-hidden">
                   <WaterfallSuggestions
                     suggestions={waterfallSuggestions}
                     onSelect={(suggestion) => void handleComposerSuggestion(suggestion, false)}
                   />
-                  <div className="relative z-10 flex flex-col items-center gap-4">
-                  <MessageSquare size={40} className="text-[var(--text-muted)] opacity-30" />
-                  <p className="text-[var(--text-muted)] text-sm">Select a chat or start a new one</p>
-                  <div
-                    ref={emptyStatePrivacyMenuRef}
-                    className="relative flex flex-wrap justify-center gap-2"
-                  >
-                    <div className="flex overflow-hidden rounded-xl border border-[rgba(var(--accent-color-rgb),0.38)] bg-[var(--accent-color)] text-white shadow-[0_18px_44px_-24px_rgba(var(--accent-color-rgb),0.9)] ring-1 ring-white/10 transition-transform hover:-translate-y-0.5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsEmptyStatePrivacyMenuOpen(false);
-                          void createNewSession();
-                        }}
-                        className="px-4 py-2.5 text-sm font-semibold tracking-[0.01em] transition-colors hover:bg-white/10"
-                      >
-                        Start a new chat
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="Choose new chat privacy mode"
-                        aria-haspopup="menu"
-                        aria-expanded={isEmptyStatePrivacyMenuOpen}
-                        onClick={() => setIsEmptyStatePrivacyMenuOpen((open) => !open)}
-                        className="flex items-center justify-center border-l border-white/20 px-3 transition-colors hover:bg-white/10"
-                      >
-                        <ChevronDown size={14} className={`transition-transform ${isEmptyStatePrivacyMenuOpen ? "rotate-180" : ""}`} />
-                      </button>
-                    </div>
-                    {isEmptyStatePrivacyMenuOpen && (
-                      <div
-                        role="menu"
-                        aria-label="New chat privacy options"
-                        className="absolute top-full z-20 mt-2 w-full min-w-[240px] max-w-xs overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 text-left shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]"
-                      >
+                  <div className="relative z-10 flex flex-col items-center gap-5">
+                    <MessageSquare size={48} className="text-[var(--text-muted)] opacity-30" />
+                    <p className="text-base text-[var(--text-muted)]">Select a chat or start a new one</p>
+                    <div
+                      ref={emptyStatePrivacyMenuRef}
+                      className="relative flex flex-wrap justify-center gap-3"
+                    >
+                      <div className="flex overflow-hidden rounded-xl border border-[rgba(var(--accent-color-rgb),0.38)] bg-[var(--accent-color)] text-white shadow-[0_18px_44px_-24px_rgba(var(--accent-color-rgb),0.9)] ring-1 ring-white/10 transition-transform hover:-translate-y-0.5">
                         <button
                           type="button"
-                          role="menuitem"
                           onClick={() => {
                             setIsEmptyStatePrivacyMenuOpen(false);
-                            void createNewSession({ isIncognito: true });
+                            void createNewSession();
                           }}
-                          className="flex w-full items-start gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-[var(--bg-hover)]"
+                          className="px-5 py-3 text-base font-semibold tracking-[0.01em] transition-colors hover:bg-white/10"
                         >
-                          <Ghost size={14} className="mt-0.5 shrink-0 text-purple-400" />
-                          <span className="min-w-0">
-                            <span className="block text-sm font-medium text-[var(--text-primary)]">Incognito</span>
-                            <span className="block text-xs text-[var(--text-secondary)]">Starts a chat that stays private.</span>
-                          </span>
+                          Start a new chat
                         </button>
                         <button
                           type="button"
-                          role="menuitem"
-                          onClick={() => {
-                            setIsEmptyStatePrivacyMenuOpen(false);
-                            void createNewSession({ excludeFromAnalytics: true });
-                          }}
-                          className="flex w-full items-start gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-[var(--bg-hover)]"
+                          aria-label="Choose new chat privacy mode"
+                          aria-haspopup="menu"
+                          aria-expanded={isEmptyStatePrivacyMenuOpen}
+                          onClick={() => setIsEmptyStatePrivacyMenuOpen((open) => !open)}
+                          className="flex items-center justify-center border-l border-white/20 px-3.5 transition-colors hover:bg-white/10"
                         >
-                          <Shield size={14} className="mt-0.5 shrink-0 text-sky-400" />
-                          <span className="min-w-0">
-                            <span className="block text-sm font-medium text-[var(--text-primary)]">Exclude from analytics</span>
-                            <span className="block text-xs text-[var(--text-secondary)]">Starts a chat without analytics collection.</span>
-                          </span>
+                          <ChevronDown size={16} className={`transition-transform ${isEmptyStatePrivacyMenuOpen ? "rotate-180" : ""}`} />
                         </button>
                       </div>
-                    )}
-                  </div>
+                      {isEmptyStatePrivacyMenuOpen && (
+                        <div
+                          role="menu"
+                          aria-label="New chat privacy options"
+                          className="absolute top-full z-20 mt-2 w-full min-w-[240px] max-w-xs overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 text-left shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)]"
+                        >
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setIsEmptyStatePrivacyMenuOpen(false);
+                              void createNewSession({ isIncognito: true });
+                            }}
+                            className="flex w-full items-start gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-[var(--bg-hover)]"
+                          >
+                            <Ghost size={14} className="mt-0.5 shrink-0 text-purple-400" />
+                            <span className="min-w-0">
+                              <span className="block text-sm font-medium text-[var(--text-primary)]">Incognito</span>
+                              <span className="block text-xs text-[var(--text-secondary)]">Starts a chat that stays private.</span>
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setIsEmptyStatePrivacyMenuOpen(false);
+                              void createNewSession({ excludeFromAnalytics: true });
+                            }}
+                            className="flex w-full items-start gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-[var(--bg-hover)]"
+                          >
+                            <Shield size={14} className="mt-0.5 shrink-0 text-sky-400" />
+                            <span className="min-w-0">
+                              <span className="block text-sm font-medium text-[var(--text-primary)]">Exclude from analytics</span>
+                              <span className="block text-xs text-[var(--text-secondary)]">Starts a chat without analytics collection.</span>
+                            </span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               ) : (

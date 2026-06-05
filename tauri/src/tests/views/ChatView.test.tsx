@@ -13,6 +13,45 @@ import type { ChatSession } from "@/stores/chatStore";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 
+vi.mock("react-virtuoso", async () => {
+  const React = await import("react");
+
+  type VirtuosoProps<T> = {
+    className?: string;
+    data?: T[];
+    itemContent?: (index: number, item: T) => React.ReactNode;
+    scrollerRef?: (element: HTMLDivElement | null) => void;
+  };
+
+  const Virtuoso = React.forwardRef<{ scrollToIndex: () => void }, VirtuosoProps<unknown>>(
+    ({ className, data = [], itemContent, scrollerRef }, ref) => {
+      React.useImperativeHandle(ref, () => ({
+        scrollToIndex: () => undefined,
+      }));
+
+      return (
+        <div
+          className={className}
+          ref={(element) => {
+            scrollerRef?.(element);
+          }}
+        >
+          {data.map((item, index) => (
+            <React.Fragment key={index}>
+              {itemContent?.(index, item)}
+            </React.Fragment>
+          ))}
+        </div>
+      );
+    },
+  );
+  Virtuoso.displayName = "Virtuoso";
+
+  return {
+    Virtuoso,
+  };
+});
+
 vi.mock("lucide-react", () => ({
   Send: () => <div data-testid="icon-send" />,
   Plus: () => <div data-testid="icon-plus" />,
@@ -48,6 +87,7 @@ vi.mock("lucide-react", () => ({
   Save: () => <div data-testid="icon-save" />,
   MoreHorizontal: () => <div data-testid="icon-more-horizontal" />,
   MoveRight: () => <div data-testid="icon-move-right" />,
+  RotateCcw: () => <div data-testid="icon-rotate-ccw" />,
   ExternalLink: () => <div data-testid="icon-external-link" />,
   Copy: () => <div data-testid="icon-copy" />,
   BarChart2: () => <div data-testid="icon-bar-chart-2" />,
@@ -97,6 +137,7 @@ vi.mock("@/lib/api", () => ({
       searchSessions: vi.fn(() => Promise.resolve([])),
       getMessages: vi.fn(() => Promise.resolve([])),
       moveSessions: vi.fn(() => Promise.resolve(undefined)),
+      batchMoveSessions: vi.fn(() => Promise.resolve({ moved: 0, missing_session_ids: [], folder_mapping: {} })),
       createSession: vi.fn(),
       addMessage: vi.fn(),
       touchSessionAccessed: vi.fn(() => Promise.resolve(undefined)),
@@ -187,6 +228,7 @@ vi.mock("@/lib/api", () => ({
 
 const setActiveChatId = vi.fn();
 const setActiveFolderId = vi.fn();
+const setActiveWorkspaceId = vi.fn();
 let mockWorkspacePane: Record<string, unknown> | null = null;
 let mockActiveChatId: string | null = null;
 
@@ -196,6 +238,7 @@ vi.mock("@/lib/workspacePane", () => ({
   useScopedWorkspace: () => ({
     activeWorkspaceId: "ws-1",
     activeFolderId: null,
+    setActiveWorkspaceId,
     setActiveFolderId,
     workspace: null,
   }),
@@ -203,12 +246,22 @@ vi.mock("@/lib/workspacePane", () => ({
   useWorkspacePane: () => mockWorkspacePane,
 }));
 
-function renderChatView(initialEntries?: Array<string | { pathname: string; state?: unknown }>) {
-  return render(
-    <MemoryRouter initialEntries={initialEntries}>
-      <ChatView />
-    </MemoryRouter>,
-  );
+async function renderChatView(initialEntries?: Array<string | { pathname: string; state?: unknown }>) {
+  let rendered: ReturnType<typeof render> | undefined;
+
+  await act(async () => {
+    rendered = render(
+      <MemoryRouter
+        initialEntries={initialEntries}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <ChatView />
+      </MemoryRouter>,
+    );
+    await flushMicrotasks();
+  });
+
+  return rendered as ReturnType<typeof render>;
 }
 
 async function flushMicrotasks(times = 4) {
@@ -310,7 +363,7 @@ describe("ChatView", () => {
   });
 
   it("does not create a workspace when the inline name is empty", async () => {
-    renderChatView();
+    await renderChatView();
 
     const input = await openCreateWorkspaceInput();
     const form = input.closest("form");
@@ -327,7 +380,7 @@ describe("ChatView", () => {
       name: "New Workspace",
     });
 
-    renderChatView();
+    await renderChatView();
 
     const input = await openCreateWorkspaceInput();
     const form = input.closest("form");
@@ -343,7 +396,7 @@ describe("ChatView", () => {
   it("surfaces an error dialog when inline workspace creation fails", async () => {
     (api.workspace.create as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("boom"));
 
-    renderChatView();
+    await renderChatView();
 
     const input = await openCreateWorkspaceInput();
     const form = input.closest("form");
@@ -360,7 +413,7 @@ describe("ChatView", () => {
   });
 
   it("keeps a fixed trailing slot on session rows so hover actions do not collapse the title", async () => {
-    renderChatView();
+    await renderChatView();
 
     const title = await screen.findByText("Test Session");
     const row = title.closest("div.group");
@@ -372,7 +425,7 @@ describe("ChatView", () => {
   });
 
   it("prevents selecting chat titles in the sidebar session list", async () => {
-    renderChatView();
+    await renderChatView();
 
     const title = await screen.findByText("Test Session");
     const row = title.closest("div.group");
@@ -382,7 +435,7 @@ describe("ChatView", () => {
   });
 
   it("copies the chat name from the sidebar session menu", async () => {
-    renderChatView();
+    await renderChatView();
 
     fireEvent.contextMenu(await screen.findByText("Test Session"));
     fireEvent.click(await screen.findByText("Copy chat name"));
@@ -393,7 +446,7 @@ describe("ChatView", () => {
   it("uses a narrower sidebar and tighter trailing slot in split panes", async () => {
     mockWorkspacePane = { paneId: "primary" };
 
-    renderChatView();
+    await renderChatView();
 
     const sidebar = await screen.findByText("Chats");
     const sidebarRoot = sidebar.closest("div[style]");
@@ -429,7 +482,7 @@ describe("ChatView", () => {
       message_count_at_title_gen: 0,
     } satisfies ChatSession);
 
-    renderChatView();
+    await renderChatView();
 
     const newChatButton = await screen.findByRole("button", { name: /start a new chat/i });
     fireEvent.click(newChatButton);
@@ -460,7 +513,7 @@ describe("ChatView", () => {
       message_count_at_title_gen: 0,
     } satisfies ChatSession);
 
-    renderChatView();
+    await renderChatView();
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /choose new chat privacy mode/i }));
@@ -514,7 +567,7 @@ describe("ChatView", () => {
       message_count_at_title_gen: 0,
     } satisfies ChatSession);
 
-    renderChatView();
+    await renderChatView();
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /choose new chat privacy mode/i }));
@@ -531,22 +584,22 @@ describe("ChatView", () => {
     expect(setActiveChatId).not.toHaveBeenCalledWith("session-empty-standard");
   });
 
-  it("shows the active model label in the composer", () => {
+  it("shows the active model label in the composer", async () => {
     mockActiveChatId = "session-1";
     useSettingsStore.setState({
       modelLabels: {
         "test-model": "Test Model",
       },
     });
-    renderChatView();
+    await renderChatView();
 
     expect(screen.getByRole("button", { name: "Active model: Test Model" })).toBeInTheDocument();
   });
 
-  it("renders the composer inside the elevated floating shell", () => {
+  it("renders the composer inside the elevated floating shell", async () => {
     mockActiveChatId = "session-1";
 
-    renderChatView();
+    await renderChatView();
 
     const composerShell = screen.getByTestId("composer-shell");
     expect(composerShell.className).toContain("ring-[var(--border-color)]");
@@ -571,7 +624,7 @@ describe("ChatView", () => {
       },
     ]);
 
-    renderChatView();
+    await renderChatView();
 
     const summaryButton = await screen.findByRole("button", { name: "Chat summary" });
     await waitFor(() => {
@@ -594,7 +647,7 @@ describe("ChatView", () => {
     mockActiveChatId = "session-1";
     (api.summary.list as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
-    renderChatView();
+    await renderChatView();
 
     const summaryButton = await screen.findByRole("button", { name: "Chat summary" });
     await waitFor(() => {
@@ -648,7 +701,7 @@ describe("ChatView", () => {
       chat_title_auto_refresh: "initial_only",
     });
 
-    renderChatView();
+    await renderChatView();
 
     const composer = await screen.findByPlaceholderText("Start a new thread…");
     await screen.findByRole("button", { name: "Active model: Test Model" });
@@ -726,7 +779,7 @@ describe("ChatView", () => {
       chat_title_auto_refresh: "initial_only",
     });
 
-    renderChatView();
+    await renderChatView();
 
     const composer = await screen.findByPlaceholderText("Start a new thread…");
     await screen.findByRole("button", { name: "Active model: Test Model" });
@@ -789,7 +842,7 @@ describe("ChatView", () => {
       chat_title_auto_refresh: "initial_only",
     });
 
-    renderChatView();
+    await renderChatView();
 
     const composer = await screen.findByPlaceholderText("Start a new thread…");
     await screen.findByRole("button", { name: "Active model: Test Model" });
@@ -810,7 +863,8 @@ describe("ChatView", () => {
     });
   });
 
-  it("shows the full Ollama model id when the stored label is only the base model name", () => {
+  it("shows the full Ollama model id when the stored label is only the base model name", async () => {
+    await flushMicrotasks(1);
     expect(resolveModelDisplayName(
       "gemma4:latest",
       { "gemma4:latest": "gemma4" },
@@ -818,7 +872,8 @@ describe("ChatView", () => {
     )).toBe("gemma4:latest");
   });
 
-  it("uses provider-neutral labels for default browser-backed models", () => {
+  it("uses provider-neutral labels for default browser-backed models", async () => {
+    await flushMicrotasks(1);
     expect(resolveModelDisplayName(
       "chatgpt-web",
       { "chatgpt-web": "ChatGPT (Web)" },
@@ -844,7 +899,7 @@ describe("ChatView", () => {
       updated_at: "",
     });
 
-    renderChatView();
+    await renderChatView();
 
     fireEvent.click(screen.getByRole("button", { name: /open attachment menu/i }));
     fireEvent.click(await screen.findByRole("menuitem", { name: /attach file/i }));
@@ -871,7 +926,7 @@ describe("ChatView", () => {
       { model_id: "test-model", name: "Test Model", provider: "ollama", enabled: true, priority: 1, role_tags: ["chat", "vision"] },
     ]);
 
-    renderChatView();
+    await renderChatView();
 
     fireEvent.click(screen.getByRole("button", { name: /open attachment menu/i }));
 
@@ -884,7 +939,7 @@ describe("ChatView", () => {
     );
     mockActiveChatId = "session-1";
 
-    renderChatView();
+    await renderChatView();
 
     const composer = await screen.findByPlaceholderText("Start a new thread…");
     fireEvent.change(composer, {
@@ -928,7 +983,7 @@ describe("ChatView", () => {
       },
     ]);
 
-    renderChatView();
+    await renderChatView();
 
     const newChatButton = await screen.findByRole("button", { name: /start a new chat/i });
     fireEvent.click(newChatButton);
@@ -957,7 +1012,7 @@ describe("ChatView", () => {
       message_count_at_title_gen: 0,
     } satisfies ChatSession);
 
-    renderChatView([{ pathname: "/chat", state: { createNewChat: true } }]);
+    await renderChatView([{ pathname: "/chat", state: { createNewChat: true } }]);
 
     await waitFor(() => {
       expect(api.chat.createSession).toHaveBeenCalledTimes(1);
@@ -986,7 +1041,7 @@ describe("ChatView", () => {
     }));
     (api.topicSignature.get as ReturnType<typeof vi.fn>).mockResolvedValue(signature);
 
-    const { unmount } = renderChatView();
+    const { unmount } = await renderChatView();
     await flushMicrotasks();
     await new Promise((resolve) => setTimeout(resolve, 5));
     await waitFor(() => {
@@ -994,7 +1049,7 @@ describe("ChatView", () => {
     });
     unmount();
 
-    renderChatView();
+    await renderChatView();
     await flushMicrotasks();
     await new Promise((resolve) => setTimeout(resolve, 5));
     expect(api.workspace.generateWorkspacePrompts).toHaveBeenCalledTimes(1);

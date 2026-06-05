@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 
 interface WorkspaceMigrationBannerProps {
@@ -10,34 +10,28 @@ interface WorkspaceMigrationBannerProps {
 
 export const WorkspaceMigrationBanner: React.FC<WorkspaceMigrationBannerProps> = ({ onDismiss, onMove }) => {
   const { migrationSuggestion, dismissMigrationSuggestion } = useWorkspaceStore();
-  const [visible, setVisible] = useState(false);
+  const shouldShow = !!migrationSuggestion && !migrationSuggestion.is_match && !!migrationSuggestion.suggestion;
 
   useEffect(() => {
     if (migrationSuggestion && !migrationSuggestion.is_match && migrationSuggestion.suggestion) {
-      Promise.resolve().then(() => setVisible(true));
       const timer = setTimeout(() => {
-        setVisible(false);
         dismissMigrationSuggestion();
       }, 10000);
       return () => clearTimeout(timer);
-    } else {
-      Promise.resolve().then(() => setVisible(false));
     }
   }, [migrationSuggestion, dismissMigrationSuggestion]);
 
-  if (!visible || !migrationSuggestion?.suggestion) {return null;}
+  if (!shouldShow || !migrationSuggestion?.suggestion) {return null;}
 
   const handleMove = () => {
     if (migrationSuggestion.suggestion) {
       onMove?.(migrationSuggestion.suggestion.workspace_id);
     }
     dismissMigrationSuggestion();
-    setVisible(false);
   };
 
   const handleDismiss = () => {
     dismissMigrationSuggestion();
-    setVisible(false);
     onDismiss?.();
   };
 
