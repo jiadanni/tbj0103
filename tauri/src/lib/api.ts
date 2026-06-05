@@ -363,7 +363,7 @@ export interface SuggestedConcept {
 
 export interface ProjectNote {
   id: string; workspace_id: string; title: string; content: string;
-  note_type: string; tags: string[]; created_at: string; updated_at: string;
+  note_type: string; tags: string[]; is_pinned: boolean; created_at: string; updated_at: string;
   date?: string; mood?: number; productivity?: number; template_id?: string | null;
   folder?: string | null;
 }
@@ -496,7 +496,7 @@ export interface ConversationSummary {
   id: string;
   session_id: string;
   workspace_id: string;
-  summary_type: string;
+  summary_type: "info" | "extensive";
   content: string;
   key_topics: string;
   message_range_start: number;
@@ -1489,8 +1489,8 @@ export const api = {
   },
 
   note: {
-    create: (workspaceId: string, title: string, content?: string, folder?: string | null) =>
-      invoke<ProjectNote>("create_note", { req: { workspace_id: workspaceId, title, content, folder: folder ?? null } }),
+    create: (workspaceId: string, title: string, content?: string, folder?: string | null, isPinned?: boolean) =>
+      invoke<ProjectNote>("create_note", { req: { workspace_id: workspaceId, title, content, folder: folder ?? null, is_pinned: isPinned ?? false } }),
     list: (workspaceId: string, opts?: { limit?: number; offset?: number; includeDescendants?: boolean }) =>
       invoke<ProjectNote[]>("list_notes", { workspaceId, limit: opts?.limit, offset: opts?.offset, includeDescendants: opts?.includeDescendants }),
     get: (id: string) => invoke<ProjectNote | null>("get_note", { id }),

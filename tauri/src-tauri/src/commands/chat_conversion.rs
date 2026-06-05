@@ -55,6 +55,7 @@ pub async fn convert_chat_to_note(
         content: converted.content.clone(),
         note_type: "ai_generated".to_string(),
         tags: vec!["from-chat".to_string()],
+        is_pinned: false,
         created_at: now.clone(),
         updated_at: now,
         date: None,
@@ -65,8 +66,8 @@ pub async fn convert_chat_to_note(
     };
     let tags_json = serde_json::to_string(&note.tags).unwrap_or_else(|_| "[]".to_string());
     conn.execute(
-        "INSERT INTO project_notes (id, workspace_id, title, content, note_type, tags, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO project_notes (id, workspace_id, title, content, note_type, tags, is_pinned, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         rusqlite::params![
             note.id,
             note.workspace_id,
@@ -74,6 +75,7 @@ pub async fn convert_chat_to_note(
             note.content,
             note.note_type,
             tags_json,
+            note.is_pinned as i32,
             note.created_at,
             note.updated_at,
         ],

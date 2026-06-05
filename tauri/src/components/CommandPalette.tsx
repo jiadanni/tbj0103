@@ -5,7 +5,7 @@ import { api, type QuickSearchResult } from "../lib/api";
 import { useChatStore, type ChatSession } from "../stores/chatStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { Search, Clock, MessageSquare, FileText, Brain, Sparkles, RefreshCw } from "lucide-react";
-import type { ChatSubView, NotesSubView, PreferencesSection } from "./navigationItems";
+import type { ChatSubView, PreferencesSection } from "./navigationItems";
 
 interface Props {
   workspaceId: string;
@@ -48,10 +48,8 @@ const COMMANDS: CommandItem[] = [
   { label: "Go to Practice",           value: "practice",       path: "/practice"     },
   { label: "Go to Chat",               value: "chat",           path: "/chat"          },
   { label: "Chat Sessions",            value: "chat-sessions",  path: "/chat",         state: { subView: "sessions" as ChatSubView } },
-  { label: "Go to Notes & Sources",    value: "notes",          path: "/notes"         },
-  { label: "Daily Notes",              value: "daily",          path: "/notes",        state: { subView: "daily" as NotesSubView } },
+  { label: "Go to Library",            value: "notes",          path: "/notes"         },
   { label: "Go to Documents",          value: "documents",      path: "/notes"         },
-  { label: "Go to Sources",            value: "sources",        path: "/notes"         },
   { label: "Go to Knowledge",          value: "graph",          path: "/graph"         },
   { label: "Chat with Documents",      value: "grounded",       path: "/chat",         state: { subView: "grounded" } },
   { label: "Manage Workspaces",        value: "workspaces",     path: "/preferences",  state: { settingsTab: "workspaces" as PreferencesSection } },

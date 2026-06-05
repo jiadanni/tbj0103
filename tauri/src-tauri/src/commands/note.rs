@@ -19,6 +19,7 @@ pub fn create_note(state: State<DbState>, req: CreateNoteRequest) -> Result<Proj
         content: req.content.unwrap_or_default(),
         note_type: req.note_type.unwrap_or_else(|| "manual".to_string()),
         tags: req.tags.unwrap_or_default(),
+        is_pinned: req.is_pinned.unwrap_or(false),
         created_at: now.clone(),
         updated_at: now,
         date: None,
@@ -29,9 +30,9 @@ pub fn create_note(state: State<DbState>, req: CreateNoteRequest) -> Result<Proj
     };
     let tags_json = serde_json::to_string(&note.tags).unwrap_or_default();
     conn.execute(
-        "INSERT INTO project_notes (id, workspace_id, title, content, note_type, tags, folder, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        rusqlite::params![note.id, note.workspace_id, note.title, note.content, note.note_type, tags_json, note.folder, note.created_at, note.updated_at],
+        "INSERT INTO project_notes (id, workspace_id, title, content, note_type, tags, is_pinned, folder, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        rusqlite::params![note.id, note.workspace_id, note.title, note.content, note.note_type, tags_json, note.is_pinned as i32, note.folder, note.created_at, note.updated_at],
     ).map_err(|e| e.to_string())?;
 
     // Index [[wiki-links]] in the note content
@@ -60,8 +61,8 @@ pub fn list_notes(
     let offset = offset.unwrap_or(0).max(0);
     let (cte, ws_cond) = workspace_filter_sql(include_descendants.unwrap_or(false));
     let sql = format!(
-        "{cte}SELECT id, workspace_id, title, content, note_type, tags, folder, created_at, updated_at
-         FROM project_notes WHERE workspace_id {ws_cond} ORDER BY updated_at DESC LIMIT ?2 OFFSET ?3"
+        "{cte}SELECT id, workspace_id, title, content, note_type, tags, is_pinned, folder, created_at, updated_at
+         FROM project_notes WHERE workspace_id {ws_cond} ORDER BY is_pinned DESC, updated_at DESC LIMIT ?2 OFFSET ?3"
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let items = stmt
@@ -74,9 +75,10 @@ pub fn list_notes(
                 content: row.get(3)?,
                 note_type: row.get(4)?,
                 tags: serde_json::from_str(&tags_json).unwrap_or_default(),
-                folder: row.get(6)?,
-                created_at: row.get(7)?,
-                updated_at: row.get(8)?,
+                is_pinned: row.get::<_, i32>(6)? != 0,
+                folder: row.get(7)?,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
                 date: None,
                 mood: None,
                 productivity: None,
@@ -93,7 +95,7 @@ pub fn list_notes(
 pub fn get_note(state: State<DbState>, id: String) -> Result<Option<ProjectNote>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let result = conn.query_row(
-        "SELECT id, workspace_id, title, content, note_type, tags, folder, created_at, updated_at FROM project_notes WHERE id = ?1",
+        "SELECT id, workspace_id, title, content, note_type, tags, is_pinned, folder, created_at, updated_at FROM project_notes WHERE id = ?1",
         rusqlite::params![id],
         |row| {
             let tags_json: String = row.get(5)?;
@@ -104,9 +106,10 @@ pub fn get_note(state: State<DbState>, id: String) -> Result<Option<ProjectNote>
                 content: row.get(3)?,
                 note_type: row.get(4)?,
                 tags: serde_json::from_str(&tags_json).unwrap_or_default(),
-                folder: row.get(6)?,
-                created_at: row.get(7)?,
-                updated_at: row.get(8)?,
+                is_pinned: row.get::<_, i32>(6)? != 0,
+                folder: row.get(7)?,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
                 date: None,
                 mood: None,
                 productivity: None,
@@ -130,8 +133,8 @@ pub fn update_note(state: State<DbState>, req: UpdateNoteRequest) -> Result<(), 
         .as_ref()
         .map(|t| serde_json::to_string(t).unwrap_or_default());
     conn.execute(
-        "UPDATE project_notes SET title = COALESCE(?1, title), content = COALESCE(?2, content), tags = COALESCE(?3, tags), folder = COALESCE(?4, folder), updated_at = ?5 WHERE id = ?6",
-        rusqlite::params![req.title, req.content, tags_json, req.folder, now, req.id],
+        "UPDATE project_notes SET title = COALESCE(?1, title), content = COALESCE(?2, content), tags = COALESCE(?3, tags), is_pinned = COALESCE(?4, is_pinned), folder = COALESCE(?5, folder), updated_at = ?6 WHERE id = ?7",
+        rusqlite::params![req.title, req.content, tags_json, req.is_pinned.map(|value| value as i32), req.folder, now, req.id],
     ).map_err(|e| e.to_string())?;
 
     // Re-index [[wiki-links]] whenever content changes
@@ -180,6 +183,7 @@ pub fn get_or_create_daily_note(
             content: row.get(3)?,
             note_type: "daily".to_string(),
             tags: vec![],
+            is_pinned: false,
             folder: None,
             created_at: row.get(7)?,
             updated_at: row.get(8)?,
@@ -232,6 +236,7 @@ pub fn list_daily_notes_in_range(
                     content: row.get(3)?,
                     note_type: "daily".to_string(),
                     tags: vec![],
+                    is_pinned: false,
                     folder: None,
                     created_at: row.get(7)?,
                     updated_at: row.get(8)?,

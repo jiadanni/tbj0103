@@ -257,7 +257,7 @@ describe("FolderDashboardView", () => {
     expect(await screen.findByText("Workspace Warm-Up")).toBeInTheDocument();
     expect(screen.getByText("This workspace is ready for its first real pass.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Open chat/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Open notes and sources/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Open library/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Open knowledge view/i })).toBeInTheDocument();
   });
 });

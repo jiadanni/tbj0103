@@ -81,6 +81,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v67_lower_summarization_min_messages",
     "v68_roadmap_snapshots",
     "v69_project_notes_folder",
+    "v70_project_notes_pinning",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -460,8 +461,8 @@ fn run_migrations(conn: &Connection) -> Result<()> {
                 id TEXT PRIMARY KEY NOT NULL,
                 session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
                 workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-                summary_type TEXT NOT NULL DEFAULT 'rolling'
-                    CHECK(summary_type IN ('rolling', 'final', 'segment')),
+                summary_type TEXT NOT NULL DEFAULT 'info'
+                    CHECK(summary_type IN ('info', 'extensive')),
                 content TEXT NOT NULL,
                 key_topics TEXT NOT NULL DEFAULT '[]',
                 message_range_start INTEGER NOT NULL,
@@ -1952,6 +1953,87 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         }
         conn.execute_batch(
             "INSERT INTO _migrations(name) VALUES('v69_project_notes_folder');",
+        )?;
+    }
+
+    let applied_v70: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v70_project_notes_pinning'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v70 == 0 {
+        let has_is_pinned: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('project_notes') WHERE name = 'is_pinned'",
+            [],
+            |row| row.get(0),
+        )?;
+        if has_is_pinned == 0 {
+            conn.execute_batch("ALTER TABLE project_notes ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0;")?;
+        }
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_project_notes_workspace_pinned_updated
+                 ON project_notes(workspace_id, is_pinned, updated_at DESC);
+             INSERT INTO _migrations(name) VALUES('v70_project_notes_pinning');",
+        )?;
+    }
+
+    let applied_v71: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v71_conversation_summary_types'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v71 == 0 {
+        conn.execute_batch(
+            "ALTER TABLE conversation_summaries RENAME TO conversation_summaries_old;
+             CREATE TABLE conversation_summaries (
+                id TEXT PRIMARY KEY NOT NULL,
+                session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                summary_type TEXT NOT NULL DEFAULT 'info'
+                    CHECK(summary_type IN ('info', 'extensive')),
+                content TEXT NOT NULL,
+                key_topics TEXT NOT NULL DEFAULT '[]',
+                message_range_start INTEGER NOT NULL,
+                message_range_end INTEGER NOT NULL,
+                token_count INTEGER NOT NULL DEFAULT 0,
+                embedding BLOB,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+             );
+             INSERT INTO conversation_summaries (
+                id, session_id, workspace_id, summary_type, content, key_topics,
+                message_range_start, message_range_end, token_count, embedding, created_at, updated_at
+             )
+             SELECT
+                id,
+                session_id,
+                workspace_id,
+                CASE summary_type
+                    WHEN 'rolling' THEN 'info'
+                    ELSE 'extensive'
+                END,
+                content,
+                key_topics,
+                message_range_start,
+                message_range_end,
+                token_count,
+                embedding,
+                created_at,
+                updated_at
+             FROM conversation_summaries_old;
+             DROP TABLE conversation_summaries_old;
+             UPDATE quick_search_documents
+             SET subtitle = CASE
+                WHEN body IS NOT NULL AND doc_id LIKE 'summary:%' AND target_id IN (
+                    SELECT id FROM conversation_summaries WHERE summary_type = 'extensive'
+                ) THEN 'Extensive summary'
+                WHEN doc_id LIKE 'summary:%' THEN 'Info summary'
+                ELSE subtitle
+             END
+             WHERE kind = 'summary';
+             INSERT INTO _migrations(name) VALUES('v71_conversation_summary_types');",
         )?;
     }
 

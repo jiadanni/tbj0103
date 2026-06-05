@@ -2124,7 +2124,7 @@ function AppRoutes() {
       <Route path="/webcapture" element={<Navigate to="/sources" replace />} />
       <Route path="/grounded" element={<Navigate to="/chat" replace />} />
       <Route path="/chat-sessions" element={<Navigate to="/chat" replace />} />
-      <Route path="/daily" element={<Navigate to="/notes" state={{ subView: "daily" }} replace />} />
+      <Route path="/daily" element={<Navigate to="/notes" replace />} />
 
       <Route path="/plugins" element={<Navigate to="/preferences" state={{ settingsTab: "app" }} replace />} />
       <Route path="/backlinks" element={<Navigate to="/folder" replace />} />

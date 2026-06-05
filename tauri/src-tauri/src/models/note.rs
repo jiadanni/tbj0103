@@ -52,6 +52,7 @@ pub struct ProjectNote {
     pub content: String,
     pub note_type: String,
     pub tags: Vec<String>,
+    pub is_pinned: bool,
     pub created_at: String,
     pub updated_at: String,
     pub date: Option<String>,
@@ -68,6 +69,7 @@ pub struct CreateNoteRequest {
     pub content: Option<String>,
     pub note_type: Option<String>,
     pub tags: Option<Vec<String>>,
+    pub is_pinned: Option<bool>,
     pub folder: Option<String>,
 }
 
@@ -77,6 +79,7 @@ pub struct UpdateNoteRequest {
     pub title: Option<String>,
     pub content: Option<String>,
     pub tags: Option<Vec<String>>,
+    pub is_pinned: Option<bool>,
     pub folder: Option<String>,
 }
 
@@ -98,6 +101,7 @@ impl ProjectNote {
             content: String::new(),
             note_type: "daily".to_string(),
             tags: vec![],
+            is_pinned: false,
             created_at: now.clone(),
             updated_at: now.clone(),
             date: Some(date),

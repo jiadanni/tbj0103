@@ -3962,7 +3962,7 @@ export default function PreferencesView() {
                         <div>
                           <p className="text-sm text-[var(--text-secondary)]">Min messages before summarizing</p>
                           <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                            Sessions need at least this many messages before a rolling summary is generated
+                            Sessions need at least this many messages before the background info summary is generated
                           </p>
                         </div>
                         <input
@@ -4253,7 +4253,7 @@ export default function PreferencesView() {
                             <option value="">Stay on current</option>
                             <option value="/folder">Dashboard</option>
                             <option value="/chat">Chat</option>
-                            <option value="/notes">Notes</option>
+                            <option value="/notes">Library</option>
                             <option value="/sources">Sources</option>
                             <option value="/graph">Knowledge</option>
                             <option value="/history">History</option>

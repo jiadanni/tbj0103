@@ -932,7 +932,7 @@ describe("Layout", () => {
     expect(trigger).toHaveAttribute("aria-haspopup", "listbox");
 
     fireEvent.click(trigger);
-    fireEvent.click(screen.getByRole("option", { name: "Notes & Sources" }));
+    fireEvent.click(screen.getByRole("option", { name: "Library" }));
 
     expect(await screen.findByText("Notes View")).toBeInTheDocument();
   });

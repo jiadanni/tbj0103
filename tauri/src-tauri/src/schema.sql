@@ -402,6 +402,7 @@ CREATE TABLE IF NOT EXISTS project_notes (
     note_type TEXT NOT NULL DEFAULT 'manual'
         CHECK(note_type IN ('manual','ai_generated','quiz')),
     tags TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(tags)),
+    is_pinned INTEGER NOT NULL DEFAULT 0,
     folder TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -617,8 +618,8 @@ CREATE TABLE IF NOT EXISTS conversation_summaries (
     id TEXT PRIMARY KEY NOT NULL,
     session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
     workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-    summary_type TEXT NOT NULL DEFAULT 'rolling'
-        CHECK(summary_type IN ('rolling', 'final', 'segment')),
+    summary_type TEXT NOT NULL DEFAULT 'info'
+        CHECK(summary_type IN ('info', 'extensive')),
     content TEXT NOT NULL,
     key_topics TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(key_topics)),
     message_range_start INTEGER NOT NULL,
@@ -872,7 +873,11 @@ BEGIN
     SELECT
         'summary:' || s.id, s.id, 'summary',
         s.workspace_id, NULLIF(NEW.folder_id, ''), s.session_id, NULL,
-        NEW.title, s.summary_type || ' summary',
+        NEW.title,
+        CASE s.summary_type
+            WHEN 'extensive' THEN 'Extensive summary'
+            ELSE 'Info summary'
+        END,
         s.content, s.updated_at
     FROM conversation_summaries s
     WHERE s.session_id = NEW.id
@@ -1100,7 +1105,10 @@ AFTER INSERT ON conversation_summaries BEGIN
         NEW.session_id,
         NULL,
         cs.title,
-        NEW.summary_type || ' summary',
+        CASE NEW.summary_type
+            WHEN 'extensive' THEN 'Extensive summary'
+            ELSE 'Info summary'
+        END,
         NEW.content,
         NEW.updated_at
     FROM chat_sessions cs
@@ -1127,7 +1135,10 @@ BEGIN
         NEW.session_id,
         NULL,
         cs.title,
-        NEW.summary_type || ' summary',
+        CASE NEW.summary_type
+            WHEN 'extensive' THEN 'Extensive summary'
+            ELSE 'Info summary'
+        END,
         NEW.content,
         NEW.updated_at
     FROM chat_sessions cs
@@ -1217,6 +1228,8 @@ CREATE INDEX IF NOT EXISTS idx_messages_variant_group ON messages(variant_group_
 -- ORDER BY ... LIMIT 6 run as index scans instead of full-table sorts.
 CREATE INDEX IF NOT EXISTS idx_project_notes_workspace_updated
     ON project_notes(workspace_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_project_notes_workspace_pinned_updated
+    ON project_notes(workspace_id, is_pinned, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_concept_nodes_workspace_updated
     ON concept_nodes(workspace_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sources_workspace_updated

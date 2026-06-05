@@ -15,7 +15,6 @@ vi.mock("lucide-react", () => ({
   Pin: makeIcon("icon-pin"),
   FileText: makeIcon("icon-file-text"),
   Save: makeIcon("icon-save"),
-  Calendar: makeIcon("icon-calendar"),
   Sparkles: makeIcon("icon-sparkles"),
   Loader: makeIcon("icon-loader"),
   Upload: makeIcon("icon-upload"),
@@ -54,7 +53,6 @@ vi.mock("../../components/SmartTextEditor", () => ({
   ),
 }));
 
-vi.mock("../../views/DailyNotesView", () => ({ default: () => <div>Daily Notes View</div> }));
 vi.mock("../../components/Tooltip", () => ({ Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 
 vi.mock("../../stores/workspaceStore", () => ({
@@ -85,6 +83,7 @@ describe("NoteEditorView", () => {
       content: "Content 1",
       note_type: "general",
       tags: ["tag1"],
+      is_pinned: false,
       folder: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -121,6 +120,7 @@ describe("NoteEditorView", () => {
       content: "",
       note_type: "general",
       tags: [],
+      is_pinned: false,
       folder: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -136,13 +136,6 @@ describe("NoteEditorView", () => {
     await waitFor(() => {
       expect(api.note.create).toHaveBeenCalledWith("ws-1", "Untitled Note");
     });
-  });
-
-  it("opens the daily-notes modal from the Calendar button", async () => {
-    render(<MemoryRouter><NoteEditorView /></MemoryRouter>);
-    await waitFor(() => { expect(screen.getByText("Calendar")).toBeInTheDocument(); });
-    fireEvent.click(screen.getByText("Calendar"));
-    await waitFor(() => { expect(screen.getByText("Daily Notes View")).toBeInTheDocument(); });
   });
 
   it("renders sources alongside notes in the unified grid", async () => {
@@ -164,6 +157,48 @@ describe("NoteEditorView", () => {
     await waitFor(() => {
       expect(screen.getByText("First Note")).toBeInTheDocument();
       expect(screen.getByText("My Source")).toBeInTheDocument();
+    });
+  });
+
+  it("deletes a note from the card action without opening the editor", async () => {
+    vi.mocked(api.note.delete).mockResolvedValue(undefined as never);
+
+    render(<MemoryRouter><NoteEditorView /></MemoryRouter>);
+    await waitFor(() => { expect(screen.getByText("First Note")).toBeInTheDocument(); });
+
+    fireEvent.click(screen.getByLabelText("Delete note"));
+
+    await waitFor(() => {
+      expect(api.note.delete).toHaveBeenCalledWith("note-1");
+    });
+    expect(screen.queryByTestId("smart-editor")).not.toBeInTheDocument();
+  });
+
+  it("creates a pinned note from the composer pin button", async () => {
+    const pinnedNote = {
+      id: "note-3",
+      workspace_id: "ws-1",
+      title: "Pinned note",
+      content: "Pinned content",
+      note_type: "general",
+      tags: [],
+      is_pinned: true,
+      folder: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    vi.mocked(api.note.create).mockResolvedValue(pinnedNote as unknown as never);
+    vi.mocked(api.note.update).mockResolvedValue(undefined as never);
+
+    render(<MemoryRouter><NoteEditorView /></MemoryRouter>);
+    fireEvent.click(screen.getByText("Take a note…"));
+    fireEvent.click(screen.getByLabelText("Pin draft note"));
+    fireEvent.change(screen.getByPlaceholderText("Title"), { target: { value: "Pinned note" } });
+    fireEvent.change(screen.getByPlaceholderText("Take a note…"), { target: { value: "Pinned content" } });
+    fireEvent.click(screen.getByText("Close"));
+
+    await waitFor(() => {
+      expect(api.note.create).toHaveBeenCalledWith("ws-1", "Pinned note", "Pinned content", null, true);
     });
   });
 });

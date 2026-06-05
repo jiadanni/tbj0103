@@ -345,7 +345,7 @@ export default function FolderDashboardView() {
                   icon={<FileText size={18} />}
                   title="Add notes or source material"
                   description="Capture a note, import a document, or save a source so the dashboard has actual material to reason about."
-                  actionLabel="Open notes and sources"
+                  actionLabel="Open library"
                   onClick={() => navigate("/notes")}
                 />
                 <EmptyStateActionCard

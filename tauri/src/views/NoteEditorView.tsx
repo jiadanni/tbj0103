@@ -1,15 +1,13 @@
 /**
- * NoteEditorView — Google Keep-style unified browser for notes and sources.
+ * NoteEditorView — Google Keep-style unified library for notes and sources.
  *
  * Top: centered "Take a note…" composer that expands on focus.
  * Body: masonry of fixed-width cards (notes + sources) using CSS columns.
  * Click a card → expanded modal editor (notes editable; sources show detail).
- * Calendar button in the header opens DailyNotesView in a modal.
  */
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { useLocation } from "react-router-dom";
 import {
-  Plus, Trash2, Tag, Pin, FileText, Save, Calendar, Sparkles, Loader,
+  Plus, Trash2, Tag, Pin, FileText, Save, Sparkles, Loader,
   Upload, Globe, Cpu, X, ExternalLink, File, Image as ImageIcon,
   Type, Palette, Bell, UserPlus, MoreVertical, Undo2, Redo2, Search,
 } from "lucide-react";
@@ -23,8 +21,6 @@ import { useSettingsStore } from "../stores/settingsStore";
 import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
 import SmartTextEditor from "../components/SmartTextEditor";
 import { Tooltip } from "../components/Tooltip";
-import DailyNotesView from "./DailyNotesView";
-import type { NotesSubView } from "../components/navigationItems";
 
 // ── Unified item model ──────────────────────────────────────────────────
 
@@ -52,7 +48,7 @@ function formatTokens(n?: number | null): string {
 // ── Composer (Google Keep "Take a note" bar) ────────────────────────────
 
 interface ComposerProps {
-  onCreate: (fields: { title: string; content: string; tags: string[] }) => Promise<void>;
+  onCreate: (fields: { title: string; content: string; tags: string[]; isPinned: boolean }) => Promise<void>;
   onUpload: () => void;
   onWebCapture: () => void;
   disabled?: boolean;
@@ -64,15 +60,17 @@ function Composer({ onCreate, onUpload, onWebCapture, disabled }: ComposerProps)
   const [content, setContent] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
+  const [isPinned, setIsPinned] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const close = useCallback(async () => {
     if ((title.trim() || content.trim()) && !disabled) {
-      await onCreate({ title: title.trim(), content: content.trim(), tags });
+      await onCreate({ title: title.trim(), content: content.trim(), tags, isPinned });
     }
     setTitle(""); setContent(""); setTags([]); setTagInput("");
+    setIsPinned(false);
     setExpanded(false);
-  }, [title, content, tags, onCreate, disabled]);
+  }, [title, content, tags, isPinned, onCreate, disabled]);
 
   useEffect(() => {
     if (!expanded) { return; }
@@ -106,7 +104,15 @@ function Composer({ onCreate, onUpload, onWebCapture, disabled }: ComposerProps)
                 placeholder="Title"
                 className="flex-1 text-sm font-medium bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
               />
-              <button className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-color)]" aria-label="Pin">
+              <button
+                type="button"
+                aria-label={isPinned ? "Unpin draft note" : "Pin draft note"}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsPinned((prev) => !prev);
+                }}
+                className={`p-1 ${isPinned ? "text-[var(--accent-color)]" : "text-[var(--text-muted)] hover:text-[var(--accent-color)]"}`}
+              >
                 <Pin size={14} />
               </button>
             </div>
@@ -228,8 +234,18 @@ function NoteCard({ item, onClick, onDelete, onProcessSource, processing }: Card
       {item.kind === "note" ? (
         <>
           {item.note.title && (
-            <div className="text-sm font-medium text-[var(--text-primary)] mb-1.5 line-clamp-2">
-              {item.note.title}
+            <div className="flex items-start gap-1.5 mb-1.5">
+              <div className="text-sm font-medium text-[var(--text-primary)] line-clamp-2 flex-1">
+                {item.note.title}
+              </div>
+              {item.note.is_pinned && (
+                <Pin size={11} className="text-[var(--accent-color)] shrink-0 mt-0.5" />
+              )}
+            </div>
+          )}
+          {!item.note.title && item.note.is_pinned && (
+            <div className="flex justify-end mb-1.5">
+              <Pin size={11} className="text-[var(--accent-color)] shrink-0" />
             </div>
           )}
           {item.note.content && (
@@ -291,7 +307,11 @@ function NoteCard({ item, onClick, onDelete, onProcessSource, processing }: Card
         {item.kind === "source" && !item.source.is_processed && onProcessSource && (
           <Tooltip content="Process">
             <button
-              onClick={onProcessSource}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onProcessSource();
+              }}
               disabled={processing}
               className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)]"
             >
@@ -300,7 +320,15 @@ function NoteCard({ item, onClick, onDelete, onProcessSource, processing }: Card
           </Tooltip>
         )}
         <Tooltip content="Delete">
-          <button onClick={onDelete} className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-red-400">
+          <button
+            type="button"
+            aria-label={`Delete ${item.kind}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-red-400"
+          >
             <Trash2 size={11} />
           </button>
         </Tooltip>
@@ -317,7 +345,7 @@ function NoteCard({ item, onClick, onDelete, onProcessSource, processing }: Card
 interface NoteModalProps {
   note: ProjectNote;
   saving: boolean;
-  onChange: (fields: { title: string; content: string; tags: string[] }) => void;
+  onChange: (fields: { title: string; content: string; tags: string[]; is_pinned: boolean }) => void;
   onClose: () => void;
   onDelete: () => void;
   onGenerateFlashcards: () => void;
@@ -331,11 +359,12 @@ function NoteModal({
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content);
   const [tags, setTags] = useState<string[]>(note.tags ?? []);
+  const [isPinned, setIsPinned] = useState(note.is_pinned);
   const [tagInput, setTagInput] = useState("");
 
   // Push edits up — parent debounces & persists.
-  useEffect(() => { onChange({ title, content, tags }); // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, content, tags]);
+  useEffect(() => { onChange({ title, content, tags, is_pinned: isPinned }); // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, content, tags, isPinned]);
 
   function addTag() {
     const t = tagInput.trim();
@@ -361,15 +390,36 @@ function NoteModal({
           <span className="text-[11px] text-[var(--text-muted)] shrink-0">{saving ? "Saving…" : "Saved"}</span>
           <Tooltip content="Save now">
             <button
-              onClick={() => onChange({ title, content, tags })}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange({ title, content, tags, is_pinned: isPinned });
+              }}
               className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-color)]"
             >
               <Save size={13} />
             </button>
           </Tooltip>
+          <Tooltip content={isPinned ? "Unpin note" : "Pin note"}>
+            <button
+              type="button"
+              aria-label={isPinned ? "Unpin note" : "Pin note"}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsPinned((prev) => !prev);
+              }}
+              className={`p-1 ${isPinned ? "text-[var(--accent-color)]" : "text-[var(--text-muted)] hover:text-[var(--accent-color)]"}`}
+            >
+              <Pin size={13} />
+            </button>
+          </Tooltip>
           <Tooltip content="Generate flashcards">
             <button
-              onClick={onGenerateFlashcards}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onGenerateFlashcards();
+              }}
               disabled={generatingFlashcards || !canGenerateFlashcards || content.length < 50}
               className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-color)] disabled:opacity-40"
             >
@@ -377,11 +427,27 @@ function NoteModal({
             </button>
           </Tooltip>
           <Tooltip content="Delete note">
-            <button onClick={onDelete} className="p-1 text-[var(--text-muted)] hover:text-red-400">
+            <button
+              type="button"
+              aria-label="Delete note"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              className="p-1 text-[var(--text-muted)] hover:text-red-400"
+            >
               <Trash2 size={13} />
             </button>
           </Tooltip>
-          <button onClick={onClose} className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+          <button
+            type="button"
+            aria-label="Close note"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+          >
             <X size={14} />
           </button>
         </div>
@@ -391,7 +457,17 @@ function NoteModal({
           {tags.map((t) => (
             <span key={t} className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-[var(--accent-color)]/15 text-[var(--accent-color)]">
               {t}
-              <button onClick={() => setTags((prev) => prev.filter((x) => x !== t))} className="hover:text-red-400">×</button>
+              <button
+                type="button"
+                aria-label={`Remove tag ${t}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setTags((prev) => prev.filter((x) => x !== t));
+                }}
+                className="hover:text-red-400"
+              >
+                ×
+              </button>
             </span>
           ))}
           <input
@@ -497,34 +573,9 @@ function SourceModal({
   );
 }
 
-// ── Daily-notes modal wrapper ──────────────────────────────────────────
-
-function DailyNotesModal({ onClose }: { onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-6" onClick={onClose}>
-      <div
-        className="w-full max-w-4xl h-[85vh] bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-xl shadow-2xl flex flex-col overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center gap-2 px-5 py-3 border-b border-[var(--border-color)]">
-          <Calendar size={14} className="text-[var(--text-muted)]" />
-          <h2 className="flex-1 text-sm font-semibold text-[var(--text-primary)]">Daily Notes</h2>
-          <button onClick={onClose} className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
-            <X size={14} />
-          </button>
-        </div>
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <DailyNotesView />
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Main view ───────────────────────────────────────────────────────────
 
 export default function NoteEditorView() {
-  const location = useLocation();
   const { activeWorkspaceId } = useScopedWorkspace();
   const includeDescendants = useBubbleUpFlag();
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
@@ -538,12 +589,12 @@ export default function NoteEditorView() {
   // Open-item state (modal targets)
   const [openNoteId, setOpenNoteId] = useState<string | null>(null);
   const [openSourceId, setOpenSourceId] = useState<string | null>(null);
-  const [showDaily, setShowDaily] = useState(false);
 
   // Modal-edit buffers
   const [editTitle, setEditTitle] = useState("");
   const [editContent, setEditContent] = useState("");
   const [editTags, setEditTags] = useState<string[]>([]);
+  const [editIsPinned, setEditIsPinned] = useState(false);
   const [saving, setSaving] = useState(false);
   const [generatingFlashcards, setGeneratingFlashcards] = useState(false);
 
@@ -553,15 +604,6 @@ export default function NoteEditorView() {
   const [newTitle, setNewTitle] = useState("");
   const [savingCapture, setSavingCapture] = useState(false);
   const [processing, setProcessing] = useState<string | null>(null);
-
-  // Handle deep links (/daily → state.subView="daily")
-  useEffect(() => {
-    const state = location.state as { subView?: NotesSubView } | null;
-    if (state?.subView === "daily") {
-      setShowDaily(true);
-      window.history.replaceState({}, document.title);
-    }
-  }, [location.state]);
 
   // Listen for menu "New Note" — focus composer is enough; here we just create blank.
   useEffect(() => {
@@ -603,6 +645,7 @@ export default function NoteEditorView() {
     setEditTitle(n.title);
     setEditContent(n.content);
     setEditTags(n.tags ?? []);
+    setEditIsPinned(n.is_pinned);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openNoteId]);
 
@@ -611,23 +654,28 @@ export default function NoteEditorView() {
     if (!openNoteId) { return; }
     const t = setTimeout(() => {
       setSaving(true);
-      api.note.update(openNoteId, { title: editTitle, content: editContent, tags: editTags })
+      api.note.update(openNoteId, { title: editTitle, content: editContent, tags: editTags, is_pinned: editIsPinned })
         .then(() => {
           setNotes((prev) => prev.map((n) =>
             n.id === openNoteId
-              ? { ...n, title: editTitle, content: editContent, tags: editTags, updated_at: new Date().toISOString() }
+              ? { ...n, title: editTitle, content: editContent, tags: editTags, is_pinned: editIsPinned, updated_at: new Date().toISOString() }
               : n
           ));
         })
         .finally(() => setSaving(false));
     }, 1200);
     return () => clearTimeout(t);
-  }, [openNoteId, editTitle, editContent, editTags]);
+  }, [openNoteId, editTitle, editContent, editTags, editIsPinned]);
 
   // Items + search
   const allItems = useMemo<WorkspaceItem[]>(
     () => [...notes.map(itemFromNote), ...sources.map(itemFromSource)]
-      .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1)),
+      .sort((a, b) => {
+        const aPinned = a.kind === "note" ? a.note.is_pinned : false;
+        const bPinned = b.kind === "note" ? b.note.is_pinned : false;
+        if (aPinned !== bPinned) { return aPinned ? -1 : 1; }
+        return a.updatedAt < b.updatedAt ? 1 : -1;
+      }),
     [notes, sources]
   );
 
@@ -650,12 +698,12 @@ export default function NoteEditorView() {
 
   // ── Note actions ────────────────────────────────────────────────────
 
-  async function createNoteFromComposer({ title, content, tags }: { title: string; content: string; tags: string[] }) {
+  async function createNoteFromComposer({ title, content, tags, isPinned }: { title: string; content: string; tags: string[]; isPinned: boolean }) {
     if (!activeWorkspaceId) { return; }
-    const note = await api.note.create(activeWorkspaceId, title || "Untitled", content || undefined);
-    const seeded: ProjectNote = { ...note, title: title || "Untitled", content, tags };
-    if (tags.length > 0) {
-      await api.note.update(note.id, { tags });
+    const note = await api.note.create(activeWorkspaceId, title || "Untitled", content || undefined, null, isPinned);
+    const seeded: ProjectNote = { ...note, title: title || "Untitled", content, tags, is_pinned: isPinned };
+    if (tags.length > 0 || note.is_pinned !== isPinned) {
+      await api.note.update(note.id, { tags, is_pinned: isPinned });
     }
     setNotes((prev) => [seeded, ...prev]);
   }
@@ -771,25 +819,17 @@ export default function NoteEditorView() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-[var(--bg-primary)]">
-      {/* Header — search + calendar shortcut */}
+      {/* Header — search + quick actions */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--border-color)] shrink-0">
         <div className="flex-1 max-w-md relative">
           <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search notes & sources…"
+            placeholder="Search library…"
             className="w-full pl-8 pr-2 py-1.5 text-xs rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
           />
         </div>
-        <Tooltip content="Daily notes">
-          <button
-            onClick={() => setShowDaily(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-          >
-            <Calendar size={12} /> Calendar
-          </button>
-        </Tooltip>
         <Tooltip content="New note">
           <button
             onClick={() => createBlankNote()}
@@ -816,7 +856,7 @@ export default function NoteEditorView() {
             <p className="text-center text-xs text-[var(--text-muted)] py-12">Select a workspace.</p>
           ) : filtered.length === 0 ? (
             <p className="text-center text-xs text-[var(--text-muted)] py-12">
-              {allItems.length === 0 ? "No notes or sources yet — take one above." : "No matches."}
+              {allItems.length === 0 ? "No library items yet — add one above." : "No matches."}
             </p>
           ) : (
             <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4">
@@ -846,8 +886,10 @@ export default function NoteEditorView() {
         <NoteModal
           note={openNote}
           saving={saving}
-          onChange={({ title, content, tags }) => {
+          onChange={({ title, content, tags, is_pinned }) => {
             setEditTitle(title); setEditContent(content); setEditTags(tags);
+            setEditIsPinned(is_pinned);
+            setNotes((prev) => prev.map((n) => (n.id === openNote.id ? { ...n, is_pinned } : n)));
           }}
           onClose={() => setOpenNoteId(null)}
           onDelete={() => deleteNote(openNote.id)}
@@ -867,9 +909,6 @@ export default function NoteEditorView() {
           processing={processing === openSource.id}
         />
       )}
-
-      {/* Daily notes modal */}
-      {showDaily && <DailyNotesModal onClose={() => setShowDaily(false)} />}
 
       {/* Add web capture modal */}
       {showAddCapture && (
