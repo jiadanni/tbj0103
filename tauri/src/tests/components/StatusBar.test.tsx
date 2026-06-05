@@ -5,16 +5,17 @@ import type {
   BackgroundTaskEvent,
   BackgroundTaskPromptEvent,
   PerformanceStats,
-  WorkspaceAnalysisProgress,
 } from "@/lib/api";
 import { useChatStore } from "@/stores/chatStore";
+import { useBackgroundJobsStore } from "@/stores/backgroundJobs";
 
-const { getPerformanceStats, listenBackgroundTask, listenBackgroundTaskPrompt, listenWorkspaceProgress } =
+const { getPerformanceStats, listenBackgroundTask, listenBackgroundTaskPrompt, listenWorkspaceProgress, listActiveBackgroundJobs } =
   vi.hoisted(() => ({
     getPerformanceStats: vi.fn(),
     listenBackgroundTask: vi.fn(),
     listenBackgroundTaskPrompt: vi.fn(),
     listenWorkspaceProgress: vi.fn(),
+    listActiveBackgroundJobs: vi.fn(),
   }));
 const { listWorkspaces, getPromptBankStatus } = vi.hoisted(() => ({
   listWorkspaces: vi.fn(),
@@ -31,6 +32,7 @@ vi.mock("@/lib/api", () => ({
   api: {
     system: {
       getPerformanceStats,
+      listActiveBackgroundJobs,
     },
     workspace: {
       list: listWorkspaces,
@@ -88,18 +90,6 @@ function taskStarted(taskType: string, model?: string): BackgroundTaskEvent {
   };
 }
 
-function workspaceAnalysisStarted(label = "Chunk 1/3"): WorkspaceAnalysisProgress {
-  return {
-    job_id: "job-1",
-    workspace_id: "ws-1",
-    chunk_index: 0,
-    total_chunks: 3,
-    label,
-    status: "started",
-    nodes_created: 0,
-    links_created: 0,
-  };
-}
 
 describe("StatusBar", () => {
   beforeEach(() => {
@@ -122,6 +112,12 @@ describe("StatusBar", () => {
     listWorkspaces.mockResolvedValue([]);
     getPromptBankStatus.mockReset();
     getPromptBankStatus.mockResolvedValue(null);
+    listActiveBackgroundJobs.mockReset();
+    listActiveBackgroundJobs.mockResolvedValue([]);
+    useBackgroundJobsStore.setState({
+      jobs: new Map(),
+      hydrated: false,
+    });
   });
 
   it("still samples performance stats when the document reports hidden", async () => {
@@ -146,21 +142,13 @@ describe("StatusBar", () => {
   });
 
   it("renders every active background job", async () => {
-    let onTask: ((event: BackgroundTaskEvent) => void) | undefined;
-    listenBackgroundTask.mockImplementation(async (callback: (event: BackgroundTaskEvent) => void) => {
-      onTask = callback;
-      return () => {};
-    });
-
     render(<StatusBar />);
 
-    await waitFor(() => expect(onTask).toBeDefined());
-
     act(() => {
-      onTask?.(taskStarted("memory_extraction"));
-      onTask?.(taskStarted("summarization"));
-      onTask?.(taskStarted("flashcard_generation"));
-      onTask?.(taskStarted("workspace_prompt_bank"));
+      useBackgroundJobsStore.getState().applyEvent(taskStarted("memory_extraction"));
+      useBackgroundJobsStore.getState().applyEvent(taskStarted("summarization"));
+      useBackgroundJobsStore.getState().applyEvent(taskStarted("flashcard_generation"));
+      useBackgroundJobsStore.getState().applyEvent(taskStarted("workspace_prompt_bank"));
     });
 
     expect(screen.getByText("Memory Extraction")).toBeInTheDocument();
@@ -170,18 +158,15 @@ describe("StatusBar", () => {
   });
 
   it("shows workspace analysis activity in the status bar", async () => {
-    let onWorkspaceProgress: ((event: WorkspaceAnalysisProgress) => void) | undefined;
-    listenWorkspaceProgress.mockImplementation(async (callback: (event: WorkspaceAnalysisProgress) => void) => {
-      onWorkspaceProgress = callback;
-      return () => {};
-    });
-
     render(<StatusBar />);
 
-    await waitFor(() => expect(onWorkspaceProgress).toBeDefined());
-
     act(() => {
-      onWorkspaceProgress?.(workspaceAnalysisStarted("Chunk 1/3"));
+      useBackgroundJobsStore.getState().applyEvent({
+        task_type: "workspace_analysis",
+        status: "started",
+        message: "Chunk 1/3",
+        model: "Chunk 1/3",
+      });
     });
 
     expect(screen.getByText("Workspace Analysis")).toBeInTheDocument();
@@ -267,17 +252,10 @@ describe("StatusBar", () => {
   });
 
   it("calls cancel_background_job when the stop button on a running job is clicked", async () => {
-    let onTask: ((event: BackgroundTaskEvent) => void) | undefined;
-    listenBackgroundTask.mockImplementation(async (callback: (event: BackgroundTaskEvent) => void) => {
-      onTask = callback;
-      return () => {};
-    });
-
     render(<StatusBar />);
-    await waitFor(() => expect(onTask).toBeDefined());
 
     act(() => {
-      onTask?.(taskStarted("memory_extraction", "llama3"));
+      useBackgroundJobsStore.getState().applyEvent(taskStarted("memory_extraction", "llama3"));
     });
 
     const stopButton = screen.getByLabelText("Stop Memory Extraction");
@@ -288,21 +266,20 @@ describe("StatusBar", () => {
   });
 
   it("reconciles an active prompt-bank job that started before listening", async () => {
-    listWorkspaces.mockResolvedValue([{ id: "ws-1" }]);
-    getPromptBankStatus.mockResolvedValue({
-      prompt_count: 70,
-      active_job: {
-        id: "job-1",
-        workspace_id: "ws-1",
-        status: "running",
-        target_count: 120,
-        generated_count: 70,
-        model: "llama3",
-        error: null,
-        started_at: null,
-        completed_at: null,
-      },
-      latest_job: null,
+    act(() => {
+      useBackgroundJobsStore.setState({
+        jobs: new Map([
+          [
+            "workspace_prompt_bank",
+            {
+              task_type: "workspace_prompt_bank",
+              workspace_id: "ws-1",
+              status: "running",
+              model: "llama3",
+            },
+          ],
+        ]),
+      });
     });
 
     render(<StatusBar />);
@@ -312,36 +289,58 @@ describe("StatusBar", () => {
   });
 
   it("does not show prompt-bank as a second active job while workspace analysis is running", async () => {
-    let onWorkspaceProgress: ((event: WorkspaceAnalysisProgress) => void) | undefined;
-    listenWorkspaceProgress.mockImplementation(async (callback: (event: WorkspaceAnalysisProgress) => void) => {
-      onWorkspaceProgress = callback;
-      return () => {};
-    });
-    listWorkspaces.mockResolvedValue([{ id: "ws-1" }]);
-    getPromptBankStatus.mockResolvedValue({
-      prompt_count: 70,
-      active_job: {
-        id: "job-1",
-        workspace_id: "ws-1",
-        status: "running",
-        target_count: 120,
-        generated_count: 70,
-        model: "llama3",
-        error: null,
-        started_at: null,
-        completed_at: null,
-      },
-      latest_job: null,
+    act(() => {
+      useBackgroundJobsStore.setState({
+        jobs: new Map([
+          [
+            "workspace_prompt_bank",
+            {
+              task_type: "workspace_prompt_bank",
+              workspace_id: "ws-1",
+              status: "running",
+              model: "llama3",
+            },
+          ],
+        ]),
+      });
     });
 
     render(<StatusBar />);
 
-    await waitFor(() => expect(onWorkspaceProgress).toBeDefined());
+    expect(screen.getByText("Starter Prompts")).toBeInTheDocument();
+
     act(() => {
-      onWorkspaceProgress?.(workspaceAnalysisStarted());
+      useBackgroundJobsStore.getState().applyEvent({
+        task_type: "workspace_prompt_bank",
+        status: "failed",
+        message: "",
+      });
+      useBackgroundJobsStore.getState().applyEvent({
+        task_type: "workspace_analysis",
+        status: "started",
+        message: "Chunk 1/3",
+        model: "Chunk 1/3",
+      });
     });
 
     expect(await screen.findByText("Workspace Analysis")).toBeInTheDocument();
     expect(screen.queryByText("Starter Prompts")).not.toBeInTheDocument();
+  });
+
+  it("does not show glossary refresh as a second active job while workspace analysis is running", async () => {
+    render(<StatusBar />);
+
+    act(() => {
+      useBackgroundJobsStore.getState().applyEvent(taskStarted("workspace_glossary", "gemma3:1b"));
+      useBackgroundJobsStore.getState().applyEvent({
+        task_type: "workspace_analysis",
+        status: "started",
+        message: "Batch 1/1 · message…",
+        model: "Batch 1/1 · message…",
+      });
+    });
+
+    expect(await screen.findByText("Workspace Analysis")).toBeInTheDocument();
+    expect(screen.queryByText("Glossary Refresh")).not.toBeInTheDocument();
   });
 });

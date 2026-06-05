@@ -124,3 +124,17 @@ pub async fn set_scheduled_task_setting(
     .await
     .map_err(|e| e.to_string())?
 }
+
+#[tauri::command]
+pub async fn list_active_background_jobs(
+    state: State<'_, DbState>,
+) -> Result<Vec<background_scheduler::ActiveBackgroundJob>, String> {
+    let pool = state.0.clone();
+    tokio::task::spawn_blocking(move || -> Result<Vec<background_scheduler::ActiveBackgroundJob>, String> {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        background_scheduler::list_active(&conn)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+

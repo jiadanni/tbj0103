@@ -496,6 +496,7 @@ pub fn run() {
             commands::background_jobs::get_scheduled_task_settings,
             commands::background_jobs::set_scheduled_task_setting,
             commands::background_jobs::set_current_workspace_id,
+            commands::background_jobs::list_active_background_jobs,
             commands::workspace_glossary::resolve_workspace_glossary_term,
             commands::workspace_glossary::list_workspace_glossary_terms,
             commands::workspace_glossary::upsert_workspace_glossary_term,

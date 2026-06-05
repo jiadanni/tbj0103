@@ -3,7 +3,8 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-route
 import { listen } from "@tauri-apps/api/event";
 import { useSettingsStore } from "./stores/settingsStore";
 import { useWorkspaceStore } from "./stores/workspaceStore";
-import { api, type QuickSearchResult } from "./lib/api";
+import { api, type QuickSearchResult, type WorkspaceAnalysisProgress } from "./lib/api";
+import { useBackgroundJobsStore } from "./stores/backgroundJobs";
 import { hexToRgbChannels, normalizeTheme } from "./lib/theme";
 import { getPrefsWindowSingleInstance } from "./lib/prefsWindowMode";
 import Layout from "./components/Layout";
@@ -231,6 +232,67 @@ export default function App() {
     overlay.style.opacity = "0";
     const timer = window.setTimeout(() => overlay.remove(), 140);
     return () => window.clearTimeout(timer);
+  }, []);
+
+  // Hydrate background jobs store on mount and listen for events
+  useEffect(() => {
+    // Hydrate initially
+    useBackgroundJobsStore.getState().hydrate().catch((err) => {
+      console.error("Failed to hydrate background jobs:", err);
+    });
+
+    let unlistenTask: (() => void) | null = null;
+    let unlistenWorkspace: (() => void) | null = null;
+
+    async function setupListeners() {
+      unlistenTask = await api.listenBackgroundTask((payload) => {
+        useBackgroundJobsStore.getState().applyEvent(payload);
+      });
+
+      unlistenWorkspace = await api.knowledge.listenWorkspaceProgress((payload: WorkspaceAnalysisProgress) => {
+        // Map WorkspaceAnalysisProgress event into the store as workspace_analysis task
+        if (payload.status === "started") {
+          // Deleting workspace_prompt_bank if workspace_analysis started, mirroring previous StatusBar logic
+          useBackgroundJobsStore.getState().applyEvent({
+            task_type: "workspace_prompt_bank",
+            status: "failed", // Deletes it from the store
+            message: "",
+          });
+          useBackgroundJobsStore.getState().applyEvent({
+            task_type: "workspace_analysis",
+            status: "started",
+            message: payload.label,
+            model: payload.label,
+            workspace_id: payload.workspace_id,
+          });
+        } else {
+          useBackgroundJobsStore.getState().applyEvent({
+            task_type: "workspace_analysis",
+            status: "completed",
+            message: "",
+          });
+        }
+      });
+    }
+
+    void setupListeners();
+
+    // Rehydrate on return to visible
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        useBackgroundJobsStore.getState().hydrate().catch((err) => {
+          console.error("Failed to rehydrate background jobs on visibility change:", err);
+        });
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      unlistenTask?.();
+      unlistenWorkspace?.();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, []);
 
   // Boot: load settings + workspaces

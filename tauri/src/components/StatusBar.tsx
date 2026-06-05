@@ -3,12 +3,11 @@ import { createPortal } from "react-dom";
 import {
   api,
   type PerformanceStats,
-  type BackgroundTaskEvent,
   type BackgroundTaskPromptEvent,
-  type WorkspaceAnalysisProgress,
 } from "../lib/api";
 import { useChatStore } from "../stores/chatStore";
 import { useSettingsStore } from "../stores/settingsStore";
+import { useBackgroundJobsStore } from "../stores/backgroundJobs";
 import { Tooltip } from "./Tooltip";
 
 const ZOOM_MIN = 11;
@@ -383,11 +382,7 @@ function ZoomSlider() {
 // ── Main StatusBar ────────────────────────────────────────────────────────────
 
 const PERFORMANCE_POLL_INTERVAL_MS = 10_000;
-const JOB_RECONCILE_INTERVAL_MS = 30_000;
 
-function isDocumentHidden(): boolean {
-  return typeof document !== "undefined" && document.visibilityState === "hidden";
-}
 
 export default function StatusBar() {
   const streamingSessionId = useChatStore((s) => s.streamingSessionId);
@@ -401,7 +396,7 @@ export default function StatusBar() {
   });
 
   const [stats, setStats] = useState<PerformanceStats | null>(null);
-  const [activeJobs, setActiveJobs] = useState<Map<string, { model?: string }>>(new Map());
+  const activeJobs = useBackgroundJobsStore((s) => s.jobs);
   const [pendingPrompts, setPendingPrompts] = useState<
     Map<string, { heavyModel?: string; smallModel?: string; mode: "confirm_only" | "dual_model" }>
   >(new Map());
@@ -452,46 +447,7 @@ export default function StatusBar() {
     };
   }, []);
 
-  // Listen for background task events via the shared api.ts wrapper.
-  useEffect(() => {
-    let unlistenFn: (() => void) | null = null;
-    let unlistenWorkspaceFn: (() => void) | null = null;
-
-    const setup = async () => {
-      unlistenFn = await api.listenBackgroundTask((payload: BackgroundTaskEvent) => {
-        const { task_type, status, model } = payload;
-        setActiveJobs((prev) => {
-          const next = new Map(prev);
-          if (status === "started" || status === "processing") {
-            next.set(task_type, { model });
-          } else {
-            // completed or failed
-            next.delete(task_type);
-          }
-          return next;
-        });
-      });
-
-      unlistenWorkspaceFn = await api.knowledge.listenWorkspaceProgress((payload: WorkspaceAnalysisProgress) => {
-        setActiveJobs((prev) => {
-          const next = new Map(prev);
-          if (payload.status === "started") {
-            next.delete("workspace_prompt_bank");
-            next.set("workspace_analysis", { model: payload.label });
-          } else {
-            next.delete("workspace_analysis");
-          }
-          return next;
-        });
-      });
-    };
-
-    void setup();
-    return () => {
-      unlistenFn?.();
-      unlistenWorkspaceFn?.();
-    };
-  }, []);
+  // Background task events are listened to globally at App.tsx and update the store.
 
   // Listen for background-task-prompt events (confirmation requests).
   useEffect(() => {
@@ -572,83 +528,7 @@ export default function StatusBar() {
     });
   }, [activeJobs]);
 
-  // Reconcile jobs that may already be running before the status bar receives
-  // live task events, such as manually-started prompt-bank generation.
-  useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
-    function clearTimer() {
-      if (timer !== null) {
-        clearTimeout(timer);
-        timer = null;
-      }
-    }
-
-    function scheduleNext() {
-      clearTimer();
-      if (cancelled || isDocumentHidden()) { return; }
-      timer = setTimeout(() => { void reconcileOnce(); }, JOB_RECONCILE_INTERVAL_MS);
-    }
-
-    async function reconcileOnce() {
-      if (cancelled || isDocumentHidden()) {
-        scheduleNext();
-        return;
-      }
-      try {
-        const workspaces = await api.workspace.list();
-        const statuses = await Promise.all(
-          workspaces.map((workspace) => api.workspace.getPromptBankStatus(workspace.id).catch(() => null)),
-        );
-        if (cancelled) { return; }
-
-        // Only treat actually-running jobs as active. A "queued" job is one
-        // that's been recorded but is still waiting on the global background-
-        // job semaphore — showing it as a pill while another job is running
-        // produces a visible "two jobs at once" race.
-        const activePromptBankJobs = statuses
-          .map((status) => status?.active_job ?? null)
-          .filter((job) => job !== null && job.status === "running");
-
-        setActiveJobs((prev) => {
-          const next = new Map(prev);
-          const firstJob = activePromptBankJobs[0];
-          if (next.has("workspace_analysis")) {
-            next.delete("workspace_prompt_bank");
-          } else if (firstJob) {
-            next.set("workspace_prompt_bank", { model: firstJob.model });
-          } else {
-            next.delete("workspace_prompt_bank");
-          }
-          return next;
-        });
-      } catch {
-        // silently ignore — backend may not be ready yet
-      } finally {
-        scheduleNext();
-      }
-    }
-
-    function handleVisibilityChange() {
-      if (isDocumentHidden()) {
-        clearTimer();
-        return;
-      }
-      void reconcileOnce();
-    }
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    if (!isDocumentHidden()) {
-      void reconcileOnce();
-    }
-
-    return () => {
-      cancelled = true;
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      clearTimer();
-    };
-  }, []);
+  // Polling reconciliation has been removed in favor of useBackgroundJobsStore.
 
   const cpuPct = stats ? Math.round(stats.cpu_usage_percent) : 0;
   const cpuCores = stats?.cpu_core_usages ?? [];
@@ -676,7 +556,12 @@ export default function StatusBar() {
     }
   }
 
-  const jobList = Array.from(activeJobs.entries());
+  const jobList = Array.from(activeJobs.entries()).filter(([type]) => {
+    if (type === "workspace_glossary" && activeJobs.has("workspace_analysis")) {
+      return false;
+    }
+    return true;
+  });
   const promptList = Array.from(pendingPrompts.entries());
 
   const handleConfirmPrompt = useCallback((taskType: string) => {

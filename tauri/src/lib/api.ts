@@ -527,6 +527,15 @@ export interface BackgroundTaskEvent {
   model?: string;
 }
 
+export interface ActiveJob {
+  task_type: string;
+  workspace_id?: string;
+  model?: string;
+  started_at?: string;
+  status: string;
+}
+
+
 /**
  * Emitted when a background job is gated on user confirmation (run-mode is
  * `confirm_only` or `dual_model`). The status bar shows a play button while
@@ -1901,6 +1910,7 @@ export const api = {
     toggleDevtools: () => invoke<void>("toggle_devtools"),
     openPreferencesWindow: (singleInstance = false) =>
       invoke<void>("open_preferences_window", { singleInstance }),
+    listActiveBackgroundJobs: () => invoke<ActiveJob[]>("list_active_background_jobs"),
   },
 
   knowledge: {

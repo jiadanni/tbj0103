@@ -149,6 +149,15 @@ tbj0103/
 - For React or Zustand infinite-loop bugs, document the exact repro path and check custom hooks, effect dependencies, and store updates before assuming the issue is in the view alone.
 - **A store field is not a feature until something reads it.** When adding new state to a Zustand store, verify at least one production component subscribes to that field via `useWorkspaceStore((s) => s.field)` (or equivalent). Tests that mount the field's setter or assert on the raw store value do **not** count as readers. Before considering a store field "done," `grep -r "s\.fieldName\|state\.fieldName" src/` should return at least one hit outside `stores/`, `tests/`, and the field's own settings UI. A diff that ships types + setter + persistence + tests but no reader is a feature stuck in the store — invisible during code review, and the bug is silent until a user reports the missing behavior.
 
+#### Backend state in the frontend: event-driven, not polled
+
+- Do not use interval-based polling (`setInterval`, recurring `setTimeout`, or interval-based queries) to reconcile backend background job state or status updates in frontend views or components (e.g., `StatusBar`, `WorkspaceSettingsView`).
+- Instead, maintain a single global/pane-scoped Zustand store (`useBackgroundJobsStore`) as a local cache of active background tasks.
+- Hydrate the store exactly once when the application mounts (or when window focus changes / visibility returns) via `listActiveBackgroundJobs`.
+- Keep the store state updated dynamically by subscribing to Tauri backend events (like `background-task` events: started, processing, completed, failed).
+- When a backend event lacks contextual details like `workspace_id`, the store should trigger an idempotent backend query (`listActiveBackgroundJobs`) to re-hydrate/reconcile the correct association.
+- View components must read active job statuses directly from the Zustand store rather than executing local intervals or standalone IPC query loops.
+
 #### Pane-scoped vs window-scoped navigation chrome
 
 When adding navigation chrome (workspace switcher, section nav, command bars), decide explicitly whether it is **window-scoped** (rendered once in `Layout.tsx`) or **pane-scoped** (rendered inside `WorkspacePaneChrome` per pane in `SplitPaneLayout.tsx`).

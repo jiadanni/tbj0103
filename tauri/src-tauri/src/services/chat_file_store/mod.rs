@@ -1262,10 +1262,8 @@ pub fn parse_gpt_conversation(conv: &GptConversation) -> Result<ChatFileData, St
                 String::new()
             };
 
-            if role == "system" {
-                if !content.is_empty() {
-                    system_prompt = content.clone();
-                }
+            if role == "system" && !content.is_empty() {
+                system_prompt = content.clone();
             }
 
             let model_name = msg.metadata.as_ref().and_then(|meta| {

@@ -18,6 +18,7 @@ import WorkspaceMemoryPanel from "./WorkspaceMemoryPanel";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { Tooltip } from "../components/Tooltip";
 import { useSettingsStore } from "../stores/settingsStore";
+import { useBackgroundJobsStore } from "../stores/backgroundJobs";
 import type { Workspace } from "../stores/workspaceStore";
 import type { DashboardSummary, KnowledgeResetOptions, KnowledgeResetResult, KnowledgeResetScope, PromptBankStatus, RoadmapSnapshot, TopicSignature, WorkspaceGlossaryTerm } from "../lib/api";
 
@@ -358,6 +359,18 @@ export default function WorkspaceSettingsView() {
   const [glossaryDraftAliases, setGlossaryDraftAliases] = useState("");
   const [glossaryDraftDefinition, setGlossaryDraftDefinition] = useState("");
   const [promptBankStatus, setPromptBankStatus] = useState<PromptBankStatus | null>(null);
+  const storeActiveJob = useBackgroundJobsStore((s) => {
+    const job = s.jobs.get("workspace_prompt_bank");
+    return job?.workspace_id === selectedId ? job : null;
+  });
+  const activeJob = storeActiveJob
+    ? {
+        status: storeActiveJob.status,
+        generated_count: promptBankStatus?.active_job?.generated_count ?? 0,
+        target_count: promptBankStatus?.active_job?.target_count ?? 120,
+      }
+    : null;
+  const wasPromptJobRunning = useRef(false);
   const [isLoadingPromptBank, setIsLoadingPromptBank] = useState(false);
   const [isStartingPromptBankJob, setIsStartingPromptBankJob] = useState(false);
   const [roadmapSnapshots, setRoadmapSnapshots] = useState<RoadmapSnapshot[]>([]);
@@ -487,12 +500,23 @@ export default function WorkspaceSettingsView() {
     }
 
     void loadPromptBankStatus();
-    const interval = window.setInterval(loadPromptBankStatus, 5000);
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
     };
   }, [selectedId]);
+
+  useEffect(() => {
+    const isRunning = storeActiveJob !== null && (storeActiveJob.status === "running" || storeActiveJob.status === "queued");
+    if (wasPromptJobRunning.current && !isRunning && selectedId) {
+      // Transitioned from running/queued to not running
+      api.workspace.getPromptBankStatus(selectedId)
+        .then((status) => {
+          setPromptBankStatus(status);
+        })
+        .catch(() => null);
+    }
+    wasPromptJobRunning.current = isRunning;
+  }, [storeActiveJob, selectedId]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -1451,19 +1475,19 @@ export default function WorkspaceSettingsView() {
                       <button
                         type="button"
                         onClick={() => { void startPromptBankJob(); }}
-                        disabled={isStartingPromptBankJob || promptBankStatus?.active_job?.status === "queued" || promptBankStatus?.active_job?.status === "running"}
+                        disabled={isStartingPromptBankJob || activeJob?.status === "queued" || activeJob?.status === "running"}
                         className="inline-flex items-center gap-2 rounded-lg border border-[rgba(var(--accent-color-rgb),0.35)] bg-[var(--accent-color)] px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[var(--accent-color)]/90 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {(isStartingPromptBankJob || promptBankStatus?.active_job) && <Loader2 size={13} className="animate-spin" />}
+                        {(isStartingPromptBankJob || activeJob) && <Loader2 size={13} className="animate-spin" />}
                         {promptBankStatus?.prompt_count ? "Regenerate bank" : "Generate bank"}
                       </button>
                     </div>
-                    {promptBankStatus?.active_job && (
+                    {activeJob && (
                       <div className="text-xs text-[var(--text-secondary)]">
-                        Job {promptBankStatus.active_job.status}: {promptBankStatus.active_job.generated_count}/{promptBankStatus.active_job.target_count}
+                        Job {activeJob.status}: {activeJob.generated_count}/{activeJob.target_count}
                       </div>
                     )}
-                    {!promptBankStatus?.active_job && promptBankStatus?.latest_job?.status === "failed" && (
+                    {!activeJob && promptBankStatus?.latest_job?.status === "failed" && (
                       <div className="text-xs text-red-400">
                         Last job failed{promptBankStatus.latest_job.error ? `: ${promptBankStatus.latest_job.error}` : "."}
                       </div>

@@ -748,3 +748,41 @@ pub fn start_scheduler(app: AppHandle) {
         }
     });
 }
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub struct ActiveBackgroundJob {
+    pub task_type: String,
+    pub workspace_id: Option<String>,
+    pub model: Option<String>,
+    pub started_at: Option<String>,
+    pub status: String,
+}
+
+pub fn list_active(conn: &rusqlite::Connection) -> Result<Vec<ActiveBackgroundJob>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT 'workspace_prompt_bank' AS task_type, workspace_id, model, started_at, status \
+             FROM workspace_prompt_bank_jobs \
+             WHERE status IN ('queued', 'running')",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(ActiveBackgroundJob {
+                task_type: row.get(0)?,
+                workspace_id: row.get(1)?,
+                model: row.get(2)?,
+                started_at: row.get(3)?,
+                status: row.get(4)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut jobs = Vec::new();
+    for row in rows {
+        jobs.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(jobs)
+}
+
