@@ -486,6 +486,75 @@ function SubWorkspaceTabBar({
   );
 }
 
+function SubWorkspaceDropdownBar({
+  parentWorkspaceId,
+  activeWorkspaceId,
+  onSelect,
+  onSelectOverview,
+  onAdd,
+}: {
+  parentWorkspaceId: string | null;
+  activeWorkspaceId: string | null;
+  onSelect: (workspaceId: string) => void;
+  onSelectOverview?: (workspaceId: string) => void;
+  onAdd?: () => void;
+}) {
+  const allWorkspaces = useWorkspaceStore((s) => s.workspaces);
+  const parent = parentWorkspaceId ? allWorkspaces.find((ws) => ws.id === parentWorkspaceId) : null;
+  const children = parentWorkspaceId
+    ? allWorkspaces.filter((ws) => ws.parent_workspace_id === parentWorkspaceId)
+    : [];
+  if (!parentWorkspaceId) { return null; }
+
+  const options = [
+    ...(parent ? [{ value: parent.id, label: `${parent.name} (Overview)` }] : []),
+    ...children.map((ws) => ({ value: ws.id, label: ws.name })),
+  ];
+  const selectedValue = options.some((option) => option.value === activeWorkspaceId)
+    ? activeWorkspaceId ?? options[0]?.value ?? ""
+    : options[0]?.value ?? "";
+
+  return (
+    <div
+      data-tauri-drag-region
+      onMouseDown={onDragRegionMouseDown}
+      className={`relative flex items-center gap-2 h-10 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-3 shrink-0 select-none ${isMac ? "pl-[72px]" : ""} ${!isMac ? "pr-[112px]" : ""}`}
+    >
+      <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
+        Sub-workspace
+      </span>
+      <div data-no-drag className="min-w-0">
+        <CompactMenuSelect
+          label="Sub-workspace"
+          value={selectedValue}
+          options={options}
+          onChange={(value) => {
+            if (parent && value === parent.id) {
+              (onSelectOverview ?? onSelect)(value);
+            } else {
+              onSelect(value);
+            }
+          }}
+          widthClassName="min-w-0 w-full max-w-[260px] sm:w-[240px]"
+          buttonClassName="h-8 bg-[var(--bg-primary)]"
+        />
+      </div>
+      {onAdd && (
+        <Tooltip content="New Sub-workspace" position="bottom">
+          <button
+            data-no-drag
+            onClick={onAdd}
+            title="New Sub-workspace"
+            className="h-8 w-8 shrink-0 flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded transition-colors"
+          >
+            <Plus size={14} />
+          </button>
+        </Tooltip>
+      )}
+    </div>
+  );
+}
+
 function buildWorkspaceGroups(workspaces: Workspace[]) {
   const roots = workspaces.filter((ws) => ws.parent_workspace_id === null);
   return roots.map((root) => ({
@@ -1058,6 +1127,105 @@ function SinglePaneWorkspaceSidebar() {
   );
 }
 
+function SinglePaneSubWorkspaceSidebar() {
+  const navigate = useNavigate();
+  const workspaces = useWorkspaceStore((state) => state.workspaces);
+  const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
+  const activeParentWorkspaceId = useWorkspaceStore((state) => state.activeParentWorkspaceId);
+  const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId);
+  const setActiveParentWorkspaceId = useWorkspaceStore((state) => state.setActiveParentWorkspaceId);
+  const addWorkspace = useWorkspaceStore((state) => state.addWorkspace);
+  const switchWorkspaceSection = useSettingsStore((state) => state.switchWorkspaceSection);
+  const [creating, setCreating] = useState(false);
+
+  const parent = activeParentWorkspaceId
+    ? workspaces.find((ws) => ws.id === activeParentWorkspaceId)
+    : null;
+  const children = activeParentWorkspaceId
+    ? workspaces.filter((ws) => ws.parent_workspace_id === activeParentWorkspaceId)
+    : [];
+
+  if (!activeParentWorkspaceId) { return null; }
+
+  function selectWorkspace(workspaceId: string, options?: { allowRoot?: boolean }) {
+    const { workspaceId: nextWorkspaceId, parentWorkspaceId } = resolveWorkspaceSelection(workspaces, workspaceId, options);
+    const isChanged = nextWorkspaceId !== activeWorkspaceId;
+    setActiveParentWorkspaceId(parentWorkspaceId);
+    setActiveWorkspaceId(nextWorkspaceId, options);
+    if (isChanged && switchWorkspaceSection) { navigate(switchWorkspaceSection); }
+  }
+
+  async function handleCreate(name: string) {
+    setCreating(false);
+    const trimmed = name.trim();
+    if (!trimmed || !activeParentWorkspaceId) { return; }
+    const ws = await api.workspace.createChild(activeParentWorkspaceId, trimmed);
+    addWorkspace(ws);
+    selectWorkspace(ws.id);
+  }
+
+  return (
+    <div
+      className="flex h-full w-[180px] shrink-0 flex-col border-r border-[var(--border-color)] bg-[var(--bg-sidebar)]"
+      data-testid="single-pane-subworkspace-sidebar"
+    >
+      <div className="flex items-center justify-between px-3 pt-3 pb-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+        <span>Sub-workspaces</span>
+        <Tooltip content="New Sub-workspace" position="right">
+          <button
+            onClick={() => setCreating(true)}
+            className="flex h-5 w-5 items-center justify-center rounded text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+            aria-label="New Sub-workspace"
+          >
+            <Plus size={12} />
+          </button>
+        </Tooltip>
+      </div>
+      <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
+        {parent && (
+          <button
+            onClick={() => selectWorkspace(parent.id, { allowRoot: true })}
+            className={`flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs truncate transition-colors ${
+              activeWorkspaceId === parent.id
+                ? "bg-[var(--accent-color)] text-white"
+                : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+            }`}
+          >
+            <svg width="6" height="6" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
+            <span className="truncate">Overview</span>
+          </button>
+        )}
+        {children.map((ws) => {
+          const isActive = ws.id === activeWorkspaceId;
+          return (
+            <button
+              key={ws.id}
+              onClick={() => selectWorkspace(ws.id)}
+              className={`flex w-full items-center rounded-md px-2 py-1.5 text-left text-xs truncate transition-colors ${
+                isActive
+                  ? "bg-[var(--accent-color)] text-white"
+                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              {ws.name}
+            </button>
+          );
+        })}
+      </div>
+      {creating && (
+        <PromptDialog
+          title="New Sub-workspace"
+          description="Enter a name for the new sub-workspace."
+          placeholder="Sub-workspace name"
+          confirmLabel="Create"
+          onConfirm={handleCreate}
+          onCancel={() => setCreating(false)}
+        />
+      )}
+    </div>
+  );
+}
+
 function WorkspaceTabBar({
   onToggleSplit,
   showWorkspaceTabs = true,
@@ -1073,6 +1241,7 @@ function WorkspaceTabBar({
   const setActiveParentWorkspaceId = useWorkspaceStore((state) => state.setActiveParentWorkspaceId);
   const splitMode = useWorkspaceStore((state) => state.splitMode);
   const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
+  const subWorkspaceNavigation = useWorkspaceStore((state) => state.subWorkspaceNavigation);
   const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId);
   const addWorkspace = useWorkspaceStore((state) => state.addWorkspace);
   const setWorkspaces = useWorkspaceStore((state) => state.setWorkspaces);
@@ -1315,8 +1484,9 @@ function WorkspaceTabBar({
           </div>
         )}
       </div>
-      {/* Row 2: Sub-workspace tabs for the active parent workspace */}
-      {!showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs && (
+      {/* Row 2: Sub-workspace navigation for the active parent workspace. The
+          sidebar presentation renders as a left rail in the body instead. */}
+      {!showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs && subWorkspaceNavigation === "top-tabs" && (
         <SubWorkspaceTabBar
           parentWorkspaceId={activeParentWorkspaceId}
           activeWorkspaceId={activeWorkspaceId}
@@ -1324,6 +1494,15 @@ function WorkspaceTabBar({
           onSelectOverview={activateOverviewWorkspace}
           onAdd={createSubWorkspace}
           onContextMenu={(ws, x, y) => setContextMenu({ workspace: ws, x, y })}
+        />
+      )}
+      {!showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs && subWorkspaceNavigation === "top-dropdown" && (
+        <SubWorkspaceDropdownBar
+          parentWorkspaceId={activeParentWorkspaceId}
+          activeWorkspaceId={activeWorkspaceId}
+          onSelect={activateSubWorkspace}
+          onSelectOverview={activateOverviewWorkspace}
+          onAdd={createSubWorkspace}
         />
       )}
 
@@ -1685,6 +1864,7 @@ export default function Layout() {
   const workspaces = useWorkspaceStore((s) => s.workspaces);
   const sectionNavigation = useWorkspaceStore((state) => state.sectionNavigation);
   const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
+  const subWorkspaceNavigation = useWorkspaceStore((state) => state.subWorkspaceNavigation);
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
   const setDemo = useWorkspaceStore((state) => state.setDemo);
   const loadArtifact = useArtifactStore((state) => state.loadArtifact);
@@ -1695,6 +1875,7 @@ export default function Layout() {
   const showSinglePaneNavigation = !showSplitPaneLayout;
   const showSectionSidebar = showSinglePaneNavigation && sectionNavigation === "sidebar";
   const showWorkspaceSidebar = showSinglePaneNavigation && workspaceNavigation === "sidebar";
+  const showSubWorkspaceSidebar = showSinglePaneNavigation && subWorkspaceNavigation === "sidebar";
   const _hasLeftRail = showSectionSidebar;
 
   const handleExitDemo = async () => {
@@ -1792,6 +1973,7 @@ export default function Layout() {
         ) : (
           <div className="flex h-full overflow-hidden min-h-0">
             {showWorkspaceSidebar && <SinglePaneWorkspaceSidebar />}
+            {showSubWorkspaceSidebar && <SinglePaneSubWorkspaceSidebar />}
             {showSectionSidebar && (
               <Sidebar
                 onOpenCommandPalette={() => setCommandPaletteOpen(true)}

@@ -127,6 +127,7 @@ const TAB_KEYWORDS: Record<string, string[]> = {
   ],
   navigation: [
     "Main layout", "Settings Navigation", "Workspace Navigation", "Section Navigation",
+    "Sub-Workspace Navigation", "Sub-workspace",
     "Workspace behavior", "Workspace Sort Order", "Navigate on workspace switch",
     "Stay on current", "Chat", "Dashboard", "History", "Knowledge", "Notes", "Sources",
   ],
@@ -886,6 +887,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
     fontSize?: number | null;
     workspaceNavigation?: NavigationPresentation | null;
     sectionNavigation?: NavigationPresentation | null;
+    subWorkspaceNavigation?: NavigationPresentation | null;
     workspaceSortOrder?: string | null;
     chatMessageStyle?: ChatMessageStyle | null;
     composerMode?: string | null;
@@ -893,12 +895,14 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
 }) {
   const dbWorkspaceNavigation = useWorkspaceStore((s) => s.workspaceNavigation);
   const dbSectionNavigation = useWorkspaceStore((s) => s.sectionNavigation);
+  const dbSubWorkspaceNavigation = useWorkspaceStore((s) => s.subWorkspaceNavigation);
   const dbWorkspaceSortOrder = useWorkspaceStore((s) => s.workspaceSortOrder);
   const dbChatMessageStyle = useSettingsStore((s) => s.chatMessageStyle);
   const dbComposerMode = useSettingsStore((s) => s.composerMode);
 
   const workspaceNavigation = overrides.workspaceNavigation !== undefined && overrides.workspaceNavigation !== null ? overrides.workspaceNavigation : dbWorkspaceNavigation;
   const sectionNavigation = overrides.sectionNavigation !== undefined && overrides.sectionNavigation !== null ? overrides.sectionNavigation : dbSectionNavigation;
+  const subWorkspaceNavigation = overrides.subWorkspaceNavigation !== undefined && overrides.subWorkspaceNavigation !== null ? overrides.subWorkspaceNavigation : dbSubWorkspaceNavigation;
   const workspaceSortOrder = overrides.workspaceSortOrder !== undefined && overrides.workspaceSortOrder !== null ? overrides.workspaceSortOrder : dbWorkspaceSortOrder;
   const showGenInfo = useSettingsStore((s) => s.showGenInfo);
   const showGenInfoTokenCount = useSettingsStore((s) => s.showGenInfoTokenCount);
@@ -1071,7 +1075,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
           </div>
 
           {/* Row 2: Sub-workspace tabs for the active parent workspace (child workspaces) */}
-          {(workspaceNavigation === "top-tabs" || workspaceNavigation === "top-dropdown") && activeWorkspaceChildren.length > 0 && (
+          {subWorkspaceNavigation === "top-tabs" && activeWorkspaceChildren.length > 0 && (
             <div className="h-7 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]/90 px-3 flex items-center justify-between shrink-0 select-none">
               <div className="flex items-center gap-1.5 h-full">
                 {/* Pinned overview indicator */}
@@ -1103,6 +1107,20 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
             </div>
           )}
 
+          {/* Row 2 (dropdown variant): compact sub-workspace picker */}
+          {subWorkspaceNavigation === "top-dropdown" && activeWorkspaceChildren.length > 0 && (
+            <div className="h-7 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]/90 px-3 flex items-center gap-2 shrink-0 select-none">
+              <span className="text-[0.5em] font-bold uppercase tracking-wider text-[var(--text-muted)]">Sub</span>
+              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] text-[0.6em] text-[var(--text-primary)] font-medium">
+                <span>{activeWorkspaceChildren[0]?.name ?? "Overview"}</span>
+                <ChevronDown size={8} className="text-[var(--text-muted)]" />
+              </div>
+              <button className="h-4 w-4 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] rounded flex items-center justify-center">
+                <Plus size={8} />
+              </button>
+            </div>
+          )}
+
           {!showLeftSidebar && sectionNavigation === "top-tabs" && (
             <div className="h-8 flex items-center gap-2 px-3 bg-[var(--bg-sidebar)] border-b border-[var(--border-color)] shrink-0">
               <span className="text-[0.65em] font-semibold text-[var(--accent-color)] border-b border-[var(--accent-color)] px-1 py-0.5">Chat</span>
@@ -1125,6 +1143,28 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                     }`}
                   >
                     {ws.name}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {subWorkspaceNavigation === "sidebar" && activeWorkspaceChildren.length > 0 && (
+              <div className="w-[85px] shrink-0 bg-[var(--bg-sidebar)] border-r border-[var(--border-color)] p-1 flex flex-col gap-0.5" data-testid="single-pane-subworkspace-sidebar">
+                <div className="text-[0.55em] uppercase tracking-wider text-[var(--text-muted)] font-bold px-1.5 py-0.5 opacity-60 mb-0.5">Sub-spaces</div>
+                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[0.6em] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/40 truncate leading-tight select-none">
+                  <svg width="4" height="4" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
+                  <span className="truncate">Overview</span>
+                </div>
+                {activeWorkspaceChildren.map((child, index) => (
+                  <div
+                    key={child.id}
+                    className={`px-1.5 py-0.5 rounded text-[0.6em] truncate leading-tight select-none ${
+                      index === 0
+                        ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)] font-semibold border-l-2 border-[var(--accent-color)]"
+                        : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/40"
+                    }`}
+                  >
+                    {child.name}
                   </div>
                 ))}
               </div>
@@ -1751,6 +1791,7 @@ interface PreferencesSplitLayoutProps {
     fontSize?: number | null;
     workspaceNavigation?: NavigationPresentation | null;
     sectionNavigation?: NavigationPresentation | null;
+    subWorkspaceNavigation?: NavigationPresentation | null;
     workspaceSortOrder?: string | null;
     chatMessageStyle?: ChatMessageStyle | null;
     composerMode?: string | null;
@@ -2113,9 +2154,11 @@ export default function PreferencesView() {
   const navigate = useNavigate();
   const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
   const sectionNavigation = useWorkspaceStore((state) => state.sectionNavigation);
+  const subWorkspaceNavigation = useWorkspaceStore((state) => state.subWorkspaceNavigation);
   const workspaceSortOrder = useWorkspaceStore((state) => state.workspaceSortOrder);
   const setWorkspaceNavigation = useWorkspaceStore((state) => state.setWorkspaceNavigation);
   const setSectionNavigation = useWorkspaceStore((state) => state.setSectionNavigation);
+  const setSubWorkspaceNavigation = useWorkspaceStore((state) => state.setSubWorkspaceNavigation);
   const incrementModelRefreshCounter = useSettingsStore((state) => state.incrementModelRefreshCounter);
   const setWorkspaceSortOrder = useWorkspaceStore((state) => state.setWorkspaceSortOrder);
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
@@ -2128,6 +2171,7 @@ export default function PreferencesView() {
     fontSize?: number | null;
     workspaceNavigation?: NavigationPresentation | null;
     sectionNavigation?: NavigationPresentation | null;
+    subWorkspaceNavigation?: NavigationPresentation | null;
     workspaceSortOrder?: string | null;
     chatMessageStyle?: ChatMessageStyle | null;
     composerMode?: string | null;
@@ -3514,6 +3558,49 @@ export default function PreferencesView() {
     </div>
   );
 
+  // Dedicated thumbnail for the sub-workspace navigation picker. Sub-workspaces
+  // are children of the active parent, so the frame always shows a parent
+  // workspace tab row, then the chosen sub-workspace presentation.
+  const SubNavPreview = ({ subNav }: { subNav: NavigationPresentation }) => (
+    <div className="mb-2 rounded overflow-hidden border border-[var(--border-color)] opacity-70 flex flex-col" style={{ height: 56 }}>
+      {/* Parent workspace top bar (constant) */}
+      <div className="flex items-center gap-1 px-1.5 py-1 bg-[var(--bg-secondary)] shrink-0">
+        <div className="h-2 w-6 rounded-full bg-[var(--accent-color)] opacity-80" />
+        <div className="h-2 w-4 rounded-full bg-[var(--text-muted)] opacity-40" />
+      </div>
+      {/* Sub-workspace tab row */}
+      {subNav === "top-tabs" && (
+        <div className="flex items-center gap-1 px-1.5 py-0.5 bg-[var(--bg-secondary)]/70 shrink-0">
+          <div className="h-1.5 w-1.5 rounded-full bg-[var(--text-muted)] opacity-40" />
+          <div className="h-1.5 w-4 rounded-full bg-[var(--accent-color)] opacity-70" />
+          <div className="h-1.5 w-3 rounded-full bg-[var(--text-muted)] opacity-35" />
+        </div>
+      )}
+      {/* Sub-workspace dropdown row */}
+      {subNav === "top-dropdown" && (
+        <div className="flex items-center gap-1.5 px-1.5 py-0.5 bg-[var(--bg-secondary)]/70 shrink-0">
+          <div className="h-1.5 w-6 rounded-full bg-[var(--accent-color)] opacity-70" />
+          <div className="h-1 w-1 bg-[var(--text-muted)] opacity-35" style={{ clipPath: "polygon(0 0, 100% 0, 50% 100%)" }} />
+        </div>
+      )}
+      {/* Body */}
+      <div className="flex flex-1 min-h-0">
+        {/* Sub-workspace sidebar rail */}
+        {subNav === "sidebar" && (
+          <div className="flex flex-col gap-1 px-1 pt-1 bg-[var(--bg-secondary)]/60 w-7 shrink-0">
+            <div className="h-1.5 w-3 rounded-sm bg-[var(--text-muted)] opacity-35" />
+            <div className="h-1.5 w-4 rounded-sm bg-[var(--accent-color)] opacity-70" />
+            <div className="h-1.5 w-3 rounded-sm bg-[var(--text-muted)] opacity-35" />
+          </div>
+        )}
+        <div className="flex-1 px-1.5 pt-1 flex flex-col gap-1 bg-[var(--bg-primary)]">
+          <div className="h-1.5 w-8 rounded-sm bg-[var(--text-muted)] opacity-25" />
+          <div className="h-1.5 w-6 rounded-sm bg-[var(--text-muted)] opacity-15" />
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div ref={contentRootRef} className="flex h-full min-h-0 flex-col overflow-hidden [&_[data-pref-filtered=hidden]]:hidden">
       {settingsNavLayout === "top-tabs" ? (
@@ -3981,6 +4068,35 @@ export default function PreferencesView() {
                             </button>
                           ))}
                         </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs text-[var(--text-secondary)] mb-2 block">Sub-Workspace Navigation</label>
+                        <div className="grid gap-2 sm:grid-cols-3">
+                          {[
+                            { id: "sidebar", label: "Sidebar", description: "List sub-workspaces in a left rail beside the main content." },
+                            { id: "top-tabs", label: "Top Tabs", description: "Show sub-workspaces as a tab row beneath the titlebar." },
+                            { id: "top-dropdown", label: "Top Dropdown", description: "Use a compact sub-workspace picker beneath the titlebar." },
+                          ].map((option) => (
+                            <button
+                              key={option.id}
+                              onClick={() => setSubWorkspaceNavigation(option.id as NavigationPresentation)}
+                              onMouseEnter={() => setHoverOverrides((o) => ({ ...o, subWorkspaceNavigation: option.id as NavigationPresentation }))}
+                              onMouseLeave={() => setHoverOverrides((o) => ({ ...o, subWorkspaceNavigation: null }))}
+                              className={`rounded-lg border px-3 py-2 text-left transition-colors ${subWorkspaceNavigation === option.id
+                                ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                                : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                                }`}
+                            >
+                              <SubNavPreview subNav={option.id as NavigationPresentation} />
+                              <div className="text-xs font-medium">{option.label}</div>
+                              <div className="mt-1 text-[11px] opacity-75">{option.description}</div>
+                            </button>
+                          ))}
+                        </div>
+                        <p className="mt-2 text-[11px] text-[var(--text-muted)]/80">
+                          Applies when the active workspace has sub-workspaces. Independent of the workspace and section choices above.
+                        </p>
                       </div>
                     </section>
 

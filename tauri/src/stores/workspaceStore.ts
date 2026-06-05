@@ -297,6 +297,7 @@ interface WorkspaceStore {
   isDemoMode: boolean;
   workspaceNavigation: NavigationPresentation;
   sectionNavigation: NavigationPresentation;
+  subWorkspaceNavigation: NavigationPresentation;
   splitWorkspaceNavigation: SplitNavigationPresentation;
   splitSectionNavigation: SplitNavigationPresentation;
   workspaceSortOrder: WorkspaceSortOrder;
@@ -318,6 +319,7 @@ interface WorkspaceStore {
   removeFolder: (id: string) => void;
   setWorkspaceNavigation: (layout: NavigationPresentation) => void;
   setSectionNavigation: (layout: NavigationPresentation) => void;
+  setSubWorkspaceNavigation: (layout: NavigationPresentation) => void;
   setSplitWorkspaceNavigation: (layout: SplitNavigationPresentation) => void;
   setSplitSectionNavigation: (layout: SplitNavigationPresentation) => void;
   setWorkspaceSortOrder: (order: WorkspaceSortOrder) => void;
@@ -341,7 +343,7 @@ interface WorkspaceStore {
 
 export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
   const storedSplitLayout = readStoredSplitLayout();
-  const readNavigationSetting = (key: "workspaceNavigation" | "sectionNavigation", fallback: NavigationPresentation) => {
+  const readNavigationSetting = (key: "workspaceNavigation" | "sectionNavigation" | "subWorkspaceNavigation", fallback: NavigationPresentation) => {
     const raw = window.localStorage.getItem(key) as NavigationPresentation | null;
     return normalizeNavigationPresentation(raw, fallback);
   };
@@ -366,7 +368,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       "sectionNavigation",
       workspaceNavigation
     );
-    return { workspaceNavigation, sectionNavigation };
+    // Sub-workspace navigation is an independent axis. Default to top-tabs to
+    // preserve the historical behavior where child workspaces always rendered
+    // as a tab row beneath the titlebar.
+    const subWorkspaceNavigation = readNavigationSetting(
+      "subWorkspaceNavigation",
+      "top-tabs"
+    );
+    return { workspaceNavigation, sectionNavigation, subWorkspaceNavigation };
   })();
 
   return {
@@ -379,6 +388,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     isDemoMode: false,
     workspaceNavigation: migratedNavigation.workspaceNavigation,
     sectionNavigation: migratedNavigation.sectionNavigation,
+    subWorkspaceNavigation: migratedNavigation.subWorkspaceNavigation,
     splitWorkspaceNavigation: readSplitNavigationSetting("splitWorkspaceNavigation", "match-main"),
     splitSectionNavigation: readSplitNavigationSetting("splitSectionNavigation", "match-main"),
     workspaceSortOrder: (window.localStorage.getItem("workspaceSortOrder") as WorkspaceSortOrder | null) ?? "name-asc",
@@ -579,6 +589,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       const normalized = normalizeNavigationPresentation(sectionNavigation, "sidebar");
       window.localStorage.setItem("sectionNavigation", normalized);
       set({ sectionNavigation: normalized });
+    },
+    setSubWorkspaceNavigation: (subWorkspaceNavigation) => {
+      const normalized = normalizeNavigationPresentation(subWorkspaceNavigation, "top-tabs");
+      window.localStorage.setItem("subWorkspaceNavigation", normalized);
+      set({ subWorkspaceNavigation: normalized });
     },
     setSplitWorkspaceNavigation: (splitWorkspaceNavigation) => {
       window.localStorage.setItem("splitWorkspaceNavigation", splitWorkspaceNavigation);

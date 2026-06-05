@@ -91,6 +91,7 @@ const INITIAL = {
   isDemoMode: false,
   workspaceNavigation: "sidebar" as const,
   sectionNavigation: "sidebar" as const,
+  subWorkspaceNavigation: "top-tabs" as const,
   splitWorkspaceNavigation: "match-main" as const,
   splitSectionNavigation: "match-main" as const,
   activeTopicSignature: null,
@@ -521,6 +522,47 @@ describe("Layout", () => {
 
     expect(screen.getByTestId("single-pane-workspace-sidebar")).toBeInTheDocument();
     expect(document.querySelector("[data-workspace-tab-strip]")).toBeNull();
+  });
+
+  it("renders a sub-workspace sidebar rail when subWorkspaceNavigation is sidebar", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "ws-1-child", name: "Rust", description: "", prompt_instructions: "", topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: "ws-1", icon: "", order_index: 0, last_message_at: null, survey_data: null },
+      ],
+      activeWorkspaceId: "ws-1-child",
+      activeParentWorkspaceId: "ws-1",
+      subWorkspaceNavigation: "sidebar",
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/folder"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId("single-pane-subworkspace-sidebar")).toBeInTheDocument();
+  });
+
+  it("renders a sub-workspace dropdown when subWorkspaceNavigation is top-dropdown", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "ws-1-child", name: "Rust", description: "", prompt_instructions: "", topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: "ws-1", icon: "", order_index: 0, last_message_at: null, survey_data: null },
+      ],
+      activeWorkspaceId: "ws-1-child",
+      activeParentWorkspaceId: "ws-1",
+      subWorkspaceNavigation: "top-dropdown",
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/folder"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole("button", { name: "Sub-workspace: Rust" })).toBeInTheDocument();
+    expect(screen.queryByTestId("single-pane-subworkspace-sidebar")).toBeNull();
   });
 
   it("renders split workspace navigation in the shared titlebar while keeping titlebar actions", () => {
