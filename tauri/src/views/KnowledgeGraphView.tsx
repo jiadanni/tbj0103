@@ -394,6 +394,25 @@ export default function KnowledgeGraphView({
     void loadProposals();
   }, [loadProposals]);
 
+  const autoDedupRanFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!activeWorkspaceId || !selectedModel || isDemoMode || isAnalyzing) { return; }
+    if (nodes.length < 2) { return; }
+    const key = `${activeWorkspaceId}::${selectedModel}`;
+    if (autoDedupRanFor.current === key) { return; }
+    autoDedupRanFor.current = key;
+    (async () => {
+      try {
+        const report = await api.knowledge.dedupWorkspaceConcepts(activeWorkspaceId, selectedModel, { ollamaUrl });
+        if (report.merged_chapters + report.merged_sections > 0) {
+          await Promise.all([loadGraph(), loadSummary(), loadProposals()]);
+        }
+      } catch {
+        // silent — dedup is best-effort
+      }
+    })();
+  }, [activeWorkspaceId, selectedModel, isDemoMode, isAnalyzing, nodes.length, ollamaUrl, loadGraph, loadSummary, loadProposals]);
+
   useEffect(() => {
     const unlisten = listen("knowledge-state-reset", () => {
       void loadGraph();

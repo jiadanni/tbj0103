@@ -787,6 +787,28 @@ fn preload_name_to_id(
     name_to_id
 }
 
+/// Load distinct, non-superseded concept names at a given hierarchy_level
+/// for a workspace. Used to seed the extraction prompt with existing
+/// chapters/sections so the LLM reuses canonical names instead of
+/// generating near-duplicates.
+fn load_existing_names(
+    conn: &rusqlite::Connection,
+    workspace_id: &str,
+    hierarchy_level: &str,
+) -> rusqlite::Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT name FROM concept_nodes \
+         WHERE workspace_id = ?1 \
+           AND hierarchy_level = ?2 \
+           AND (superseded_by IS NULL OR superseded_by = '') \
+         ORDER BY name",
+    )?;
+    let rows = stmt.query_map(rusqlite::params![workspace_id, hierarchy_level], |row| {
+        row.get::<_, String>(0)
+    })?;
+    Ok(rows.filter_map(Result::ok).collect())
+}
+
 // --------------- Per-chunk worker ---------------
 
 #[allow(clippy::too_many_arguments)]
@@ -817,9 +839,31 @@ async fn analyze_chunk(
         (format!("Content:\n{chunk_text}\n\n"), String::new())
     };
 
+    let existing_clause = {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let chapters = load_existing_names(&conn, workspace_id, "chapter").unwrap_or_default();
+        let sections = load_existing_names(&conn, workspace_id, "section").unwrap_or_default();
+        if chapters.is_empty() && sections.is_empty() {
+            String::new()
+        } else {
+            let mut s = String::from("\n\nExisting chapters and sections in this workspace (REUSE the exact name when the new content fits — do not invent a near-duplicate):\n");
+            if !chapters.is_empty() {
+                s.push_str("Chapters: ");
+                s.push_str(&chapters.join(", "));
+                s.push('\n');
+            }
+            if !sections.is_empty() {
+                s.push_str("Sections: ");
+                s.push_str(&sections.join(", "));
+                s.push('\n');
+            }
+            s
+        }
+    };
+
     let prompt = format!(
         "You are a knowledge graph assistant helping a learner build a personal knowledge base. \
-Analyze the content below and extract SPECIFIC, NAMED concepts — not generic categories.{focus}{survey}\n\n\
+Analyze the content below and extract SPECIFIC, NAMED concepts — not generic categories.{focus}{survey}{existing}\n\n\
 {content_section}\
 Respond with ONLY raw JSON:\n\
 {{\"chapters\":[{{\"name\":\"...\",\"description\":\"...\",\"sections\":[{{\"name\":\"...\",\"description\":\"...\",\"concepts\":[{{\"name\":\"...\",\"description\":\"one clear sentence\",\"type\":\"definition\"}}]}}]}}],\"relationships\":[{{\"source\":\"exact concept name\",\"target\":\"exact concept name\",\"type\":\"prerequisite\",\"description\":\"why\"}}]}}\n\n\
@@ -831,10 +875,14 @@ Rules:\n\
 - Every concept MUST be specific and named: use proper nouns, library names, theorem names, algorithm names, named techniques, or domain-specific terms\n\
 - NEVER use vague concepts like \"Key Ideas\", \"Best Practices\", \"Common Patterns\", \"Important Concepts\", \"Overview\", \"Summary\"\n\
 - Prefer concrete terms over abstractions: \"Binary Search Tree\" not \"Data Structure\", \"React Hooks\" not \"Framework Feature\"\n\
+- If an existing chapter or section above already covers the new content, REUSE its exact name verbatim — do NOT create a language- or library-qualified variant (e.g. if \"CSV Handling\" exists, do NOT create \"Python CSV Handling\")\n\
+- Chapter names must be self-contained noun phrases — no trailing \"and ...\", no truncations, no ellipses\n\
+- When two candidate names cover the same subject, choose the broader one (drop language prefixes at chapter level)\n\
 - Each description should define the concept in one clear sentence, not just restate the name\n\
 - No markdown, only raw JSON",
         focus = focus_clause,
         survey = survey_clause,
+        existing = existing_clause,
         content_section = content_section,
     );
 
@@ -1269,7 +1317,277 @@ No markdown formatting, no commentary, only raw JSON.",
         }
     }
 
+    let _ = run_semantic_dedup_pass(
+        pool,
+        workspace_id,
+        "chapter",
+        model,
+        ollama_url,
+        job_id,
+        &supersede_mode,
+    )
+    .await;
+    let _ = run_semantic_dedup_pass(
+        pool,
+        workspace_id,
+        "section",
+        model,
+        ollama_url,
+        job_id,
+        &supersede_mode,
+    )
+    .await;
+
     Ok(stats)
+}
+
+// --------------- Semantic dedup pass (chapter / section) ---------------
+
+#[derive(Debug, Clone, Deserialize)]
+struct DedupGroup {
+    canonical_id: String,
+    merge_ids: Vec<String>,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DedupReport {
+    pub merged_chapters: usize,
+    pub merged_sections: usize,
+    pub proposals_created: usize,
+}
+
+/// Reparent any `part_of` children whose target was merged into a canonical id,
+/// then delete duplicate edges that result from the reparent.
+fn reparent_children_to_canonical(
+    conn: &rusqlite::Connection,
+    canonical_id: &str,
+    merge_ids: &[String],
+    job_id: &str,
+) -> rusqlite::Result<()> {
+    for old_id in merge_ids {
+        conn.execute(
+            "UPDATE concept_links \
+             SET target_id = ?1, last_modified_by_job = ?2 \
+             WHERE target_id = ?3 AND link_type = 'part_of';",
+            rusqlite::params![canonical_id, job_id, old_id],
+        )?;
+    }
+    // Collapse duplicate part_of edges (same source + target) introduced by the
+    // reparent. Keep the earliest row by rowid.
+    conn.execute(
+        "DELETE FROM concept_links \
+         WHERE link_type = 'part_of' \
+           AND rowid NOT IN ( \
+             SELECT MIN(rowid) FROM concept_links \
+             WHERE link_type = 'part_of' \
+             GROUP BY source_id, target_id \
+           );",
+        [],
+    )?;
+    Ok(())
+}
+
+/// Run a semantic dedup pass over all non-superseded nodes at `hierarchy_level`
+/// for `workspace_id`. Uses Ollama to group near-duplicates and merges losers
+/// into a canonical id via `apply_supersede` + `reparent_children_to_canonical`.
+/// Returns `(merged_count, proposals_count)`.
+async fn run_semantic_dedup_pass(
+    pool: &Pool<SqliteConnectionManager>,
+    workspace_id: &str,
+    hierarchy_level: &str,
+    model: &str,
+    ollama_url: Option<&str>,
+    job_id: &str,
+    supersede_mode: &str,
+) -> Result<(usize, usize), String> {
+    if supersede_mode == "off" {
+        return Ok((0, 0));
+    }
+
+    // Load (id, name, child_names_concat) for this level.
+    let nodes: Vec<(String, String, String)> = {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT n.id, n.name, COALESCE(GROUP_CONCAT(c.name, ' | '), '') \
+                 FROM concept_nodes n \
+                 LEFT JOIN concept_links l \
+                   ON l.target_id = n.id AND l.link_type = 'part_of' \
+                 LEFT JOIN concept_nodes c \
+                   ON c.id = l.source_id \
+                      AND (c.superseded_by IS NULL OR c.superseded_by = '') \
+                 WHERE n.workspace_id = ?1 \
+                   AND n.hierarchy_level = ?2 \
+                   AND (n.superseded_by IS NULL OR n.superseded_by = '') \
+                 GROUP BY n.id \
+                 ORDER BY n.name",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![workspace_id, hierarchy_level], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.filter_map(Result::ok).collect()
+    };
+
+    if nodes.len() < 2 {
+        return Ok((0, 0));
+    }
+
+    let mut listing = String::new();
+    for (id, name, children) in &nodes {
+        if children.is_empty() {
+            listing.push_str(&format!("[{}] {}\n", id, name));
+        } else {
+            listing.push_str(&format!("[{}] {} (children: {})\n", id, name, children));
+        }
+    }
+
+    let level_plural = if hierarchy_level == "chapter" { "chapters" } else { "sections" };
+    let prompt = format!(
+        "You are consolidating a learner's knowledge map. Below is a list of {level_plural} for one workspace, each with id and (when present) child names.\n\n\
+{listing}\n\
+Identify groups of entries that refer to the SAME subject — including language- or library-qualified duplicates (\"Python CSV Handling\" vs \"CSV Handling\"), truncated/partial titles (\"Function Arguments and...\" vs \"Function Arguments\"), and synonyms.\n\n\
+For each group, pick ONE canonical id, preferring the broader, non-qualified, non-truncated name. List the other ids in merge_ids.\n\n\
+Respond with ONLY a raw JSON array. Empty array [] if there are no duplicates. Each element: {{\"canonical_id\":\"...\",\"merge_ids\":[\"...\"],\"reason\":\"...\"}}. No markdown.",
+        level_plural = level_plural,
+        listing = listing,
+    );
+
+    let client = OllamaClient::new(ollama_url.map(|s| s.to_string()))?;
+    let messages = vec![OllamaMessage {
+        role: "user".to_string(),
+        content: prompt,
+    }];
+
+    let raw = match client.send_message("ai_knowledge_dedup", model, messages).await {
+        Ok(r) => r,
+        Err(_) => return Ok((0, 0)),
+    };
+
+    let trimmed = raw.trim();
+    // Find first '[' for a JSON array; fall back to whole string.
+    let json_slice = trimmed
+        .find('[')
+        .and_then(|start| trimmed.rfind(']').map(|end| &trimmed[start..=end]))
+        .unwrap_or(trimmed);
+
+    let groups: Vec<DedupGroup> = match serde_json::from_str(json_slice) {
+        Ok(g) => g,
+        Err(_) => return Ok((0, 0)),
+    };
+
+    let valid_ids: std::collections::HashSet<String> = nodes.iter().map(|(id, _, _)| id.clone()).collect();
+
+    let conn = pool.get().map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut merged = 0usize;
+    let mut proposals = 0usize;
+
+    for group in groups {
+        if !valid_ids.contains(&group.canonical_id) {
+            continue;
+        }
+        let reason = group.reason.clone().unwrap_or_else(|| "semantic dedup".to_string());
+        for old_id in &group.merge_ids {
+            if old_id == &group.canonical_id || !valid_ids.contains(old_id) {
+                continue;
+            }
+            if supersede_mode == "auto" {
+                if apply_supersede(&conn, old_id, &group.canonical_id, &reason, &now, job_id).is_ok() {
+                    let _ = reparent_children_to_canonical(
+                        &conn,
+                        &group.canonical_id,
+                        std::slice::from_ref(old_id),
+                        job_id,
+                    );
+                    merged += 1;
+                }
+            } else if supersede_mode == "suggest" {
+                let prop_id = uuid::Uuid::new_v4().to_string();
+                let payload_json = serde_json::json!({ "successor_id": group.canonical_id });
+                if conn
+                    .execute(
+                        "INSERT INTO concept_change_proposals (id, workspace_id, job_id, proposal_type, target_node_id, payload, reason, created_at) \
+                         VALUES (?1, ?2, ?3, 'supersede', ?4, ?5, ?6, ?7)",
+                        rusqlite::params![
+                            prop_id,
+                            workspace_id,
+                            job_id,
+                            old_id,
+                            payload_json.to_string(),
+                            reason,
+                            now
+                        ],
+                    )
+                    .is_ok()
+                {
+                    proposals += 1;
+                }
+            }
+        }
+    }
+
+    Ok((merged, proposals))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DedupWorkspaceRequest {
+    pub workspace_id: String,
+    pub model: String,
+    pub ollama_url: Option<String>,
+}
+
+#[tauri::command]
+pub async fn dedup_workspace_concepts(
+    state: State<'_, DbState>,
+    req: DedupWorkspaceRequest,
+) -> Result<DedupReport, String> {
+    let pool = state.0.clone();
+
+    let supersede_mode = {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let raw = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'knowledge.supersede_mode'",
+                [],
+                |r| r.get::<_, String>(0),
+            )
+            .unwrap_or_else(|_| "\"auto\"".to_string());
+        serde_json::from_str::<String>(&raw).unwrap_or_else(|_| "auto".to_string())
+    };
+
+    let job_id = format!("dedup-{}", uuid::Uuid::new_v4());
+
+    let (mc, pc1) = run_semantic_dedup_pass(
+        &pool,
+        &req.workspace_id,
+        "chapter",
+        &req.model,
+        req.ollama_url.as_deref(),
+        &job_id,
+        &supersede_mode,
+    )
+    .await?;
+    let (ms, pc2) = run_semantic_dedup_pass(
+        &pool,
+        &req.workspace_id,
+        "section",
+        &req.model,
+        req.ollama_url.as_deref(),
+        &job_id,
+        &supersede_mode,
+    )
+    .await?;
+
+    Ok(DedupReport {
+        merged_chapters: mc,
+        merged_sections: ms,
+        proposals_created: pc1 + pc2,
+    })
 }
 
 // --------------- Auto-categorize orphans ---------------
