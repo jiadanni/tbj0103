@@ -521,7 +521,7 @@ export interface CreateArtifactRequest {
 
 export interface BackgroundTaskEvent {
   task_type: string;
-  status: 'started' | 'processing' | 'completed' | 'failed';
+  status: 'queued' | 'started' | 'processing' | 'completed' | 'failed' | 'cancelled';
   message: string;
   /** Model name being used for this job, when applicable. */
   model?: string;

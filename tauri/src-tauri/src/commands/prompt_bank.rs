@@ -53,6 +53,12 @@ pub fn start_workspace_prompt_bank_job(
         );
     }
     if job.status == "queued" {
+        emit_prompt_bank_task(
+            &app,
+            "queued",
+            "Queued for starter prompt refresh…",
+            Some(job.model.clone()),
+        );
         let pool = app.state::<DbState>().0.clone();
         let job_id = job.id.clone();
         let model = job.model.clone();

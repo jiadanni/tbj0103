@@ -173,6 +173,25 @@ describe("StatusBar", () => {
     expect(screen.getByText("Chunk 1/3")).toBeInTheDocument();
   });
 
+  it("renders queued jobs separately from running jobs", async () => {
+    render(<StatusBar />);
+
+    act(() => {
+      useBackgroundJobsStore.getState().applyEvent({
+        task_type: "workspace_glossary",
+        status: "queued",
+        message: "Queued for glossary refresh…",
+        model: "gemma3:1b",
+      });
+      useBackgroundJobsStore.getState().applyEvent(taskStarted("memory_extraction", "llama3"));
+    });
+
+    expect(screen.getByText("Memory Extraction")).toBeInTheDocument();
+    expect(screen.getByText("Glossary Refresh")).toBeInTheDocument();
+    expect(screen.getByText("Queued")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Stop Glossary Refresh")).not.toBeInTheDocument();
+  });
+
   it("shows a play-button prompt when a job requests confirmation and confirms on click", async () => {
     let onPrompt: ((event: BackgroundTaskPromptEvent) => void) | undefined;
     listenBackgroundTaskPrompt.mockImplementation(

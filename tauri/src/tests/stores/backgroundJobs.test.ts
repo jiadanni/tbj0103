@@ -43,14 +43,13 @@ describe("backgroundJobsStore", () => {
     expect(state.jobs.get("memory_extraction")).toEqual(mockJobs[1]);
   });
 
-  it("applies 'started' and 'processing' events by setting entries", () => {
+  it("applies 'queued', 'started', and 'processing' events by setting entries", () => {
     const store = useBackgroundJobsStore.getState();
-    
-    // Test 'started' event
+
     store.applyEvent({
       task_type: "summarization",
-      status: "started",
-      message: "Summarization started",
+      status: "queued",
+      message: "Queued for summarization",
       model: "gemma",
     });
 
@@ -60,7 +59,24 @@ describe("backgroundJobsStore", () => {
       task_type: "summarization",
       workspace_id: undefined,
       model: "gemma",
+      status: "queued",
+    });
+
+    // Test 'started' event
+    store.applyEvent({
+      task_type: "summarization",
       status: "started",
+      message: "Summarization started",
+      model: "gemma",
+    });
+
+    jobs = useBackgroundJobsStore.getState().jobs;
+    expect(jobs.size).toBe(1);
+    expect(jobs.get("summarization")).toEqual({
+      task_type: "summarization",
+      workspace_id: undefined,
+      model: "gemma",
+      status: "running",
     });
 
     // Test 'processing' event preserves existing metadata
@@ -76,7 +92,7 @@ describe("backgroundJobsStore", () => {
       task_type: "summarization",
       workspace_id: undefined,
       model: "gemma", // Preserved from previous
-      status: "processing",
+      status: "running",
     });
   });
 

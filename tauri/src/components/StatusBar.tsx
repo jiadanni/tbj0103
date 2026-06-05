@@ -272,6 +272,31 @@ function JobPill({
   );
 }
 
+function QueuedJobPill({
+  taskType,
+  model,
+}: {
+  taskType: string;
+  model?: string;
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-2 opacity-80">
+      <span className="relative inline-flex h-2 w-2 rounded-full border border-[var(--border-color)] bg-transparent" aria-hidden="true" />
+      <span className="text-xs text-[var(--text-secondary)] leading-none font-medium">
+        {formatTaskName(taskType)}
+      </span>
+      <span className="rounded-full border border-[var(--border-color)] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] text-[var(--text-muted)] leading-none">
+        Queued
+      </span>
+      {model && (
+        <span className="text-[10px] text-[var(--text-muted)] leading-none truncate max-w-[100px]" title={model}>
+          {model}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function JobPromptPill({
   taskType,
   heavyModel,
@@ -556,12 +581,14 @@ export default function StatusBar() {
     }
   }
 
-  const jobList = Array.from(activeJobs.entries()).filter(([type]) => {
-    if (type === "workspace_glossary" && activeJobs.has("workspace_analysis")) {
+  const jobList = Array.from(activeJobs.entries()).filter(([type, meta]) => {
+    if (type === "workspace_glossary" && meta.status === "running" && activeJobs.has("workspace_analysis")) {
       return false;
     }
     return true;
   });
+  const runningJobs = jobList.filter(([, meta]) => meta.status === "running");
+  const queuedJobs = jobList.filter(([, meta]) => meta.status === "queued");
   const promptList = Array.from(pendingPrompts.entries());
 
   const handleConfirmPrompt = useCallback((taskType: string) => {
@@ -600,10 +627,16 @@ export default function StatusBar() {
 
   // [P2] Build a screen-reader announcement string for background jobs only —
   // the continuously-updating metrics are not announced.
-  const allActiveTypes = [...(isAiStreaming ? ["ai_generating"] : []), ...jobList.map(([t]) => t)];
-  const jobAnnouncement = allActiveTypes.length > 0
-    ? allActiveTypes.map((t) => formatTaskName(t)).join(", ") + " running"
-    : "";
+  const runningTypes = [...(isAiStreaming ? ["ai_generating"] : []), ...runningJobs.map(([t]) => t)];
+  const queuedTypes = queuedJobs.map(([t]) => t);
+  const announcementParts: string[] = [];
+  if (runningTypes.length > 0) {
+    announcementParts.push(`${runningTypes.map((t) => formatTaskName(t)).join(", ")} running`);
+  }
+  if (queuedTypes.length > 0) {
+    announcementParts.push(`${queuedTypes.map((t) => formatTaskName(t)).join(", ")} queued`);
+  }
+  const jobAnnouncement = announcementParts.join(". ");
 
   return (
     // [P2] No role="status" / aria-live on the container — metrics update every
@@ -637,12 +670,19 @@ export default function StatusBar() {
           />
         ))}
         {isAiStreaming && <JobPill taskType="ai_generating" model={streamingModel ?? undefined} />}
-        {jobList.map(([type, meta]) => (
+        {runningJobs.map(([type, meta]) => (
           <JobPill
             key={type}
             taskType={type}
             model={meta.model}
             onStop={() => handleStopJob(type)}
+          />
+        ))}
+        {queuedJobs.map(([type, meta]) => (
+          <QueuedJobPill
+            key={type}
+            taskType={type}
+            model={meta.model}
           />
         ))}
       </div>

@@ -32,7 +32,7 @@ export const useBackgroundJobsStore = create<BackgroundJobsState>((set, get) => 
 
   applyEvent: (event) => {
     const { task_type, status, model } = event;
-    if (status === "started" || status === "processing") {
+    if (status === "queued" || status === "started" || status === "processing") {
       set((state) => {
         const nextJobs = new Map(state.jobs);
         const existing = nextJobs.get(task_type);
@@ -40,7 +40,7 @@ export const useBackgroundJobsStore = create<BackgroundJobsState>((set, get) => 
           task_type,
           workspace_id: ("workspace_id" in event ? event.workspace_id : undefined) ?? existing?.workspace_id,
           model: model ?? existing?.model,
-          status,
+          status: status === "queued" ? "queued" : "running",
         });
         return { jobs: nextJobs };
       });

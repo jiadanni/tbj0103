@@ -23,6 +23,12 @@ static PENDING: LazyLock<Mutex<PendingMap>> = LazyLock::new(|| Mutex::new(HashMa
 /// sets these; running jobs check between stages and abort cooperatively.
 static CANCEL_FLAGS: LazyLock<Mutex<HashMap<String, bool>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
+/// Live in-memory queue/running state for scheduler-managed jobs. This powers
+/// the frontend queue view for jobs that do not persist their own status in
+/// SQLite.
+static ACTIVE_JOBS: LazyLock<Mutex<HashMap<String, ActiveBackgroundJob>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
 /// Single-permit semaphore serializing every background job — scheduler ticks
 /// and manually-triggered IPCs (e.g. `start_workspace_prompt_bank_job`) all
 /// acquire this before doing work. Holding it for the duration of a job means
@@ -58,7 +64,7 @@ const PROMPT_BANK_TICK_INTERVAL: u32 = 30;
 #[derive(Debug, Clone, Serialize)]
 pub struct BackgroundTaskEvent {
     pub task_type: String,
-    pub status: String, // "started" | "processing" | "completed" | "failed"
+    pub status: String, // "queued" | "started" | "processing" | "completed" | "failed" | "cancelled"
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
@@ -251,6 +257,45 @@ async fn gate_job(
 }
 
 fn emit_task(app: &AppHandle, task_type: &str, status: &str, message: &str, model: Option<String>) {
+    match status {
+        "queued" => {
+            if let Ok(mut jobs) = ACTIVE_JOBS.lock() {
+                let existing = jobs.get(task_type).cloned();
+                jobs.insert(
+                    task_type.to_string(),
+                    ActiveBackgroundJob {
+                        task_type: task_type.to_string(),
+                        workspace_id: existing.and_then(|job| job.workspace_id),
+                        model: model.clone(),
+                        started_at: Some(chrono::Utc::now().to_rfc3339()),
+                        status: "queued".to_string(),
+                    },
+                );
+            }
+        }
+        "started" | "processing" => {
+            if let Ok(mut jobs) = ACTIVE_JOBS.lock() {
+                let existing = jobs.get(task_type).cloned();
+                let workspace_id = existing.as_ref().and_then(|job| job.workspace_id.clone());
+                let existing_model = existing.as_ref().and_then(|job| job.model.clone());
+                jobs.insert(
+                    task_type.to_string(),
+                    ActiveBackgroundJob {
+                        task_type: task_type.to_string(),
+                        workspace_id,
+                        model: model.clone().or(existing_model),
+                        started_at: Some(chrono::Utc::now().to_rfc3339()),
+                        status: "running".to_string(),
+                    },
+                );
+            }
+        }
+        _ => {
+            if let Ok(mut jobs) = ACTIVE_JOBS.lock() {
+                jobs.remove(task_type);
+            }
+        }
+    }
     let _ = app.emit(
         "background-task",
         BackgroundTaskEvent {
@@ -260,6 +305,24 @@ fn emit_task(app: &AppHandle, task_type: &str, status: &str, message: &str, mode
             model,
         },
     );
+}
+
+async fn acquire_job_permit_with_queue(
+    app: &AppHandle,
+    task_type: &str,
+    queued_message: &str,
+    running_message: &str,
+    model: Option<String>,
+) -> OwnedSemaphorePermit {
+    if let Ok(permit) = JOB_LOCK.clone().try_acquire_owned() {
+        emit_task(app, task_type, "started", running_message, model);
+        return permit;
+    }
+
+    emit_task(app, task_type, "queued", queued_message, model.clone());
+    let permit = acquire_job_permit().await;
+    emit_task(app, task_type, "started", running_message, model);
+    permit
 }
 
 /// Look up the model the scheduler would use for a given job key.
@@ -368,9 +431,14 @@ pub fn start_scheduler(app: AppHandle) {
                 let mem_default = lookup_job_model(&app, "memory_extraction_model").await;
                 let (mem_run, mem_model) = gate_job(&app, "memory_extraction", mem_default).await;
                 if mem_run {
-                    let _permit = acquire_job_permit().await;
+                    let _permit = acquire_job_permit_with_queue(
+                        &app,
+                        "memory_extraction",
+                        "Queued for memory extraction…",
+                        "Extracting memories…",
+                        mem_model.clone(),
+                    ).await;
                     register_running("memory_extraction");
-                    emit_task(&app, "memory_extraction", "started", "Extracting memories…", mem_model.clone());
                     let mem_result = if is_cancelled("memory_extraction") {
                         Err("cancelled".to_string())
                     } else {
@@ -390,9 +458,14 @@ pub fn start_scheduler(app: AppHandle) {
                 let glossary_default = lookup_job_model(&app, "glossary_model").await;
                 let (g_run, glossary_model) = gate_job(&app, "workspace_glossary", glossary_default.clone()).await;
                 if g_run {
-                    let _permit = acquire_job_permit().await;
+                    let _permit = acquire_job_permit_with_queue(
+                        &app,
+                        "workspace_glossary",
+                        "Queued for glossary refresh…",
+                        "Refreshing workspace glossary…",
+                        glossary_model.clone(),
+                    ).await;
                     register_running("workspace_glossary");
-                    emit_task(&app, "workspace_glossary", "started", "Refreshing workspace glossary…", glossary_model.clone());
                     let glossary_result = if is_cancelled("workspace_glossary") {
                         Err("cancelled".to_string())
                     } else {
@@ -417,15 +490,14 @@ pub fn start_scheduler(app: AppHandle) {
 
                 let (scan_run, scan_model) = gate_job(&app, "hover_definition_scan", glossary_default).await;
                 if scan_run {
-                    let _permit = acquire_job_permit().await;
-                    register_running("hover_definition_scan");
-                    emit_task(
+                    let _permit = acquire_job_permit_with_queue(
                         &app,
                         "hover_definition_scan",
-                        "started",
+                        "Queued for definition scan…",
                         "Scanning chats for missing definitions…",
                         scan_model.clone(),
-                    );
+                    ).await;
+                    register_running("hover_definition_scan");
                     let scan_result = if is_cancelled("hover_definition_scan") {
                         Err("cancelled".to_string())
                     } else {
@@ -497,9 +569,14 @@ pub fn start_scheduler(app: AppHandle) {
                     let summ_default = lookup_job_model(&app, "summarization_model").await;
                     let (summ_run, summ_model) = gate_job(&app, "summarization", summ_default).await;
                     if summ_run {
-                        let _permit = acquire_job_permit().await;
+                        let _permit = acquire_job_permit_with_queue(
+                            &app,
+                            "summarization",
+                            "Queued for summarization…",
+                            "Summarizing chats…",
+                            summ_model.clone(),
+                        ).await;
                         register_running("summarization");
-                        emit_task(&app, "summarization", "started", "Summarizing chats…", summ_model.clone());
                         let mut any_failed = false;
                         for (session_id, workspace_id) in sessions {
                             if is_cancelled("summarization") {
@@ -533,9 +610,14 @@ pub fn start_scheduler(app: AppHandle) {
                 let fc_default = lookup_job_model(&app, "flashcard_model").await;
                 let (fc_run, fc_model) = gate_job(&app, "flashcard_generation", fc_default).await;
                 if fc_run {
-                    let _permit = acquire_job_permit().await;
+                    let _permit = acquire_job_permit_with_queue(
+                        &app,
+                        "flashcard_generation",
+                        "Queued for flashcard generation…",
+                        "Generating flashcards…",
+                        fc_model.clone(),
+                    ).await;
                     register_running("flashcard_generation");
-                    emit_task(&app, "flashcard_generation", "started", "Generating flashcards…", fc_model.clone());
                     let fc_result = if is_cancelled("flashcard_generation") {
                         Err("cancelled".to_string())
                     } else {
@@ -560,15 +642,14 @@ pub fn start_scheduler(app: AppHandle) {
                     let ch_default = lookup_job_model(&app, "concept_hierarchy_model").await;
                     let (ch_run, ch_model) = gate_job(&app, "concept_hierarchy", ch_default).await;
                     if ch_run {
-                        let _permit = acquire_job_permit().await;
-                        register_running("concept_hierarchy");
-                        emit_task(
+                        let _permit = acquire_job_permit_with_queue(
                             &app,
                             "concept_hierarchy",
-                            "started",
+                            "Queued for topic linking…",
                             "Linking related topics…",
                             ch_model.clone(),
-                        );
+                        ).await;
+                        register_running("concept_hierarchy");
                         let ch_result = if is_cancelled("concept_hierarchy") {
                             Err("cancelled".to_string())
                         } else {
@@ -602,15 +683,14 @@ pub fn start_scheduler(app: AppHandle) {
                     (false, None)
                 };
                 if pb_run {
-                    let _permit = acquire_job_permit().await;
-                    register_running("workspace_prompt_bank");
-                    emit_task(
+                    let _permit = acquire_job_permit_with_queue(
                         &app,
                         "workspace_prompt_bank",
-                        "started",
+                        "Queued for starter prompt refresh…",
                         "Refreshing starter prompts…",
                         prompt_bank_model.clone(),
-                    );
+                    ).await;
+                    register_running("workspace_prompt_bank");
                     let prompt_bank_result = if is_cancelled("workspace_prompt_bank") {
                         Err("cancelled".to_string())
                     } else {
@@ -759,6 +839,11 @@ pub struct ActiveBackgroundJob {
 }
 
 pub fn list_active(conn: &rusqlite::Connection) -> Result<Vec<ActiveBackgroundJob>, String> {
+    let mut jobs = ACTIVE_JOBS
+        .lock()
+        .map(|map| map.values().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+
     let mut stmt = conn
         .prepare(
             "SELECT 'workspace_prompt_bank' AS task_type, workspace_id, model, started_at, status \
@@ -779,10 +864,13 @@ pub fn list_active(conn: &rusqlite::Connection) -> Result<Vec<ActiveBackgroundJo
         })
         .map_err(|e| e.to_string())?;
 
-    let mut jobs = Vec::new();
     for row in rows {
-        jobs.push(row.map_err(|e| e.to_string())?);
+        let job = row.map_err(|e| e.to_string())?;
+        if let Some(existing) = jobs.iter_mut().find(|existing| existing.task_type == job.task_type) {
+            *existing = job;
+        } else {
+            jobs.push(job);
+        }
     }
     Ok(jobs)
 }
-
