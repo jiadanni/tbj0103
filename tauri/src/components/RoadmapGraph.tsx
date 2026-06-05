@@ -34,9 +34,9 @@ interface BoxDims {
 }
 
 function dimsFor(level: string): BoxDims {
-  if (level === "chapter") { return { width: 180, height: 50 }; }
-  if (level === "section") { return { width: 150, height: 38 }; }
-  return { width: 130, height: 30 };
+  if (level === "chapter") { return { width: 220, height: 50 }; }
+  if (level === "section") { return { width: 170, height: 38 }; }
+  return { width: 140, height: 30 };
 }
 
 function truncate(s: string, max: number): string {
@@ -108,7 +108,8 @@ function RoadmapGraphInner(
     const root = d3.hierarchy<RoadmapNode>(forest);
 
     // node size: [horizontal between siblings, vertical between levels]
-    const treeLayout = d3.tree<RoadmapNode>().nodeSize([160, 110]);
+    // Chapter boxes are 220 wide; add a 40px gutter so siblings cannot overlap.
+    const treeLayout = d3.tree<RoadmapNode>().nodeSize([260, 110]);
     treeLayout(root);
 
     // Drop the synthetic root from visible output, but keep its children's positions
@@ -330,7 +331,7 @@ function RoadmapGraphInner(
                 ? "var(--accent-color)"
                 : "var(--border-color)";
             const borderWidth = isSelected ? 2.5 : isChapter ? 2 : 1;
-            const maxLen = isChapter ? 22 : isSection ? 20 : 18;
+            const maxLen = isChapter ? 28 : isSection ? 22 : 18;
             const label = truncate(d.data.name, maxLen);
             const fontSize = isChapter ? 14 : isSection ? 12 : 11;
             const fontWeight = isChapter ? 700 : isSection ? 600 : 500;
