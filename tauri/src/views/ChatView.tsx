@@ -5086,8 +5086,8 @@ export default function ChatView() {
                     onSelect={(suggestion) => void handleComposerSuggestion(suggestion, false)}
                   />
                   <div className="relative z-10 flex flex-col items-center gap-5">
-                    <MessageSquare size={48} className="text-[var(--text-muted)] opacity-30" />
-                    <p className="text-base text-[var(--text-muted)]">Select a chat or start a new one</p>
+                    <MessageSquare size={48} className="text-[var(--text-secondary)] opacity-55" />
+                    <p className="text-lg font-medium tracking-[0.01em] text-[var(--text-primary)]">Select a chat or start a new one</p>
                     <div
                       ref={emptyStatePrivacyMenuRef}
                       className="relative flex flex-wrap justify-center gap-3"
