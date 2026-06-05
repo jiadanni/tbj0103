@@ -81,7 +81,8 @@ pub async fn generate_rolling_summary_with_options(
         return Ok(());
     };
     let prompt = format!(
-        "Summarize the following conversation concisely. Focus on key decisions, topics, and user preferences.\n\n\
+        "Summarize the following conversation as a single concise paragraph of plain prose (no headings, no bullet points, no markdown). \
+        Cover the key decisions, topics, and user preferences in flowing sentences. Keep it under 120 words.\n\n\
         Conversation:\n{}",
         conversation_text
     );
