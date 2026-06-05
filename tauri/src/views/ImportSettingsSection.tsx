@@ -173,6 +173,16 @@ export default function ImportSettingsSection() {
   const [focusedProjectUuid, setFocusedProjectUuid] = useState<string | null>(null);
   const [bulkDestType, setBulkDestType] = useState<ProjectDestType>("new-workspace");
   const [bulkParentId, setBulkParentId] = useState<string | null>(null);
+  const [importingChatGpt, setImportingChatGpt] = useState(false);
+  const [chatGptFolderPath, setChatGptFolderPath] = useState<string | null>(null);
+  const [chatGptPreviews, setChatGptPreviews] = useState<ImportConversation[]>([]);
+  const [chatGptSelected, setChatGptSelected] = useState<Set<string>>(new Set());
+  const [chatGptScanning, setChatGptScanning] = useState(false);
+  const [focusedChatGptUuid, setFocusedChatGptUuid] = useState<string | null>(null);
+  const [chatGptDestType, setChatGptDestType] = useState<"new" | "existing">("new");
+  const [chatGptWorkspaceId, setChatGptWorkspaceId] = useState<string | null>(null);
+  const [chatGptNewWorkspaceName, setChatGptNewWorkspaceName] = useState("");
+
   const [error, setError] = useState<string | null>(null);
   const [promptState, setPromptState] = useState<{ defaultValue: string } | null>(null);
   const promptResolveRef = useRef<((value: string | null) => void) | null>(null);
@@ -446,6 +456,137 @@ export default function ImportSettingsSection() {
       await message(msg, { title: "Activity import failed", kind: "error" });
     } finally {
       setImportingGemini(false);
+    }
+  }
+
+  function resetChatGptPreview() {
+    setChatGptFolderPath(null);
+    setChatGptPreviews([]);
+    setChatGptSelected(new Set());
+    setFocusedChatGptUuid(null);
+    setChatGptDestType("new");
+    setChatGptWorkspaceId(null);
+    setChatGptNewWorkspaceName("");
+  }
+
+  async function pickChatGptFolder() {
+    setError(null);
+    setChatGptScanning(true);
+    resetChatGptPreview();
+
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: "Select ChatGPT export folder",
+      });
+      const folderPath = Array.isArray(selected) ? selected[0] : selected;
+      if (!folderPath) { return; }
+
+      const result = await api.chatFile.previewChatGptFolder(folderPath);
+      if (result.total < 1) {
+        throw new Error("No importable conversations were found in the selected folder.");
+      }
+      setChatGptFolderPath(folderPath);
+      setChatGptPreviews(result.conversations);
+      setChatGptSelected(new Set(result.conversations.map((c) => c.uuid)));
+
+      const folderName = folderPath.split(/[/\\]/).filter(Boolean).pop() ?? "ChatGPT Import";
+      setChatGptNewWorkspaceName(folderName);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "ChatGPT scan failed";
+      setError(msg);
+      await message(msg, { title: "ChatGPT scan failed", kind: "error" });
+    } finally {
+      setChatGptScanning(false);
+    }
+  }
+
+  async function importFromChatGptFolder() {
+    if (!chatGptFolderPath) { return; }
+    setError(null);
+    setImportingChatGpt(true);
+
+    try {
+      const selectedIds = [...chatGptSelected];
+      if (selectedIds.length < 1) {
+        throw new Error("Select at least one conversation to import.");
+      }
+
+      let finalWorkspaceId: string | null = null;
+      let finalWorkspaceName: string | null = null;
+
+      if (chatGptDestType === "existing") {
+        if (!chatGptWorkspaceId) {
+          throw new Error("Select an existing workspace to import into.");
+        }
+        finalWorkspaceId = chatGptWorkspaceId;
+      } else {
+        const defaultName = chatGptNewWorkspaceName.trim() || "ChatGPT Import";
+        const resolvedName = await resolveWorkspaceNameConflict(defaultName, workspaces, promptForName);
+        if (!resolvedName) {
+          setImportingChatGpt(false);
+          return;
+        }
+        finalWorkspaceName = resolvedName;
+      }
+
+      const result = await api.chatFile.importChatGptFolder(
+        chatGptFolderPath,
+        finalWorkspaceId,
+        finalWorkspaceName,
+        selectedIds,
+      );
+
+      if (result.imported_sessions < 1 && result.skipped > 0) {
+        await message(`All ${result.skipped} conversation${result.skipped === 1 ? "" : "s"} already imported — nothing new to add.`, {
+          title: "ChatGPT import",
+          kind: "info",
+        });
+        resetChatGptPreview();
+        return;
+      }
+      if (result.imported_sessions < 1) {
+        throw new Error("ChatGPT import completed without importing any conversations.");
+      }
+
+      const [freshWorkspaces, importedProjects, firstSession] = await Promise.all([
+        api.workspace.list(),
+        api.folder.list(result.workspace_id),
+        api.chat.listSessions(result.workspace_id, null, { limit: 1, offset: 0 }),
+      ]);
+
+      setWorkspaces(freshWorkspaces);
+      setFoldersForWorkspace(result.workspace_id, importedProjects);
+      setActiveWorkspaceId(result.workspace_id);
+      setActiveFolderId(null);
+
+      const lines = [
+        `${result.imported_sessions} conversation${result.imported_sessions === 1 ? "" : "s"} imported.`,
+      ];
+      if (result.skipped > 0) {
+        lines.push(`${result.skipped} duplicate${result.skipped === 1 ? "" : "s"} skipped.`);
+      }
+      if (result.errors > 0) {
+        lines.push(`${result.errors} conversation${result.errors === 1 ? "" : "s"} had errors.`);
+      }
+
+      resetChatGptPreview();
+
+      if (firstSession.length > 0) {
+        navigate(`/chat/${firstSession[0].id}`);
+      }
+
+      await message(lines.join("\n"), {
+        title: "ChatGPT import complete",
+        kind: result.errors > 0 ? "warning" : "info",
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "ChatGPT import failed";
+      setError(msg);
+      await message(msg, { title: "ChatGPT import failed", kind: "error" });
+    } finally {
+      setImportingChatGpt(false);
     }
   }
 
@@ -808,9 +949,12 @@ export default function ImportSettingsSection() {
   const activeLmStudio = lmStudioPreviews.length > 0;
   const activeGemini = geminiPreviews.length > 0;
   const activeClaude = !!claudeFolderPath;
-  const anyActive = activeLmStudio || activeGemini || activeClaude;
+  const activeChatGpt = chatGptPreviews.length > 0;
+  const anyActive = activeLmStudio || activeGemini || activeClaude || activeChatGpt;
 
   const rootWorkspaces = workspaces.filter((w) => !w.parent_workspace_id);
+
+  const containerOverflowHidden = claudeFolderPath || chatGptPreviews.length > 0 || geminiPreviews.length > 0;
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -818,7 +962,7 @@ export default function ImportSettingsSection() {
         <h1 className="text-sm font-semibold text-[var(--text-primary)]">Import</h1>
       </div>
 
-      <div className={`${claudeFolderPath ? "flex-1 overflow-hidden" : "flex-1 overflow-y-auto"} flex flex-col px-5 py-4 gap-3`}>
+      <div className={`${containerOverflowHidden ? "flex-1 overflow-hidden" : "flex-1 overflow-y-auto"} flex flex-col px-5 py-4 gap-3`}>
         {error && (
           <div className="shrink-0 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
             {error}
@@ -826,7 +970,7 @@ export default function ImportSettingsSection() {
         )}
 
         {/* ── Import type cards ─────────────────────────────────────── */}
-        <div className="shrink-0 grid grid-cols-3 gap-3 max-w-3xl">
+        <div className="shrink-0 grid grid-cols-2 gap-3 max-w-3xl">
           {/* LM Studio (single + multiple merged) */}
           <section className={`rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 flex flex-col gap-2 transition-opacity ${anyActive && !activeLmStudio ? "opacity-40 pointer-events-none" : ""}`}>
             <div className="flex items-center justify-between gap-2">
@@ -885,6 +1029,25 @@ export default function ImportSettingsSection() {
               </button>
             </div>
             <p className="text-[11px] text-[var(--text-muted)]">Import conversations, projects, and memories from a Claude Desktop export folder.</p>
+          </section>
+
+          {/* ChatGPT Export */}
+          <section className={`rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 flex flex-col gap-2 transition-opacity ${anyActive && !activeChatGpt ? "opacity-40 pointer-events-none" : ""}`}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <FolderInput size={15} className="shrink-0 text-[var(--accent-color)]" />
+                <h2 className="text-xs font-medium text-[var(--text-primary)]">ChatGPT</h2>
+              </div>
+              <button
+                onClick={() => void pickChatGptFolder()}
+                disabled={chatGptScanning || importingChatGpt}
+                className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
+              >
+                {chatGptScanning || importingChatGpt ? <RefreshCw size={11} className="animate-spin" /> : <FolderInput size={11} />}
+                {chatGptScanning ? "Scanning…" : importingChatGpt ? "Importing…" : chatGptFolderPath ? "Change" : "Select"}
+              </button>
+            </div>
+            <p className="text-[11px] text-[var(--text-muted)]">Import conversations from a ChatGPT export folder containing conversations.json files.</p>
           </section>
         </div>{/* end grid */}
 
@@ -1067,6 +1230,97 @@ export default function ImportSettingsSection() {
               >
                 {importingGemini ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
                 {importingGemini ? "Importing..." : `Import ${geminiSelected.size} conversation${geminiSelected.size !== 1 ? "s" : ""}`}
+              </button>
+            </div>
+          </section>
+        )}
+
+        {/* ── ChatGPT preview (below grid, only when a folder was scanned) ── */}
+        {chatGptPreviews.length > 0 && (
+          <section className="flex-1 min-h-[450px] max-w-4xl rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 flex flex-col gap-3 overflow-hidden">
+            {/* Destination Configuration */}
+            <div className="shrink-0 flex flex-wrap items-center gap-4 border-b border-[var(--border-color)] pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-[var(--text-primary)]">Import Destination:</span>
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setChatGptDestType("new")}
+                    className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${chatGptDestType === "new" ? "border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-[var(--accent-color)]" : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"}`}
+                  >
+                    New Workspace
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setChatGptDestType("existing")}
+                    className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${chatGptDestType === "existing" ? "border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-[var(--accent-color)]" : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"}`}
+                  >
+                    Existing Workspace
+                  </button>
+                </div>
+              </div>
+
+              {chatGptDestType === "new" ? (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-[var(--text-secondary)]">Workspace Name:</span>
+                  <input
+                    type="text"
+                    value={chatGptNewWorkspaceName}
+                    onChange={(e) => setChatGptNewWorkspaceName(e.target.value)}
+                    placeholder="ChatGPT Import"
+                    className="rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-2.5 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] w-56"
+                  />
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-[var(--text-secondary)]">Select Workspace:</span>
+                  <div className="relative">
+                    <select
+                      value={chatGptWorkspaceId ?? ""}
+                      onChange={(e) => setChatGptWorkspaceId(e.target.value || null)}
+                      className="appearance-none cursor-pointer rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] pl-2 pr-8 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                    >
+                      <option value="">Choose a workspace…</option>
+                      {workspaces.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={12} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <ImportConversationPreview
+              conversations={chatGptPreviews}
+              selected={chatGptSelected}
+              onSelectionChange={setChatGptSelected}
+              focusedUuid={focusedChatGptUuid}
+              onFocusChange={setFocusedChatGptUuid}
+              assistantLabel="ChatGPT"
+            />
+            
+            <div className="shrink-0 flex items-center justify-end gap-2">
+              <button
+                onClick={() => resetChatGptPreview()}
+                className="inline-flex items-center gap-1 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+              >
+                <X size={12} /> Cancel
+              </button>
+              <button
+                onClick={() => void importFromChatGptFolder()}
+                disabled={
+                  chatGptSelected.size === 0 ||
+                  importingChatGpt ||
+                  (chatGptDestType === "existing" && !chatGptWorkspaceId) ||
+                  (chatGptDestType === "new" && !chatGptNewWorkspaceName.trim())
+                }
+                className="inline-flex items-center gap-1 rounded-lg bg-[var(--accent-color)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-40"
+              >
+                {importingChatGpt ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
+                {importingChatGpt ? "Importing..." : `Import ${chatGptSelected.size} conversation${chatGptSelected.size !== 1 ? "s" : ""}`}
               </button>
             </div>
           </section>

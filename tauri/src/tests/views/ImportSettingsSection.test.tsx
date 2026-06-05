@@ -143,6 +143,42 @@ vi.mock("@/lib/api", () => ({
         errors: 0,
         error_messages: [],
       })),
+      previewChatGptFolder: vi.fn(() => Promise.resolve({
+        conversations: [
+          {
+            uuid: "chatgpt-chat-1",
+            name: "ChatGPT Chat 1",
+            message_count: 2,
+            created_at: "2024-01-01T00:00:00Z",
+            updated_at: "2024-01-01T00:00:00Z",
+            first_user_message: "Hello assistant",
+            messages: [
+              { role: "user", content: "Hello assistant" },
+              { role: "assistant", content: "Hello user" },
+            ],
+          },
+          {
+            uuid: "chatgpt-chat-2",
+            name: "ChatGPT Chat 2",
+            message_count: 2,
+            created_at: "2024-01-02T00:00:00Z",
+            updated_at: "2024-01-02T00:00:00Z",
+            first_user_message: "Tell me a joke",
+            messages: [
+              { role: "user", content: "Tell me a joke" },
+              { role: "assistant", content: "Why did the chicken cross the road?" },
+            ],
+          },
+        ],
+        total: 2,
+      })),
+      importChatGptFolder: vi.fn(() => Promise.resolve({
+        imported_sessions: 1,
+        skipped: 0,
+        workspace_id: "workspace-1",
+        errors: 0,
+        error_messages: [],
+      })),
     },
   },
 }));
@@ -211,6 +247,46 @@ describe("ImportSettingsSection", () => {
     expect(showMessage).toHaveBeenCalledWith(
       expect.stringContaining("1 conversation imported."),
       expect.objectContaining({ title: "LM Studio import complete" }),
+    );
+  });
+
+  it("scans ChatGPT folders before import and allows selecting a subset to import", async () => {
+    vi.mocked(openDialog).mockResolvedValue("/imports/chatgpt");
+
+    renderImportSettings();
+
+    expect(screen.getByText("ChatGPT")).toBeInTheDocument();
+    
+    // The select buttons are rendered inside the grids: LM Studio is 0, Gemini is 1, Claude is 2, ChatGPT is 3.
+    fireEvent.click(screen.getAllByText("Select")[3]);
+
+    expect(await screen.findByText("ChatGPT Chat 1")).toBeInTheDocument();
+    expect(screen.getByText("ChatGPT Chat 2")).toBeInTheDocument();
+
+    const row2 = screen.getByText("ChatGPT Chat 2").closest(".cursor-pointer");
+    expect(row2).not.toBeNull();
+    fireEvent.click(within(row2 as HTMLElement).getByRole("checkbox"));
+
+    expect(screen.getByText("Import 1 conversation")).toBeInTheDocument();
+
+    // Click Import
+    fireEvent.click(screen.getByText("Import 1 conversation"));
+
+    await waitFor(() => {
+      expect(api.chatFile.importChatGptFolder).toHaveBeenCalledWith(
+        "/imports/chatgpt",
+        null,
+        "chatgpt",
+        ["chatgpt-chat-1"],
+      );
+    });
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith("/chat/session-1");
+    });
+    expect(showMessage).toHaveBeenCalledWith(
+      expect.stringContaining("1 conversation imported."),
+      expect.objectContaining({ title: "ChatGPT import complete" }),
     );
   });
 });

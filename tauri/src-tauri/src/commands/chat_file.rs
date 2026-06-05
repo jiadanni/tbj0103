@@ -1059,6 +1059,264 @@ pub fn import_gemini_takeout(
     }))
 }
 
+/// Preview a ChatGPT export folder — returns conversation summaries for selection.
+#[tauri::command]
+pub async fn preview_chatgpt_folder(
+    folder_path: String,
+) -> Result<chat_file_store::GptPreviewResponse, String> {
+    tokio::task::spawn_blocking(move || {
+        let folder = validate_user_path(&folder_path, true)?;
+        if !folder.is_dir() {
+            return Err(format!("{} is not a folder.", folder_path));
+        }
+
+        let file_paths = chat_file_store::discover_chatgpt_files(&folder)?;
+        if file_paths.is_empty() {
+            return Err("No conversations.json or conversations-*.json files found in the selected folder.".to_string());
+        }
+
+        let mut previews = Vec::new();
+        for path in file_paths {
+            let bytes = std::fs::read(&path)
+                .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+            let conversations: Vec<chat_file_store::GptConversation> = serde_json::from_slice(&bytes)
+                .map_err(|e| format!("Failed to parse {}: {}", path.display(), e))?;
+
+            for conv in conversations {
+                match chat_file_store::parse_gpt_conversation(&conv) {
+                    Ok(chat_data) => {
+                        let first_user = chat_data.messages.iter()
+                            .find(|m| m.role == "user")
+                            .map(|m| {
+                                let chars: String = m.content.chars().take(280).collect();
+                                chars
+                            })
+                            .unwrap_or_default();
+
+                        let messages: Vec<chat_file_store::GptPreviewMessage> = chat_data.messages.iter()
+                            .map(|m| chat_file_store::GptPreviewMessage {
+                                role: m.role.clone(),
+                                content: m.content.clone(),
+                            })
+                            .collect();
+
+                        previews.push(chat_file_store::GptConversationPreview {
+                            uuid: conv.id.clone(),
+                            name: chat_data.title,
+                            message_count: chat_data.messages.len(),
+                            created_at: chat_data.created_at,
+                            updated_at: chat_data.updated_at,
+                            first_user_message: first_user,
+                            messages,
+                        });
+                    }
+                    Err(_) => {
+                        // Quietly skip invalid conversations
+                    }
+                }
+            }
+        }
+
+        let total = previews.len();
+        Ok(chat_file_store::GptPreviewResponse {
+            conversations: previews,
+            total,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Import conversations from a ChatGPT export folder into a new or existing workspace.
+#[tauri::command]
+pub async fn import_chatgpt_folder(
+    folder_path: String,
+    workspace_id: Option<String>,
+    workspace_name: Option<String>,
+    selected_ids: Option<Vec<String>>,
+    chats_dir_state: State<'_, ChatsDirState>,
+    crypto: State<'_, ChatCryptoState>,
+    db_state: State<'_, DbState>,
+) -> Result<serde_json::Value, String> {
+    let chats_dir = chats_dir_state.0.clone();
+    let passphrase = crypto.0.lock().ok().and_then(|g| g.clone());
+    let pool = db_state.0.clone();
+
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let folder = validate_user_path(&folder_path, true)?;
+        if !folder.is_dir() {
+            return Err(format!("{} is not a folder.", folder_path));
+        }
+
+        let file_paths = chat_file_store::discover_chatgpt_files(&folder)?;
+        if file_paths.is_empty() {
+            return Err("No conversations.json or conversations-*.json files found in the selected folder.".to_string());
+        }
+
+        let id_filter: Option<std::collections::HashSet<String>> = selected_ids
+            .map(|ids| ids.into_iter().collect());
+
+        let mut all_conversations = Vec::new();
+        for path in file_paths {
+            let bytes = std::fs::read(&path)
+                .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+            let conversations: Vec<chat_file_store::GptConversation> = serde_json::from_slice(&bytes)
+                .map_err(|e| format!("Failed to parse {}: {}", path.display(), e))?;
+            all_conversations.extend(conversations);
+        }
+
+        let resolved_workspace_id = if let Some(wid) = workspace_id {
+            let exists: bool = conn.query_row(
+                "SELECT 1 FROM workspaces WHERE id = ?1",
+                rusqlite::params![wid],
+                |_| Ok(true),
+            ).unwrap_or(false);
+            if !exists {
+                return Err(format!("Workspace {} not found", wid));
+            }
+            wid
+        } else if let Some(wname) = workspace_name {
+            let wname_trimmed = wname.trim();
+            if wname_trimmed.is_empty() {
+                return Err("Workspace name cannot be empty".to_string());
+            }
+            let existing_id: Option<String> = conn.query_row(
+                "SELECT id FROM workspaces WHERE lower(trim(name)) = lower(trim(?1)) LIMIT 1",
+                rusqlite::params![wname_trimmed],
+                |row| row.get(0),
+            ).ok();
+
+            if let Some(id) = existing_id {
+                id
+            } else {
+                let new_id = uuid::Uuid::new_v4().to_string();
+                let now = chrono::Utc::now().to_rfc3339();
+                conn.execute(
+                    "INSERT INTO workspaces (id, name, description, prompt_instructions, topic_signature, created_at, updated_at)
+                     VALUES (?1, ?2, '', '', '{}', ?3, ?3)",
+                    rusqlite::params![new_id, wname_trimmed, now],
+                ).map_err(|e| e.to_string())?;
+                new_id
+            }
+        } else {
+            return Err("Either workspace_id or workspace_name must be provided".to_string());
+        };
+
+        let mut session_ids = Vec::new();
+        let mut skipped = 0usize;
+        let mut errors = Vec::new();
+
+        fn compute_chat_content_hash(messages: &[chat_file_store::ChatFileMessage]) -> String {
+            use sha2::{Sha256, Digest};
+            let mut hasher = Sha256::new();
+            for msg in messages {
+                hasher.update(msg.role.as_bytes());
+                hasher.update(msg.content.as_bytes());
+            }
+            format!("{:x}", hasher.finalize())
+        }
+
+        for conv in all_conversations {
+            if let Some(ref filter) = id_filter {
+                if !filter.contains(&conv.id) {
+                    continue;
+                }
+            }
+
+            match chat_file_store::parse_gpt_conversation(&conv) {
+                Ok(chat_data) => {
+                    // Try duplicate detection title + created_at + workspace
+                    let mut duplicate: bool = conn.query_row(
+                        "SELECT 1 FROM chat_sessions WHERE workspace_id = ?1 AND title = ?2 AND created_at = ?3 AND is_imported = 1 LIMIT 1",
+                        rusqlite::params![resolved_workspace_id, chat_data.title, chat_data.created_at],
+                        |_| Ok(true),
+                    ).unwrap_or(false);
+
+                    // Message content hash fallback
+                    if !duplicate {
+                        let mut stmt = conn.prepare(
+                            "SELECT id FROM chat_sessions WHERE workspace_id = ?1 AND title = ?2 AND is_imported = 1"
+                        ).map_err(|e| e.to_string())?;
+
+                        let candidate_ids = stmt.query_map(
+                            rusqlite::params![resolved_workspace_id, chat_data.title],
+                            |row| row.get::<_, String>(0)
+                        ).map_err(|e| e.to_string())?
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_err(|e| e.to_string())?;
+
+                        let incoming_hash = compute_chat_content_hash(&chat_data.messages);
+
+                        for cid in candidate_ids {
+                            let mut msg_stmt = conn.prepare(
+                                "SELECT role, content FROM messages WHERE session_id = ?1 ORDER BY created_at ASC"
+                            ).map_err(|e| e.to_string())?;
+
+                            let existing_messages = msg_stmt.query_map(
+                                rusqlite::params![cid],
+                                |r| {
+                                    let role: String = r.get(0)?;
+                                    let content: String = r.get(1)?;
+                                    Ok(chat_file_store::ChatFileMessage {
+                                        id: String::new(),
+                                        role,
+                                        content,
+                                        model: None,
+                                        tokens_used: None,
+                                        duration_ms: None,
+                                        timestamp: String::new(),
+                                    })
+                                }
+                            ).map_err(|e| e.to_string())?
+                            .collect::<Result<Vec<_>, _>>()
+                            .map_err(|e| e.to_string())?;
+
+                            let candidate_hash = compute_chat_content_hash(&existing_messages);
+                            if incoming_hash == candidate_hash {
+                                duplicate = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if duplicate {
+                        skipped += 1;
+                        continue;
+                    }
+
+                    match chat_file_store::import_chat_data(&conn, &chat_data, &resolved_workspace_id, "") {
+                        Ok(sid) => {
+                            session_ids.push(sid);
+                        }
+                        Err(e) => {
+                            errors.push(format!("{}: {e}", chat_data.title));
+                        }
+                    }
+                }
+                Err(e) => {
+                    errors.push(format!("{}: {e}", conv.title.unwrap_or_else(|| "Untitled".to_string())));
+                }
+            }
+        }
+
+        // Write to disk for file-based consistency (best-effort)
+        for id in &session_ids {
+            let _ = chat_file_store::write_session_file(&conn, &chats_dir, id, passphrase.as_deref());
+        }
+
+        Ok(serde_json::json!({
+            "imported_sessions": session_ids.len(),
+            "skipped": skipped,
+            "workspace_id": resolved_workspace_id,
+            "errors": errors.len(),
+            "error_messages": errors.iter().take(10).cloned().collect::<Vec<_>>(),
+        }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Detect the format of a Claude Desktop export folder.
 /// Returns "legacy" if `projects.json` is present, "v2" if `projects/` directory is present.
 #[tauri::command]
@@ -1584,7 +1842,6 @@ pub fn load_crypto_state_from_keyring(conn: &rusqlite::Connection) -> Option<Str
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn test_uri_escaping() {

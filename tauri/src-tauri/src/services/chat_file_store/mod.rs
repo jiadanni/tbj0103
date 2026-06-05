@@ -1095,6 +1095,248 @@ fn create_session_from_messages(messages: Vec<ChatFileMessage>) -> ChatFileData 
 }
 
 
+// ── ChatGPT JSON parser ──────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GptPreviewMessage {
+    pub role: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GptConversationPreview {
+    pub uuid: String,
+    pub name: String,
+    pub message_count: usize,
+    pub created_at: String,
+    pub updated_at: String,
+    pub first_user_message: String,
+    pub messages: Vec<GptPreviewMessage>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GptPreviewResponse {
+    pub conversations: Vec<GptConversationPreview>,
+    pub total: usize,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GptConversation {
+    pub id: String,
+    pub title: Option<String>,
+    pub create_time: Option<f64>,
+    pub update_time: Option<f64>,
+    pub current_node: Option<String>,
+    pub mapping: Option<HashMap<String, GptNode>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GptNode {
+    pub id: String,
+    pub parent: Option<String>,
+    pub message: Option<GptMessage>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GptMessage {
+    pub id: String,
+    pub author: Option<GptAuthor>,
+    pub content: Option<GptContent>,
+    pub create_time: Option<f64>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GptAuthor {
+    pub role: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GptContent {
+    pub content_type: Option<String>,
+    pub parts: Option<Vec<serde_json::Value>>,
+}
+
+/// Discover all `conversations.json` or `conversations-*.json` files in the ChatGPT export folder.
+pub fn discover_chatgpt_files(folder: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut paths = Vec::new();
+    let entries = std::fs::read_dir(folder).map_err(|e| format!("Cannot read directory: {e}"))?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_file() {
+            if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
+                if filename == "conversations.json" || (filename.starts_with("conversations-") && filename.ends_with(".json")) {
+                    paths.push(path);
+                }
+            }
+        }
+    }
+    // Sort paths alphabetically for deterministic parsing order
+    paths.sort();
+    Ok(paths)
+}
+
+/// Parse a single ChatGPT conversation from the export format.
+pub fn parse_gpt_conversation(conv: &GptConversation) -> Result<ChatFileData, String> {
+    let mapping = conv.mapping.as_ref().ok_or_else(|| "Mapping is missing".to_string())?;
+
+    let current_node = if let Some(ref cn) = conv.current_node {
+        if mapping.contains_key(cn) {
+            Some(cn.clone())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let current_node = current_node.or_else(|| {
+        // Fallback: find all node IDs that are NOT referenced as parents
+        let mut parent_ids = std::collections::HashSet::new();
+        for node in mapping.values() {
+            if let Some(ref p) = node.parent {
+                parent_ids.insert(p.clone());
+            }
+        }
+        // Find any node ID that is in mapping but not in parent_ids, preferring those with messages
+        let mut leaf = None;
+        for (id, node) in mapping {
+            if !parent_ids.contains(id) {
+                if node.message.is_some() {
+                    leaf = Some(id.clone());
+                    break;
+                }
+                if leaf.is_none() {
+                    leaf = Some(id.clone());
+                }
+            }
+        }
+        leaf.or_else(|| mapping.keys().next().cloned())
+    });
+
+    let current_node = current_node.ok_or_else(|| "No nodes found in mapping".to_string())?;
+
+    // Traverse up from current_node to root
+    let mut path_nodes = Vec::new();
+    let mut visited = std::collections::HashSet::new();
+    let mut curr_id = Some(current_node);
+
+    while let Some(id) = curr_id {
+        if !visited.insert(id.clone()) {
+            break; // Loop protection
+        }
+        if let Some(node) = mapping.get(&id) {
+            path_nodes.push(node.clone());
+            curr_id = node.parent.clone();
+        } else {
+            curr_id = None;
+        }
+    }
+
+    path_nodes.reverse();
+
+    let mut messages = Vec::new();
+    let mut system_prompt = String::new();
+
+    for node in path_nodes {
+        if let Some(msg) = node.message {
+            let role = msg.author.as_ref().and_then(|a| a.role.as_deref()).unwrap_or("").trim().to_lowercase();
+            if !matches!(role.as_str(), "user" | "assistant" | "system") {
+                continue; // Skip unsupported node types quietly
+            }
+
+            // Extract content parts tolerantly
+            let content = if let Some(c) = msg.content {
+                let mut text_parts = Vec::new();
+                if let Some(parts) = c.parts {
+                    for part in parts {
+                        if let Some(s) = part.as_str() {
+                            if !s.is_empty() {
+                                text_parts.push(s.to_string());
+                            }
+                        }
+                    }
+                }
+                text_parts.join("")
+            } else {
+                String::new()
+            };
+
+            if role == "system" {
+                if !content.is_empty() {
+                    system_prompt = content.clone();
+                }
+            }
+
+            let model_name = msg.metadata.as_ref().and_then(|meta| {
+                meta.get("model_slug").and_then(|m| m.as_str().map(|s| s.to_string()))
+            });
+
+            let timestamp = if let Some(t) = msg.create_time {
+                let secs = t as i64;
+                let nsecs = ((t.fract() * 1_000_000_000.0) as u32).min(999_999_999);
+                chrono::DateTime::from_timestamp(secs, nsecs)
+                    .map(|dt| dt.to_rfc3339())
+                    .unwrap_or_else(|| chrono::Utc::now().to_rfc3339())
+            } else if let Some(t) = conv.create_time {
+                let secs = t as i64;
+                let nsecs = ((t.fract() * 1_000_000_000.0) as u32).min(999_999_999);
+                chrono::DateTime::from_timestamp(secs, nsecs)
+                    .map(|dt| dt.to_rfc3339())
+                    .unwrap_or_else(|| chrono::Utc::now().to_rfc3339())
+            } else {
+                chrono::Utc::now().to_rfc3339()
+            };
+
+            messages.push(ChatFileMessage {
+                id: msg.id.clone(),
+                role,
+                content,
+                model: model_name,
+                tokens_used: None,
+                duration_ms: None,
+                timestamp,
+            });
+        }
+    }
+
+    if messages.is_empty() {
+        return Err("No importable user, assistant, or system messages found".to_string());
+    }
+
+    let created_at = messages.first().map(|m| m.timestamp.clone()).unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+    let updated_at = messages.last().map(|m| m.timestamp.clone()).unwrap_or_else(|| created_at.clone());
+
+    let raw_title = conv.title.clone().unwrap_or_default();
+    let title = if raw_title.trim().is_empty() {
+        let first_prompt = messages.iter().find(|m| m.role == "user").map(|m| m.content.clone()).unwrap_or_default();
+        let flat_prompt = first_prompt.replace('\n', " ");
+        if flat_prompt.chars().count() > 120 {
+            let truncated: String = flat_prompt.chars().take(117).collect();
+            format!("{truncated}...")
+        } else if !flat_prompt.is_empty() {
+            flat_prompt
+        } else {
+            "Untitled Chat".to_string()
+        }
+    } else {
+        raw_title
+    };
+
+    let last_model = messages.iter().rev().find_map(|m| m.model.clone()).unwrap_or_else(|| "chatgpt".to_string());
+
+    Ok(ChatFileData {
+        id: uuid::Uuid::new_v4().to_string(),
+        title,
+        model: last_model,
+        system_prompt,
+        created_at,
+        updated_at,
+        messages,
+    })
+}
+
+
 // ── Claude Desktop JSON parser ───────────────────────────────────────────────
 
 #[allow(dead_code)]
@@ -1573,7 +1815,6 @@ pub fn parse_claude_conversations_filtered(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rusqlite::Connection;
 
     #[test]
     fn v2_extractor_reads_content_blocks_when_text_is_empty() {
@@ -1611,5 +1852,241 @@ mod tests {
         };
         let out = extract_claude_message_content_v2(&msg);
         assert_eq!(out, "legacy body");
+    }
+
+    #[test]
+    fn test_gpt_parse_normal() {
+        let json_str = r#"{
+            "id": "conv-1",
+            "title": "Test Title",
+            "create_time": 1700000000.0,
+            "update_time": 1700000010.0,
+            "current_node": "node-2",
+            "mapping": {
+                "node-1": {
+                    "id": "node-1",
+                    "parent": null,
+                    "message": {
+                        "id": "msg-1",
+                        "author": { "role": "user" },
+                        "content": {
+                            "content_type": "text",
+                            "parts": ["Hello world"]
+                        },
+                        "create_time": 1700000000.0,
+                        "metadata": null
+                    }
+                },
+                "node-2": {
+                    "id": "node-2",
+                    "parent": "node-1",
+                    "message": {
+                        "id": "msg-2",
+                        "author": { "role": "assistant" },
+                        "content": {
+                            "content_type": "text",
+                            "parts": ["Hi there!"]
+                        },
+                        "create_time": 1700000005.0,
+                        "metadata": { "model_slug": "gpt-4" }
+                    }
+                }
+            }
+        }"#;
+        let conv: GptConversation = serde_json::from_str(json_str).unwrap();
+        let res = parse_gpt_conversation(&conv).unwrap();
+        assert_eq!(res.title, "Test Title");
+        assert_eq!(res.messages.len(), 2);
+        assert_eq!(res.messages[0].role, "user");
+        assert_eq!(res.messages[0].content, "Hello world");
+        assert_eq!(res.messages[1].role, "assistant");
+        assert_eq!(res.messages[1].content, "Hi there!");
+        assert_eq!(res.messages[1].model.as_deref(), Some("gpt-4"));
+    }
+
+    #[test]
+    fn test_gpt_parse_missing_current_node_fallback() {
+        let json_str = r#"{
+            "id": "conv-2",
+            "title": "",
+            "create_time": null,
+            "update_time": null,
+            "current_node": null,
+            "mapping": {
+                "node-1": {
+                    "id": "node-1",
+                    "parent": null,
+                    "message": {
+                        "id": "msg-1",
+                        "author": { "role": "user" },
+                        "content": {
+                            "content_type": "text",
+                            "parts": ["First message"]
+                        },
+                        "create_time": null,
+                        "metadata": null
+                    }
+                },
+                "node-2": {
+                    "id": "node-2",
+                    "parent": "node-1",
+                    "message": {
+                        "id": "msg-2",
+                        "author": { "role": "assistant" },
+                        "content": {
+                            "content_type": "text",
+                            "parts": ["Second message"]
+                        },
+                        "create_time": null,
+                        "metadata": null
+                    }
+                }
+            }
+        }"#;
+        let conv: GptConversation = serde_json::from_str(json_str).unwrap();
+        let res = parse_gpt_conversation(&conv).unwrap();
+        assert_eq!(res.title, "First message");
+        assert_eq!(res.messages.len(), 2);
+    }
+
+    #[test]
+    fn test_gpt_parse_null_message_handling() {
+        let json_str = r#"{
+            "id": "conv-3",
+            "title": "Null Message Node",
+            "create_time": 1700000000.0,
+            "update_time": 1700000010.0,
+            "current_node": "node-3",
+            "mapping": {
+                "node-1": {
+                    "id": "node-1",
+                    "parent": null,
+                    "message": null
+                },
+                "node-2": {
+                    "id": "node-2",
+                    "parent": "node-1",
+                    "message": {
+                        "id": "msg-2",
+                        "author": { "role": "user" },
+                        "content": {
+                            "content_type": "text",
+                            "parts": ["Valid user message"]
+                        },
+                        "create_time": 1700000000.0,
+                        "metadata": null
+                    }
+                },
+                "node-3": {
+                    "id": "node-3",
+                    "parent": "node-2",
+                    "message": null
+                }
+            }
+        }"#;
+        let conv: GptConversation = serde_json::from_str(json_str).unwrap();
+        let res = parse_gpt_conversation(&conv).unwrap();
+        assert_eq!(res.messages.len(), 1);
+        assert_eq!(res.messages[0].content, "Valid user message");
+    }
+
+    #[test]
+    fn test_gpt_parse_non_text_parts() {
+        let json_str = r#"{
+            "id": "conv-4",
+            "title": "Non-Text Parts",
+            "create_time": 1700000000.0,
+            "update_time": 1700000010.0,
+            "current_node": "node-1",
+            "mapping": {
+                "node-1": {
+                    "id": "node-1",
+                    "parent": null,
+                    "message": {
+                        "id": "msg-1",
+                        "author": { "role": "user" },
+                        "content": {
+                            "content_type": "text",
+                            "parts": ["Text part", { "type": "image" }, "Another text"]
+                        },
+                        "create_time": 1700000000.0,
+                        "metadata": null
+                    }
+                }
+            }
+        }"#;
+        let conv: GptConversation = serde_json::from_str(json_str).unwrap();
+        let res = parse_gpt_conversation(&conv).unwrap();
+        assert_eq!(res.messages.len(), 1);
+        assert_eq!(res.messages[0].content, "Text partAnother text");
+    }
+
+    #[test]
+    fn test_gpt_parse_no_importable_messages() {
+        let json_str = r#"{
+            "id": "conv-5",
+            "title": "No Importable",
+            "create_time": 1700000000.0,
+            "update_time": 1700000010.0,
+            "current_node": "node-1",
+            "mapping": {
+                "node-1": {
+                    "id": "node-1",
+                    "parent": null,
+                    "message": {
+                        "id": "msg-1",
+                        "author": { "role": "tool" },
+                        "content": {
+                            "content_type": "text",
+                            "parts": ["Tool message should be ignored"]
+                        },
+                        "create_time": 1700000000.0,
+                        "metadata": null
+                    }
+                }
+            }
+        }"#;
+        let conv: GptConversation = serde_json::from_str(json_str).unwrap();
+        let res = parse_gpt_conversation(&conv);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_parsing_actual_v2_sample_export() {
+        use std::path::Path;
+        let export_path = Path::new("/home/urljenkins/Source/tbj0103/Samples/claude/2026-06-04");
+        
+        // 1. preview_v2_design_chats
+        let convs_by_project = claude_v2::preview_v2_design_chats(export_path).unwrap();
+        // The only design chat in this sample has 0 messages, so it is skipped.
+        assert!(convs_by_project.is_empty(), "design chats should be empty in this sample");
+        
+        // 2. load_v2_project_name_map
+        let name_map = claude_v2::load_v2_project_name_map(export_path);
+        assert!(!name_map.is_empty(), "project name map should not be empty");
+        
+        // 3. parse_v2_memories
+        let (memory_uuids, memories) = claude_v2::parse_v2_memories(export_path, &name_map).unwrap();
+        assert!(!memories.folder_memories.is_empty(), "folder memories should not be empty");
+        
+        // 4. preview_v2_projects
+        let projects = claude_v2::preview_v2_projects(export_path, &memory_uuids, &convs_by_project).unwrap();
+        assert!(!projects.is_empty(), "projects should not be empty");
+        assert_eq!(projects.len(), 18, "should have 18 projects");
+        
+        // 5. parse_v2_design_chats_filtered
+        let design_chats_filtered = claude_v2::parse_v2_design_chats_filtered(export_path, &[]).unwrap();
+        assert!(design_chats_filtered.is_empty(), "filtered design chats should be empty in this sample");
+        
+        // 6. conversations.json (orphan conversations)
+        let conv_path = export_path.join("conversations.json");
+        if conv_path.is_file() {
+            let bytes = std::fs::read(conv_path).unwrap();
+            let orphans = preview_claude_conversations(&bytes).unwrap();
+            assert!(!orphans.is_empty(), "orphan conversations should not be empty");
+            
+            let parsed_orphans = parse_claude_conversations_filtered(&bytes, &[]).unwrap();
+            assert!(!parsed_orphans.is_empty(), "parsed orphan conversations should not be empty");
+        }
     }
 }

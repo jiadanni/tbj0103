@@ -848,6 +848,12 @@ export interface AnalysisResult {
   failed_chunks?: number;
 }
 
+export interface DedupReport {
+  merged_chapters: number;
+  merged_sections: number;
+  proposals_created: number;
+}
+
 export interface WorkspaceAnalysisProgress {
   job_id: string;
   workspace_id: string;
@@ -1221,6 +1227,37 @@ export const api = {
         errors: number;
         error_messages: string[];
       }>("import_gemini_takeout", { filePath, workspaceName: workspaceName ?? null, selectedIds: selectedIds ?? null }),
+    previewChatGptFolder: (folderPath: string) =>
+      invoke<{
+        conversations: {
+          uuid: string;
+          name: string;
+          message_count: number;
+          created_at: string;
+          updated_at: string;
+          first_user_message: string;
+          messages: { role: string; content: string }[];
+        }[];
+        total: number;
+      }>("preview_chatgpt_folder", { folderPath }),
+    importChatGptFolder: (
+      folderPath: string,
+      workspaceId: string | null,
+      workspaceName: string | null,
+      selectedIds?: string[],
+    ) =>
+      invoke<{
+        imported_sessions: number;
+        skipped: number;
+        workspace_id: string;
+        errors: number;
+        error_messages: string[];
+      }>("import_chatgpt_folder", {
+        folderPath,
+        workspaceId,
+        workspaceName,
+        selectedIds: selectedIds ?? null,
+      }),
     detectClaudeFormat: (folderPath: string) =>
       invoke<{
         format: "legacy" | "v2";
@@ -1907,6 +1944,14 @@ export const api = {
     listenWorkspaceProgress: (onEvent: (event: WorkspaceAnalysisProgress) => void): Promise<UnlistenFn> =>
       listen<WorkspaceAnalysisProgress>("workspace-analysis-progress", (event) => {
         onEvent(event.payload);
+      }),
+    dedupWorkspaceConcepts: (workspaceId: string, model: string, opts?: { ollamaUrl?: string }) =>
+      invoke<DedupReport>("dedup_workspace_concepts", {
+        req: {
+          workspace_id: workspaceId,
+          model,
+          ollama_url: opts?.ollamaUrl,
+        },
       }),
   },
 

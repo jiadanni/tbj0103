@@ -725,6 +725,7 @@ pub fn run() {
             commands::ai_knowledge::analyze_workspace,
             commands::ai_knowledge::analyze_workspace_chunked,
             commands::ai_knowledge::analyze_descendants,
+            commands::ai_knowledge::dedup_workspace_concepts,
             // Memory commands
             commands::memory::create_memory,
             commands::memory::list_memories,
@@ -773,6 +774,8 @@ pub fn run() {
             commands::chat_file::import_multiple_folders,
             commands::chat_file::preview_gemini_takeout,
             commands::chat_file::import_gemini_takeout,
+            commands::chat_file::preview_chatgpt_folder,
+            commands::chat_file::import_chatgpt_folder,
             commands::chat_file::import_claude_files,
             commands::chat_file::preview_claude_files,
             commands::chat_file::match_claude_with_embeddings,
