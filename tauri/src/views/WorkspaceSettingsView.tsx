@@ -508,7 +508,8 @@ export default function WorkspaceSettingsView() {
   useEffect(() => {
     const isRunning = storeActiveJob !== null && (storeActiveJob.status === "running" || storeActiveJob.status === "queued");
     if (wasPromptJobRunning.current && !isRunning && selectedId) {
-      // Transitioned from running/queued to not running
+      // Transitioned from running/queued to not running — refresh once so the
+      // "Last job" / prompt_count display reflects the final state.
       api.workspace.getPromptBankStatus(selectedId)
         .then((status) => {
           setPromptBankStatus(status);
@@ -517,6 +518,37 @@ export default function WorkspaceSettingsView() {
     }
     wasPromptJobRunning.current = isRunning;
   }, [storeActiveJob, selectedId]);
+
+  // While a prompt-bank job is active for the currently-selected workspace,
+  // poll its status at 3s cadence to keep the generated/target progress
+  // display fresh. The backend doesn't emit per-batch progress events, so the
+  // pill needs a small targeted poll — but only while a job is actually
+  // running for the visible workspace, and only one query per tick.
+  useEffect(() => {
+    if (!selectedId || !storeActiveJob) { return; }
+    if (storeActiveJob.status !== "running" && storeActiveJob.status !== "queued") { return; }
+
+    let cancelled = false;
+    const workspaceId = selectedId;
+
+    async function tick() {
+      try {
+        const status = await api.workspace.getPromptBankStatus(workspaceId);
+        if (!cancelled) {
+          setPromptBankStatus(status);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    void tick();
+    const interval = window.setInterval(() => { void tick(); }, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [selectedId, storeActiveJob]);
 
   useEffect(() => {
     if (!selectedId) {

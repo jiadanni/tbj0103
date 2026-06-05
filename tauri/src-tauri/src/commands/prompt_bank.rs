@@ -5,7 +5,13 @@ use crate::services::prompt_bank::{
 };
 use tauri::{AppHandle, Emitter, Manager, State};
 
-fn emit_prompt_bank_task(app: &AppHandle, status: &str, message: &str, model: Option<String>) {
+fn emit_prompt_bank_task(
+    app: &AppHandle,
+    status: &str,
+    message: &str,
+    model: Option<String>,
+    workspace_id: Option<String>,
+) {
     let _ = app.emit(
         "background-task",
         BackgroundTaskEvent {
@@ -13,6 +19,7 @@ fn emit_prompt_bank_task(app: &AppHandle, status: &str, message: &str, model: Op
             status: status.to_string(),
             message: message.to_string(),
             model,
+            workspace_id,
         },
     );
 }
@@ -50,6 +57,7 @@ pub fn start_workspace_prompt_bank_job(
             "processing",
             "Refreshing starter prompts…",
             Some(job.model.clone()),
+            Some(workspace_id.clone()),
         );
     }
     if job.status == "queued" {
@@ -58,10 +66,12 @@ pub fn start_workspace_prompt_bank_job(
             "queued",
             "Queued for starter prompt refresh…",
             Some(job.model.clone()),
+            Some(workspace_id.clone()),
         );
         let pool = app.state::<DbState>().0.clone();
         let job_id = job.id.clone();
         let model = job.model.clone();
+        let workspace_id_for_task = workspace_id.clone();
         let app_handle = app.clone();
         tauri::async_runtime::spawn(async move {
             // Wait for any in-flight background job to finish so we don't
@@ -75,6 +85,7 @@ pub fn start_workspace_prompt_bank_job(
                 "started",
                 "Refreshing starter prompts…",
                 Some(model.clone()),
+                Some(workspace_id_for_task.clone()),
             );
             if let Err(error) = prompt_bank::run_job_by_id(pool.clone(), job_id.clone()).await {
                 prompt_bank::mark_job_failed(&pool, &job_id, &error);
@@ -83,6 +94,7 @@ pub fn start_workspace_prompt_bank_job(
                     "failed",
                     "Starter prompt refresh failed",
                     Some(model),
+                    Some(workspace_id_for_task),
                 );
             } else {
                 emit_prompt_bank_task(
@@ -90,6 +102,7 @@ pub fn start_workspace_prompt_bank_job(
                     "completed",
                     "Starter prompts refreshed",
                     Some(model),
+                    Some(workspace_id_for_task),
                 );
             }
         });

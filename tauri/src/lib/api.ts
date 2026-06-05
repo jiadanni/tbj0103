@@ -525,6 +525,8 @@ export interface BackgroundTaskEvent {
   message: string;
   /** Model name being used for this job, when applicable. */
   model?: string;
+  /** Workspace the job belongs to, when applicable. */
+  workspace_id?: string;
 }
 
 export interface ActiveJob {

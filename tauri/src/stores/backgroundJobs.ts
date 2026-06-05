@@ -5,7 +5,8 @@ interface BackgroundJobsState {
   jobs: Map<string, ActiveJob>;
   hydrated: boolean;
   hydrate: () => Promise<void>;
-  applyEvent: (event: BackgroundTaskEvent | { task_type: string; status: string; message: string; model?: string; workspace_id?: string }) => void;
+  applyEvent: (event: BackgroundTaskEvent) => void;
+  removeJob: (taskType: string) => void;
 }
 
 export const useBackgroundJobsStore = create<BackgroundJobsState>((set, get) => ({
@@ -31,29 +32,46 @@ export const useBackgroundJobsStore = create<BackgroundJobsState>((set, get) => 
   },
 
   applyEvent: (event) => {
-    const { task_type, status, model } = event;
+    const { task_type, status, model, workspace_id } = event;
     if (status === "queued" || status === "started" || status === "processing") {
+      const needsHydrate = task_type === "workspace_prompt_bank" && !workspace_id;
       set((state) => {
         const nextJobs = new Map(state.jobs);
         const existing = nextJobs.get(task_type);
         nextJobs.set(task_type, {
           task_type,
-          workspace_id: ("workspace_id" in event ? event.workspace_id : undefined) ?? existing?.workspace_id,
+          workspace_id: workspace_id ?? existing?.workspace_id,
           model: model ?? existing?.model,
+          started_at: existing?.started_at,
           status: status === "queued" ? "queued" : "running",
         });
         return { jobs: nextJobs };
       });
-      // Self-heal/re-hydrate workspaceId for prompt bank tasks if not known yet
-      if (task_type === "workspace_prompt_bank") {
+      // Only hydrate as a last resort if the event arrived without a
+      // workspace_id AND we don't already know one. This covers the legacy
+      // scheduler path that doesn't carry workspace context; manual job starts
+      // always populate workspace_id on the event itself, so they never trip
+      // this path.
+      if (needsHydrate && !get().jobs.get(task_type)?.workspace_id) {
         get().hydrate().catch(() => {});
       }
     } else {
+      // completed | failed | cancelled — clear the entry.
       set((state) => {
+        if (!state.jobs.has(task_type)) { return state; }
         const nextJobs = new Map(state.jobs);
         nextJobs.delete(task_type);
         return { jobs: nextJobs };
       });
     }
+  },
+
+  removeJob: (taskType) => {
+    set((state) => {
+      if (!state.jobs.has(taskType)) { return state; }
+      const nextJobs = new Map(state.jobs);
+      nextJobs.delete(taskType);
+      return { jobs: nextJobs };
+    });
   },
 }));

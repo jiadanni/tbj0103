@@ -250,15 +250,15 @@ export default function App() {
       });
 
       unlistenWorkspace = await api.knowledge.listenWorkspaceProgress((payload: WorkspaceAnalysisProgress) => {
-        // Map WorkspaceAnalysisProgress event into the store as workspace_analysis task
+        // Map WorkspaceAnalysisProgress event into the store as workspace_analysis task.
+        const store = useBackgroundJobsStore.getState();
         if (payload.status === "started") {
-          // Deleting workspace_prompt_bank if workspace_analysis started, mirroring previous StatusBar logic
-          useBackgroundJobsStore.getState().applyEvent({
-            task_type: "workspace_prompt_bank",
-            status: "failed", // Deletes it from the store
-            message: "",
-          });
-          useBackgroundJobsStore.getState().applyEvent({
+          // Workspace analysis preempts prompt-bank display in the StatusBar
+          // (they share the global job semaphore). Clear directly rather than
+          // emitting a fake "failed" event, which would otherwise leak into
+          // any listener watching for real failures.
+          store.removeJob("workspace_prompt_bank");
+          store.applyEvent({
             task_type: "workspace_analysis",
             status: "started",
             message: payload.label,
@@ -266,11 +266,7 @@ export default function App() {
             workspace_id: payload.workspace_id,
           });
         } else {
-          useBackgroundJobsStore.getState().applyEvent({
-            task_type: "workspace_analysis",
-            status: "completed",
-            message: "",
-          });
+          store.removeJob("workspace_analysis");
         }
       });
     }

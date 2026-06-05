@@ -68,6 +68,8 @@ pub struct BackgroundTaskEvent {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_id: Option<String>,
 }
 
 /// Emitted on `background-task-prompt` when a job is gated on user
@@ -257,45 +259,72 @@ async fn gate_job(
 }
 
 fn emit_task(app: &AppHandle, task_type: &str, status: &str, message: &str, model: Option<String>) {
-    match status {
+    emit_task_with_workspace(app, task_type, status, message, model, None);
+}
+
+fn emit_task_with_workspace(
+    app: &AppHandle,
+    task_type: &str,
+    status: &str,
+    message: &str,
+    model: Option<String>,
+    workspace_id: Option<String>,
+) {
+    let resolved_workspace_id = match status {
         "queued" => {
+            let mut resolved = workspace_id.clone();
             if let Ok(mut jobs) = ACTIVE_JOBS.lock() {
                 let existing = jobs.get(task_type).cloned();
+                let merged_workspace = workspace_id
+                    .clone()
+                    .or_else(|| existing.and_then(|job| job.workspace_id));
+                resolved = merged_workspace.clone();
                 jobs.insert(
                     task_type.to_string(),
                     ActiveBackgroundJob {
                         task_type: task_type.to_string(),
-                        workspace_id: existing.and_then(|job| job.workspace_id),
+                        workspace_id: merged_workspace,
                         model: model.clone(),
                         started_at: Some(chrono::Utc::now().to_rfc3339()),
                         status: "queued".to_string(),
                     },
                 );
             }
+            resolved
         }
         "started" | "processing" => {
+            let mut resolved = workspace_id.clone();
             if let Ok(mut jobs) = ACTIVE_JOBS.lock() {
                 let existing = jobs.get(task_type).cloned();
-                let workspace_id = existing.as_ref().and_then(|job| job.workspace_id.clone());
+                let merged_workspace = workspace_id
+                    .clone()
+                    .or_else(|| existing.as_ref().and_then(|job| job.workspace_id.clone()));
                 let existing_model = existing.as_ref().and_then(|job| job.model.clone());
+                resolved = merged_workspace.clone();
                 jobs.insert(
                     task_type.to_string(),
                     ActiveBackgroundJob {
                         task_type: task_type.to_string(),
-                        workspace_id,
+                        workspace_id: merged_workspace,
                         model: model.clone().or(existing_model),
                         started_at: Some(chrono::Utc::now().to_rfc3339()),
                         status: "running".to_string(),
                     },
                 );
             }
+            resolved
         }
         _ => {
+            let mut resolved = workspace_id.clone();
             if let Ok(mut jobs) = ACTIVE_JOBS.lock() {
+                if resolved.is_none() {
+                    resolved = jobs.get(task_type).and_then(|job| job.workspace_id.clone());
+                }
                 jobs.remove(task_type);
             }
+            resolved
         }
-    }
+    };
     let _ = app.emit(
         "background-task",
         BackgroundTaskEvent {
@@ -303,6 +332,7 @@ fn emit_task(app: &AppHandle, task_type: &str, status: &str, message: &str, mode
             status: status.to_string(),
             message: message.to_string(),
             model,
+            workspace_id: resolved_workspace_id,
         },
     );
 }
