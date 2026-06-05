@@ -298,6 +298,9 @@ interface WorkspaceStore {
   workspaceNavigation: NavigationPresentation;
   sectionNavigation: NavigationPresentation;
   subWorkspaceNavigation: NavigationPresentation;
+  combineWorkspaceDropdown: boolean;
+  combineSubWorkspaceDropdown: boolean;
+  combineSectionDropdown: boolean;
   splitWorkspaceNavigation: SplitNavigationPresentation;
   splitSectionNavigation: SplitNavigationPresentation;
   workspaceSortOrder: WorkspaceSortOrder;
@@ -320,6 +323,9 @@ interface WorkspaceStore {
   setWorkspaceNavigation: (layout: NavigationPresentation) => void;
   setSectionNavigation: (layout: NavigationPresentation) => void;
   setSubWorkspaceNavigation: (layout: NavigationPresentation) => void;
+  setCombineWorkspaceDropdown: (combine: boolean) => void;
+  setCombineSubWorkspaceDropdown: (combine: boolean) => void;
+  setCombineSectionDropdown: (combine: boolean) => void;
   setSplitWorkspaceNavigation: (layout: SplitNavigationPresentation) => void;
   setSplitSectionNavigation: (layout: SplitNavigationPresentation) => void;
   setWorkspaceSortOrder: (order: WorkspaceSortOrder) => void;
@@ -389,6 +395,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     workspaceNavigation: migratedNavigation.workspaceNavigation,
     sectionNavigation: migratedNavigation.sectionNavigation,
     subWorkspaceNavigation: migratedNavigation.subWorkspaceNavigation,
+    combineWorkspaceDropdown: window.localStorage.getItem("combineWorkspaceDropdown") === "true",
+    combineSubWorkspaceDropdown: window.localStorage.getItem("combineSubWorkspaceDropdown") === "true",
+    combineSectionDropdown: window.localStorage.getItem("combineSectionDropdown") === "true",
     splitWorkspaceNavigation: readSplitNavigationSetting("splitWorkspaceNavigation", "match-main"),
     splitSectionNavigation: readSplitNavigationSetting("splitSectionNavigation", "match-main"),
     workspaceSortOrder: (window.localStorage.getItem("workspaceSortOrder") as WorkspaceSortOrder | null) ?? "name-asc",
@@ -594,6 +603,18 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       const normalized = normalizeNavigationPresentation(subWorkspaceNavigation, "top-tabs");
       window.localStorage.setItem("subWorkspaceNavigation", normalized);
       set({ subWorkspaceNavigation: normalized });
+    },
+    setCombineWorkspaceDropdown: (combineWorkspaceDropdown) => {
+      window.localStorage.setItem("combineWorkspaceDropdown", String(combineWorkspaceDropdown));
+      set({ combineWorkspaceDropdown });
+    },
+    setCombineSubWorkspaceDropdown: (combineSubWorkspaceDropdown) => {
+      window.localStorage.setItem("combineSubWorkspaceDropdown", String(combineSubWorkspaceDropdown));
+      set({ combineSubWorkspaceDropdown });
+    },
+    setCombineSectionDropdown: (combineSectionDropdown) => {
+      window.localStorage.setItem("combineSectionDropdown", String(combineSectionDropdown));
+      set({ combineSectionDropdown });
     },
     setSplitWorkspaceNavigation: (splitWorkspaceNavigation) => {
       window.localStorage.setItem("splitWorkspaceNavigation", splitWorkspaceNavigation);

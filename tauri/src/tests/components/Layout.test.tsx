@@ -92,6 +92,9 @@ const INITIAL = {
   workspaceNavigation: "sidebar" as const,
   sectionNavigation: "sidebar" as const,
   subWorkspaceNavigation: "top-tabs" as const,
+  combineWorkspaceDropdown: false,
+  combineSubWorkspaceDropdown: false,
+  combineSectionDropdown: false,
   splitWorkspaceNavigation: "match-main" as const,
   splitSectionNavigation: "match-main" as const,
   activeTopicSignature: null,
@@ -563,6 +566,59 @@ describe("Layout", () => {
 
     expect(screen.getByRole("button", { name: "Sub-workspace: Rust" })).toBeInTheDocument();
     expect(screen.queryByTestId("single-pane-subworkspace-sidebar")).toBeNull();
+  });
+
+  it("combines workspace and sub-workspace dropdowns onto the titlebar line and drops the standalone sub bar", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "ws-1-child", name: "Rust", description: "", prompt_instructions: "", topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: "ws-1", icon: "", order_index: 0, last_message_at: null, survey_data: null },
+      ],
+      activeWorkspaceId: "ws-1-child",
+      activeParentWorkspaceId: "ws-1",
+      workspaceNavigation: "top-dropdown",
+      subWorkspaceNavigation: "top-dropdown",
+      combineWorkspaceDropdown: true,
+      combineSubWorkspaceDropdown: true,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/folder"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    // Both selects live in the titlebar; the standalone sub-workspace bar is gone.
+    const titlebar = document.querySelector("[data-workspace-titlebar-actions]")?.closest("div");
+    expect(screen.getByRole("button", { name: "Workspace: Agentic / Rust" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sub-workspace: Rust" })).toBeInTheDocument();
+    expect(titlebar).not.toBeNull();
+  });
+
+  it("keeps the section dropdown on its own bar when section combine is off while another axis is combined", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "ws-1-child", name: "Rust", description: "", prompt_instructions: "", topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: "ws-1", icon: "", order_index: 0, last_message_at: null, survey_data: null },
+      ],
+      activeWorkspaceId: "ws-1-child",
+      activeParentWorkspaceId: "ws-1",
+      workspaceNavigation: "top-dropdown",
+      subWorkspaceNavigation: "top-dropdown",
+      sectionNavigation: "top-dropdown",
+      combineSubWorkspaceDropdown: true,
+      combineSectionDropdown: false,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/folder"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    // Section combine is off, so it stays on its own bar (one Section select).
+    expect(screen.getByRole("button", { name: "Sub-workspace: Rust" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Section:/ })).toHaveLength(1);
   });
 
   it("renders split workspace navigation in the shared titlebar while keeping titlebar actions", () => {

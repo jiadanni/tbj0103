@@ -486,18 +486,21 @@ function SubWorkspaceTabBar({
   );
 }
 
-function SubWorkspaceDropdownBar({
+/**
+ * The sub-workspace picker control on its own — the parent "(Overview)" entry
+ * plus each child workspace. Returns null when there is no parent (nothing to
+ * navigate). Reused both in the standalone bar and the combined titlebar line.
+ */
+function SubWorkspaceDropdownSelect({
   parentWorkspaceId,
   activeWorkspaceId,
   onSelect,
   onSelectOverview,
-  onAdd,
 }: {
   parentWorkspaceId: string | null;
   activeWorkspaceId: string | null;
   onSelect: (workspaceId: string) => void;
   onSelectOverview?: (workspaceId: string) => void;
-  onAdd?: () => void;
 }) {
   const allWorkspaces = useWorkspaceStore((s) => s.workspaces);
   const parent = parentWorkspaceId ? allWorkspaces.find((ws) => ws.id === parentWorkspaceId) : null;
@@ -515,6 +518,39 @@ function SubWorkspaceDropdownBar({
     : options[0]?.value ?? "";
 
   return (
+    <CompactMenuSelect
+      label="Sub-workspace"
+      value={selectedValue}
+      options={options}
+      onChange={(value) => {
+        if (parent && value === parent.id) {
+          (onSelectOverview ?? onSelect)(value);
+        } else {
+          onSelect(value);
+        }
+      }}
+      widthClassName="min-w-0 w-full max-w-[260px] sm:w-[240px]"
+      buttonClassName="h-8 bg-[var(--bg-primary)]"
+    />
+  );
+}
+
+function SubWorkspaceDropdownBar({
+  parentWorkspaceId,
+  activeWorkspaceId,
+  onSelect,
+  onSelectOverview,
+  onAdd,
+}: {
+  parentWorkspaceId: string | null;
+  activeWorkspaceId: string | null;
+  onSelect: (workspaceId: string) => void;
+  onSelectOverview?: (workspaceId: string) => void;
+  onAdd?: () => void;
+}) {
+  if (!parentWorkspaceId) { return null; }
+
+  return (
     <div
       data-tauri-drag-region
       onMouseDown={onDragRegionMouseDown}
@@ -524,19 +560,11 @@ function SubWorkspaceDropdownBar({
         Sub-workspace
       </span>
       <div data-no-drag className="min-w-0">
-        <CompactMenuSelect
-          label="Sub-workspace"
-          value={selectedValue}
-          options={options}
-          onChange={(value) => {
-            if (parent && value === parent.id) {
-              (onSelectOverview ?? onSelect)(value);
-            } else {
-              onSelect(value);
-            }
-          }}
-          widthClassName="min-w-0 w-full max-w-[260px] sm:w-[240px]"
-          buttonClassName="h-8 bg-[var(--bg-primary)]"
+        <SubWorkspaceDropdownSelect
+          parentWorkspaceId={parentWorkspaceId}
+          activeWorkspaceId={activeWorkspaceId}
+          onSelect={onSelect}
+          onSelectOverview={onSelectOverview}
         />
       </div>
       {onAdd && (
@@ -1242,6 +1270,10 @@ function WorkspaceTabBar({
   const splitMode = useWorkspaceStore((state) => state.splitMode);
   const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
   const subWorkspaceNavigation = useWorkspaceStore((state) => state.subWorkspaceNavigation);
+  const sectionNavigation = useWorkspaceStore((state) => state.sectionNavigation);
+  const combineWorkspaceDropdown = useWorkspaceStore((state) => state.combineWorkspaceDropdown);
+  const combineSubWorkspaceDropdown = useWorkspaceStore((state) => state.combineSubWorkspaceDropdown);
+  const combineSectionDropdown = useWorkspaceStore((state) => state.combineSectionDropdown);
   const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId);
   const addWorkspace = useWorkspaceStore((state) => state.addWorkspace);
   const setWorkspaces = useWorkspaceStore((state) => state.setWorkspaces);
@@ -1384,6 +1416,43 @@ function WorkspaceTabBar({
     }
   }, [contextMenu]);
 
+  // Combined titlebar breadcrumb: each axis joins only when it is in top-dropdown
+  // mode AND its combine switch is on (and, for sub-workspaces, an active parent
+  // exists). Axes that are dropdown but not combined keep their standalone bar.
+  const singlePaneNav = !showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs;
+  const workspaceCrumbCombined = showSinglePaneWorkspaceDropdown && combineWorkspaceDropdown;
+  const subWorkspaceCrumbCombined = singlePaneNav && subWorkspaceNavigation === "top-dropdown" && combineSubWorkspaceDropdown && !!activeParentWorkspaceId;
+  const sectionCrumbCombined = singlePaneNav && sectionNavigation === "top-dropdown" && combineSectionDropdown;
+  const combinedCrumbs: { key: string; node: React.ReactNode }[] = [];
+  if (workspaceCrumbCombined) {
+    combinedCrumbs.push({ key: "workspace", node: (
+      <SingleTitlebarWorkspaceDropdown activeWorkspaceId={activeWorkspaceId} onChange={activateWorkspace} />
+    ) });
+  }
+  if (subWorkspaceCrumbCombined) {
+    combinedCrumbs.push({ key: "sub-workspace", node: (
+      <SubWorkspaceDropdownSelect
+        parentWorkspaceId={activeParentWorkspaceId}
+        activeWorkspaceId={activeWorkspaceId}
+        onSelect={activateSubWorkspace}
+        onSelectOverview={activateOverviewWorkspace}
+      />
+    ) });
+  }
+  if (sectionCrumbCombined) {
+    combinedCrumbs.push({ key: "section", node: <SectionDropdownSelect /> });
+  }
+  const combinedBreadcrumbNode = combinedCrumbs.length > 0 ? (
+    <div data-no-drag className="flex min-w-0 items-center gap-1.5">
+      {combinedCrumbs.map((crumb, index) => (
+        <React.Fragment key={crumb.key}>
+          {index > 0 && <span className="shrink-0 select-none text-[var(--text-muted)] opacity-60">/</span>}
+          <div className="min-w-0">{crumb.node}</div>
+        </React.Fragment>
+      ))}
+    </div>
+  ) : null;
+
   return (
     <div className="relative z-20">
       <div
@@ -1408,15 +1477,26 @@ function WorkspaceTabBar({
           {...(showWorkspaceTabs && !showSplitTitlebarWorkspaceNavigation && !showSinglePaneWorkspaceDropdown && !showSinglePaneWorkspaceSidebar ? { "data-workspace-tab-strip": "", "data-no-drag": "" } : {})}
         >
           {showSinglePaneWorkspaceDropdown ? (
-            <div className="flex h-10 items-center">
-              <SingleTitlebarWorkspaceDropdown
-                activeWorkspaceId={activeWorkspaceId}
-                onChange={activateWorkspace}
-              />
+            <div className="flex h-10 items-center gap-1.5">
+              {/* When the workspace dropdown is combined it appears as the first
+                  breadcrumb crumb; otherwise it renders standalone, with any
+                  combined sub/section crumbs appended after it. */}
+              {!combineWorkspaceDropdown && (
+                <SingleTitlebarWorkspaceDropdown
+                  activeWorkspaceId={activeWorkspaceId}
+                  onChange={activateWorkspace}
+                />
+              )}
+              {combinedBreadcrumbNode}
             </div>
           ) : showSinglePaneWorkspaceSidebar ? (
-            // Workspace switching lives in the left sidebar; keep the titlebar slot empty for window dragging.
-            <div className="h-10" />
+            // Workspace switching lives in the left sidebar; keep the titlebar slot
+            // empty for window dragging unless combined sub/section crumbs need it.
+            combinedBreadcrumbNode ? (
+              <div className="flex h-10 items-center">{combinedBreadcrumbNode}</div>
+            ) : (
+              <div className="h-10" />
+            )
           ) : (
             <div className={`${showSplitTitlebarWorkspaceNavigation ? "hidden" : "flex min-w-0 flex-1 items-center"}`}>
               {!showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs ? (
@@ -1437,6 +1517,7 @@ function WorkspaceTabBar({
                   </button>
                 </Tooltip>
               ) : null}
+              {combinedBreadcrumbNode}
             </div>
           )}
         </div>
@@ -1496,7 +1577,7 @@ function WorkspaceTabBar({
           onContextMenu={(ws, x, y) => setContextMenu({ workspace: ws, x, y })}
         />
       )}
-      {!showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs && subWorkspaceNavigation === "top-dropdown" && (
+      {!showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs && subWorkspaceNavigation === "top-dropdown" && !combineSubWorkspaceDropdown && (
         <SubWorkspaceDropdownBar
           parentWorkspaceId={activeParentWorkspaceId}
           activeWorkspaceId={activeWorkspaceId}
@@ -1783,7 +1864,11 @@ function TopTabsNavigation() {
   );
 }
 
-function CompactSectionNavigation() {
+/**
+ * The section (route) picker control on its own. Carries its own routing, so it
+ * can be dropped into the standalone bar or the combined titlebar line.
+ */
+function SectionDropdownSelect() {
   const navigate = useNavigate();
   const location = useLocation();
   const [, startNavTransition] = React.useTransition();
@@ -1799,22 +1884,28 @@ function CompactSectionNavigation() {
     : sectionOptions[0]?.value ?? "/folder";
 
   return (
+    <CompactMenuSelect
+      label="Section"
+      value={selectedPath}
+      options={sectionOptions}
+      onChange={(value) => {
+        if (value === "/chat") {
+          useChatStore.getState().setActiveChatId(null);
+        }
+        startNavTransition(() => { navigate(value); });
+      }}
+      widthClassName="min-w-0 w-full max-w-[260px] sm:w-[240px]"
+    />
+  );
+}
+
+function CompactSectionNavigation() {
+  return (
     <div className="flex h-10 items-center gap-3 border-b border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 shrink-0">
       <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
         Section
       </span>
-      <CompactMenuSelect
-        label="Section"
-        value={selectedPath}
-        options={sectionOptions}
-        onChange={(value) => {
-          if (value === "/chat") {
-            useChatStore.getState().setActiveChatId(null);
-          }
-          startNavTransition(() => { navigate(value); });
-        }}
-        widthClassName="min-w-0 w-full max-w-[260px] sm:w-[240px]"
-      />
+      <SectionDropdownSelect />
     </div>
   );
 }
@@ -1865,6 +1956,7 @@ export default function Layout() {
   const sectionNavigation = useWorkspaceStore((state) => state.sectionNavigation);
   const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
   const subWorkspaceNavigation = useWorkspaceStore((state) => state.subWorkspaceNavigation);
+  const combineSectionDropdown = useWorkspaceStore((state) => state.combineSectionDropdown);
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
   const setDemo = useWorkspaceStore((state) => state.setDemo);
   const loadArtifact = useArtifactStore((state) => state.loadArtifact);
@@ -1965,7 +2057,7 @@ export default function Layout() {
       )}
 
       {showSinglePaneNavigation && sectionNavigation === "top-tabs" && <TopTabsNavigation />}
-      {showSinglePaneNavigation && sectionNavigation === "top-dropdown" && <CompactSectionNavigation />}
+      {showSinglePaneNavigation && sectionNavigation === "top-dropdown" && !combineSectionDropdown && <CompactSectionNavigation />}
 
       <div className="flex-1 min-h-0">
         {showSplitPaneLayout ? (

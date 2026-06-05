@@ -128,6 +128,7 @@ const TAB_KEYWORDS: Record<string, string[]> = {
   navigation: [
     "Main layout", "Settings Navigation", "Workspace Navigation", "Section Navigation",
     "Sub-Workspace Navigation", "Sub-workspace",
+    "Combine dropdowns into titlebar line", "Combine dropdowns", "titlebar line",
     "Workspace behavior", "Workspace Sort Order", "Navigate on workspace switch",
     "Stay on current", "Chat", "Dashboard", "History", "Knowledge", "Notes", "Sources",
   ],
@@ -896,6 +897,9 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
   const dbWorkspaceNavigation = useWorkspaceStore((s) => s.workspaceNavigation);
   const dbSectionNavigation = useWorkspaceStore((s) => s.sectionNavigation);
   const dbSubWorkspaceNavigation = useWorkspaceStore((s) => s.subWorkspaceNavigation);
+  const combineWorkspaceDropdown = useWorkspaceStore((s) => s.combineWorkspaceDropdown);
+  const combineSubWorkspaceDropdown = useWorkspaceStore((s) => s.combineSubWorkspaceDropdown);
+  const combineSectionDropdown = useWorkspaceStore((s) => s.combineSectionDropdown);
   const dbWorkspaceSortOrder = useWorkspaceStore((s) => s.workspaceSortOrder);
   const dbChatMessageStyle = useSettingsStore((s) => s.chatMessageStyle);
   const dbComposerMode = useSettingsStore((s) => s.composerMode);
@@ -923,6 +927,14 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
   const scaledFontSize = Math.max(9, Math.min(20, Math.round(fontSize * 0.9)));
 
   const activeWorkspaceChildren = PREVIEW_CHILD_WORKSPACES;
+
+  // Combine-into-titlebar crumbs (preview is single-pane). A dropdown axis joins
+  // the titlebar line when its combine switch is on; otherwise it keeps its row.
+  const subCombinedCrumb = subWorkspaceNavigation === "top-dropdown" && combineSubWorkspaceDropdown && activeWorkspaceChildren.length > 0;
+  const sectionCombinedCrumb = sectionNavigation === "top-dropdown" && combineSectionDropdown;
+  // combineWorkspaceDropdown only affects grouping; the workspace dropdown is
+  // already shown in the titlebar, so it reads as the leading crumb either way.
+  void combineWorkspaceDropdown;
 
   const parentWorkspaces = useMemo(() => {
     const list = PREVIEW_PARENT_WORKSPACES.map((w) => ({ ...w }));
@@ -1042,11 +1054,24 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                 <span className="text-[0.7em] font-semibold text-[var(--text-primary)] truncate">{activeWorkspaceName}</span>
               )}
 
-              {sectionNavigation === "top-dropdown" && (
-                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] text-[0.65em] text-[var(--text-secondary)] font-medium">
-                  <span>Chat</span>
-                  <ChevronDown size={8} className="text-[var(--text-muted)]" />
-                </div>
+              {subCombinedCrumb && (
+                <>
+                  {workspaceNavigation === "top-dropdown" && <span className="text-[0.6em] text-[var(--text-muted)] opacity-60">/</span>}
+                  <div className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] text-[0.65em] text-[var(--text-primary)] font-medium">
+                    <span>{activeWorkspaceChildren[0]?.name ?? "Overview"}</span>
+                    <ChevronDown size={8} className="text-[var(--text-muted)]" />
+                  </div>
+                </>
+              )}
+
+              {sectionCombinedCrumb && (
+                <>
+                  {(workspaceNavigation === "top-dropdown" || subCombinedCrumb) && <span className="text-[0.6em] text-[var(--text-muted)] opacity-60">/</span>}
+                  <div className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] text-[0.65em] text-[var(--text-secondary)] font-medium">
+                    <span>Chat</span>
+                    <ChevronDown size={8} className="text-[var(--text-muted)]" />
+                  </div>
+                </>
               )}
             </div>
 
@@ -1108,7 +1133,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
           )}
 
           {/* Row 2 (dropdown variant): compact sub-workspace picker */}
-          {subWorkspaceNavigation === "top-dropdown" && activeWorkspaceChildren.length > 0 && (
+          {subWorkspaceNavigation === "top-dropdown" && !combineSubWorkspaceDropdown && activeWorkspaceChildren.length > 0 && (
             <div className="h-7 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]/90 px-3 flex items-center gap-2 shrink-0 select-none">
               <span className="text-[0.5em] font-bold uppercase tracking-wider text-[var(--text-muted)]">Sub</span>
               <div className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] text-[0.6em] text-[var(--text-primary)] font-medium">
@@ -1126,6 +1151,17 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
               <span className="text-[0.65em] font-semibold text-[var(--accent-color)] border-b border-[var(--accent-color)] px-1 py-0.5">Chat</span>
               <span className="text-[0.65em] font-semibold text-[var(--text-muted)] px-1 py-0.5">Notes</span>
               <span className="text-[0.65em] font-semibold text-[var(--text-muted)] px-1 py-0.5">Knowledge</span>
+            </div>
+          )}
+
+          {/* Section dropdown on its own row (when not combined into the titlebar) */}
+          {sectionNavigation === "top-dropdown" && !combineSectionDropdown && (
+            <div className="h-7 flex items-center gap-2 px-3 bg-[var(--bg-secondary)] border-b border-[var(--border-color)] shrink-0 select-none">
+              <span className="text-[0.5em] font-bold uppercase tracking-wider text-[var(--text-muted)]">Section</span>
+              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] text-[0.6em] text-[var(--text-secondary)] font-medium">
+                <span>Chat</span>
+                <ChevronDown size={8} className="text-[var(--text-muted)]" />
+              </div>
             </div>
           )}
 
@@ -2159,6 +2195,12 @@ export default function PreferencesView() {
   const setWorkspaceNavigation = useWorkspaceStore((state) => state.setWorkspaceNavigation);
   const setSectionNavigation = useWorkspaceStore((state) => state.setSectionNavigation);
   const setSubWorkspaceNavigation = useWorkspaceStore((state) => state.setSubWorkspaceNavigation);
+  const combineWorkspaceDropdown = useWorkspaceStore((state) => state.combineWorkspaceDropdown);
+  const combineSubWorkspaceDropdown = useWorkspaceStore((state) => state.combineSubWorkspaceDropdown);
+  const combineSectionDropdown = useWorkspaceStore((state) => state.combineSectionDropdown);
+  const setCombineWorkspaceDropdown = useWorkspaceStore((state) => state.setCombineWorkspaceDropdown);
+  const setCombineSubWorkspaceDropdown = useWorkspaceStore((state) => state.setCombineSubWorkspaceDropdown);
+  const setCombineSectionDropdown = useWorkspaceStore((state) => state.setCombineSectionDropdown);
   const incrementModelRefreshCounter = useSettingsStore((state) => state.incrementModelRefreshCounter);
   const setWorkspaceSortOrder = useWorkspaceStore((state) => state.setWorkspaceSortOrder);
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
@@ -4097,6 +4139,30 @@ export default function PreferencesView() {
                         <p className="mt-2 text-[11px] text-[var(--text-muted)]/80">
                           Applies when the active workspace has sub-workspaces. Independent of the workspace and section choices above.
                         </p>
+                      </div>
+
+                      <div>
+                        <label className="text-xs text-[var(--text-secondary)] mb-2 block">Combine dropdowns into titlebar line</label>
+                        <p className="text-[11px] text-[var(--text-muted)]/80 mb-2.5">
+                          For each axis set to Top Dropdown, place its picker on a single titlebar line (Workspace / Sub-workspace / Section) instead of its own row. Only applies to axes using Top Dropdown.
+                        </p>
+                        <div className="space-y-2.5">
+                          {[
+                            { id: "workspace", label: "Workspace", on: combineWorkspaceDropdown, toggle: () => setCombineWorkspaceDropdown(!combineWorkspaceDropdown), enabled: workspaceNavigation === "top-dropdown" },
+                            { id: "subworkspace", label: "Sub-workspace", on: combineSubWorkspaceDropdown, toggle: () => setCombineSubWorkspaceDropdown(!combineSubWorkspaceDropdown), enabled: subWorkspaceNavigation === "top-dropdown" },
+                            { id: "section", label: "Section", on: combineSectionDropdown, toggle: () => setCombineSectionDropdown(!combineSectionDropdown), enabled: sectionNavigation === "top-dropdown" },
+                          ].map((row) => (
+                            <div key={row.id} className={`flex items-start gap-3 py-0.5 ${row.enabled ? "" : "opacity-50"}`}>
+                              <Toggle on={row.on} onToggle={row.toggle} disabled={!row.enabled} />
+                              <div>
+                                <p className="text-sm text-[var(--text-secondary)]">{row.label}</p>
+                                {!row.enabled && (
+                                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Set {row.label} navigation to Top Dropdown to combine it.</p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </section>
 
