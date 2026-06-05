@@ -3,10 +3,12 @@ import { useNavigate } from "react-router-dom";
 import {
   ArrowRight,
   Check,
+  FileText,
   MessageSquare,
   Plus,
   RefreshCw,
   Search,
+  Sparkles,
   Target,
   Trash2,
 } from "lucide-react";
@@ -50,6 +52,38 @@ function MetricCard({
       <div className="text-xs font-semibold leading-none text-[var(--text-primary)]">{value}</div>
       <div className="mt-1 text-[10px] text-[var(--text-muted)]">{label}</div>
     </div>
+  );
+}
+
+function EmptyStateActionCard({
+  icon,
+  title,
+  description,
+  actionLabel,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  actionLabel: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex h-full flex-col items-start rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 text-left transition-all hover:border-[rgba(var(--accent-color-rgb),0.35)] hover:bg-[var(--bg-hover)]"
+    >
+      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]">
+        {icon}
+      </div>
+      <div className="mt-4 text-sm font-semibold text-[var(--text-primary)]">{title}</div>
+      <div className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">{description}</div>
+      <div className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-[var(--accent-color)]">
+        {actionLabel}
+        <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
+      </div>
+    </button>
   );
 }
 
@@ -155,6 +189,10 @@ export default function FolderDashboardView() {
   if (!summary) { return null; }
 
   const continueThreads = summary.continue_learning.slice(0, 4);
+  const showWorkspaceWarmupState =
+    summary.overview.sources === 0
+    && summary.overview.chat_sessions <= 2
+    && summary.overview.notes <= 1;
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -260,10 +298,71 @@ export default function FolderDashboardView() {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-hidden bg-[var(--bg-primary)]">
-        <Suspense fallback={<div className="p-4 text-sm text-[var(--text-muted)]">Loading…</div>}>
-          <RoadmapPane hideSidebar />
-        </Suspense>
+      <div className="flex-1 min-h-0 overflow-y-auto bg-[var(--bg-primary)]">
+        {showWorkspaceWarmupState ? (
+          <div className="px-4 py-4 sm:px-6">
+            <section className="rounded-[28px] border border-[var(--border-color)] bg-[linear-gradient(145deg,rgba(var(--accent-color-rgb),0.10),rgba(255,255,255,0)_45%),var(--bg-elevated)] p-5 sm:p-6">
+              <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+                <div className="max-w-2xl">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                    Workspace Warm-Up
+                  </div>
+                  <h2 className="mt-1 text-2xl font-semibold text-[var(--text-primary)]">
+                    This workspace is ready for its first real pass.
+                  </h2>
+                  <p className="mt-3 text-sm leading-7 text-[var(--text-secondary)]">
+                    You have the shell of a learning space, but not much material yet. Add a note, drop in source material,
+                    or ask a concrete question here first. Once there is more to work with, the roadmap and review surfaces
+                    will become much more useful.
+                  </p>
+                </div>
+
+                <div className="grid gap-2 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-3 text-sm text-[var(--text-secondary)] sm:grid-cols-3 xl:min-w-[360px] xl:grid-cols-1">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-[var(--text-muted)]">Chats</div>
+                    <div className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{summary.overview.chat_sessions}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-[var(--text-muted)]">Notes</div>
+                    <div className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{summary.overview.notes}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-[var(--text-muted)]">Sources</div>
+                    <div className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{summary.overview.sources}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-3 lg:grid-cols-3">
+                <EmptyStateActionCard
+                  icon={<MessageSquare size={18} />}
+                  title="Start a focused thread"
+                  description="Ask a concrete question or paste a real problem so the workspace has something worth building around."
+                  actionLabel="Open chat"
+                  onClick={() => navigate("/chat", { state: { createNewChat: true } })}
+                />
+                <EmptyStateActionCard
+                  icon={<FileText size={18} />}
+                  title="Add notes or source material"
+                  description="Capture a note, import a document, or save a source so the dashboard has actual material to reason about."
+                  actionLabel="Open notes and sources"
+                  onClick={() => navigate("/notes")}
+                />
+                <EmptyStateActionCard
+                  icon={<Sparkles size={18} />}
+                  title="Run analysis later"
+                  description="Once the workspace has a few notes, sources, or richer chats, run analysis to generate a roadmap that is worth exploring."
+                  actionLabel="Open knowledge view"
+                  onClick={() => navigate("/graph")}
+                />
+              </div>
+            </section>
+          </div>
+        ) : (
+          <Suspense fallback={<div className="p-4 text-sm text-[var(--text-muted)]">Loading…</div>}>
+            <RoadmapPane hideSidebar />
+          </Suspense>
+        )}
       </div>
     </div>
   );

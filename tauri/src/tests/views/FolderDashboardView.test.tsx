@@ -210,4 +210,54 @@ describe("FolderDashboardView", () => {
 
     expect(screen.queryByText("Let me know once you've checked the unshare flags.")).not.toBeInTheDocument();
   });
+
+  it("shows a warm-up default state for sparse workspaces", async () => {
+    mocks.getSummary.mockResolvedValueOnce({
+      workspace_id: "ws-1",
+      workspace_name: "Bash",
+      overview: {
+        chat_sessions: 1,
+        notes: 0,
+        sources: 0,
+        concepts: 9,
+        flashcards: 0,
+        active_goals: 0,
+        completed_goals: 0,
+      },
+      continue_learning: [
+        {
+          session_id: "session-1",
+          title: "Find & Sort Lines, Print Counts",
+          folder_id: null,
+          folder_name: null,
+          updated_at: "2026-06-05T18:53:00Z",
+          message_count: 2,
+          last_snippet: "Start with find and pipe the results into awk.",
+          last_role: "assistant",
+          route: { path: "/chat/session-1", state: null },
+        },
+      ],
+      review: {
+        due_today: 0,
+        total_cards: 0,
+        learned: 0,
+        avg_ease: 0,
+        route: { path: "/review-topics", state: null },
+        topics_due_for_review: 0,
+        top_due_topic: null,
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <FolderDashboardView />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Workspace Warm-Up")).toBeInTheDocument();
+    expect(screen.getByText("This workspace is ready for its first real pass.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Open chat/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Open notes and sources/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Open knowledge view/i })).toBeInTheDocument();
+  });
 });
