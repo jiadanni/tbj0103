@@ -257,6 +257,19 @@ describe("Layout", () => {
     expect(screen.getByTitle("Preferences")).toBeInTheDocument();
   });
 
+  it("surfaces a transient Preferences entry in the section dropdown while on /preferences", () => {
+    useWorkspaceStore.setState({ sectionNavigation: "top-dropdown" });
+
+    render(
+      <MemoryRouter initialEntries={["/preferences"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    // The section selector reflects Preferences instead of falling back to Dashboard.
+    expect(screen.getByRole("button", { name: "Section: Preferences" })).toBeInTheDocument();
+  });
+
   it("renders workspace tabs and allows switching", () => {
     useWorkspaceStore.setState({
       workspaces: [

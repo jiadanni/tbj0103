@@ -1751,6 +1751,13 @@ function TopTabsNavigation() {
     startNavTransition(() => { navigate(to, options); });
   };
   const activeSegment = "/" + location.pathname.split("/")[1];
+  // Surface Preferences as a transient tab only while it's open (it isn't a
+  // primary section), so the active indicator stays honest instead of leaving
+  // no tab highlighted.
+  const onPreferences = location.pathname.startsWith("/preferences");
+  const navItems = onPreferences
+    ? [...PRIMARY_NAV_ITEMS, { path: "/preferences", icon: SettingsIcon, label: "Preferences" }]
+    : PRIMARY_NAV_ITEMS;
   const [contextMenu, setContextMenu] = useState<{ item: NavigationItem; x: number; y: number } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -1829,7 +1836,7 @@ function TopTabsNavigation() {
     <div className="relative">
       <div className="flex items-center h-10 border-b border-[var(--border-color)] bg-[var(--bg-secondary)] px-2 shrink-0 overflow-x-auto select-none">
         <div className="flex items-center shrink-0">
-          {PRIMARY_NAV_ITEMS.map((item) => renderItem(item, item.icon))}
+          {navItems.map((item) => renderItem(item, item.icon))}
         </div>
       </div>
 
@@ -1873,11 +1880,18 @@ function SectionDropdownSelect() {
   const location = useLocation();
   const [, startNavTransition] = React.useTransition();
   const activeSegment = "/" + location.pathname.split("/")[1];
-  const sectionOptions = PRIMARY_NAV_ITEMS.map((item) => ({
-    label: item.label,
-    value: item.path,
-    icon: item.icon,
-  }));
+  // Preferences is a routed screen, not a primary section. Surface it as a
+  // transient option only while it's open, so the selector reflects the truth
+  // instead of falling back to the first section ("Dashboard").
+  const onPreferences = location.pathname.startsWith("/preferences");
+  const sectionOptions = [
+    ...PRIMARY_NAV_ITEMS.map((item) => ({
+      label: item.label,
+      value: item.path,
+      icon: item.icon,
+    })),
+    ...(onPreferences ? [{ label: "Preferences", value: "/preferences", icon: SettingsIcon }] : []),
+  ];
 
   const selectedPath = sectionOptions.some((item) => item.value === activeSegment)
     ? activeSegment

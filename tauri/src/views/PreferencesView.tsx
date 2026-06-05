@@ -7,7 +7,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
-import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Sparkles, Columns2, ChevronLeft, ChevronRight, BarChart2, Library, History, Search, Paperclip, Send, FileEdit, ArrowUpDown, UserCircle, SlidersHorizontal, RotateCcw, Loader2 } from "lucide-react";
+import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Sparkles, Columns2, ChevronLeft, ChevronRight, BarChart2, Library, History, Search, Paperclip, Send, FileEdit, ArrowUpDown, UserCircle, SlidersHorizontal, RotateCcw, Loader2, X } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat, type CoreSettings, type AiSettings, type AdvancedSettings, type KnowledgeResetOptions, type KnowledgeResetResult, type ScheduledJobSetting, type BackgroundJobRunMode } from "../lib/api";
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
@@ -29,6 +29,7 @@ import { Tooltip } from "../components/Tooltip";
 import { MOD_KEY, isLinux, isMac } from "../lib/platform";
 import type { PreferencesSection } from "../components/navigationItems";
 import { useAiModelSync } from "../hooks/useAiModelSync";
+import { useNavigationHistory } from "../hooks/useNavigationHistory";
 import { usePrefsWindowMode } from "../lib/prefsWindowMode";
 import { parseAboutYou, serializeAboutYou, EMPTY_ABOUT_YOU, type AboutYouProfile } from "../lib/aboutYou";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
@@ -214,6 +215,22 @@ const SPLIT_LAYOUT_TABS: PreferencesSection[] = [
   "security",
   "sync",
 ];
+
+function PreferencesCloseButton({ onClose }: { onClose: () => void }) {
+  return (
+    <Tooltip content="Close Preferences" position="bottom">
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close Preferences"
+        className="flex h-7 items-center gap-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-2.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+      >
+        <X size={14} />
+        Done
+      </button>
+    </Tooltip>
+  );
+}
 
 function Toggle({ on, onToggle, disabled = false }: { on: boolean; onToggle: () => void; disabled?: boolean }) {
   return (
@@ -2188,6 +2205,16 @@ export default function PreferencesView() {
   const modelLabels = useSettingsStore((state) => state.modelLabels);
   const location = useLocation();
   const navigate = useNavigate();
+  const { goBack, canGoBack } = useNavigationHistory();
+  // Preferences is a routed screen; closing returns to wherever the user came
+  // from, falling back to Dashboard when there is no in-app history to pop.
+  const closePreferences = () => {
+    if (canGoBack) {
+      goBack();
+    } else {
+      navigate("/folder");
+    }
+  };
   const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
   const sectionNavigation = useWorkspaceStore((state) => state.sectionNavigation);
   const subWorkspaceNavigation = useWorkspaceStore((state) => state.subWorkspaceNavigation);
@@ -3649,7 +3676,10 @@ export default function PreferencesView() {
         <div className="flex items-center justify-between gap-3 px-4 pt-3 pb-0 border-b border-[var(--border-color)] flex-shrink-0">
           {settingsTabButtons}
           {tabFilterInput}
-          <div className={`mb-1 text-xs ${autosaveStatusClassName}`}>{autosaveStatus}</div>
+          <div className="mb-1 flex items-center gap-3">
+            <div className={`text-xs ${autosaveStatusClassName}`}>{autosaveStatus}</div>
+            <PreferencesCloseButton onClose={closePreferences} />
+          </div>
         </div>
       ) : (
         <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-color)] flex-shrink-0">
@@ -3657,7 +3687,10 @@ export default function PreferencesView() {
             <h1 className="text-sm font-semibold text-[var(--text-primary)]">Preferences</h1>
             <p className="text-[11px] text-[var(--text-muted)]">App configuration and workspace management</p>
           </div>
-          <div className={`text-xs ${autosaveStatusClassName}`}>{autosaveStatus}</div>
+          <div className="flex items-center gap-3">
+            <div className={`text-xs ${autosaveStatusClassName}`}>{autosaveStatus}</div>
+            <PreferencesCloseButton onClose={closePreferences} />
+          </div>
         </div>
       )}
 
