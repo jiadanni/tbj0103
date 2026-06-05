@@ -1034,6 +1034,7 @@ export const api = {
     delete: (id: string) => invoke<void>("delete_workspace", { id }),
     updateIcon: (id: string, icon: string) => invoke<void>("update_workspace_icon", { id, icon }),
     recommendIcon: (workspaceName: string, workspaceDescription: string) => invoke<string>("recommend_workspace_icon", { workspaceName, workspaceDescription }),
+    generateIcon: (workspaceId: string) => invoke<void>("generate_workspace_icon", { workspaceId }),
     generateWorkspacePrompts: (workspaceId: string, workspaceName: string, surveyData?: string | null) => invoke<string[]>("generate_workspace_prompts", { workspaceId, workspaceName, surveyData }),
     listPromptSuggestions: (workspaceId: string, limit = 12) =>
       invoke<PromptSuggestion[]>("list_workspace_prompt_suggestions", { workspaceId, limit }),

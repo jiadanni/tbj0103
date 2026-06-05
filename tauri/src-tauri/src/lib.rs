@@ -483,6 +483,7 @@ pub fn run() {
             commands::workspace::set_workspace_parent,
             commands::workspace::update_workspace_icon,
             commands::workspace::recommend_workspace_icon,
+            commands::workspace::generate_workspace_icon,
             commands::workspace::generate_workspace_prompts,
             commands::workspace::hide_workspace,
             commands::workspace::unhide_workspace,

@@ -5,6 +5,7 @@ import { api, type QuickSearchResult } from "../lib/api";
 import { useChatStore, type ChatSession } from "../stores/chatStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { Search, Clock, MessageSquare, FileText, Brain, Sparkles, RefreshCw } from "lucide-react";
+import { WorkspaceIcon } from "../lib/workspaceIcon";
 import type { ChatSubView, PreferencesSection } from "./navigationItems";
 
 interface Props {
@@ -66,7 +67,18 @@ export default function CommandPalette({ workspaceId, onClose }: Props) {
   const [isLoading, setIsLoading] = useState(false);
   const setActiveChatId = useChatStore((state) => state.setActiveChatId);
   const workspaces = useWorkspaceStore((s) => s.workspaces);
+  const setActiveWorkspaceId = useWorkspaceStore((s) => s.setActiveWorkspaceId);
   const includeDescendants = workspaces.find((w) => w.id === workspaceId)?.parent_workspace_id == null;
+
+  const q = query.toLowerCase();
+  const filteredWorkspaces = workspaces.filter(
+    (w) => w.id !== workspaceId && w.name.toLowerCase().includes(q),
+  );
+
+  const handleSelectWorkspace = (id: string) => {
+    setActiveWorkspaceId(id);
+    onClose();
+  };
 
   useEffect(() => {
     if (!workspaceId) { return; }
@@ -203,6 +215,24 @@ export default function CommandPalette({ workspaceId, onClose }: Props) {
                       </div>
                     )}
                   </div>
+                </Command.Item>
+              ))}
+            </Command.Group>
+          )}
+
+          {filteredWorkspaces.length > 0 && (
+            <Command.Group heading="Switch Workspace" className="[&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-[var(--text-muted)] [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5">
+              {filteredWorkspaces.map((ws) => (
+                <Command.Item
+                  key={ws.id}
+                  value={`workspace ${ws.name} ${ws.id}`}
+                  onSelect={() => handleSelectWorkspace(ws.id)}
+                  className="flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg cursor-default text-[var(--text-primary)] aria-selected:bg-[var(--accent-color)]/20 aria-selected:text-[var(--accent-color)] transition-colors"
+                >
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-[var(--bg-primary)] text-[var(--accent-color)]">
+                    <WorkspaceIcon name={ws.icon} className="h-3.5 w-3.5" />
+                  </div>
+                  <span className="truncate">{ws.name}</span>
                 </Command.Item>
               ))}
             </Command.Group>

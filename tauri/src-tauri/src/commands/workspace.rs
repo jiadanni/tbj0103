@@ -3,8 +3,31 @@ use crate::commands::chat_file::{ChatCryptoState, ChatsDirState};
 use crate::models::workspace::{
     CreateChildWorkspaceRequest, CreateWorkspaceRequest, UpdateWorkspaceRequest, Workspace,
 };
+use crate::services::background_scheduler::BackgroundTaskEvent;
 use crate::services::workspace_service;
 use tauri::{AppHandle, Emitter, Runtime, State};
+use tokio::sync::Mutex as AsyncMutex;
+
+static ICON_JOB_LOCK: AsyncMutex<()> = AsyncMutex::const_new(());
+
+fn emit_icon_task<R: Runtime>(
+    app: &AppHandle<R>,
+    status: &str,
+    message: &str,
+    workspace_id: Option<String>,
+    model: Option<String>,
+) {
+    let _ = app.emit(
+        "background-task",
+        BackgroundTaskEvent {
+            task_type: "workspace_icon".to_string(),
+            status: status.to_string(),
+            message: message.to_string(),
+            model,
+            workspace_id,
+        },
+    );
+}
 
 #[tauri::command]
 pub fn create_workspace<R: Runtime>(
@@ -281,6 +304,81 @@ fn fallback_icon_recommendation(workspace_name: &str, workspace_description: &st
     }
 
     "folder".to_string()
+}
+
+#[tauri::command]
+pub async fn generate_workspace_icon<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, DbState>,
+    workspace_id: String,
+) -> Result<(), String> {
+    use crate::services::model_settings::{get_configured_background_model, get_ollama_base_url};
+    use std::time::Duration;
+    use tokio::time::timeout;
+
+    // Read inputs we need before spawning, so we don't hold a DB conn across awaits.
+    let (name, description, model, ollama_url) = {
+        let conn = state.0.get().map_err(|e| e.to_string())?;
+        let ws = workspace_service::get(&conn, &workspace_id)?
+            .ok_or_else(|| "Workspace not found".to_string())?;
+        let model = get_configured_background_model(&conn);
+        let url = get_ollama_base_url(&conn).unwrap_or_else(|| "http://localhost:11434".to_string());
+        (ws.name, ws.description, model, url)
+    };
+
+    // Serialize so we never hit Ollama with parallel icon jobs (one workspace at a time).
+    let _permit = ICON_JOB_LOCK.lock().await;
+
+    emit_icon_task(
+        &app,
+        "started",
+        &format!("Generating icon for {name}…"),
+        Some(workspace_id.clone()),
+        model.clone(),
+    );
+
+    let icon = if let Some(model_name) = model.as_ref() {
+        let ai = timeout(
+            Duration::from_secs(5),
+            try_ai_icon_recommendation(model_name, &ollama_url, &name, &description),
+        )
+        .await;
+        match ai {
+            Ok(Ok(icon)) => icon,
+            _ => fallback_icon_recommendation(&name, &description),
+        }
+    } else {
+        fallback_icon_recommendation(&name, &description)
+    };
+
+    let persist = {
+        let conn = state.0.get().map_err(|e| e.to_string())?;
+        workspace_service::update_icon(&conn, &workspace_id, &icon)
+    };
+
+    match persist {
+        Ok(()) => {
+            let _ = app.emit("workspaces-changed", ());
+            emit_icon_task(
+                &app,
+                "completed",
+                &format!("Set icon to {icon}"),
+                Some(workspace_id),
+                model,
+            );
+            Ok(())
+        }
+        Err(e) => {
+            emit_icon_task(
+                &app,
+                "failed",
+                &format!("Icon update failed: {e}"),
+                Some(workspace_id),
+                model,
+            );
+            Err(e)
+        }
+    }
 }
 
 #[tauri::command]

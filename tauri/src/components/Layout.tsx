@@ -19,6 +19,7 @@ import ArtifactPanel from "./ArtifactPanel";
 import ConfirmDialog from "./ConfirmDialog";
 import PromptDialog from "./PromptDialog";
 import { api } from "../lib/api";
+import { WorkspaceIcon } from "../lib/workspaceIcon";
 import { isMac, isLinux, isWindows } from "../lib/platform";
 import SplitPaneLayout from "./SplitPaneLayout";
 import RouteSkeleton from "./RouteSkeleton";
@@ -290,6 +291,7 @@ function WorkspaceNavigationTabs({
             {(dragOverWorkspaceId === workspace.id || activeWorkspaceId === workspace.id) && (
               <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
             )}
+            <WorkspaceIcon name={workspace.icon} className="h-3.5 w-3.5 opacity-70" />
             {workspace.name}
           </button>
         ))}
@@ -466,6 +468,7 @@ function SubWorkspaceTabBar({
             {activeWorkspaceId === workspace.id && (
               <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
             )}
+            <WorkspaceIcon name={workspace.icon} className="h-3.5 w-3.5 opacity-70" />
             {workspace.name}
           </button>
         ))}
@@ -1327,6 +1330,7 @@ function WorkspaceTabBar({
     const ws = await api.workspace.createChild(activeParentWorkspaceId, name);
     addWorkspace(ws);
     activateSubWorkspace(ws.id);
+    void api.workspace.generateIcon(ws.id).catch(() => {});
   }
 
   async function createWorkspace() {
@@ -1336,6 +1340,7 @@ function WorkspaceTabBar({
     addWorkspace(ws);
     activateWorkspace(ws.id);
     resetCreateWorkspaceForm();
+    void api.workspace.generateIcon(ws.id).catch(() => {});
   }
 
   function renameWorkspace(workspace: Workspace) {
@@ -1983,6 +1988,16 @@ export default function Layout() {
   const showWorkspaceSidebar = showSinglePaneNavigation && workspaceNavigation === "sidebar";
   const showSubWorkspaceSidebar = showSinglePaneNavigation && subWorkspaceNavigation === "sidebar";
   const _hasLeftRail = showSectionSidebar;
+
+  const hydratedIconsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const ws of workspaces) {
+      if (!ws.icon && !hydratedIconsRef.current.has(ws.id)) {
+        hydratedIconsRef.current.add(ws.id);
+        void api.workspace.generateIcon(ws.id).catch(() => {});
+      }
+    }
+  }, [workspaces]);
 
   const handleExitDemo = async () => {
     try {
