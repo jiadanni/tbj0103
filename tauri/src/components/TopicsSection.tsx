@@ -29,14 +29,16 @@ export const TopicsSection: React.FC<TopicsSectionProps> = ({
     );
   }
 
-  const handleRemoveTopic = async (tag: string) => {
+  const handleExcludeAutoDetectedTopic = async (tag: string) => {
     setIsLoading(true);
     setError(null);
     try {
       const updatedSig = await api.topicSignature.update(
         workspaceId,
         topicSignature.custom_tags,
-        [...topicSignature.excluded_tags, tag]
+        topicSignature.excluded_tags.includes(tag)
+          ? topicSignature.excluded_tags
+          : [...topicSignature.excluded_tags, tag]
       );
       onUpdate(updatedSig);
     } catch (err) {
@@ -73,6 +75,23 @@ export const TopicsSection: React.FC<TopicsSectionProps> = ({
       setNewCustomTag("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add topic");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRemoveCustomTag = async (tag: string) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const updatedSig = await api.topicSignature.update(
+        workspaceId,
+        topicSignature.custom_tags.filter((existingTag) => existingTag !== tag),
+        topicSignature.excluded_tags.filter((existingTag) => existingTag !== tag)
+      );
+      onUpdate(updatedSig);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to remove custom topic");
     } finally {
       setIsLoading(false);
     }
@@ -115,7 +134,8 @@ export const TopicsSection: React.FC<TopicsSectionProps> = ({
               >
                 <span>{tag.tag}</span>
                 <button
-                  onClick={() => handleRemoveTopic(tag.tag)}
+                  type="button"
+                  onClick={() => handleExcludeAutoDetectedTopic(tag.tag)}
                   disabled={isLoading}
                   className="ml-1 rounded hover:bg-[var(--bg-hover)] p-0.5 transition-colors disabled:opacity-50"
                   title="Exclude this topic from auto-detection"
@@ -174,9 +194,8 @@ export const TopicsSection: React.FC<TopicsSectionProps> = ({
                 >
                   <span>{tag}</span>
                   <button
-                    onClick={() =>
-                      handleRemoveTopic(tag)
-                    }
+                    type="button"
+                    onClick={() => handleRemoveCustomTag(tag)}
                     disabled={isLoading}
                     className="ml-1 rounded hover:bg-[var(--accent-color)]/20 p-0.5 transition-colors disabled:opacity-50"
                     title="Remove this custom topic"
@@ -211,6 +230,7 @@ export const TopicsSection: React.FC<TopicsSectionProps> = ({
               >
                 <span>{tag}</span>
                 <button
+                  type="button"
                   onClick={() => handleRestoreTopic(tag)}
                   disabled={isLoading}
                   className="ml-1 rounded hover:bg-[var(--bg-hover)] p-0.5 transition-colors disabled:opacity-50"
