@@ -2464,11 +2464,22 @@ export default function ChatView() {
   const [activeSubView, setActiveSubView] = useState<ChatSubView>("chat");
   const [relatedChats, setRelatedChats] = useState<QuickSearchResult[]>([]);
 
+  // A brand-new chat (only an optimistic user message, still "Waiting for
+  // response...") has no topic of its own yet. The topic signature driving
+  // related chats is workspace-scoped, so without this gate every freshly
+  // started chat would immediately surface workspace-wide chats that have
+  // nothing to do with the current conversation. Require a real exchange —
+  // at least one non-empty assistant reply — before showing related chats.
+  const hasAssistantReply = useMemo(
+    () => activeChatMessages.some((m) => m.role === "assistant" && m.content.trim().length > 0),
+    [activeChatMessages],
+  );
+
   // Fetch related chats when topic signature changes
   useEffect(() => {
     let active = true;
     const fetchRelated = async () => {
-      if (activeChatMessages.length === 0) {
+      if (!hasAssistantReply) {
         setRelatedChats([]);
         return;
       }
@@ -2500,7 +2511,7 @@ export default function ChatView() {
     };
     void fetchRelated();
     return () => { active = false; };
-  }, [activeTopicSignature, effectiveWorkspaceId, currentSessionId, activeChatMessages.length]);
+  }, [activeTopicSignature, effectiveWorkspaceId, currentSessionId, hasAssistantReply]);
 
   // Handle external subview switching via router state
   useEffect(() => {

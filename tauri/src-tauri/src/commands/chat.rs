@@ -114,7 +114,13 @@ pub fn get_related_chats(
         limit,
         Some(&workspace_ids),
         req.session_id.as_deref(),
-        Some(&["conversation".to_string()]),
+        // Match on the chat title (kind "conversation") plus the AI-generated
+        // conversation summary (kind "summary", whose body holds the summary
+        // text). The conversation document's body is empty, so title-only
+        // matching surfaced loosely-related chats; summaries are high-signal.
+        // query_filtered dedups by session_id, so a chat matching via both its
+        // title and summary still returns once.
+        Some(&["conversation".to_string(), "summary".to_string()]),
     )
 }
 
