@@ -33,11 +33,33 @@ export default function GlobalMemoryView() {
   const [newType, setNewType] = useState<Memory["memory_type"]>("fact");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [memoryEnabled, setMemoryEnabled] = useState<boolean | null>(null);
 
   const loadMemories = useCallback(async () => {
     const items = await api.memory.listGlobal().catch(() => []);
     setMemories(items);
   }, []);
+
+  const loadMemoryEnabled = useCallback(async () => {
+    const s = await api.settings.get().catch(() => null);
+    if (s) {
+      setMemoryEnabled(s.memory_enabled);
+    }
+  }, []);
+
+  async function toggleMemoryEnabled() {
+    if (memoryEnabled === null) {
+      return;
+    }
+    const next = !memoryEnabled;
+    setMemoryEnabled(next);
+    try {
+      await api.settings.updateOne("memory_enabled", next);
+    } catch (e: unknown) {
+      setMemoryEnabled(!next);
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   const loadSummary = useCallback(async () => {
     const s = await api.memory.getSummary("global").catch(() => null);
@@ -50,7 +72,8 @@ export default function GlobalMemoryView() {
   useEffect(() => {
     loadMemories();
     loadSummary();
-  }, [loadMemories, loadSummary]);
+    loadMemoryEnabled();
+  }, [loadMemories, loadSummary, loadMemoryEnabled]);
 
   const facts = useMemo(() => memories.filter((m) => m.memory_type === "fact"), [memories]);
   const preferences = useMemo(() => memories.filter((m) => m.memory_type === "preference"), [memories]);
@@ -141,6 +164,23 @@ export default function GlobalMemoryView() {
               <p className="mt-2 text-sm text-[var(--text-muted)]">
                 Facts and preferences shared across all workspaces.
               </p>
+              <div className="mt-4 flex items-start gap-3">
+                <button
+                  type="button"
+                  onClick={toggleMemoryEnabled}
+                  disabled={memoryEnabled === null}
+                  aria-pressed={memoryEnabled === true}
+                  className={`mt-0.5 h-5 w-9 shrink-0 rounded-full border transition-colors disabled:opacity-50 ${memoryEnabled ? "border-[var(--accent-color)] bg-[var(--accent-color)]" : "border-[var(--border-color)] bg-[var(--bg-elevated)]"}`}
+                >
+                  <span className={`block h-3.5 w-3.5 rounded-full bg-white transition-transform ${memoryEnabled ? "translate-x-4" : "translate-x-0.5"}`} />
+                </button>
+                <div>
+                  <p className="text-sm text-[var(--text-secondary)]">Memory</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                    Store and use persistent facts and preferences across conversations
+                  </p>
+                </div>
+              </div>
             </div>
 
             <div className="grid grid-cols-3 gap-3 text-center lg:w-[360px]">
