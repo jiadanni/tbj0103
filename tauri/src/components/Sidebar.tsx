@@ -153,6 +153,7 @@ export default function Sidebar({
   }
 
   const visibleTooltip = tooltip && tooltip.path === location.pathname ? tooltip : null;
+  const isPreferencesActive = activeSegment === "/preferences";
   const activeNavClassName = "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]";
   const inactiveNavClassName = "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
 
@@ -239,10 +240,19 @@ export default function Sidebar({
               onFocus={(event) => showTooltip("Preferences", event.currentTarget)}
               onBlur={hideTooltip}
               aria-label="Preferences"
+              aria-current={isPreferencesActive ? "page" : undefined}
               className={
                 !labelsVisible
-                  ? "flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm transition-colors hover:border-[var(--accent-color)]"
-                  : "flex flex-1 items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-2 text-sm font-medium text-[var(--text-primary)] shadow-sm transition-colors hover:border-[var(--accent-color)]"
+                  ? `flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${
+                      isPreferencesActive
+                        ? activeNavClassName
+                        : "border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm hover:border-[var(--accent-color)]"
+                    }`
+                  : `flex flex-1 items-center gap-2 rounded-xl px-2.5 py-2 text-sm font-medium transition-colors ${
+                      isPreferencesActive
+                        ? activeNavClassName
+                        : "border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm hover:border-[var(--accent-color)]"
+                    }`
               }
             >
               <SettingsIcon size={16} strokeWidth={1.5} />
