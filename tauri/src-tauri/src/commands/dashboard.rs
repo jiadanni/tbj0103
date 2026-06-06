@@ -220,7 +220,7 @@ fn get_dashboard_summary_inner(
             cs.chat_sessions,
             pn.notes,
             s.sources,
-            cn.concepts,
+            cn.topics,
             lc.flashcards,
             lg.active_goals,
             lg.completed_goals,
@@ -234,7 +234,7 @@ fn get_dashboard_summary_inner(
             (SELECT COUNT(*) AS chat_sessions FROM chat_sessions WHERE workspace_id {ws_cond} AND is_deleted = 0 AND is_incognito = 0 AND exclude_from_analytics = 0) cs,
             (SELECT COUNT(*) AS notes FROM project_notes WHERE workspace_id {ws_cond}) pn,
             (SELECT COUNT(*) AS sources FROM sources WHERE workspace_id {ws_cond}) s,
-            (SELECT COUNT(*) AS concepts FROM concept_nodes WHERE workspace_id {ws_cond}) cn,
+            (SELECT COUNT(*) AS topics FROM concept_nodes WHERE workspace_id {ws_cond} AND (superseded_by IS NULL OR superseded_by = '')) cn,
             (SELECT
                 COUNT(*) AS flashcards,
                 COUNT(*) AS total_cards,
@@ -249,11 +249,13 @@ fn get_dashboard_summary_inner(
             (SELECT COUNT(DISTINCT cn.id) AS topics_due_for_review
              FROM concept_nodes cn
              WHERE cn.workspace_id {ws_cond}
+               AND (cn.superseded_by IS NULL OR cn.superseded_by = '')
                AND {due_topic_predicate}) td,
             (SELECT (
                 SELECT cn.name
                 FROM concept_nodes cn
                 WHERE cn.workspace_id {ws_cond}
+                  AND (cn.superseded_by IS NULL OR cn.superseded_by = '')
                   AND {due_topic_predicate}
                 ORDER BY cn.updated_at ASC, cn.name ASC
                 LIMIT 1
@@ -264,7 +266,7 @@ fn get_dashboard_summary_inner(
         chat_sessions,
         notes,
         sources,
-        concepts,
+        topics,
         flashcards,
         active_goals,
         completed_goals,
@@ -346,7 +348,7 @@ fn get_dashboard_summary_inner(
             chat_sessions,
             notes,
             sources,
-            concepts,
+            topics,
             flashcards,
             active_goals,
             completed_goals,

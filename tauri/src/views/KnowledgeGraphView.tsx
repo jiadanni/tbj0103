@@ -711,7 +711,7 @@ export default function KnowledgeGraphView({
   const isDemoWithoutModels = isDemoMode && !hasModels;
   const canRunAiActions = hasModels || isDemoWithoutModels;
   const insufficientData = workspaceAnalyzable?.ready === false && !includeDescendants;
-  const hasAiInferredGraph = nodes.length > 0 || links.length > 0 || (overview?.concepts ?? 0) > 0;
+  const hasAiInferredGraph = nodes.length > 0 || links.length > 0 || (overview?.topics ?? 0) > 0;
   const estimatedAnalyzeTokens = workspaceAnalyzable
     ? Math.floor(workspaceAnalyzable.char_count / 4)
     : 0;
@@ -852,7 +852,7 @@ export default function KnowledgeGraphView({
           <SidebarCard className="p-3">
             <div className="grid grid-cols-3 gap-2">
               <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-2 text-center">
-                <div className="text-sm font-semibold text-[var(--text-primary)]">{overview?.concepts ?? nodes.length}</div>
+                <div className="text-sm font-semibold text-[var(--text-primary)]">{overview?.topics ?? nodes.length}</div>
                 <div className="mt-1 text-[10px] text-[var(--text-muted)]">Topics</div>
               </div>
               <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-2 text-center">
@@ -1108,7 +1108,7 @@ export default function KnowledgeGraphView({
           {!hideSidebar && (
             <div className="flex flex-wrap gap-2">
               {[
-                { icon: <Brain size={12} />, label: "Topics", value: overview?.concepts ?? nodes.length, onClick: () => navigate("/graph") },
+                { icon: <Brain size={12} />, label: "Topics", value: overview?.topics ?? nodes.length, onClick: () => navigate("/graph") },
                 { icon: <Network size={12} />, label: "Links", value: links.length, onClick: () => navigate("/graph") },
                 { icon: <Clock3 size={12} />, label: "Due Review", value: review?.topics_due_for_review ?? 0, onClick: () => navigate("/review-topics") },
                 { icon: <Target size={12} />, label: "Active Goals", value: overview?.active_goals ?? 0, onClick: () => navigate("/learning") },

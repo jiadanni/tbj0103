@@ -238,7 +238,7 @@ export default function FolderDashboardView() {
           <div className="grid grid-cols-3 content-start gap-2 sm:grid-cols-5 xl:grid-cols-2 2xl:grid-cols-3">
             <MetricCard label="Due Review" value={summary.review.topics_due_for_review} />
             <MetricCard label="Active Goals" value={summary.overview.active_goals} />
-            <MetricCard label="Topics" value={summary.overview.concepts} />
+            <MetricCard label="Topics" value={summary.overview.topics} />
             <MetricCard label="Sources" value={summary.overview.sources} />
             <MetricCard label="Completed Goals" value={summary.overview.completed_goals} accent="bg-emerald-400" />
           </div>

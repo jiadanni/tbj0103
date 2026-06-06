@@ -94,22 +94,22 @@ const DEFAULT_FONT_SIZE = 16;
 
 const TABS: { id: PreferencesSection; label: string; Icon: React.ElementType }[] = [
   { id: "app", label: "App", Icon: SettingsIcon },
-  { id: "navigation", label: "Navigation", Icon: LayoutGrid },
   { id: "appearance", label: "Appearance", Icon: Palette },
-  { id: "chat", label: "Chat", Icon: MessageSquare },
-  { id: "learning", label: "Learning", Icon: GraduationCap },
+  { id: "navigation", label: "Navigation", Icon: LayoutGrid },
   { id: "about-you", label: "About You", Icon: UserCircle },
   { id: "ai", label: "AI", Icon: Bot },
+  { id: "chat", label: "Chat", Icon: MessageSquare },
+  { id: "learning", label: "Learning", Icon: GraduationCap },
   { id: "scheduled-tasks", label: "Scheduled Tasks", Icon: RefreshCw },
+  { id: "memory", label: "Memory", Icon: Brain },
+  { id: "mcp", label: "MCP", Icon: Network },
   { id: "webai", label: "Browser Automation", Icon: Globe },
-  { id: "security", label: "Security", Icon: ShieldCheck },
   { id: "workspaces", label: "Workspaces", Icon: LayoutGrid },
-  { id: "data", label: "Data Controls", Icon: SlidersHorizontal },
+  { id: "sync", label: "Sync", Icon: GitBranch },
   { id: "backup", label: "Backup", Icon: HardDrive },
   { id: "import", label: "Import", Icon: FolderInput },
-  { id: "mcp", label: "MCP", Icon: Network },
-  { id: "sync", label: "Sync", Icon: GitBranch },
-  { id: "memory", label: "Memory", Icon: Brain },
+  { id: "data", label: "Data Controls", Icon: SlidersHorizontal },
+  { id: "security", label: "Security", Icon: ShieldCheck },
   { id: "logs", label: "Logs", Icon: ScrollText },
 ];
 
@@ -120,11 +120,8 @@ const TAB_KEYWORDS: Record<string, string[]> = {
   app: [
     "Startup", "background", "Start at login", "desktop session", "Open in background",
     "Keep running in tray", "Hide native menu", "Single window mode", "Demo Mode",
-    "Features", "Memory", "Memory extraction threshold", "Background Jobs",
-    "Enable background inference", "Shortcut", "Quick search", "Git Sync",
-    "Topic Analysis", "Summarization", "Min messages before summarizing",
-    "Sessions per tick", "Workspace Glossary", "Chat definition scan",
-    "Sessions per scan tick", "Confirm Move to Trash", "Immediate Delete",
+    "Features", "Shortcut", "Quick search", "Git Sync",
+    "Confirm Move to Trash", "Immediate Delete",
   ],
   navigation: [
     "Main layout", "Settings Navigation", "Workspace Navigation", "Section Navigation",
@@ -2038,24 +2035,16 @@ function ScheduledTasksCard({
   };
 
   return (
-    <section className="space-y-3" data-pref-section>
-      <div className="pb-1.5 border-b border-[var(--border-color)]">
+    <section className="space-y-2" data-pref-section>
+      <div className="pb-1 border-b border-[var(--border-color)]">
         <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
           Scheduled Tasks
         </h3>
-        <p className="text-xs text-[var(--text-muted)]/80 mt-1">
-          Each AI-inferred background job has a small (default) model that runs on schedule and an optional heavy model you can opt into per-tick via the status bar. Run-mode controls whether the job runs automatically, only with confirmation, or both.
-        </p>
       </div>
 
-      <div className="rounded-lg border border-[var(--border-color)]/60 bg-[var(--bg-primary)]/40 p-3.5 space-y-3">
+      <div className="space-y-2">
         <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm text-[var(--text-secondary)]">Confirmation timeout</p>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              How long the play-button stays in the status bar before it&apos;s dismissed.
-            </p>
-          </div>
+          <p className="text-sm text-[var(--text-secondary)]">Play-button confirmation timeout</p>
           <div className="flex items-center gap-1.5">
             <input
               type="number"
@@ -2065,7 +2054,7 @@ function ScheduledTasksCard({
               onChange={(e) => updateTimeout(Number(e.target.value))}
               className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
             />
-            <span className="text-xs text-[var(--text-muted)]">seconds</span>
+            <span className="text-xs text-[var(--text-muted)]">s</span>
           </div>
         </div>
 
@@ -2104,29 +2093,23 @@ function ScheduledTasksCard({
               return (
                 <div
                   key={job.job_key}
-                  className="grid grid-cols-[minmax(0,1fr)_160px_minmax(0,1fr)_minmax(0,1fr)] items-start gap-3 py-3"
+                  className="grid grid-cols-[minmax(0,1fr)_140px_minmax(0,1fr)_minmax(0,1fr)] items-center gap-3 py-1.5"
                 >
                   <div className="min-w-0">
                     <div className="text-xs font-medium text-[var(--text-primary)]">{job.label}</div>
-                    <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">{job.description}</div>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-[var(--text-muted)]/80">
-                      <span>{job.tokens}</span>
-                      <span>•</span>
-                      <span>{job.note}</span>
+                    <div className="text-[10px] text-[var(--text-muted)]/80">
+                      {job.tokens} · {job.note}
                     </div>
                   </div>
 
-                  <div>
-                    <CompactMenuSelect
-                      label="Run mode"
-                      value={runMode}
-                      options={modeOptions}
-                      onChange={(value) => updateRunMode(job.job_key, value as BackgroundJobRunMode)}
-                    />
-                  </div>
+                  <CompactMenuSelect
+                    label="Run mode"
+                    value={runMode}
+                    options={modeOptions}
+                    onChange={(value) => updateRunMode(job.job_key, value as BackgroundJobRunMode)}
+                  />
 
                   <div>
-                    <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1">Small (default)</div>
                     <CompactMenuSelect
                       label="Small model"
                       value={smallModel}
@@ -2134,16 +2117,15 @@ function ScheduledTasksCard({
                       onChange={(value) => set(job.model_setting, value as never)}
                     />
                     {smallSelected && (smallParamsLabel || smallFitMeta.label) && (
-                      <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[10px] text-[var(--text-muted)]">
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[10px] text-[var(--text-muted)]">
                         {smallParamsLabel && <span>{smallParamsLabel}</span>}
-                        {smallParamsLabel && smallFitMeta.label && <span>•</span>}
+                        {smallParamsLabel && smallFitMeta.label && <span>·</span>}
                         {smallFitMeta.label && <span className={`font-medium ${smallFitMeta.textClassName}`}>{smallFitMeta.label}</span>}
                       </div>
                     )}
                   </div>
 
                   <div>
-                    <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1">Heavy (opt-in)</div>
                     <CompactMenuSelect
                       label="Heavy model"
                       value={heavyModel}
@@ -2151,7 +2133,7 @@ function ScheduledTasksCard({
                       onChange={(value) => updateHeavyModel(job.job_key, value)}
                     />
                     {heavyParamsLabel && (
-                      <div className="mt-1 text-[10px] text-[var(--text-muted)]">{heavyParamsLabel}</div>
+                      <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">{heavyParamsLabel}</div>
                     )}
                   </div>
                 </div>
@@ -3860,29 +3842,6 @@ export default function PreferencesView() {
                         )}
                       </section>
 
-                      {/* Features */}
-                      <section className="space-y-3" data-pref-section>
-                        <div className="pb-1.5 border-b border-[var(--border-color)]">
-                          <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Features</h3>
-                          <p className="text-xs text-[var(--text-muted)]/80 mt-1">
-                            Enable or disable optional features across Aetherium.
-                          </p>
-                        </div>
-
-                        <div className="flex items-start gap-3 py-0.5">
-                          <Toggle
-                            on={dbSettings.memory_enabled}
-                            onToggle={() => set("memory_enabled", !dbSettings.memory_enabled)}
-                            />
-                          <div>
-                            <p className="text-sm text-[var(--text-secondary)]">Memory</p>
-                            <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                              Store and use persistent facts and preferences across conversations
-                            </p>
-                          </div>
-                        </div>
-                      </section>
-
                       {/* Shortcut */}
                       <section className="space-y-3" data-pref-section>
                         <div className="pb-1.5 border-b border-[var(--border-color)]">
@@ -3899,186 +3858,6 @@ export default function PreferencesView() {
                         />
                       </section>
                     </div>
-
-                    {/* Background Jobs */}
-                    <section className="space-y-3" data-pref-section>
-                      <div className="pb-1.5 border-b border-[var(--border-color)]">
-                        <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Background Jobs</h3>
-                        <p className="text-xs text-[var(--text-muted)]/80 mt-1">
-                          Configure automatic background processing tasks like memory extraction and summarization.
-                        </p>
-                      </div>
-
-                      <div className="flex items-start gap-3">
-                        <Toggle
-                          on={dbSettings.background_inference_enabled}
-                          onToggle={() => set("background_inference_enabled", !dbSettings.background_inference_enabled)}
-                        />
-                        <div>
-                          <p className="text-sm text-[var(--text-secondary)]">Enable background inference</p>
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                            Run memory extraction, summarization, and glossary jobs automatically. Disable to reduce GPU/RAM usage when the app is idle.
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between py-0.5">
-                        <div>
-                          <p className="text-sm text-[var(--text-secondary)]">Memory extraction threshold</p>
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                            Minimum messages in a session before memories are auto-extracted
-                          </p>
-                        </div>
-                        <input
-                          type="number"
-                          min={2}
-                          max={50}
-                          value={dbSettings.memory_extraction_threshold}
-                          onChange={(e) => set("memory_extraction_threshold", Math.max(2, Math.min(50, Number(e.target.value) || 5)))}
-                          className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                        />
-                      </div>
-                      <div className="flex items-center justify-between py-0.5">
-                        <div>
-                          <p className="text-sm text-[var(--text-secondary)]">Idle window (minutes)</p>
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                            How long after the last chat activity before extraction runs
-                          </p>
-                        </div>
-                        <input
-                          type="number"
-                          min={1}
-                          max={60}
-                          value={dbSettings.memory_extraction_idle_minutes}
-                          onChange={(e) => set("memory_extraction_idle_minutes", Math.max(1, Math.min(60, Number(e.target.value) || 5)))}
-                          className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                        />
-                      </div>
-
-                      <div className="border-t border-[var(--border-color)] pt-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-2">Summarization</p>
-                      </div>
-                      <div className="flex items-center justify-between py-0.5">
-                        <div>
-                          <p className="text-sm text-[var(--text-secondary)]">Min messages before summarizing</p>
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                            Sessions need at least this many messages before the background info summary is generated
-                          </p>
-                        </div>
-                        <input
-                          type="number"
-                          min={1}
-                          max={100}
-                          value={dbSettings.summarization_min_messages}
-                          onChange={(e) => set("summarization_min_messages", Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
-                          className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                        />
-                      </div>
-                      <div className="flex items-center justify-between py-0.5">
-                        <div>
-                          <p className="text-sm text-[var(--text-secondary)]">Sessions per tick</p>
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                            Max number of sessions summarized per scheduler cycle
-                          </p>
-                        </div>
-                        <input
-                          type="number"
-                          min={1}
-                          max={20}
-                          value={dbSettings.summarization_max_sessions}
-                          onChange={(e) => set("summarization_max_sessions", Math.max(1, Math.min(20, Number(e.target.value) || 5)))}
-                          className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                        />
-                      </div>
-
-                      <div className="border-t border-[var(--border-color)] pt-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-2">Topic Analysis</p>
-                      </div>
-                      <div className="flex items-center justify-between py-0.5">
-                        <div>
-                          <p className="text-sm text-[var(--text-secondary)]">Recompute interval (minutes)</p>
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                            How often workspace topic signatures are refreshed in the background
-                          </p>
-                        </div>
-                        <input
-                          type="number"
-                          min={5}
-                          max={120}
-                          value={dbSettings.topic_analysis_interval_minutes}
-                          onChange={(e) => set("topic_analysis_interval_minutes", Math.max(5, Math.min(120, Number(e.target.value) || 30)))}
-                          className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                        />
-                      </div>
-
-                      <div className="border-t border-[var(--border-color)] pt-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-2">Workspace Glossary</p>
-                      </div>
-                      <div className="flex items-center justify-between py-0.5">
-                        <div>
-                          <p className="text-sm text-[var(--text-secondary)]">Glossary refresh interval (minutes)</p>
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                            How often the workspace glossary refresh runs before residual chat scanning
-                          </p>
-                        </div>
-                        <input
-                          type="number"
-                          min={5}
-                          max={240}
-                          value={dbSettings.workspace_glossary_refresh_interval_minutes}
-                          onChange={(e) => set("workspace_glossary_refresh_interval_minutes", Math.max(5, Math.min(240, Number(e.target.value) || 60)))}
-                          className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                        />
-                      </div>
-                      <div className="flex items-start gap-3 py-0.5">
-                        <Toggle
-                          on={dbSettings.hover_definition_scan_enabled}
-                          onToggle={() => set("hover_definition_scan_enabled", !dbSettings.hover_definition_scan_enabled)}
-                          />
-                        <div>
-                          <p className="text-sm text-[var(--text-secondary)]">Chat definition scan</p>
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                            Scan assistant replies for unresolved workspace terminology after glossary refresh
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between py-0.5">
-                        <div>
-                          <p className="text-sm text-[var(--text-secondary)]">Sessions per scan tick</p>
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                            Max number of recent sessions scanned for missing definitions each scheduler cycle
-                          </p>
-                        </div>
-                        <input
-                          type="number"
-                          min={1}
-                          max={20}
-                          value={dbSettings.hover_definition_scan_max_sessions}
-                          onChange={(e) => set("hover_definition_scan_max_sessions", Math.max(1, Math.min(20, Number(e.target.value) || 3)))}
-                          className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                        />
-                      </div>
-
-                      <div className="pt-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-2">Git Sync</p>
-                      </div>
-                      <div className="flex items-center justify-between py-0.5">
-                        <div>
-                          <p className="text-sm text-[var(--text-secondary)]">Sync interval (minutes)</p>
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                            How often the background git sync runs when enabled
-                          </p>
-                        </div>
-                        <input
-                          type="number"
-                          min={1}
-                          max={60}
-                          value={dbSettings.git_sync_interval_minutes}
-                          onChange={(e) => set("git_sync_interval_minutes", Math.max(1, Math.min(60, Number(e.target.value) || 5)))}
-                          className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                        />
-                      </div>
-                    </section>
                   </div>
                 )}
 
@@ -5945,7 +5724,144 @@ export default function PreferencesView() {
 
           {activeTab === "scheduled-tasks" && (
             <div className="flex-1 min-h-0 overflow-y-auto">
-              <div className="max-w-4xl px-5 py-4">
+              <div className="max-w-4xl px-5 py-4 space-y-4">
+                {/* Background Jobs */}
+                <section className="space-y-2" data-pref-section>
+                  <div className="pb-1 border-b border-[var(--border-color)]">
+                    <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Background Jobs</h3>
+                  </div>
+
+                  <div className="flex items-start gap-3 py-0.5">
+                    <Toggle
+                      on={dbSettings.background_inference_enabled}
+                      onToggle={() => set("background_inference_enabled", !dbSettings.background_inference_enabled)}
+                    />
+                    <p className="text-sm text-[var(--text-secondary)]">
+                      Run memory, summarization, and glossary jobs automatically when idle
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between py-0.5">
+                    <p className="text-sm text-[var(--text-secondary)]">Auto-extract memories after N messages</p>
+                    <input
+                      type="number"
+                      min={2}
+                      max={50}
+                      value={dbSettings.memory_extraction_threshold}
+                      onChange={(e) => set("memory_extraction_threshold", Math.max(2, Math.min(50, Number(e.target.value) || 5)))}
+                      className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between py-0.5">
+                    <p className="text-sm text-[var(--text-secondary)]">Idle minutes before extraction runs</p>
+                    <input
+                      type="number"
+                      min={1}
+                      max={60}
+                      value={dbSettings.memory_extraction_idle_minutes}
+                      onChange={(e) => set("memory_extraction_idle_minutes", Math.max(1, Math.min(60, Number(e.target.value) || 5)))}
+                      className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                    />
+                  </div>
+
+                  <div className="pt-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1">Summarization</p>
+                  </div>
+                  <div className="flex items-center justify-between py-0.5">
+                    <p className="text-sm text-[var(--text-secondary)]">Min messages before summarizing</p>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={dbSettings.summarization_min_messages}
+                      onChange={(e) => set("summarization_min_messages", Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
+                      className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between py-0.5">
+                    <p className="text-sm text-[var(--text-secondary)]">Max sessions per scheduler tick</p>
+                    <input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={dbSettings.summarization_max_sessions}
+                      onChange={(e) => set("summarization_max_sessions", Math.max(1, Math.min(20, Number(e.target.value) || 5)))}
+                      className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                    />
+                  </div>
+
+                  <div className="pt-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1">Topic Analysis</p>
+                  </div>
+                  <div className="flex items-center justify-between py-0.5">
+                    <p className="text-sm text-[var(--text-secondary)]">Refresh topic signatures every (minutes)</p>
+                    <input
+                      type="number"
+                      min={5}
+                      max={120}
+                      value={dbSettings.topic_analysis_interval_minutes}
+                      onChange={(e) => set("topic_analysis_interval_minutes", Math.max(5, Math.min(120, Number(e.target.value) || 30)))}
+                      className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                    />
+                  </div>
+
+                  <div className="pt-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1">Workspace Glossary</p>
+                  </div>
+                  <div className="flex items-center justify-between py-0.5">
+                    <p className="text-sm text-[var(--text-secondary)]">Refresh glossary every (minutes)</p>
+                    <input
+                      type="number"
+                      min={5}
+                      max={240}
+                      value={dbSettings.workspace_glossary_refresh_interval_minutes}
+                      onChange={(e) => set("workspace_glossary_refresh_interval_minutes", Math.max(5, Math.min(240, Number(e.target.value) || 60)))}
+                      className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                    />
+                  </div>
+                  <div className="flex items-start gap-3 py-0.5">
+                    <Toggle
+                      on={dbSettings.hover_definition_scan_enabled}
+                      onToggle={() => set("hover_definition_scan_enabled", !dbSettings.hover_definition_scan_enabled)}
+                    />
+                    <p className="text-sm text-[var(--text-secondary)]">
+                      Scan assistant replies for unresolved terminology after glossary refresh
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between py-0.5">
+                    <p className="text-sm text-[var(--text-secondary)]">Max sessions scanned per tick</p>
+                    <input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={dbSettings.hover_definition_scan_max_sessions}
+                      onChange={(e) => set("hover_definition_scan_max_sessions", Math.max(1, Math.min(20, Number(e.target.value) || 3)))}
+                      className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                    />
+                  </div>
+
+                  <div className="pt-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1">Git Sync</p>
+                  </div>
+                  <div className={`flex items-center justify-between py-0.5 ${gitSync?.enabled ? "" : "opacity-50"}`}>
+                    <p className="text-sm text-[var(--text-secondary)]">
+                      Sync every (minutes)
+                      {!gitSync?.enabled && (
+                        <span className="ml-2 text-xs text-[var(--text-muted)]">— disabled</span>
+                      )}
+                    </p>
+                    <input
+                      type="number"
+                      min={1}
+                      max={60}
+                      disabled={!gitSync?.enabled}
+                      value={dbSettings.git_sync_interval_minutes}
+                      onChange={(e) => set("git_sync_interval_minutes", Math.max(1, Math.min(60, Number(e.target.value) || 5)))}
+                      className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] disabled:cursor-not-allowed"
+                    />
+                  </div>
+                </section>
+
                 <ScheduledTasksCard
                   ollamaModels={ollamaModels}
                   aiModels={aiModels}

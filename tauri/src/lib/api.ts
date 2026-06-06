@@ -950,7 +950,7 @@ export interface DashboardOverview {
   chat_sessions: number;
   notes: number;
   sources: number;
-  concepts: number;
+  topics: number;
   flashcards: number;
   active_goals: number;
   completed_goals: number;

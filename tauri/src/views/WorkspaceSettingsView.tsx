@@ -1381,7 +1381,7 @@ export default function WorkspaceSettingsView() {
                   { icon: <MessageSquare size={12} />, label: "Chats", value: stats?.overview.chat_sessions ?? 0, onClick: () => navigate("/chat") },
                   { icon: <FileText size={12} />, label: "Notes", value: stats?.overview.notes ?? 0, onClick: () => navigate("/notes") },
                   { icon: <Globe size={12} />, label: "Sources", value: stats?.overview.sources ?? 0, onClick: () => navigate("/sources") },
-                  { icon: <Brain size={12} />, label: "Nodes", value: stats?.overview.concepts ?? 0, onClick: () => navigate("/graph") },
+                  { icon: <Brain size={12} />, label: "Nodes", value: stats?.overview.topics ?? 0, onClick: () => navigate("/graph") },
                   { icon: <CreditCard size={12} />, label: "Flashcards", value: stats?.overview.flashcards ?? 0, onClick: () => navigate("/flashcards") },
                   { icon: <Database size={12} />, label: "Facts", value: memoryCounts.facts },
                   { icon: <Database size={12} />, label: "Preferences", value: memoryCounts.preferences },

@@ -11,7 +11,7 @@ pub struct DashboardOverview {
     pub chat_sessions: i64,
     pub notes: i64,
     pub sources: i64,
-    pub concepts: i64,
+    pub topics: i64,
     pub flashcards: i64,
     pub active_goals: i64,
     pub completed_goals: i64,
