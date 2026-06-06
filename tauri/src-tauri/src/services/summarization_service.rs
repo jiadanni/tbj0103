@@ -2,22 +2,38 @@ use crate::db::DbState;
 use crate::ollama::client::{OllamaClient, OllamaMessage};
 use crate::services::model_settings::get_model_for_job;
 
-pub async fn generate_rolling_summary(
+pub const SUMMARY_TYPE_INFO: &str = "info";
+pub const SUMMARY_TYPE_EXTENSIVE: &str = "extensive";
+
+pub async fn generate_info_summary(
     state: &DbState,
     session_id: &str,
     workspace_id: &str,
     ollama_url: Option<String>,
 ) -> Result<(), String> {
-    generate_rolling_summary_with_options(state, session_id, workspace_id, ollama_url, false).await
+    generate_summary_with_options(
+        state,
+        session_id,
+        workspace_id,
+        SUMMARY_TYPE_INFO,
+        ollama_url,
+        false,
+    )
+    .await
 }
 
-pub async fn generate_rolling_summary_with_options(
+pub async fn generate_summary_with_options(
     state: &DbState,
     session_id: &str,
     workspace_id: &str,
+    summary_type: &str,
     ollama_url: Option<String>,
     force: bool,
 ) -> Result<(), String> {
+    if !matches!(summary_type, SUMMARY_TYPE_INFO | SUMMARY_TYPE_EXTENSIVE) {
+        return Err(format!("Unsupported summary type: {summary_type}"));
+    }
+
     // Skip imported sessions that haven't received new messages
     {
         let conn = state.0.get().map_err(|e| e.to_string())?;
@@ -59,12 +75,13 @@ pub async fn generate_rolling_summary_with_options(
         return Ok(());
     }
 
-    // Check if we already have a rolling summary covering this many messages
+    // Check if we already have a summary of this type covering this many messages.
     {
         let conn = state.0.get().map_err(|e| e.to_string())?;
         let existing_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM conversation_summaries WHERE session_id = ?1 AND message_range_end >= ?2",
-            rusqlite::params![session_id, messages.len() as i32],
+            "SELECT COUNT(*) FROM conversation_summaries
+             WHERE session_id = ?1 AND summary_type = ?2 AND message_range_end >= ?3",
+            rusqlite::params![session_id, summary_type, messages.len() as i32],
             |row| row.get(0)
         ).unwrap_or(0);
         if !force && existing_count > 0 {
@@ -80,12 +97,22 @@ pub async fn generate_rolling_summary_with_options(
     let Ok(client) = OllamaClient::new(ollama_url) else {
         return Ok(());
     };
-    let prompt = format!(
-        "Summarize the following conversation as a single concise paragraph of plain prose (no headings, no bullet points, no markdown). \
-        Cover the key decisions, topics, and user preferences in flowing sentences. Keep it under 120 words.\n\n\
-        Conversation:\n{}",
-        conversation_text
-    );
+    let prompt = match summary_type {
+        SUMMARY_TYPE_INFO => format!(
+            "Summarize the following conversation as a single concise paragraph of plain prose (no headings, no bullet points, no markdown). \
+            Cover the key decisions, topics, and user preferences in flowing sentences. Keep it under 120 words.\n\n\
+            Conversation:\n{}",
+            conversation_text
+        ),
+        SUMMARY_TYPE_EXTENSIVE => format!(
+            "Write a polished, comprehensive synopsis of the following conversation in plain prose. \
+            Explain the user's goals, important context, key decisions, open questions, and actionable next steps. \
+            Use 2-4 short paragraphs with no headings, bullet points, or markdown. Keep it under 320 words.\n\n\
+            Conversation:\n{}",
+            conversation_text
+        ),
+        _ => unreachable!(),
+    };
 
     let msgs = vec![OllamaMessage {
         role: "user".to_string(),
@@ -111,16 +138,25 @@ pub async fn generate_rolling_summary_with_options(
         let now = chrono::Utc::now().to_rfc3339();
         if force {
             conn.execute(
-                "DELETE FROM conversation_summaries WHERE session_id = ?1 AND summary_type = 'rolling'",
-                rusqlite::params![session_id],
+                "DELETE FROM conversation_summaries WHERE session_id = ?1 AND summary_type = ?2",
+                rusqlite::params![session_id, summary_type],
             )
             .map_err(|e| e.to_string())?;
         }
 
         conn.execute(
             "INSERT INTO conversation_summaries (id, session_id, workspace_id, summary_type, content, message_range_start, message_range_end, created_at, updated_at)
-             VALUES (?1, ?2, ?3, 'rolling', ?4, 0, ?5, ?6, ?7)",
-            rusqlite::params![id, session_id, workspace_id, summary_content, messages.len() as i32, now, now],
+             VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7, ?8)",
+            rusqlite::params![
+                id,
+                session_id,
+                workspace_id,
+                summary_type,
+                summary_content,
+                messages.len() as i32,
+                now,
+                now
+            ],
         ).map_err(|e| e.to_string())?;
     }
 

@@ -117,7 +117,10 @@ pub fn rebuild(conn: &Connection) -> Result<(), String> {
             s.session_id,
             NULL,
             cs.title,
-            s.summary_type || ' summary',
+            CASE s.summary_type
+                WHEN 'extensive' THEN 'Extensive summary'
+                ELSE 'Info summary'
+            END,
             s.content,
             s.updated_at
         FROM conversation_summaries s

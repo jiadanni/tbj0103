@@ -613,7 +613,7 @@ describe("ChatView", () => {
         id: "summary-1",
         session_id: "session-1",
         workspace_id: "ws-1",
-        summary_type: "rolling",
+        summary_type: "info",
         content: "The thread covers Rust ownership and compiler errors.",
         key_topics: [],
         message_range_start: 0,
@@ -634,6 +634,7 @@ describe("ChatView", () => {
     fireEvent.click(summaryButton);
 
     expect(screen.getByRole("dialog", { name: "Chat summary details" })).toBeInTheDocument();
+    expect(screen.getByText("Chat Info")).toBeInTheDocument();
     expect(screen.getByText("The thread covers Rust ownership and compiler errors.")).toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: "Escape" });
@@ -659,7 +660,47 @@ describe("ChatView", () => {
     expect(screen.queryByRole("dialog", { name: "Chat summary details" })).not.toBeInTheDocument();
   });
 
-  it("refreshes the rolling summary after the assistant response is persisted", async () => {
+  it("prefers the info summary for the header surface when multiple summaries exist", async () => {
+    mockActiveChatId = "session-1";
+    (api.summary.list as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "summary-extensive",
+        session_id: "session-1",
+        workspace_id: "ws-1",
+        summary_type: "extensive",
+        content: "A longer synopsis that should not be shown in the header info popover.",
+        key_topics: [],
+        message_range_start: 0,
+        message_range_end: 4,
+        token_count: 64,
+        created_at: "",
+        updated_at: "",
+      },
+      {
+        id: "summary-info",
+        session_id: "session-1",
+        workspace_id: "ws-1",
+        summary_type: "info",
+        content: "Short info summary for quick recall.",
+        key_topics: [],
+        message_range_start: 0,
+        message_range_end: 4,
+        token_count: 20,
+        created_at: "",
+        updated_at: "",
+      },
+    ]);
+
+    await renderChatView();
+
+    const summaryButton = await screen.findByRole("button", { name: "Chat summary" });
+    fireEvent.click(summaryButton);
+
+    expect(screen.getByText("Short info summary for quick recall.")).toBeInTheDocument();
+    expect(screen.queryByText("A longer synopsis that should not be shown in the header info popover.")).not.toBeInTheDocument();
+  });
+
+  it("refreshes the info summary after the assistant response is persisted", async () => {
     mockActiveChatId = "session-1";
     (api.chat.listSessions as ReturnType<typeof vi.fn>).mockResolvedValue([
       {
@@ -733,7 +774,7 @@ describe("ChatView", () => {
     });
 
     await waitFor(() => {
-      expect(api.summary.generate).toHaveBeenCalledWith("session-1", "ws-1", "rolling", true);
+      expect(api.summary.generate).toHaveBeenCalledWith("session-1", "ws-1", "info", true);
     });
   });
 

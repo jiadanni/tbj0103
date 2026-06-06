@@ -613,7 +613,7 @@ pub fn start_scheduler(app: AppHandle) {
                                 any_failed = true;
                                 break;
                             }
-                            let result = summarization_service::generate_rolling_summary(
+                            let result = summarization_service::generate_info_summary(
                                 &db,
                                 &session_id,
                                 &workspace_id,

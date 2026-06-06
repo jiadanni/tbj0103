@@ -2,7 +2,7 @@ export interface ConversationSummary {
   id: string;
   session_id: string;
   workspace_id: string;
-  summary_type: 'rolling' | 'final' | 'segment';
+  summary_type: 'info' | 'extensive';
   content: string;
   key_topics: string[];
   message_range_start: number;

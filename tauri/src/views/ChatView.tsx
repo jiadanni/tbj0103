@@ -122,6 +122,10 @@ function splitAttachmentIntoExcerpts(content: string) {
   });
 }
 
+function pickInfoSummary(summaries: ConversationSummary[]): ConversationSummary | null {
+  return summaries.find((summary) => summary.summary_type === "info" && summary.content.trim().length > 0) ?? null;
+}
+
 function buildAttachmentContext(query: string, attachments: Array<{ title: string; content: string }>) {
   const queryTerms = Array.from(new Set(
     query
@@ -2991,7 +2995,7 @@ export default function ChatView() {
     api.summary.list(activeChatId)
       .then((summaries) => {
         if (cancelled) { return; }
-        setActiveChatSummary(summaries.find((summary) => summary.content.trim().length > 0) ?? null);
+        setActiveChatSummary(pickInfoSummary(summaries));
       })
       .catch(() => {
         if (!cancelled) {
@@ -3958,10 +3962,10 @@ export default function ChatView() {
     if (hasAssistantMessage) {
       const workspaceId = session.workspace_id || effectiveWorkspaceId;
       if (!workspaceId) { return; }
-      await api.summary.generate(sessionId, workspaceId, "rolling", true).catch(() => {});
+      await api.summary.generate(sessionId, workspaceId, "info", true).catch(() => {});
       if (useChatStore.getState().activeChatId === sessionId) {
         const summaries = await api.summary.list(sessionId).catch(() => []);
-        setActiveChatSummary(summaries.find((summary) => summary.content.trim().length > 0) ?? null);
+        setActiveChatSummary(pickInfoSummary(summaries));
       }
     }
   }
@@ -5203,7 +5207,7 @@ export default function ChatView() {
                               className="absolute left-1/2 top-full z-30 mt-2 w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 text-left shadow-[0_24px_60px_-24px_rgba(15,23,42,0.75)]"
                             >
                               <div className="mb-2 flex items-center justify-between gap-3">
-                                <div className="text-xs font-semibold text-[var(--text-primary)]">Chat Summary</div>
+                                <div className="text-xs font-semibold text-[var(--text-primary)]">Chat Info</div>
                                 <div className="rounded-full bg-[var(--bg-hover)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.06em] text-[var(--text-muted)]">
                                   {activeChatSummary.summary_type}
                                 </div>
