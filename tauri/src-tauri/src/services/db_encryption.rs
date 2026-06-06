@@ -195,10 +195,7 @@ pub fn build_sidecar_for_pin(pin: &str) -> Result<Sidecar, String> {
 
 /// Unwrap the DEK using the given PIN. Returns `Err("Incorrect PIN.")`
 /// on AEAD verification failure.
-pub fn unwrap_dek_with_pin(
-    db_path: &Path,
-    pin: &str,
-) -> Result<Zeroizing<[u8; DEK_LEN]>, String> {
+pub fn unwrap_dek_with_pin(db_path: &Path, pin: &str) -> Result<Zeroizing<[u8; DEK_LEN]>, String> {
     let sidecar = read_sidecar(db_path)?;
     if sidecar.kdf != KDF_KIND {
         return Err(format!("Unsupported KDF: {}", sidecar.kdf));
@@ -232,13 +229,15 @@ pub fn unwrap_dek_with_pin(
 
 /// Re-wrap an existing DEK under a new PIN. Used when the user changes their PIN
 /// without re-encrypting the database (DEK stays the same, KEK rotates).
-pub fn rewrap_dek(
-    db_path: &Path,
-    dek: &[u8; DEK_LEN],
-    new_pin: &str,
-) -> Result<(), String> {
+pub fn rewrap_dek(db_path: &Path, dek: &[u8; DEK_LEN], new_pin: &str) -> Result<(), String> {
     let salt = random_bytes(SALT_LEN);
-    let kek = derive_kek(new_pin.as_bytes(), &salt, ARGON_MEM_KIB, ARGON_ITERS, ARGON_PAR)?;
+    let kek = derive_kek(
+        new_pin.as_bytes(),
+        &salt,
+        ARGON_MEM_KIB,
+        ARGON_ITERS,
+        ARGON_PAR,
+    )?;
     let nonce_bytes = random_bytes(NONCE_LEN);
     let cipher = Aes256Gcm::new_from_slice(&*kek).map_err(|e| format!("AES init: {e}"))?;
     let nonce = Nonce::from_slice(&nonce_bytes);
@@ -297,8 +296,8 @@ pub fn encrypt_in_place(db_path: &Path, dek: &[u8; DEK_LEN]) -> Result<(), Strin
     }
 
     {
-        let conn = Connection::open(db_path)
-            .map_err(|e| format!("Failed to open source DB: {e}"))?;
+        let conn =
+            Connection::open(db_path).map_err(|e| format!("Failed to open source DB: {e}"))?;
         let hex = hex_encode(dek);
         // ATTACH with key. The string literal is single-quoted SQL with an
         // escaped single-quote-free hex blob.
@@ -324,13 +323,12 @@ pub fn encrypt_in_place(db_path: &Path, dek: &[u8; DEK_LEN]) -> Result<(), Strin
 pub fn decrypt_in_place(db_path: &Path, dek: &[u8; DEK_LEN]) -> Result<(), String> {
     let plain_tmp = db_path.with_extension("db.plain.tmp");
     if plain_tmp.exists() {
-        fs::remove_file(&plain_tmp)
-            .map_err(|e| format!("Failed to clear stale tmp DB: {e}"))?;
+        fs::remove_file(&plain_tmp).map_err(|e| format!("Failed to clear stale tmp DB: {e}"))?;
     }
 
     {
-        let conn = Connection::open(db_path)
-            .map_err(|e| format!("Failed to open encrypted DB: {e}"))?;
+        let conn =
+            Connection::open(db_path).map_err(|e| format!("Failed to open encrypted DB: {e}"))?;
         apply_key(&conn, dek)?;
         let attach = format!(
             "ATTACH DATABASE '{}' AS plain KEY '';",

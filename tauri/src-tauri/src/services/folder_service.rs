@@ -53,7 +53,11 @@ pub fn create(conn: &Connection, req: CreateFolderRequest) -> Result<Folder, Str
     Ok(project)
 }
 
-pub fn list(conn: &Connection, workspace_id: &str, include_descendants: bool) -> Result<Vec<Folder>, String> {
+pub fn list(
+    conn: &Connection,
+    workspace_id: &str,
+    include_descendants: bool,
+) -> Result<Vec<Folder>, String> {
     let (cte, ws_cond) = workspace_filter_sql(include_descendants);
     let sql = format!(
         "{cte}SELECT id, workspace_id, name, folder_description, custom_instructions, color, icon, created_at, updated_at
@@ -92,7 +96,9 @@ pub fn update(
             .prepare("SELECT id FROM chat_sessions WHERE folder_id = ?1")
             .map_err(|e| e.to_string())?;
         let rows = stmt
-            .query_map(rusqlite::params![req.id.clone()], |row| row.get::<_, String>(0))
+            .query_map(rusqlite::params![req.id.clone()], |row| {
+                row.get::<_, String>(0)
+            })
             .map_err(|e| e.to_string())?;
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(|e| e.to_string())?
@@ -240,14 +246,18 @@ pub fn move_to_workspace(
 mod tests {
     use super::*;
     use crate::db::test_utils::tests::setup_test_db;
-    use crate::services::workspace_service;
     use crate::models::workspace::CreateWorkspaceRequest;
+    use crate::services::workspace_service;
 
     fn setup_workspace(conn: &Connection, name: &str) -> String {
-        let ws = workspace_service::create(conn, CreateWorkspaceRequest {
-            name: name.to_string(),
-            description: None,
-        }).unwrap();
+        let ws = workspace_service::create(
+            conn,
+            CreateWorkspaceRequest {
+                name: name.to_string(),
+                description: None,
+            },
+        )
+        .unwrap();
         ws.id
     }
 
@@ -256,7 +266,7 @@ mod tests {
         let pool = setup_test_db();
         let conn = pool.get().unwrap();
         let ws_id = setup_workspace(&conn, "Test Workspace");
-        
+
         let req = CreateFolderRequest {
             workspace_id: ws_id.clone(),
             name: "Test Folder".to_string(),
@@ -265,11 +275,11 @@ mod tests {
             color: None,
             icon: None,
         };
-        
+
         let created = create(&conn, req).unwrap();
         assert_eq!(created.name, "Test Folder");
         assert_eq!(created.folder_description, "Desc");
-        
+
         let fetched = get(&conn, &created.id).unwrap().unwrap();
         assert_eq!(fetched.id, created.id);
         assert_eq!(fetched.workspace_id, ws_id);
@@ -280,28 +290,36 @@ mod tests {
         let pool = setup_test_db();
         let conn = pool.get().unwrap();
         let ws_id = setup_workspace(&conn, "Test Workspace");
-        
-        create(&conn, CreateFolderRequest {
-            workspace_id: ws_id.clone(),
-            name: "Folder A".to_string(),
-            folder_description: None,
-            custom_instructions: None,
-            color: None,
-            icon: None,
-        }).unwrap();
-        
-        let p_b = create(&conn, CreateFolderRequest {
-            workspace_id: ws_id.clone(),
-            name: "Folder B".to_string(),
-            folder_description: None,
-            custom_instructions: None,
-            color: None,
-            icon: None,
-        }).unwrap();
-        
+
+        create(
+            &conn,
+            CreateFolderRequest {
+                workspace_id: ws_id.clone(),
+                name: "Folder A".to_string(),
+                folder_description: None,
+                custom_instructions: None,
+                color: None,
+                icon: None,
+            },
+        )
+        .unwrap();
+
+        let p_b = create(
+            &conn,
+            CreateFolderRequest {
+                workspace_id: ws_id.clone(),
+                name: "Folder B".to_string(),
+                folder_description: None,
+                custom_instructions: None,
+                color: None,
+                icon: None,
+            },
+        )
+        .unwrap();
+
         let all = list(&conn, &ws_id, false).unwrap();
         assert_eq!(all.len(), 2);
-        
+
         delete(&conn, &p_b.id).unwrap();
         let after_delete = list(&conn, &ws_id, false).unwrap();
         assert_eq!(after_delete.len(), 1);
@@ -314,26 +332,30 @@ mod tests {
         let mut conn = pool.get().unwrap();
         let ws1_id = setup_workspace(&conn, "WS 1");
         let ws2_id = setup_workspace(&conn, "WS 2");
-        
-        let p = create(&conn, CreateFolderRequest {
-            workspace_id: ws1_id.clone(),
-            name: "Moving Folder".to_string(),
-            folder_description: None,
-            custom_instructions: None,
-            color: None,
-            icon: None,
-        }).unwrap();
+
+        let p = create(
+            &conn,
+            CreateFolderRequest {
+                workspace_id: ws1_id.clone(),
+                name: "Moving Folder".to_string(),
+                folder_description: None,
+                custom_instructions: None,
+                color: None,
+                icon: None,
+            },
+        )
+        .unwrap();
 
         let temp_dir = tempfile::tempdir().unwrap();
-        
+
         let moved = move_to_workspace(&mut conn, &p.id, &ws2_id, temp_dir.path(), None).unwrap();
-        
+
         assert_eq!(moved.workspace_id, ws2_id);
         assert_eq!(moved.name, "Moving Folder");
-        
+
         let ws1_projects = list(&conn, &ws1_id, false).unwrap();
         assert_eq!(ws1_projects.len(), 0);
-        
+
         let ws2_projects = list(&conn, &ws2_id, false).unwrap();
         assert_eq!(ws2_projects.len(), 1);
     }
@@ -343,26 +365,42 @@ mod tests {
         let pool = setup_test_db();
         let conn = pool.get().unwrap();
         let parent_id = setup_workspace(&conn, "Parent WS");
-        let child = workspace_service::create_child(&conn, crate::models::workspace::CreateChildWorkspaceRequest {
-            parent_id: parent_id.clone(),
-            name: "Child WS".to_string(),
-            description: None,
-        }).unwrap();
+        let child = workspace_service::create_child(
+            &conn,
+            crate::models::workspace::CreateChildWorkspaceRequest {
+                parent_id: parent_id.clone(),
+                name: "Child WS".to_string(),
+                description: None,
+            },
+        )
+        .unwrap();
         // Create a project in the child workspace
-        create(&conn, CreateFolderRequest {
-            workspace_id: child.id.clone(),
-            name: "Child Folder".to_string(),
-            folder_description: None,
-            custom_instructions: None,
-            color: None,
-            icon: None,
-        }).unwrap();
+        create(
+            &conn,
+            CreateFolderRequest {
+                workspace_id: child.id.clone(),
+                name: "Child Folder".to_string(),
+                folder_description: None,
+                custom_instructions: None,
+                color: None,
+                icon: None,
+            },
+        )
+        .unwrap();
         // Without bubbling: parent sees 0 folders
         let exact = list(&conn, &parent_id, false).unwrap();
-        assert_eq!(exact.len(), 0, "parent should not see child folders without bubbling");
+        assert_eq!(
+            exact.len(),
+            0,
+            "parent should not see child folders without bubbling"
+        );
         // With bubbling: parent sees child's project
         let bubbled = list(&conn, &parent_id, true).unwrap();
-        assert_eq!(bubbled.len(), 1, "parent should see child folders with bubbling");
+        assert_eq!(
+            bubbled.len(),
+            1,
+            "parent should see child folders with bubbling"
+        );
         assert_eq!(bubbled[0].name, "Child Folder");
         // Child with bubbling sees only its own folders (no upward leak)
         let child_view = list(&conn, &child.id, true).unwrap();

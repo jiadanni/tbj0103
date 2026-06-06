@@ -128,8 +128,8 @@ fn auto_resolve_rebase(repo_dir: &Path) -> Result<(), String> {
     const MAX_ROUNDS: usize = 50;
     for _ in 0..MAX_ROUNDS {
         // Discover which files have unmerged conflicts
-        let conflicted = git(repo_dir, &["diff", "--name-only", "--diff-filter=U"])
-            .unwrap_or_default();
+        let conflicted =
+            git(repo_dir, &["diff", "--name-only", "--diff-filter=U"]).unwrap_or_default();
 
         if conflicted.trim().is_empty() {
             // No conflicts right now — check if the rebase is still in progress

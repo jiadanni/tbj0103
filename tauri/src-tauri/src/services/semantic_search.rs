@@ -46,7 +46,7 @@ mod tests {
         let b = vec![1.0, 2.0, 3.0];
         // Float comparison needs an epsilon
         assert!((cosine_similarity(&a, &b) - 1.0).abs() < 1e-6);
-        
+
         let a = vec![];
         let b = vec![];
         assert_eq!(cosine_similarity(&a, &b), 0.0);

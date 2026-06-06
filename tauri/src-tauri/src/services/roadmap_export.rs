@@ -138,9 +138,7 @@ pub fn render_markdown_outline(tree: &RoadmapTree) -> String {
         for link in &tree.cross_links {
             out.push_str(&format!(
                 "- `{}` → `{}` ({})\n",
-                link.source_id,
-                link.target_id,
-                link.link_type
+                link.source_id, link.target_id, link.link_type
             ));
         }
     }
@@ -155,9 +153,7 @@ fn write_markdown(out: &mut String, node: &RoadmapTreeNode, depth: usize) {
             let indent = "  ".repeat(depth.saturating_sub(2));
             out.push_str(&format!(
                 "{}- **{}** _({})_\n",
-                indent,
-                node.name,
-                node.concept_type
+                indent, node.name, node.concept_type
             ));
         }
     }
@@ -223,10 +219,7 @@ pub fn render_mermaid(tree: &RoadmapTree) -> String {
 
     // Cross-links with labeled edges
     for link in &tree.cross_links {
-        if let (Some(src), Some(tgt)) = (
-            id_map.get(&link.source_id),
-            id_map.get(&link.target_id),
-        ) {
+        if let (Some(src), Some(tgt)) = (id_map.get(&link.source_id), id_map.get(&link.target_id)) {
             out.push_str(&format!(
                 "  {src} -. {label} .-> {tgt}\n",
                 label = mermaid_escape(&link.link_type.to_string())
@@ -332,7 +325,11 @@ mod tests {
             make_node("n1", "Concept A", HierarchyLevel::Concept),
             make_node("n2", "Concept B", HierarchyLevel::Concept),
         ];
-        let links = vec![part_of("s1", "c1"), part_of("n1", "s1"), part_of("n2", "s1")];
+        let links = vec![
+            part_of("s1", "c1"),
+            part_of("n1", "s1"),
+            part_of("n2", "s1"),
+        ];
         let tree = build_tree(nodes, links);
         assert_eq!(tree.roots.len(), 1);
         assert_eq!(tree.roots[0].id, "c1");

@@ -35,7 +35,10 @@ fn estimate_tokens(text: &str) -> i64 {
 }
 
 #[tauri::command]
-pub async fn create_source(state: State<'_, DbState>, req: CreateSourceRequest) -> Result<Source, String> {
+pub async fn create_source(
+    state: State<'_, DbState>,
+    req: CreateSourceRequest,
+) -> Result<Source, String> {
     if let Some(size) = req.file_size {
         if size > MAX_UPLOAD_FILE_SIZE_BYTES {
             return Err("File exceeds 50MB limit".to_string());

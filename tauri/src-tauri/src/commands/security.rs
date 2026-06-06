@@ -334,9 +334,7 @@ pub fn remove_pin_passcode(
     // to disable encryption first.
     let db_path = db_path_from_app(&app)?;
     if crate::services::db_encryption::sidecar_exists(&db_path) {
-        return Err(
-            "Disable database encryption before removing the PIN passcode.".to_string(),
-        );
+        return Err("Disable database encryption before removing the PIN passcode.".to_string());
     }
 
     set_setting(&conn, PIN_HASH_KEY, "")?;

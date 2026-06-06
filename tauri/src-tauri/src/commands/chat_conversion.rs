@@ -36,8 +36,9 @@ pub async fn convert_chat_to_note(
     let (bundle, model) = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
         let bundle = load_chat_bundle(&conn, &req.session_id)?;
-        let model = get_configured_chat_model(&conn)
-            .ok_or_else(|| "No chat model configured. Set one in Settings → AI Models.".to_string())?;
+        let model = get_configured_chat_model(&conn).ok_or_else(|| {
+            "No chat model configured. Set one in Settings → AI Models.".to_string()
+        })?;
         (bundle, model)
     };
 
@@ -107,8 +108,9 @@ pub async fn convert_chat_to_document(
     let (bundle, model) = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
         let bundle = load_chat_bundle(&conn, &req.session_id)?;
-        let model = get_configured_chat_model(&conn)
-            .ok_or_else(|| "No chat model configured. Set one in Settings → AI Models.".to_string())?;
+        let model = get_configured_chat_model(&conn).ok_or_else(|| {
+            "No chat model configured. Set one in Settings → AI Models.".to_string()
+        })?;
         (bundle, model)
     };
 
@@ -193,7 +195,13 @@ pub async fn convert_chat_to_document(
 fn sanitize_filename(title: &str) -> String {
     let cleaned: String = title
         .chars()
-        .map(|c| if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') { '-' } else { c })
+        .map(|c| {
+            if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') {
+                '-'
+            } else {
+                c
+            }
+        })
         .collect();
     let trimmed = cleaned.trim().trim_matches('.').to_string();
     if trimmed.is_empty() {

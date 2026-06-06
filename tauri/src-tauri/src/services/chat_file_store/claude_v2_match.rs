@@ -49,7 +49,10 @@ pub fn suggest_project_for_conversations(
     let project_keywords: Vec<(String, HashSet<String>)> = projects
         .iter()
         .map(|p| {
-            let memory = memories_by_project.get(&p.uuid).map(String::as_str).unwrap_or("");
+            let memory = memories_by_project
+                .get(&p.uuid)
+                .map(String::as_str)
+                .unwrap_or("");
             let mut text = String::with_capacity(
                 p.name.len() + p.prompt_template.len() + p.description.len() + memory.len() + 3,
             );
@@ -91,7 +94,9 @@ fn score_conversation(
     // 1. Title-substring match: project name appears as a whole word in the title.
     if !title_lower.is_empty() {
         for (uuid, name_lower) in project_names_lower {
-            if name_lower.is_empty() { continue; }
+            if name_lower.is_empty() {
+                continue;
+            }
             if contains_whole_word(&title_lower, name_lower) {
                 return MatchSuggestion {
                     conversation_uuid: conv.uuid.clone(),
@@ -121,7 +126,9 @@ fn score_conversation(
         let mut top: Option<(String, f32)> = None;
         let mut runner_up: f32 = 0.0;
         for (uuid, kws) in project_keywords {
-            if kws.is_empty() { continue; }
+            if kws.is_empty() {
+                continue;
+            }
             let overlap = chat_tokens.intersection(kws).count() as f32;
             let coverage = overlap / chat_n as f32;
             match &top {
@@ -182,7 +189,10 @@ pub async fn suggest_project_with_embeddings(
     // Build project texts and embed them.
     let mut project_embeddings: Vec<(String, Vec<f32>)> = Vec::new();
     for proj in projects {
-        let memory = memories_by_project.get(&proj.uuid).map(String::as_str).unwrap_or("");
+        let memory = memories_by_project
+            .get(&proj.uuid)
+            .map(String::as_str)
+            .unwrap_or("");
         let text = format!(
             "{} {} {} {}",
             proj.name, proj.prompt_template, proj.description, memory
@@ -312,7 +322,9 @@ fn normalise(v: &[f32]) -> Vec<f32> {
 }
 
 fn contains_whole_word(haystack: &str, needle: &str) -> bool {
-    if needle.is_empty() || needle.len() > haystack.len() { return false; }
+    if needle.is_empty() || needle.len() > haystack.len() {
+        return false;
+    }
     let mut start = 0;
     while let Some(pos) = haystack[start..].find(needle) {
         let abs = start + pos;
@@ -341,8 +353,12 @@ fn tokenize(text: &str) -> HashSet<String> {
     text.split(|c: char| !c.is_alphanumeric())
         .filter_map(|w| {
             let lower = w.trim().to_lowercase();
-            if lower.len() < MIN_TOKEN_LEN { return None; }
-            if is_stopword(&lower) { return None; }
+            if lower.len() < MIN_TOKEN_LEN {
+                return None;
+            }
+            if is_stopword(&lower) {
+                return None;
+            }
             Some(lower)
         })
         .collect()
@@ -351,19 +367,91 @@ fn tokenize(text: &str) -> HashSet<String> {
 fn is_stopword(w: &str) -> bool {
     matches!(
         w,
-        "this" | "that" | "with" | "from" | "have" | "been" | "were" | "their"
-        | "they" | "them" | "would" | "could" | "should" | "what" | "when"
-        | "where" | "which" | "while" | "your" | "yours" | "about" | "into"
-        | "than" | "then" | "there" | "these" | "those" | "some" | "such"
-        | "only" | "very" | "much" | "many" | "more" | "most" | "also"
-        | "after" | "before" | "between" | "because" | "being" | "doing"
-        | "does" | "done" | "just" | "like" | "make" | "made" | "want"
-        | "will" | "well" | "over" | "under" | "above" | "below" | "again"
-        | "ever" | "every" | "each" | "other" | "another" | "even"
-        | "here" | "hers" | "himself" | "herself" | "itself" | "yourself"
-        | "ourselves" | "myself" | "always" | "really" | "still"
-        | "back" | "down" | "onto" | "upon" | "around" | "through"
-        | "without" | "within" | "must" | "shall" | "thing" | "things"
+        "this"
+            | "that"
+            | "with"
+            | "from"
+            | "have"
+            | "been"
+            | "were"
+            | "their"
+            | "they"
+            | "them"
+            | "would"
+            | "could"
+            | "should"
+            | "what"
+            | "when"
+            | "where"
+            | "which"
+            | "while"
+            | "your"
+            | "yours"
+            | "about"
+            | "into"
+            | "than"
+            | "then"
+            | "there"
+            | "these"
+            | "those"
+            | "some"
+            | "such"
+            | "only"
+            | "very"
+            | "much"
+            | "many"
+            | "more"
+            | "most"
+            | "also"
+            | "after"
+            | "before"
+            | "between"
+            | "because"
+            | "being"
+            | "doing"
+            | "does"
+            | "done"
+            | "just"
+            | "like"
+            | "make"
+            | "made"
+            | "want"
+            | "will"
+            | "well"
+            | "over"
+            | "under"
+            | "above"
+            | "below"
+            | "again"
+            | "ever"
+            | "every"
+            | "each"
+            | "other"
+            | "another"
+            | "even"
+            | "here"
+            | "hers"
+            | "himself"
+            | "herself"
+            | "itself"
+            | "yourself"
+            | "ourselves"
+            | "myself"
+            | "always"
+            | "really"
+            | "still"
+            | "back"
+            | "down"
+            | "onto"
+            | "upon"
+            | "around"
+            | "through"
+            | "without"
+            | "within"
+            | "must"
+            | "shall"
+            | "thing"
+            | "things"
     )
 }
 
@@ -399,10 +487,7 @@ mod tests {
 
     #[test]
     fn title_match_wins() {
-        let projects = vec![
-            proj("p1", "Java", ""),
-            proj("p2", "Dutch", ""),
-        ];
+        let projects = vec![proj("p1", "Java", ""), proj("p2", "Dutch", "")];
         let convs = vec![conv("c1", "Learning Java collections", "")];
         let out = suggest_project_for_conversations(&convs, &projects, &HashMap::new());
         assert_eq!(out[0].project_uuid.as_deref(), Some("p1"));
@@ -440,7 +525,11 @@ mod tests {
     fn too_short_chat_returns_none() {
         // 2-token chat ("Recipe ideas" — both pass len ≥ 4 but only 2 tokens) is
         // below MIN_CHAT_TOKENS, so keyword scoring is skipped.
-        let projects = vec![proj("p1", "Java", "object oriented programming jvm collections")];
+        let projects = vec![proj(
+            "p1",
+            "Java",
+            "object oriented programming jvm collections",
+        )];
         let convs = vec![conv("c1", "Quick", "help")];
         let out = suggest_project_for_conversations(&convs, &projects, &HashMap::new());
         assert_eq!(out[0].project_uuid, None);
@@ -451,8 +540,16 @@ mod tests {
     fn ambiguous_chat_returns_none_without_margin() {
         // Chat tokens overlap two projects roughly equally → margin rule rejects.
         let projects = vec![
-            proj("p1", "Frontend", "react component javascript browser typescript"),
-            proj("p2", "Backend", "react component javascript browser typescript"),
+            proj(
+                "p1",
+                "Frontend",
+                "react component javascript browser typescript",
+            ),
+            proj(
+                "p2",
+                "Backend",
+                "react component javascript browser typescript",
+            ),
         ];
         let convs = vec![conv(
             "c1",
@@ -460,7 +557,10 @@ mod tests {
             "javascript typescript react component browser question",
         )];
         let out = suggest_project_for_conversations(&convs, &projects, &HashMap::new());
-        assert_eq!(out[0].project_uuid, None, "ambiguous chat should not be auto-assigned");
+        assert_eq!(
+            out[0].project_uuid, None,
+            "ambiguous chat should not be auto-assigned"
+        );
         assert_eq!(out[0].reason, "none");
     }
 
@@ -486,7 +586,11 @@ mod tests {
     #[test]
     fn no_match_returns_none() {
         let projects = vec![proj("p1", "Java", "object oriented programming jvm")];
-        let convs = vec![conv("c1", "Recipe ideas", "What can I cook with leftover rice")];
+        let convs = vec![conv(
+            "c1",
+            "Recipe ideas",
+            "What can I cook with leftover rice",
+        )];
         let out = suggest_project_for_conversations(&convs, &projects, &HashMap::new());
         assert_eq!(out[0].project_uuid, None);
         assert_eq!(out[0].reason, "none");

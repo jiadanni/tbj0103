@@ -41,7 +41,8 @@ pub async fn list_ai_models(state: State<'_, DbState>) -> Result<Vec<AiModel>, S
         // Refresh the global num_ctx override map so OllamaClient picks up changes
         // without needing a DB handle. Clamped to a sensible range to guard against
         // user error or accidental zero values.
-        let mut overrides: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        let mut overrides: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
         for m in &items {
             if let Some(value) = m.context_size {
                 if value > 0 {
@@ -67,9 +68,8 @@ pub fn add_ai_model(state: State<DbState>, req: AddAiModelRequest) -> Result<AiM
     let is_paid = req.is_paid.unwrap_or(false);
     let enabled = req.enabled.unwrap_or(true);
 
-    let existing_sql = format!(
-        "SELECT {SELECT_COLUMNS} FROM ai_models WHERE model_id = ?1 AND provider = ?2"
-    );
+    let existing_sql =
+        format!("SELECT {SELECT_COLUMNS} FROM ai_models WHERE model_id = ?1 AND provider = ?2");
     let existing = conn.query_row(
         &existing_sql,
         rusqlite::params![&req.model_id, &provider],
@@ -158,11 +158,9 @@ pub fn update_ai_model(
     .map_err(|e| e.to_string())?;
 
     let select_sql = format!("SELECT {SELECT_COLUMNS} FROM ai_models WHERE id = ?1");
-    let model = conn.query_row(
-        &select_sql,
-        rusqlite::params![req.id],
-        row_to_model,
-    ).map_err(|e| e.to_string())?;
+    let model = conn
+        .query_row(&select_sql, rusqlite::params![req.id], row_to_model)
+        .map_err(|e| e.to_string())?;
 
     // Keep the in-memory override map in sync immediately so the next chat call
     // uses the new value without waiting for a `list_ai_models` refresh.
@@ -190,11 +188,7 @@ pub fn get_default_model(state: State<DbState>) -> Result<AiModel, String> {
     let default_sql = format!(
         "SELECT {SELECT_COLUMNS} FROM ai_models WHERE enabled = 1 ORDER BY priority ASC LIMIT 1"
     );
-    let result = conn.query_row(
-        &default_sql,
-        [],
-        row_to_model,
-    );
+    let result = conn.query_row(&default_sql, [], row_to_model);
 
     match result {
         Ok(model) => Ok(model),

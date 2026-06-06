@@ -13,7 +13,11 @@ pub struct ExportRequest {
 }
 
 #[tauri::command]
-pub fn export_markdown(auth: State<AuthState>, state: State<DbState>, req: ExportRequest) -> Result<String, String> {
+pub fn export_markdown(
+    auth: State<AuthState>,
+    state: State<DbState>,
+    req: ExportRequest,
+) -> Result<String, String> {
     require_auth(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut output = String::new();
@@ -109,7 +113,11 @@ pub fn export_markdown(auth: State<AuthState>, state: State<DbState>, req: Expor
 }
 
 #[tauri::command]
-pub fn export_json(auth: State<AuthState>, state: State<DbState>, req: ExportRequest) -> Result<String, String> {
+pub fn export_json(
+    auth: State<AuthState>,
+    state: State<DbState>,
+    req: ExportRequest,
+) -> Result<String, String> {
     require_auth(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let workspace: serde_json::Value = conn

@@ -1,7 +1,6 @@
 use crate::db::DbState;
 use crate::models::note::{
-    CreateNoteRequest, GetOrCreateDailyNoteRequest, NoteTemplate, ProjectNote,
-    UpdateNoteRequest,
+    CreateNoteRequest, GetOrCreateDailyNoteRequest, NoteTemplate, ProjectNote, UpdateNoteRequest,
 };
 use crate::services::workspace_hierarchy::workspace_filter_sql;
 use crate::services::{linking_engine, note_template_engine};

@@ -33,9 +33,7 @@ pub struct BootStatus {
 }
 
 #[tauri::command]
-pub async fn boot_check_state(
-    boot: State<'_, BootState>,
-) -> Result<BootStatus, String> {
+pub async fn boot_check_state(boot: State<'_, BootState>) -> Result<BootStatus, String> {
     let db_path = boot.db_path.clone();
     tokio::task::spawn_blocking(move || -> Result<BootStatus, String> {
         if !crate::services::db_encryption::sidecar_exists(&db_path) {
@@ -45,9 +43,7 @@ pub async fn boot_check_state(
             });
         }
         let sidecar = crate::services::db_encryption::read_sidecar(&db_path).ok();
-        let pending = sidecar
-            .and_then(|s| s.pending_action)
-            .unwrap_or_default();
+        let pending = sidecar.and_then(|s| s.pending_action).unwrap_or_default();
         Ok(BootStatus {
             unlock_required: true,
             pending_action: pending,

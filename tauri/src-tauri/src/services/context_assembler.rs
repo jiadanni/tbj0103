@@ -108,8 +108,12 @@ pub fn replace_model_context_overrides(overrides: HashMap<String, usize>) {
 pub fn set_model_context_override(model_id: &str, value: Option<usize>) {
     if let Ok(mut guard) = override_map().write() {
         match value {
-            Some(v) => { guard.insert(model_id.to_string(), v); }
-            None => { guard.remove(model_id); }
+            Some(v) => {
+                guard.insert(model_id.to_string(), v);
+            }
+            None => {
+                guard.remove(model_id);
+            }
         }
     }
 }
@@ -120,9 +124,13 @@ pub fn context_size_for_model(model_name: &str) -> usize {
     let Ok(guard) = override_map().read() else {
         return DEFAULT_CONTEXT_SIZE;
     };
-    if let Some(v) = guard.get(model_name) { return *v; }
+    if let Some(v) = guard.get(model_name) {
+        return *v;
+    }
     let base = model_name.split(':').next().unwrap_or(model_name);
-    if let Some(v) = guard.get(base) { return *v; }
+    if let Some(v) = guard.get(base) {
+        return *v;
+    }
     DEFAULT_CONTEXT_SIZE
 }
 
@@ -217,7 +225,9 @@ pub fn assemble_context(
 
     // 1a. About You (learner profile) — gated by inject_about_you_into_chat
     if crate::services::about_you::inject_into_chat_enabled(conn) {
-        if let Ok(Some(profile_text)) = crate::services::about_you::resolve_about_you_text(conn, workspace_id) {
+        if let Ok(Some(profile_text)) =
+            crate::services::about_you::resolve_about_you_text(conn, workspace_id)
+        {
             system_parts.push(profile_text);
         }
     }
@@ -238,9 +248,8 @@ pub fn assemble_context(
         )
         .map_err(|e| e.to_string())?;
 
-    if let Ok((global_json, ws_prompt, proj_prompt, sess_prompt, topic_sig_json)) = stmt.query_row(
-        rusqlite::params![session_id],
-        |row| {
+    if let Ok((global_json, ws_prompt, proj_prompt, sess_prompt, topic_sig_json)) =
+        stmt.query_row(rusqlite::params![session_id], |row| {
             Ok((
                 row.get::<_, Option<String>>(0)?,
                 row.get::<_, Option<String>>(1)?,
@@ -248,24 +257,32 @@ pub fn assemble_context(
                 row.get::<_, Option<String>>(3)?,
                 row.get::<_, Option<String>>(4)?,
             ))
-        },
-    ) {
+        })
+    {
         // Global
         if let Some(json) = global_json {
             let text: String = serde_json::from_str(&json).unwrap_or_default();
-            if !text.is_empty() { system_parts.push(text); }
+            if !text.is_empty() {
+                system_parts.push(text);
+            }
         }
         // Workspace
         if let Some(text) = ws_prompt {
-            if !text.is_empty() { system_parts.push(text); }
+            if !text.is_empty() {
+                system_parts.push(text);
+            }
         }
         // Folder
         if let Some(text) = proj_prompt {
-            if !text.is_empty() { system_parts.push(text); }
+            if !text.is_empty() {
+                system_parts.push(text);
+            }
         }
         // Session
         if let Some(text) = sess_prompt {
-            if !text.is_empty() { system_parts.push(text); }
+            if !text.is_empty() {
+                system_parts.push(text);
+            }
         }
         // Workspace domain — helps LLM disambiguate short/ambiguous messages
         if let Some(sig_json) = topic_sig_json {
@@ -309,7 +326,11 @@ pub fn assemble_context(
             .unwrap_or_default();
 
         for (content, scope) in summary_rows {
-            let prefix = if scope == "global" { "User summary: " } else { "Workspace context: " };
+            let prefix = if scope == "global" {
+                "User summary: "
+            } else {
+                "Workspace context: "
+            };
             let line = format!("{}{}\n\n", prefix, content);
             let line_tokens = estimate_tokens(&line);
             if memory_tokens + line_tokens <= budget.memories {
@@ -419,19 +440,21 @@ pub fn assemble_context(
 
             let mut scored: Vec<(f32, String, String, String)> = candidates
                 .into_iter()
-                .filter_map(|(id, content, scope, emb_bytes, reinforcement, updated_at)| {
-                    let stored_emb = vector_index::bytes_to_f32_vec(&emb_bytes);
-                    let similarity = vector_index::cosine_similarity(qe, &stored_emb);
-                    if similarity < MEMORY_SIMILARITY_THRESHOLD {
-                        return None;
-                    }
-                    let recency = recency_score(&updated_at, profile.half_life_days);
-                    let reinforce = reinforcement_score(reinforcement);
-                    let blended = profile.cosine * similarity
-                        + profile.recency * recency
-                        + profile.reinforcement * reinforce;
-                    Some((blended, id, content, scope))
-                })
+                .filter_map(
+                    |(id, content, scope, emb_bytes, reinforcement, updated_at)| {
+                        let stored_emb = vector_index::bytes_to_f32_vec(&emb_bytes);
+                        let similarity = vector_index::cosine_similarity(qe, &stored_emb);
+                        if similarity < MEMORY_SIMILARITY_THRESHOLD {
+                            return None;
+                        }
+                        let recency = recency_score(&updated_at, profile.half_life_days);
+                        let reinforce = reinforcement_score(reinforcement);
+                        let blended = profile.cosine * similarity
+                            + profile.recency * recency
+                            + profile.reinforcement * reinforce;
+                        Some((blended, id, content, scope))
+                    },
+                )
                 .collect();
             scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
@@ -641,8 +664,16 @@ mod ranking_tests {
         let s_recent = recency_score(&recent, half_life);
         let s_old = recency_score(&old, half_life);
         let s_ancient = recency_score(&ancient, half_life);
-        assert!((s_recent - 1.0).abs() < 0.01, "recent ~= 1.0, got {}", s_recent);
-        assert!((s_old - 0.5).abs() < 0.01, "half-life ~= 0.5, got {}", s_old);
+        assert!(
+            (s_recent - 1.0).abs() < 0.01,
+            "recent ~= 1.0, got {}",
+            s_recent
+        );
+        assert!(
+            (s_old - 0.5).abs() < 0.01,
+            "half-life ~= 0.5, got {}",
+            s_old
+        );
         assert!(s_ancient < 0.01, "ancient -> 0, got {}", s_ancient);
     }
 
@@ -667,10 +698,12 @@ mod ranking_tests {
             RankingProfile::RECENCY,
             RankingProfile::SIMILARITY,
         ] {
-            let score = profile.cosine * 1.0
-                + profile.recency * 1.0
-                + profile.reinforcement * 1.0;
-            assert!((score - 1.0).abs() < 0.001, "weights must sum to 1.0, got {}", score);
+            let score = profile.cosine * 1.0 + profile.recency * 1.0 + profile.reinforcement * 1.0;
+            assert!(
+                (score - 1.0).abs() < 0.001,
+                "weights must sum to 1.0, got {}",
+                score
+            );
         }
     }
 }

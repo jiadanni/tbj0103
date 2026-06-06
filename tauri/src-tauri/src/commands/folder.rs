@@ -1,5 +1,5 @@
-use crate::db::DbState;
 use crate::commands::chat_file::{ChatCryptoState, ChatsDirState};
+use crate::db::DbState;
 use crate::models::folder::{CreateFolderRequest, Folder, UpdateFolderRequest};
 use crate::services::folder_service;
 use serde::Serialize;
@@ -70,13 +70,13 @@ mod tests {
     use crate::commands::chat::create_chat_session;
     use crate::commands::chat_file::{ChatCryptoState, ChatsDirState};
     use crate::commands::workspace::create_workspace;
-    use crate::db::DbState;
     use crate::db::initialize_database;
+    use crate::db::DbState;
     use crate::models::chat::CreateChatSessionRequest;
     use crate::models::workspace::CreateWorkspaceRequest;
     use crate::services::chat_file_store;
-    use tauri::Manager;
     use tauri::test::{mock_builder, mock_context, noop_assets};
+    use tauri::Manager;
 
     #[test]
     fn update_folder_renames_chat_file_directory() {
@@ -142,7 +142,10 @@ mod tests {
             .join("Workspace Alpha")
             .join("Folder One")
             .join(format!("{}.json", session.id));
-        assert!(old_path.exists(), "expected original hierarchy path to exist");
+        assert!(
+            old_path.exists(),
+            "expected original hierarchy path to exist"
+        );
 
         update_folder(
             db_state,
@@ -164,8 +167,14 @@ mod tests {
             .join("Workspace Alpha")
             .join("Folder Renamed")
             .join(format!("{}.json", session.id));
-        assert!(new_path.exists(), "expected session file at renamed folder path");
-        assert!(!old_path.exists(), "expected stale folder path to be removed");
+        assert!(
+            new_path.exists(),
+            "expected session file at renamed folder path"
+        );
+        assert!(
+            !old_path.exists(),
+            "expected stale folder path to be removed"
+        );
     }
 }
 

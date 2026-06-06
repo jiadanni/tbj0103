@@ -202,11 +202,23 @@ pub fn reveal_chat_file(
     let conn = db_state.0.get().map_err(|e| e.to_string())?;
     let encrypted = crypto.0.lock().map_err(|e| e.to_string())?.is_some();
     // Try the workspace/folder subdirectory path first
-    let path = chat_file_store::session_file_path_for_session(&conn, &chats_dir_state.0, &session_id, encrypted);
-    let fallback_path = chat_file_store::session_file_path_for_session(&conn, &chats_dir_state.0, &session_id, !encrypted);
+    let path = chat_file_store::session_file_path_for_session(
+        &conn,
+        &chats_dir_state.0,
+        &session_id,
+        encrypted,
+    );
+    let fallback_path = chat_file_store::session_file_path_for_session(
+        &conn,
+        &chats_dir_state.0,
+        &session_id,
+        !encrypted,
+    );
     // Legacy flat-directory paths as final fallback
-    let legacy_path = chat_file_store::session_file_path(&chats_dir_state.0, &session_id, encrypted);
-    let legacy_fallback = chat_file_store::session_file_path(&chats_dir_state.0, &session_id, !encrypted);
+    let legacy_path =
+        chat_file_store::session_file_path(&chats_dir_state.0, &session_id, encrypted);
+    let legacy_fallback =
+        chat_file_store::session_file_path(&chats_dir_state.0, &session_id, !encrypted);
     let reveal_path = if path.exists() {
         path
     } else if fallback_path.exists() {
@@ -489,12 +501,14 @@ pub fn preview_lmstudio_folder(folder_path: String) -> Result<serde_json::Value,
 
     let folders = folder_counts
         .into_iter()
-        .map(|(name, (conversation_count, message_count))| LmStudioFolderPreview {
-            uuid: name.clone(),
-            name,
-            conversation_count,
-            message_count,
-        })
+        .map(
+            |(name, (conversation_count, message_count))| LmStudioFolderPreview {
+                uuid: name.clone(),
+                name,
+                conversation_count,
+                message_count,
+            },
+        )
         .collect::<Vec<_>>();
 
     Ok(serde_json::json!({
@@ -632,12 +646,8 @@ pub fn import_lmstudio_folder(
                         continue;
                     }
 
-                    match chat_file_store::import_chat_data(
-                        &conn,
-                        &data,
-                        &workspace_id,
-                        &folder_id,
-                    ) {
+                    match chat_file_store::import_chat_data(&conn, &data, &workspace_id, &folder_id)
+                    {
                         Ok(sid) => session_ids.push(sid),
                         Err(e) => errors.push(format!("{}: {e}", conv.path.display())),
                     }
@@ -805,7 +815,9 @@ pub fn import_multiple_folders(
                             Ok(data) => {
                                 let folder_id = if conv.subfolder.is_empty() {
                                     String::new()
-                                } else if let Some(existing_folder_id) = folder_map.get(&conv.subfolder) {
+                                } else if let Some(existing_folder_id) =
+                                    folder_map.get(&conv.subfolder)
+                                {
                                     existing_folder_id.clone()
                                 } else {
                                     let normalized_folder_name = conv.subfolder.trim();
@@ -843,9 +855,18 @@ pub fn import_multiple_folders(
                                     continue;
                                 }
 
-                                match chat_file_store::import_chat_data(&conn, &data, &workspace_id, &folder_id) {
+                                match chat_file_store::import_chat_data(
+                                    &conn,
+                                    &data,
+                                    &workspace_id,
+                                    &folder_id,
+                                ) {
                                     Ok(sid) => session_ids.push(sid),
-                                    Err(e) => import_errors.push(format!("{}: {}", conv.path.display(), e)),
+                                    Err(e) => import_errors.push(format!(
+                                        "{}: {}",
+                                        conv.path.display(),
+                                        e
+                                    )),
                                 }
                             }
                             Err(e) => import_errors.push(format!("{}: {}", conv.path.display(), e)),
@@ -857,7 +878,12 @@ pub fn import_multiple_folders(
                 // Sync imported sessions to chat files
                 let pass = crypto.0.lock().ok().and_then(|g| g.clone());
                 for id in &session_ids {
-                    let _ = chat_file_store::write_session_file(&conn, &chats_dir_state.0, id, pass.as_deref());
+                    let _ = chat_file_store::write_session_file(
+                        &conn,
+                        &chats_dir_state.0,
+                        id,
+                        pass.as_deref(),
+                    );
                 }
 
                 total_imported += session_ids.len();
@@ -923,14 +949,18 @@ pub fn preview_gemini_takeout(file_path: String) -> Result<serde_json::Value, St
     let previews: Vec<serde_json::Value> = sessions
         .iter()
         .map(|s| {
-            let first_user = s.messages.iter()
+            let first_user = s
+                .messages
+                .iter()
                 .find(|m| m.role == "user")
                 .map(|m| {
                     let chars: String = m.content.chars().take(280).collect();
                     chars
                 })
                 .unwrap_or_default();
-            let messages: Vec<serde_json::Value> = s.messages.iter()
+            let messages: Vec<serde_json::Value> = s
+                .messages
+                .iter()
                 .map(|m| serde_json::json!({ "role": m.role, "content": m.content }))
                 .collect();
             serde_json::json!({
@@ -968,7 +998,8 @@ pub fn import_gemini_takeout(
         return Err(format!("{} is not a file", file_path));
     }
 
-    let html_bytes = std::fs::read(&html_file).map_err(|e| format!("Failed to read file: {}", e))?;
+    let html_bytes =
+        std::fs::read(&html_file).map_err(|e| format!("Failed to read file: {}", e))?;
     let html = String::from_utf8_lossy(&html_bytes).to_string();
 
     let sessions = chat_file_store::parse_gemini_takeout(&html)?;
@@ -1072,20 +1103,26 @@ pub async fn preview_chatgpt_folder(
 
         let file_paths = chat_file_store::discover_chatgpt_files(&folder)?;
         if file_paths.is_empty() {
-            return Err("No conversations.json or conversations-*.json files found in the selected folder.".to_string());
+            return Err(
+                "No conversations.json or conversations-*.json files found in the selected folder."
+                    .to_string(),
+            );
         }
 
         let mut previews = Vec::new();
         for path in file_paths {
             let bytes = std::fs::read(&path)
                 .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
-            let conversations: Vec<chat_file_store::GptConversation> = serde_json::from_slice(&bytes)
-                .map_err(|e| format!("Failed to parse {}: {}", path.display(), e))?;
+            let conversations: Vec<chat_file_store::GptConversation> =
+                serde_json::from_slice(&bytes)
+                    .map_err(|e| format!("Failed to parse {}: {}", path.display(), e))?;
 
             for conv in conversations {
                 match chat_file_store::parse_gpt_conversation(&conv) {
                     Ok(chat_data) => {
-                        let first_user = chat_data.messages.iter()
+                        let first_user = chat_data
+                            .messages
+                            .iter()
                             .find(|m| m.role == "user")
                             .map(|m| {
                                 let chars: String = m.content.chars().take(280).collect();
@@ -1093,7 +1130,9 @@ pub async fn preview_chatgpt_folder(
                             })
                             .unwrap_or_default();
 
-                        let messages: Vec<chat_file_store::GptPreviewMessage> = chat_data.messages.iter()
+                        let messages: Vec<chat_file_store::GptPreviewMessage> = chat_data
+                            .messages
+                            .iter()
                             .map(|m| chat_file_store::GptPreviewMessage {
                                 role: m.role.clone(),
                                 content: m.content.clone(),
@@ -1381,22 +1420,26 @@ pub fn preview_claude_files(
         };
 
         // 3. Orphan conversations from conversations.json
-        let orphan_conversations = if include_conversations && folder.join("conversations.json").is_file() {
-            let bytes = std::fs::read(folder.join("conversations.json"))
-                .map_err(|e| format!("Failed to read conversations.json: {e}"))?;
-            chat_file_store::preview_claude_conversations(&bytes)?
-        } else {
-            Vec::new()
-        };
+        let orphan_conversations =
+            if include_conversations && folder.join("conversations.json").is_file() {
+                let bytes = std::fs::read(folder.join("conversations.json"))
+                    .map_err(|e| format!("Failed to read conversations.json: {e}"))?;
+                chat_file_store::preview_claude_conversations(&bytes)?
+            } else {
+                Vec::new()
+            };
 
         // 4. Memories
         let (memory_uuids, memories) = if include_memories {
             claude_v2::parse_v2_memories(&folder, &project_name_map)?
         } else {
-            (std::collections::HashSet::new(), chat_file_store::ClaudeMemoryPreview {
-                conversations_memory: String::new(),
-                folder_memories: Vec::new(),
-            })
+            (
+                std::collections::HashSet::new(),
+                chat_file_store::ClaudeMemoryPreview {
+                    conversations_memory: String::new(),
+                    folder_memories: Vec::new(),
+                },
+            )
         };
 
         // 5. Projects with conversation_count + has_memory populated
@@ -1447,13 +1490,29 @@ pub fn preview_claude_files(
         // ── legacy format ────────────────────────────────────────────────────
         let read_file = |name: &str| -> Result<Option<Vec<u8>>, String> {
             let p = folder.join(name);
-            if !p.is_file() { return Ok(None); }
-            std::fs::read(&p).map(Some).map_err(|e| format!("Failed to read {name}: {e}"))
+            if !p.is_file() {
+                return Ok(None);
+            }
+            std::fs::read(&p)
+                .map(Some)
+                .map_err(|e| format!("Failed to read {name}: {e}"))
         };
 
-        let conv_bytes = if include_conversations { read_file("conversations.json")? } else { None };
-        let proj_bytes = if include_projects { read_file("projects.json")? } else { None };
-        let mem_bytes = if include_memories { read_file("memories.json")? } else { None };
+        let conv_bytes = if include_conversations {
+            read_file("conversations.json")?
+        } else {
+            None
+        };
+        let proj_bytes = if include_projects {
+            read_file("projects.json")?
+        } else {
+            None
+        };
+        let mem_bytes = if include_memories {
+            read_file("memories.json")?
+        } else {
+            None
+        };
 
         let all_conversations = conv_bytes
             .as_deref()
@@ -1473,18 +1532,27 @@ pub fn preview_claude_files(
             .transpose()?;
 
         // Build conversations_by_project and enrich projects with counts + has_memory
-        let mut convs_by_project: std::collections::HashMap<String, Vec<_>> = std::collections::HashMap::new();
+        let mut convs_by_project: std::collections::HashMap<String, Vec<_>> =
+            std::collections::HashMap::new();
         let mut orphan_conversations = Vec::new();
         for conv in &all_conversations {
             match &conv.project_uuid {
-                Some(uuid) => convs_by_project.entry(uuid.clone()).or_default().push(conv.clone()),
+                Some(uuid) => convs_by_project
+                    .entry(uuid.clone())
+                    .or_default()
+                    .push(conv.clone()),
                 None => orphan_conversations.push(conv.clone()),
             }
         }
 
         let memory_uuid_set: std::collections::HashSet<String> = memories
             .as_ref()
-            .map(|m| m.folder_memories.iter().map(|fm| fm.project_uuid.clone()).collect())
+            .map(|m| {
+                m.folder_memories
+                    .iter()
+                    .map(|fm| fm.project_uuid.clone())
+                    .collect()
+            })
             .unwrap_or_default();
 
         for p in &mut claude_projects {
@@ -1496,7 +1564,12 @@ pub fn preview_claude_files(
 
         let memories_by_project: std::collections::HashMap<String, String> = memories
             .as_ref()
-            .map(|m| m.folder_memories.iter().map(|fm| (fm.project_uuid.clone(), fm.memory.clone())).collect())
+            .map(|m| {
+                m.folder_memories
+                    .iter()
+                    .map(|fm| (fm.project_uuid.clone(), fm.memory.clone()))
+                    .collect()
+            })
             .unwrap_or_default();
 
         let suggestions = if include_conversations && !claude_projects.is_empty() {
@@ -1546,7 +1619,8 @@ pub async fn match_claude_with_embeddings(
 
     let embedding_model = {
         let conn = db_state.0.get().map_err(|e| e.to_string())?;
-        get_embedding_model(&conn).ok_or("No embedding model configured. Set one in Settings → AI Models.")?
+        get_embedding_model(&conn)
+            .ok_or("No embedding model configured. Set one in Settings → AI Models.")?
     };
 
     let ollama = crate::ollama::client::OllamaClient::new(None)?;
@@ -1641,47 +1715,59 @@ pub fn import_claude_files(
     //   1. embedded project_uuid → folder_mappings
     //   2. chat_project_overrides[chat.id] → folder_mappings
     //   3. orphans_folder_id (fallback)
-    let mut insert_chat = |data: &chat_file_store::ChatFileData, project_uuid: Option<&str>| -> Result<(), String> {
-        let folder_id = if let Some(uuid) = project_uuid {
-            folder_mappings.get(uuid).cloned().unwrap_or_default()
-        } else if let Some(target_project) = overrides.get(&data.id) {
-            folder_mappings.get(target_project).cloned().unwrap_or_default()
-        } else {
-            orphans_folder_id.clone().unwrap_or_default()
+    let mut insert_chat =
+        |data: &chat_file_store::ChatFileData, project_uuid: Option<&str>| -> Result<(), String> {
+            let folder_id = if let Some(uuid) = project_uuid {
+                folder_mappings.get(uuid).cloned().unwrap_or_default()
+            } else if let Some(target_project) = overrides.get(&data.id) {
+                folder_mappings
+                    .get(target_project)
+                    .cloned()
+                    .unwrap_or_default()
+            } else {
+                orphans_folder_id.clone().unwrap_or_default()
+            };
+            if folder_id.is_empty() {
+                return Ok(()); // no destination → skip
+            }
+            // Look up workspace_id from folder
+            let workspace_id: String = conn
+                .query_row(
+                    "SELECT workspace_id FROM folders WHERE id = ?1",
+                    rusqlite::params![folder_id],
+                    |row| row.get(0),
+                )
+                .map_err(|e| format!("Folder {} not found: {e}", folder_id))?;
+
+            let exists: bool = conn
+                .query_row(
+                    "SELECT 1 FROM chat_sessions WHERE id = ?1",
+                    rusqlite::params![data.id],
+                    |_| Ok(true),
+                )
+                .unwrap_or(false);
+            if exists {
+                return Ok(());
+            }
+
+            match chat_file_store::import_chat_data(&conn, data, &workspace_id, &folder_id) {
+                Ok(sid) => session_ids.push(sid),
+                Err(e) => errors.push(format!("{}: {e}", data.title)),
+            }
+            Ok(())
         };
-        if folder_id.is_empty() {
-            return Ok(()); // no destination → skip
-        }
-        // Look up workspace_id from folder
-        let workspace_id: String = conn.query_row(
-            "SELECT workspace_id FROM folders WHERE id = ?1",
-            rusqlite::params![folder_id],
-            |row| row.get(0),
-        ).map_err(|e| format!("Folder {} not found: {e}", folder_id))?;
-
-        let exists: bool = conn.query_row(
-            "SELECT 1 FROM chat_sessions WHERE id = ?1",
-            rusqlite::params![data.id],
-            |_| Ok(true),
-        ).unwrap_or(false);
-        if exists { return Ok(()); }
-
-        match chat_file_store::import_chat_data(&conn, data, &workspace_id, &folder_id) {
-            Ok(sid) => session_ids.push(sid),
-            Err(e) => errors.push(format!("{}: {e}", data.title)),
-        }
-        Ok(())
-    };
 
     if is_v2 {
         // Import project chats from design_chats/
-        let proj_ids: Vec<String> = selected_project_ids
-            .unwrap_or_else(|| folder_mappings.keys().cloned().collect());
+        let proj_ids: Vec<String> =
+            selected_project_ids.unwrap_or_else(|| folder_mappings.keys().cloned().collect());
         // All design_chats for selected projects
         let design_chats = claude_v2::parse_v2_design_chats_filtered(&folder, &[])?;
         for (data, project_uuid) in &design_chats {
             if let Some(uuid) = project_uuid.as_deref() {
-                if !proj_ids.contains(&uuid.to_string()) { continue; }
+                if !proj_ids.contains(&uuid.to_string()) {
+                    continue;
+                }
             }
             insert_chat(data, project_uuid.as_deref())?;
         }
@@ -1734,11 +1820,13 @@ pub fn import_claude_files(
                 let (_, preview) = claude_v2::parse_v2_memories(&folder, &name_map)?;
                 for pm in &preview.folder_memories {
                     if let Some(folder_id) = project_memory_targets.get(&pm.project_uuid) {
-                        let workspace_id: String = conn.query_row(
-                            "SELECT workspace_id FROM folders WHERE id = ?1",
-                            rusqlite::params![folder_id],
-                            |row| row.get(0),
-                        ).map_err(|e| format!("Folder {folder_id} not found: {e}"))?;
+                        let workspace_id: String = conn
+                            .query_row(
+                                "SELECT workspace_id FROM folders WHERE id = ?1",
+                                rusqlite::params![folder_id],
+                                |row| row.get(0),
+                            )
+                            .map_err(|e| format!("Folder {folder_id} not found: {e}"))?;
                         let mem_id = uuid::Uuid::new_v4().to_string();
                         conn.execute(
                             "INSERT INTO memories (id, workspace_id, folder_id, content, memory_type, scope, is_pinned, is_active, created_at, updated_at)
@@ -1749,17 +1837,23 @@ pub fn import_claude_files(
                     }
                 }
             } else {
-                let proj_bytes = folder.join("projects.json").is_file()
+                let proj_bytes = folder
+                    .join("projects.json")
+                    .is_file()
                     .then(|| std::fs::read(folder.join("projects.json")).ok())
                     .flatten();
-                if let Ok(preview) = chat_file_store::preview_claude_memories(&mem_bytes, proj_bytes.as_deref()) {
+                if let Ok(preview) =
+                    chat_file_store::preview_claude_memories(&mem_bytes, proj_bytes.as_deref())
+                {
                     for pm in &preview.folder_memories {
                         if let Some(folder_id) = project_memory_targets.get(&pm.project_uuid) {
-                            let workspace_id: String = conn.query_row(
-                                "SELECT workspace_id FROM folders WHERE id = ?1",
-                                rusqlite::params![folder_id],
-                                |row| row.get(0),
-                            ).map_err(|e| format!("Folder {folder_id} not found: {e}"))?;
+                            let workspace_id: String = conn
+                                .query_row(
+                                    "SELECT workspace_id FROM folders WHERE id = ?1",
+                                    rusqlite::params![folder_id],
+                                    |row| row.get(0),
+                                )
+                                .map_err(|e| format!("Folder {folder_id} not found: {e}"))?;
                             let mem_id = uuid::Uuid::new_v4().to_string();
                             conn.execute(
                                 "INSERT INTO memories (id, workspace_id, folder_id, content, memory_type, scope, is_pinned, is_active, created_at, updated_at)
@@ -1781,7 +1875,6 @@ pub fn import_claude_files(
         "error_messages": errors.iter().take(10).cloned().collect::<Vec<_>>(),
     }))
 }
-
 
 /// Sync every session in the DB to the chats directory.
 /// Useful after a cold start to ensure files are up to date.
@@ -1852,7 +1945,9 @@ mod tests {
         assert_eq!(escaped_uri, "file:///tmp/test%20%22quote%22%20%5Cback.txt");
 
         let file_uri_with_special = "file:///path/with\"quote\\backslash";
-        let escaped_uri = file_uri_with_special.replace('\\', "\\\\").replace('"', "\\\"");
+        let escaped_uri = file_uri_with_special
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"");
         assert_eq!(escaped_uri, "file:///path/with\\\"quote\\\\backslash");
     }
 }

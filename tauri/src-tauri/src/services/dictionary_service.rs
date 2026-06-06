@@ -1,7 +1,7 @@
+use crate::models::glossary::ResolvedWorkspaceGlossaryTerm;
+use rusqlite::{params, Connection, OptionalExtension};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager, Runtime};
-use rusqlite::{params, Connection, OptionalExtension};
-use crate::models::glossary::ResolvedWorkspaceGlossaryTerm;
 
 fn resolve_dictionary_path<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     if let Ok(resource_dir) = app.path().resource_dir() {
@@ -34,37 +34,38 @@ pub fn lookup_word<R: Runtime>(
 
     let normalized = word.trim().to_lowercase();
 
-    let result = conn.query_row(
-        "SELECT word, wordtype, definition FROM entries WHERE word = ?1 LIMIT 1",
-        params![normalized],
-        |row| {
-            let term: String = row.get(0)?;
-            let wordtype: Option<String> = row.get(1)?;
-            let definition: String = row.get(2)?;
+    let result = conn
+        .query_row(
+            "SELECT word, wordtype, definition FROM entries WHERE word = ?1 LIMIT 1",
+            params![normalized],
+            |row| {
+                let term: String = row.get(0)?;
+                let wordtype: Option<String> = row.get(1)?;
+                let definition: String = row.get(2)?;
 
-            let formatted_definition = if let Some(wt) = wordtype {
-                if !wt.trim().is_empty() {
-                    format!("({}) {}", wt.trim(), definition.trim())
+                let formatted_definition = if let Some(wt) = wordtype {
+                    if !wt.trim().is_empty() {
+                        format!("({}) {}", wt.trim(), definition.trim())
+                    } else {
+                        definition.trim().to_string()
+                    }
                 } else {
                     definition.trim().to_string()
-                }
-            } else {
-                definition.trim().to_string()
-            };
+                };
 
-            Ok(ResolvedWorkspaceGlossaryTerm {
-                term,
-                normalized_term: normalized.clone(),
-                definition: formatted_definition,
-                aliases: Vec::new(),
-                source_kind: "dictionary".to_string(),
-                workspace_id: "global".to_string(),
-                workspace_name: Some("Offline Dictionary".to_string()),
-            })
-        },
-    )
-    .optional()
-    .map_err(|e| e.to_string())?;
+                Ok(ResolvedWorkspaceGlossaryTerm {
+                    term,
+                    normalized_term: normalized.clone(),
+                    definition: formatted_definition,
+                    aliases: Vec::new(),
+                    source_kind: "dictionary".to_string(),
+                    workspace_id: "global".to_string(),
+                    workspace_name: Some("Offline Dictionary".to_string()),
+                })
+            },
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
 
     Ok(result)
 }

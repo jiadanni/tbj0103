@@ -34,7 +34,11 @@ fn cached_query_gpu_vram() -> Option<(u64, u64, String)> {
     let mut start_refresh = false;
     let stale_result = if let Ok(mut guard) = cache.lock() {
         if let Some(entry) = guard.entry.as_ref() {
-            let ttl = if entry.result.is_some() { GPU_VRAM_HIT_TTL } else { GPU_VRAM_MISS_TTL };
+            let ttl = if entry.result.is_some() {
+                GPU_VRAM_HIT_TTL
+            } else {
+                GPU_VRAM_MISS_TTL
+            };
             if entry.fetched_at.elapsed() < ttl {
                 return entry.result.clone();
             }
@@ -93,7 +97,10 @@ fn detect_gpu_info() -> Option<GpuInfo> {
 fn detect_nvidia_gpu() -> Option<GpuInfo> {
     use std::process::Command;
     let output = Command::new("nvidia-smi")
-        .args(["--query-gpu=name,memory.total", "--format=csv,noheader,nounits"])
+        .args([
+            "--query-gpu=name,memory.total",
+            "--format=csv,noheader,nounits",
+        ])
         .output()
         .ok()?;
 
@@ -185,7 +192,11 @@ fn query_gpu_vram() -> Option<(u64, u64, String)> {
 fn parse_vram_str(s: &str) -> Option<u64> {
     let s = s.trim();
     if let Some(val) = s.strip_suffix(" GB") {
-        return val.trim().parse::<u64>().ok().map(|n| n * 1024 * 1024 * 1024);
+        return val
+            .trim()
+            .parse::<u64>()
+            .ok()
+            .map(|n| n * 1024 * 1024 * 1024);
     }
     if let Some(val) = s.strip_suffix(" MB") {
         return val.trim().parse::<u64>().ok().map(|n| n * 1024 * 1024);
@@ -207,13 +218,16 @@ fn query_gpu_vram() -> Option<(u64, u64, String)> {
     {
         if out.status.success() {
             let s = String::from_utf8(out.stdout).ok()?;
-            let result = s.lines().filter_map(|line| {
-                let mut p = line.splitn(3, ',').map(str::trim);
-                let name = p.next()?.to_string();
-                let used = p.next()?.parse::<u64>().ok()? * 1024 * 1024;
-                let total = p.next()?.parse::<u64>().ok()? * 1024 * 1024;
-                Some((used, total, name))
-            }).max_by_key(|(_, total, _)| *total);
+            let result = s
+                .lines()
+                .filter_map(|line| {
+                    let mut p = line.splitn(3, ',').map(str::trim);
+                    let name = p.next()?.to_string();
+                    let used = p.next()?.parse::<u64>().ok()? * 1024 * 1024;
+                    let total = p.next()?.parse::<u64>().ok()? * 1024 * 1024;
+                    Some((used, total, name))
+                })
+                .max_by_key(|(_, total, _)| *total);
             if result.is_some() {
                 return result;
             }
@@ -221,18 +235,31 @@ fn query_gpu_vram() -> Option<(u64, u64, String)> {
     }
     // wmic fallback (total only)
     let out = Command::new("wmic")
-        .args(["path", "Win32_VideoController", "get", "Name,AdapterRAM", "/format:csv"])
+        .args([
+            "path",
+            "Win32_VideoController",
+            "get",
+            "Name,AdapterRAM",
+            "/format:csv",
+        ])
         .output()
         .ok()?;
     let s = String::from_utf8(out.stdout).ok()?;
-    s.lines().skip(1).filter_map(|line| {
-        let parts: Vec<&str> = line.split(',').collect();
-        if parts.len() < 3 { return None; }
-        let name = parts[1].trim().to_string();
-        let total = parts[2].trim().parse::<u64>().ok()?;
-        if total == 0 || name.is_empty() { return None; }
-        Some((total, total, name))
-    }).max_by_key(|(_, total, _)| *total)
+    s.lines()
+        .skip(1)
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split(',').collect();
+            if parts.len() < 3 {
+                return None;
+            }
+            let name = parts[1].trim().to_string();
+            let total = parts[2].trim().parse::<u64>().ok()?;
+            if total == 0 || name.is_empty() {
+                return None;
+            }
+            Some((total, total, name))
+        })
+        .max_by_key(|(_, total, _)| *total)
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
@@ -292,11 +319,15 @@ pub async fn get_system_specs() -> Result<SystemSpecs, String> {
 
 // macOS system_profiler only gives total VRAM capacity — not live usage.
 #[cfg(target_os = "macos")]
-fn gpu_vram_usage_is_live() -> bool { false }
+fn gpu_vram_usage_is_live() -> bool {
+    false
+}
 
 // nvidia-smi (Linux/Windows) provides live memory.used.
 #[cfg(not(target_os = "macos"))]
-fn gpu_vram_usage_is_live() -> bool { true }
+fn gpu_vram_usage_is_live() -> bool {
+    true
+}
 
 #[tauri::command]
 pub async fn get_performance_stats() -> Result<crate::models::system::PerformanceStats, String> {

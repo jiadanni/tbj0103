@@ -50,7 +50,7 @@ mod tests {
         let orig_vec = vec![1.0f32, 2.0, -3.5, 0.0, 42.42];
         let bytes = f32_vec_to_bytes(&orig_vec);
         let decoded = bytes_to_f32_vec(&bytes);
-        
+
         assert_eq!(orig_vec, decoded);
     }
 }

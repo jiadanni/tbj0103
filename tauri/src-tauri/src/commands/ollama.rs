@@ -229,7 +229,13 @@ pub async fn generate_title_from_conversation(
 #[tauri::command]
 pub async fn polish_prompt(req: PolishPromptRequest) -> Result<String, String> {
     let client = OllamaClient::new(req.ollama_url)?;
-    let ctx = context(req.request_id, "polish_prompt", None, Some(&req.model), Some(false));
+    let ctx = context(
+        req.request_id,
+        "polish_prompt",
+        None,
+        Some(&req.model),
+        Some(false),
+    );
     let prompt = format!(
         "Rewrite the user's prompt for clarity and completeness.\n\
 Preserve the original intent, tone, facts, constraints, named entities, code, paths, commands, and requested output format.\n\
@@ -362,7 +368,9 @@ pub async fn generate_follow_ups(
 
     let follow_up_instruction = "Based on this conversation, suggest exactly 3 short follow-up questions the user might ask next.\nReturn ONLY a JSON array of strings, no markdown: [\"question 1\", \"question 2\", \"question 3\"]";
     let prompt_content = match memory_context.filter(|s| !s.trim().is_empty()) {
-        Some(ctx_str) => format!("Workspace context about the user:\n{ctx_str}\n\n{follow_up_instruction}"),
+        Some(ctx_str) => {
+            format!("Workspace context about the user:\n{ctx_str}\n\n{follow_up_instruction}")
+        }
         None => follow_up_instruction.to_string(),
     };
 
@@ -383,8 +391,19 @@ pub async fn generate_follow_ups(
     let lines: Vec<String> = raw
         .lines()
         .filter_map(|l| {
-            let s = l.trim().trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c == '-' || c == '*' || c == ')').trim().trim_matches('"').to_string();
-            if s.len() > 5 { Some(s) } else { None }
+            let s = l
+                .trim()
+                .trim_start_matches(|c: char| {
+                    c.is_ascii_digit() || c == '.' || c == '-' || c == '*' || c == ')'
+                })
+                .trim()
+                .trim_matches('"')
+                .to_string();
+            if s.len() > 5 {
+                Some(s)
+            } else {
+                None
+            }
         })
         .take(3)
         .collect();

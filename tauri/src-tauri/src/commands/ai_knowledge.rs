@@ -1,5 +1,5 @@
-use crate::db::DbState;
 use crate::commands::knowledge_graph::snapshot_workspace_roadmap;
+use crate::db::DbState;
 use crate::ollama::client::{OllamaClient, OllamaMessage};
 use crate::services::concept_hierarchy::{is_valid_parent_pair, normalize_concept_name};
 use crate::services::context_assembler::context_size_for_model;
@@ -187,8 +187,17 @@ fn is_specific_concept(name: &str) -> bool {
     }
     // Reject vague heading-style names
     let vague_prefixes = [
-        "key ", "main ", "basic ", "common ", "general ", "important ",
-        "various ", "other ", "additional ", "core ", "fundamental ",
+        "key ",
+        "main ",
+        "basic ",
+        "common ",
+        "general ",
+        "important ",
+        "various ",
+        "other ",
+        "additional ",
+        "core ",
+        "fundamental ",
     ];
     for prefix in &vague_prefixes {
         if lower.starts_with(prefix) {
@@ -196,8 +205,16 @@ fn is_specific_concept(name: &str) -> bool {
         }
     }
     let vague_suffixes = [
-        " overview", " summary", " basics", " details", " concepts",
-        " ideas", " topics", " notes", " items", " things",
+        " overview",
+        " summary",
+        " basics",
+        " details",
+        " concepts",
+        " ideas",
+        " topics",
+        " notes",
+        " items",
+        " things",
     ];
     for suffix in &vague_suffixes {
         if lower.ends_with(suffix) {
@@ -318,10 +335,7 @@ fn repair_truncated_json_object(input: &str) -> Option<String> {
 
 /// Collect recent workspace content as individual items (notes, daily notes, chat messages, docs, web).
 /// No overall character cap — chunk packing handles size downstream.
-fn gather_workspace_items(
-    conn: &rusqlite::Connection,
-    workspace_id: &str,
-) -> Vec<SourceItem> {
+fn gather_workspace_items(conn: &rusqlite::Connection, workspace_id: &str) -> Vec<SourceItem> {
     let mut items: Vec<SourceItem> = Vec::new();
 
     fn safe_truncate(s: &str, max_chars: usize) -> &str {
@@ -526,14 +540,17 @@ fn pack_into_chunks(items: Vec<SourceItem>, budget: usize) -> Vec<WorkspaceChunk
 }
 
 fn dedup_kinds(kinds: &[String]) -> String {
-    let labels: Vec<&str> = kinds.iter().map(|k| match k.as_str() {
-        "note" => "notes",
-        "daily_note" => "dailies",
-        "message" => "messages",
-        "summary" => "summaries",
-        "source" => "sources",
-        other => other,
-    }).collect();
+    let labels: Vec<&str> = kinds
+        .iter()
+        .map(|k| match k.as_str() {
+            "note" => "notes",
+            "daily_note" => "dailies",
+            "message" => "messages",
+            "summary" => "summaries",
+            "source" => "sources",
+            other => other,
+        })
+        .collect();
     labels.join("+")
 }
 
@@ -626,15 +643,26 @@ struct AiHierarchicalOutput {
 
 fn model_confidence(model: &str) -> f64 {
     let m = model.to_lowercase();
-    if m.contains("70b") || m.contains("72b") { 0.95 }
-    else if m.contains("32b") || m.contains("34b") { 0.85 }
-    else if m.contains("13b") || m.contains("14b") { 0.75 }
-    else if m.contains("7b")  || (m.contains("8b") && !m.contains(".8b")) { 0.60 }
-    else if m.contains("3b")  || m.contains("4b")  || m.contains(".8b") { 0.45 }
-    else { 0.50 }
+    if m.contains("70b") || m.contains("72b") {
+        0.95
+    } else if m.contains("32b") || m.contains("34b") {
+        0.85
+    } else if m.contains("13b") || m.contains("14b") {
+        0.75
+    } else if m.contains("7b") || (m.contains("8b") && !m.contains(".8b")) {
+        0.60
+    } else if m.contains("3b") || m.contains("4b") || m.contains(".8b") {
+        0.45
+    } else {
+        0.50
+    }
 }
 
-fn would_create_cycle(conn: &rusqlite::Connection, start_id: &str, target_id: &str) -> rusqlite::Result<bool> {
+fn would_create_cycle(
+    conn: &rusqlite::Connection,
+    start_id: &str,
+    target_id: &str,
+) -> rusqlite::Result<bool> {
     if start_id == target_id {
         return Ok(true);
     }
@@ -670,11 +698,13 @@ fn apply_supersede(
     now: &str,
     job_id: &str,
 ) -> rusqlite::Result<()> {
-    let uef_json: String = conn.query_row(
-        "SELECT user_edited_fields FROM concept_nodes WHERE id = ?1",
-        rusqlite::params![old_id],
-        |r| r.get(0)
-    ).unwrap_or_else(|_| "[]".to_string());
+    let uef_json: String = conn
+        .query_row(
+            "SELECT user_edited_fields FROM concept_nodes WHERE id = ?1",
+            rusqlite::params![old_id],
+            |r| r.get(0),
+        )
+        .unwrap_or_else(|_| "[]".to_string());
     let uef: Vec<String> = serde_json::from_str(&uef_json).unwrap_or_default();
     if !uef.is_empty() {
         return Ok(());
@@ -726,10 +756,7 @@ struct SupersedeRecommendation {
 // --------------- Shared helpers ---------------
 
 /// Fuzzy name lookup: exact → normalized → substring fallback
-fn fuzzy_lookup(
-    name_to_id: &HashMap<String, String>,
-    query: &str,
-) -> Option<String> {
+fn fuzzy_lookup(name_to_id: &HashMap<String, String>, query: &str) -> Option<String> {
     let q = query.trim().to_lowercase();
     if let Some(id) = name_to_id.get(&q) {
         return Some(id.clone());
@@ -746,10 +773,7 @@ fn fuzzy_lookup(
 }
 
 /// Preload existing concept_nodes into name_to_id for dedup.
-fn preload_name_to_id(
-    conn: &rusqlite::Connection,
-    workspace_id: &str,
-) -> HashMap<String, String> {
+fn preload_name_to_id(conn: &rusqlite::Connection, workspace_id: &str) -> HashMap<String, String> {
     let mut name_to_id: HashMap<String, String> = HashMap::new();
     if let Ok(mut stmt) = conn.prepare(
         "SELECT id, name, hierarchy_level, aliases FROM concept_nodes WHERE workspace_id = ?1",
@@ -907,15 +931,17 @@ Rules:\n\
     let parse_via_value = |s: &str| -> Result<AiHierarchicalOutput, String> {
         let v: Value = serde_json::from_str(s)
             .map_err(|e| format!("Failed to parse AI JSON: {e}\nRaw snippet: {s}"))?;
-        serde_json::from_value(v)
-            .map_err(|e| format!("Failed to convert AI JSON to expected shape: {e}\nRaw snippet: {s}"))
+        serde_json::from_value(v).map_err(|e| {
+            format!("Failed to convert AI JSON to expected shape: {e}\nRaw snippet: {s}")
+        })
     };
 
     let output: AiHierarchicalOutput = match parse_via_value(json_str) {
         Ok(parsed) => parsed,
         Err(parse_error) => {
-            let repaired = repair_truncated_json_object(json_str)
-                .ok_or_else(|| format!("Failed to parse AI JSON: {parse_error}\nRaw snippet: {json_str}"))?;
+            let repaired = repair_truncated_json_object(json_str).ok_or_else(|| {
+                format!("Failed to parse AI JSON: {parse_error}\nRaw snippet: {json_str}")
+            })?;
             parse_via_value(&repaired).map_err(|e| {
                 format!("Failed to parse AI JSON after repair: {e}\nRaw snippet: {json_str}")
             })?
@@ -940,7 +966,8 @@ Rules:\n\
                 |r| r.get::<_, String>(0),
             )
             .unwrap_or_else(|_| "\"auto\"".to_string());
-        let sup_mode: String = serde_json::from_str(&sup_mode).unwrap_or_else(|_| "auto".to_string());
+        let sup_mode: String =
+            serde_json::from_str(&sup_mode).unwrap_or_else(|_| "auto".to_string());
 
         let threshold_str = conn
             .query_row(
@@ -968,12 +995,15 @@ Rules:\n\
                                name_to_id: &mut HashMap<String, String>|
          -> Option<String> {
             let lower = name.trim().to_lowercase();
-            if lower.is_empty() { return None; }
+            if lower.is_empty() {
+                return None;
+            }
             let normalized = normalize_concept_name(name);
             let level_lower = level_dedup_key(hierarchy_level, &lower);
             let level_norm = level_dedup_key(hierarchy_level, &normalized);
 
-            let existing_id = name_to_id.get(&lower)
+            let existing_id = name_to_id
+                .get(&lower)
                 .or_else(|| name_to_id.get(&normalized))
                 .cloned();
 
@@ -1079,14 +1109,22 @@ Rules:\n\
                 name_to_id.insert(normalized, id.clone());
                 name_to_id.insert(level_lower, id.clone());
                 name_to_id.insert(level_norm, id.clone());
-                newly_created_concepts.push((id.clone(), name.trim().to_string(), description.to_string()));
+                newly_created_concepts.push((
+                    id.clone(),
+                    name.trim().to_string(),
+                    description.to_string(),
+                ));
                 Some(id)
             } else {
                 None
             }
         };
 
-        let upsert_link = |source_id: &str, target_id: &str, link_type: &str, strength: f64, context: &str| {
+        let upsert_link = |source_id: &str,
+                           target_id: &str,
+                           link_type: &str,
+                           strength: f64,
+                           context: &str| {
             if link_type == "part_of" {
                 let pair: Option<(String, String)> = conn
                     .query_row(
@@ -1112,8 +1150,14 @@ Rules:\n\
 
             if let Some((old_link_id, old_confidence, uef_json)) = old_link {
                 let uef: Vec<String> = serde_json::from_str(&uef_json).unwrap_or_default();
-                if uef.is_empty() && new_confidence > old_confidence + confidence_threshold && upgrade_mode == "auto" {
-                    let _ = conn.execute("DELETE FROM concept_links WHERE id = ?1", rusqlite::params![old_link_id]);
+                if uef.is_empty()
+                    && new_confidence > old_confidence + confidence_threshold
+                    && upgrade_mode == "auto"
+                {
+                    let _ = conn.execute(
+                        "DELETE FROM concept_links WHERE id = ?1",
+                        rusqlite::params![old_link_id],
+                    );
                 }
             }
 
@@ -1149,7 +1193,8 @@ Rules:\n\
                         query.push_str(&format!(" WHERE id = ?{}", param_idx));
                         params.push(Box::new(link_id));
 
-                        let ref_params: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+                        let ref_params: Vec<&dyn rusqlite::ToSql> =
+                            params.iter().map(|p| p.as_ref()).collect();
                         let _ = conn.execute(&query, ref_params.as_slice());
                     }
                 }
@@ -1166,21 +1211,31 @@ Rules:\n\
 
         for chapter in &output.chapters {
             let ch_name = chapter.name.trim();
-            if ch_name.is_empty() { continue; }
+            if ch_name.is_empty() {
+                continue;
+            }
             let ch_desc = chapter.description.as_deref().unwrap_or("");
             let ch_id_opt = upsert_node(ch_name, ch_desc, "topic", "chapter", name_to_id);
             let ch_id = match ch_id_opt {
-                Some(id) => { stats.chapters_created += 1; id }
+                Some(id) => {
+                    stats.chapters_created += 1;
+                    id
+                }
                 None => continue,
             };
 
             for section in &chapter.sections {
                 let sec_name = section.name.trim();
-                if sec_name.is_empty() { continue; }
+                if sec_name.is_empty() {
+                    continue;
+                }
                 let sec_desc = section.description.as_deref().unwrap_or("");
                 let sec_id_opt = upsert_node(sec_name, sec_desc, "topic", "section", name_to_id);
                 let sec_id = match sec_id_opt {
-                    Some(id) => { stats.sections_created += 1; id }
+                    Some(id) => {
+                        stats.sections_created += 1;
+                        id
+                    }
                     None => continue,
                 };
                 if upsert_link(&sec_id, &ch_id, "part_of", 1.0, "hierarchy") {
@@ -1195,9 +1250,21 @@ Rules:\n\
                     }
                     let con_desc = concept.description.as_deref().unwrap_or("");
                     let con_type = concept.concept_type.as_deref().unwrap_or("topic");
-                    let valid_types = ["topic", "definition", "technology", "insight", "question", "resource"];
-                    let con_type = if valid_types.contains(&con_type) { con_type } else { "topic" };
-                    let con_id_opt = upsert_node(con_name, con_desc, con_type, "concept", name_to_id);
+                    let valid_types = [
+                        "topic",
+                        "definition",
+                        "technology",
+                        "insight",
+                        "question",
+                        "resource",
+                    ];
+                    let con_type = if valid_types.contains(&con_type) {
+                        con_type
+                    } else {
+                        "topic"
+                    };
+                    let con_id_opt =
+                        upsert_node(con_name, con_desc, con_type, "concept", name_to_id);
                     match con_id_opt {
                         Some(con_id) => {
                             stats.concepts_created += 1;
@@ -1205,7 +1272,9 @@ Rules:\n\
                                 stats.links_created += 1;
                             }
                         }
-                        None => { stats.concepts_skipped += 1; }
+                        None => {
+                            stats.concepts_skipped += 1;
+                        }
                     }
                 }
             }
@@ -1220,7 +1289,13 @@ Rules:\n\
                 Some(id) => id,
                 None => continue,
             };
-            let valid_rel_types = ["related", "prerequisite", "supports", "contradicts", "example"];
+            let valid_rel_types = [
+                "related",
+                "prerequisite",
+                "supports",
+                "contradicts",
+                "example",
+            ];
             let link_type = if valid_rel_types.contains(&rel.r#type.as_str()) {
                 rel.r#type.as_str()
             } else {
@@ -1240,21 +1315,37 @@ Rules:\n\
         let mut stmt = conn.prepare(
             "SELECT id, name, concept_description, confidence FROM concept_nodes WHERE workspace_id = ?1 AND confidence < 0.6 AND (superseded_by IS NULL OR superseded_by = '')"
         ).map_err(|e| e.to_string())?;
-        let rows = stmt.query_map(rusqlite::params![workspace_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, f64>(3)?))
-        }).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![workspace_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, f64>(3)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
         low_conf_concepts = rows.filter_map(Result::ok).collect();
     }
 
     let mut recommendations = Vec::new();
-    if supersede_mode != "off" && !newly_created_concepts.is_empty() && !low_conf_concepts.is_empty() {
+    if supersede_mode != "off"
+        && !newly_created_concepts.is_empty()
+        && !low_conf_concepts.is_empty()
+    {
         let mut old_concepts_str = String::new();
         for (id, name, desc, conf) in &low_conf_concepts {
-            old_concepts_str.push_str(&format!("[{}] Name: {} (Confidence: {:.2})\nDescription: {}\n\n", id, name, conf, desc));
+            old_concepts_str.push_str(&format!(
+                "[{}] Name: {} (Confidence: {:.2})\nDescription: {}\n\n",
+                id, name, conf, desc
+            ));
         }
         let mut new_concepts_str = String::new();
         for (id, name, desc) in &newly_created_concepts {
-            new_concepts_str.push_str(&format!("[{}] Name: {}\nDescription: {}\n\n", id, name, desc));
+            new_concepts_str.push_str(&format!(
+                "[{}] Name: {}\nDescription: {}\n\n",
+                id, name, desc
+            ));
         }
 
         let prompt = format!(
@@ -1277,8 +1368,13 @@ No markdown formatting, no commentary, only raw JSON.",
             role: "user".to_string(),
             content: prompt,
         }];
-        if let Ok(reply) = client.send_message("ai_knowledge_supersede", model, messages).await {
-            if let Some(json_str) = extract_first_json_object(reply.trim()).or_else(|| Some(reply.trim())) {
+        if let Ok(reply) = client
+            .send_message("ai_knowledge_supersede", model, messages)
+            .await
+        {
+            if let Some(json_str) =
+                extract_first_json_object(reply.trim()).or_else(|| Some(reply.trim()))
+            {
                 if let Ok(recs) = serde_json::from_str::<Vec<SupersedeRecommendation>>(json_str) {
                     recommendations = recs;
                 }
@@ -1290,9 +1386,14 @@ No markdown formatting, no commentary, only raw JSON.",
         let conn = pool.get().map_err(|e| e.to_string())?;
         let now = chrono::Utc::now().to_rfc3339();
         for rec in recommendations {
-            if rec.action == "keep" { continue; }
+            if rec.action == "keep" {
+                continue;
+            }
             if let Some(nid) = rec.new_id {
-                let reason_str = rec.reason.clone().unwrap_or_else(|| "superseded".to_string());
+                let reason_str = rec
+                    .reason
+                    .clone()
+                    .unwrap_or_else(|| "superseded".to_string());
                 if supersede_mode == "auto" {
                     let _ = apply_supersede(&conn, &rec.old_id, &nid, &reason_str, &now, job_id);
                 } else if supersede_mode == "suggest" {
@@ -1427,7 +1528,11 @@ async fn run_semantic_dedup_pass(
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map(rusqlite::params![workspace_id, hierarchy_level], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
             })
             .map_err(|e| e.to_string())?;
         rows.filter_map(Result::ok).collect()
@@ -1446,7 +1551,11 @@ async fn run_semantic_dedup_pass(
         }
     }
 
-    let level_plural = if hierarchy_level == "chapter" { "chapters" } else { "sections" };
+    let level_plural = if hierarchy_level == "chapter" {
+        "chapters"
+    } else {
+        "sections"
+    };
     let prompt = format!(
         "You are consolidating a learner's knowledge map. Below is a list of {level_plural} for one workspace, each with id and (when present) child names.\n\n\
 {listing}\n\
@@ -1463,7 +1572,10 @@ Respond with ONLY a raw JSON array. Empty array [] if there are no duplicates. E
         content: prompt,
     }];
 
-    let raw = match client.send_message("ai_knowledge_dedup", model, messages).await {
+    let raw = match client
+        .send_message("ai_knowledge_dedup", model, messages)
+        .await
+    {
         Ok(r) => r,
         Err(_) => return Ok((0, 0)),
     };
@@ -1480,7 +1592,8 @@ Respond with ONLY a raw JSON array. Empty array [] if there are no duplicates. E
         Err(_) => return Ok((0, 0)),
     };
 
-    let valid_ids: std::collections::HashSet<String> = nodes.iter().map(|(id, _, _)| id.clone()).collect();
+    let valid_ids: std::collections::HashSet<String> =
+        nodes.iter().map(|(id, _, _)| id.clone()).collect();
 
     let conn = pool.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
@@ -1491,13 +1604,18 @@ Respond with ONLY a raw JSON array. Empty array [] if there are no duplicates. E
         if !valid_ids.contains(&group.canonical_id) {
             continue;
         }
-        let reason = group.reason.clone().unwrap_or_else(|| "semantic dedup".to_string());
+        let reason = group
+            .reason
+            .clone()
+            .unwrap_or_else(|| "semantic dedup".to_string());
         for old_id in &group.merge_ids {
             if old_id == &group.canonical_id || !valid_ids.contains(old_id) {
                 continue;
             }
             if supersede_mode == "auto" {
-                if apply_supersede(&conn, old_id, &group.canonical_id, &reason, &now, job_id).is_ok() {
+                if apply_supersede(&conn, old_id, &group.canonical_id, &reason, &now, job_id)
+                    .is_ok()
+                {
                     let _ = reparent_children_to_canonical(
                         &conn,
                         &group.canonical_id,
@@ -1684,10 +1802,7 @@ async fn analyze_workspace_chunked_impl(
         preload_name_to_id(&conn, &req.workspace_id)
     };
 
-    let cancel_rx = app
-        .state::<BackgroundInferenceCancel>()
-        .0
-        .subscribe();
+    let cancel_rx = app.state::<BackgroundInferenceCancel>().0.subscribe();
 
     let mut agg = ChunkStats::default();
     let mut completed_count = 0usize;
@@ -1698,17 +1813,20 @@ async fn analyze_workspace_chunked_impl(
     for (i, chunk) in chunks.iter().enumerate() {
         if cancel_rx.has_changed().unwrap_or(false) {
             cancelled = true;
-            let _ = app.emit("workspace-analysis-progress", &WorkspaceAnalysisProgress {
-                job_id: job_id.clone(),
-                workspace_id: req.workspace_id.clone(),
-                chunk_index: i,
-                total_chunks,
-                label: chunk.label.clone(),
-                status: "cancelled".to_string(),
-                nodes_created: 0,
-                links_created: 0,
-                error: Some("Yielded to active chat".to_string()),
-            });
+            let _ = app.emit(
+                "workspace-analysis-progress",
+                &WorkspaceAnalysisProgress {
+                    job_id: job_id.clone(),
+                    workspace_id: req.workspace_id.clone(),
+                    chunk_index: i,
+                    total_chunks,
+                    label: chunk.label.clone(),
+                    status: "cancelled".to_string(),
+                    nodes_created: 0,
+                    links_created: 0,
+                    error: Some("Yielded to active chat".to_string()),
+                },
+            );
             break;
         }
 
@@ -1719,17 +1837,20 @@ async fn analyze_workspace_chunked_impl(
                 rusqlite::params![job_id, i],
             );
         }
-        let _ = app.emit("workspace-analysis-progress", &WorkspaceAnalysisProgress {
-            job_id: job_id.clone(),
-            workspace_id: req.workspace_id.clone(),
-            chunk_index: i,
-            total_chunks,
-            label: chunk.label.clone(),
-            status: "started".to_string(),
-            nodes_created: 0,
-            links_created: 0,
-            error: None,
-        });
+        let _ = app.emit(
+            "workspace-analysis-progress",
+            &WorkspaceAnalysisProgress {
+                job_id: job_id.clone(),
+                workspace_id: req.workspace_id.clone(),
+                chunk_index: i,
+                total_chunks,
+                label: chunk.label.clone(),
+                status: "started".to_string(),
+                nodes_created: 0,
+                links_created: 0,
+                error: None,
+            },
+        );
 
         match analyze_chunk(
             pool,
@@ -1741,7 +1862,9 @@ async fn analyze_workspace_chunked_impl(
             &chunk.text,
             &mut name_to_id,
             &job_id,
-        ).await {
+        )
+        .await
+        {
             Ok(stats) => {
                 let chunk_now = chrono::Utc::now().to_rfc3339();
                 {
@@ -1752,17 +1875,22 @@ async fn analyze_workspace_chunked_impl(
                     );
                 }
                 completed_count += 1;
-                let _ = app.emit("workspace-analysis-progress", &WorkspaceAnalysisProgress {
-                    job_id: job_id.clone(),
-                    workspace_id: req.workspace_id.clone(),
-                    chunk_index: i,
-                    total_chunks,
-                    label: chunk.label.clone(),
-                    status: "completed".to_string(),
-                    nodes_created: stats.concepts_created + stats.chapters_created + stats.sections_created,
-                    links_created: stats.links_created,
-                    error: None,
-                });
+                let _ = app.emit(
+                    "workspace-analysis-progress",
+                    &WorkspaceAnalysisProgress {
+                        job_id: job_id.clone(),
+                        workspace_id: req.workspace_id.clone(),
+                        chunk_index: i,
+                        total_chunks,
+                        label: chunk.label.clone(),
+                        status: "completed".to_string(),
+                        nodes_created: stats.concepts_created
+                            + stats.chapters_created
+                            + stats.sections_created,
+                        links_created: stats.links_created,
+                        error: None,
+                    },
+                );
                 agg.concepts_created += stats.concepts_created;
                 agg.links_created += stats.links_created;
                 agg.concepts_skipped += stats.concepts_skipped;
@@ -1782,17 +1910,20 @@ async fn analyze_workspace_chunked_impl(
                 if first_chunk_error.is_none() {
                     first_chunk_error = Some(err.clone());
                 }
-                let _ = app.emit("workspace-analysis-progress", &WorkspaceAnalysisProgress {
-                    job_id: job_id.clone(),
-                    workspace_id: req.workspace_id.clone(),
-                    chunk_index: i,
-                    total_chunks,
-                    label: chunk.label.clone(),
-                    status: "failed".to_string(),
-                    nodes_created: 0,
-                    links_created: 0,
-                    error: Some(err),
-                });
+                let _ = app.emit(
+                    "workspace-analysis-progress",
+                    &WorkspaceAnalysisProgress {
+                        job_id: job_id.clone(),
+                        workspace_id: req.workspace_id.clone(),
+                        chunk_index: i,
+                        total_chunks,
+                        label: chunk.label.clone(),
+                        status: "failed".to_string(),
+                        nodes_created: 0,
+                        links_created: 0,
+                        error: Some(err),
+                    },
+                );
                 // Continue — don't abort the whole job
             }
         }
@@ -1809,7 +1940,8 @@ async fn analyze_workspace_chunked_impl(
 
     // 9. Auto-categorize remaining concept orphans after the full LLM pass.
     if !cancelled {
-        let orphan_links = auto_categorize_orphans(pool, &req.workspace_id, &mut name_to_id).unwrap_or(0);
+        let orphan_links =
+            auto_categorize_orphans(pool, &req.workspace_id, &mut name_to_id).unwrap_or(0);
         agg.links_created += orphan_links;
     }
 
@@ -1895,12 +2027,13 @@ pub async fn analyze_descendants(
                 "SELECT id, name FROM workspaces WHERE parent_workspace_id = ?1 ORDER BY order_index, name",
             )
             .map_err(|e| e.to_string())?;
-        let rows = stmt.query_map(rusqlite::params![req.workspace_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![req.workspace_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
         rows
     };
 
@@ -1912,10 +2045,7 @@ pub async fn analyze_descendants(
     let mut results: Vec<DescendantAnalysisProgress> = Vec::with_capacity(total);
 
     // Subscribe to cancellation — yield if user starts chatting
-    let cancel_rx = app
-        .state::<BackgroundInferenceCancel>()
-        .0
-        .subscribe();
+    let cancel_rx = app.state::<BackgroundInferenceCancel>().0.subscribe();
 
     for (index, (ws_id, ws_name)) in children.iter().enumerate() {
         // Check cancellation before each child
@@ -1976,7 +2106,9 @@ pub async fn analyze_descendants(
                     workspace_name: ws_name.clone(),
                     index,
                     total,
-                    status: if err.contains("No content found") || err.contains("Not enough workspace material") {
+                    status: if err.contains("No content found")
+                        || err.contains("Not enough workspace material")
+                    {
                         "skipped".to_string()
                     } else {
                         "failed".to_string()
@@ -1993,10 +2125,12 @@ pub async fn analyze_descendants(
     Ok(results)
 }
 
-
 #[cfg(test)]
 mod tests {
-    use super::{gather_workspace_items, level_dedup_key, pack_into_chunks, preload_name_to_id, repair_truncated_json_object, SourceItem};
+    use super::{
+        gather_workspace_items, level_dedup_key, pack_into_chunks, preload_name_to_id,
+        repair_truncated_json_object, SourceItem,
+    };
     use crate::db::test_utils::tests::setup_test_db;
 
     #[test]
@@ -2029,9 +2163,17 @@ mod tests {
             })
             .collect();
         let chunks = pack_into_chunks(items, 6000);
-        assert!(chunks.len() >= 5 && chunks.len() <= 6, "expected 5-6 chunks, got {}", chunks.len());
+        assert!(
+            chunks.len() >= 5 && chunks.len() <= 6,
+            "expected 5-6 chunks, got {}",
+            chunks.len()
+        );
         for chunk in &chunks {
-            assert!(chunk.text.len() <= 6000, "chunk exceeded budget: {} chars", chunk.text.len());
+            assert!(
+                chunk.text.len() <= 6000,
+                "chunk exceeded budget: {} chars",
+                chunk.text.len()
+            );
         }
         // Total chars preserved
         let total: usize = chunks.iter().map(|c| c.text.len()).sum();
@@ -2098,8 +2240,13 @@ mod tests {
 
         let items = gather_workspace_items(&conn, "w1");
         assert_eq!(items.len(), 2);
-        assert!(items.iter().any(|item| item.kind == "summary" && item.text.contains("Rust Ownership")));
-        assert!(items.iter().any(|item| item.kind == "message" && item.text.contains("Message (Rust Ownership): borrow checker")));
+        assert!(items
+            .iter()
+            .any(|item| item.kind == "summary" && item.text.contains("Rust Ownership")));
+        assert!(items.iter().any(|item| item.kind == "message"
+            && item
+                .text
+                .contains("Message (Rust Ownership): borrow checker")));
         assert!(!items.iter().any(|item| item.kind == "daily_note"));
     }
 
@@ -2135,11 +2282,13 @@ mod tests {
 
         let map = preload_name_to_id(&conn, "w1");
         assert_eq!(
-            map.get(&level_dedup_key("chapter", "python programming")).map(|s| s.as_str()),
+            map.get(&level_dedup_key("chapter", "python programming"))
+                .map(|s| s.as_str()),
             Some("ch")
         );
         assert_eq!(
-            map.get(&level_dedup_key("section", "python programming")).map(|s| s.as_str()),
+            map.get(&level_dedup_key("section", "python programming"))
+                .map(|s| s.as_str()),
             Some("sec")
         );
     }

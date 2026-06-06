@@ -50,10 +50,7 @@ pub fn load_chat_bundle(conn: &Connection, session_id: &str) -> Result<ChatBundl
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map(rusqlite::params![session_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-            ))
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })
         .map_err(|e| e.to_string())?;
 
@@ -72,7 +69,10 @@ pub fn load_chat_bundle(conn: &Connection, session_id: &str) -> Result<ChatBundl
     }
 
     if turns.len() < 2 {
-        return Err("Chat is too short to convert — need at least one user and one assistant message.".to_string());
+        return Err(
+            "Chat is too short to convert — need at least one user and one assistant message."
+                .to_string(),
+        );
     }
 
     Ok(ChatBundle {
@@ -118,7 +118,10 @@ fn render_transcript(turns: &[(String, String)]) -> String {
             other => {
                 // Unknown role — render verbatim but capitalized.
                 let mut chars = other.chars();
-                let first = chars.next().map(|c| c.to_uppercase().to_string()).unwrap_or_default();
+                let first = chars
+                    .next()
+                    .map(|c| c.to_uppercase().to_string())
+                    .unwrap_or_default();
                 let rest: String = chars.collect();
                 s.push_str(&format!("## {first}{rest}\n\n"));
                 s.push_str(content);
@@ -143,7 +146,8 @@ async fn summarize_and_extract(
     model: &str,
     transcript: &str,
 ) -> Result<(String, Vec<String>), String> {
-    let system_prompt = "You are summarizing a learning conversation between a user and an assistant. \
+    let system_prompt =
+        "You are summarizing a learning conversation between a user and an assistant. \
 Respond in EXACTLY this envelope format and nothing else:\n\n\
 <summary>\n\
 ## Key points\n\
@@ -165,11 +169,19 @@ Rules:\n\
     );
 
     let messages = vec![
-        OllamaMessage { role: "system".to_string(), content: system_prompt.to_string() },
-        OllamaMessage { role: "user".to_string(), content: user_prompt },
+        OllamaMessage {
+            role: "system".to_string(),
+            content: system_prompt.to_string(),
+        },
+        OllamaMessage {
+            role: "user".to_string(),
+            content: user_prompt,
+        },
     ];
 
-    let raw = client.send_message("chat_conversion", model, messages).await?;
+    let raw = client
+        .send_message("chat_conversion", model, messages)
+        .await?;
     Ok(parse_envelope(&raw))
 }
 
@@ -261,14 +273,10 @@ fn find_whole_word_ci(haystack: &str, needle: &str) -> Option<(usize, usize)> {
         // Word-boundary check: the character before must not be alphanumeric (or we're at start),
         // and the character after must not be alphanumeric (or we're at end).
         let before_ok = start_idx == 0
-            || !haystack_chars[start_idx - 1]
-                .1
-                .is_alphanumeric()
+            || !haystack_chars[start_idx - 1].1.is_alphanumeric()
                 && haystack_chars[start_idx - 1].1 != '_';
         let after_ok = start_idx + n == haystack_chars.len()
-            || !haystack_chars[start_idx + n]
-                .1
-                .is_alphanumeric()
+            || !haystack_chars[start_idx + n].1.is_alphanumeric()
                 && haystack_chars[start_idx + n].1 != '_';
         if !(before_ok && after_ok) {
             continue;
@@ -295,9 +303,8 @@ pub async fn build_converted_chat(
     let (summary_raw, concepts) = summarize_and_extract(client, model, &transcript).await?;
     let summary_linked = wrap_concepts(&summary_raw, &concepts);
 
-    let content = format!(
-        "{summary_linked}\n\n---\n\n## Conversation transcript\n\n{transcript}\n"
-    );
+    let content =
+        format!("{summary_linked}\n\n---\n\n## Conversation transcript\n\n{transcript}\n");
 
     Ok(ConvertedChat {
         title: bundle.title.clone(),

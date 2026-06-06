@@ -48,7 +48,8 @@ pub async fn regenerate_topic_signature(
     ollama_url: Option<String>,
 ) -> Result<TopicSignature, String> {
     // User-initiated: no cancel_rx needed (it IS the high-priority caller)
-    let sig = recompute_workspace_signature_with_ai(&state, &workspace_id, model, ollama_url, None).await?;
+    let sig = recompute_workspace_signature_with_ai(&state, &workspace_id, model, ollama_url, None)
+        .await?;
     let _ = app.emit("workspaces-changed", ());
     Ok(sig)
 }
@@ -74,7 +75,8 @@ pub fn update_topic_signature(
     let mut sig: TopicSignature = serde_json::from_str(&sig_json).unwrap_or_default();
     sig.custom_tags = custom_tags;
     sig.excluded_tags = excluded_tags.clone();
-    sig.auto_detected_tags.retain(|t| !excluded_tags.contains(&t.tag));
+    sig.auto_detected_tags
+        .retain(|t| !excluded_tags.contains(&t.tag));
 
     let updated_json = serde_json::to_string(&sig).map_err(|e| e.to_string())?;
     conn.execute(

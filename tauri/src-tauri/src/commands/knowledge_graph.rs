@@ -14,7 +14,9 @@ fn row_to_concept(row: &rusqlite::Row) -> rusqlite::Result<ConceptNode> {
     let tags_json: String = row.get(5)?;
     let aliases_json: String = row.get(6)?;
     let refs_json: String = row.get(7)?;
-    let level_str: String = row.get::<_, Option<String>>(13)?.unwrap_or_else(|| "concept".to_string());
+    let level_str: String = row
+        .get::<_, Option<String>>(13)?
+        .unwrap_or_else(|| "concept".to_string());
     Ok(ConceptNode {
         id: row.get(0)?,
         workspace_id: row.get(1)?,
@@ -299,7 +301,10 @@ pub fn upsert_concept_from_tag_inner(
         let id: String = row.get(0).map_err(|e| e.to_string())?;
         let aliases_json: String = row.get(1).map_err(|e| e.to_string())?;
         let aliases: Vec<String> = serde_json::from_str(&aliases_json).unwrap_or_default();
-        if aliases.iter().any(|a| a.trim().to_lowercase() == lower_trim) {
+        if aliases
+            .iter()
+            .any(|a| a.trim().to_lowercase() == lower_trim)
+        {
             return Ok(id);
         }
     }
@@ -740,10 +745,13 @@ pub fn restore_roadmap_snapshot<R: Runtime>(
     }
 
     tx.commit().map_err(|e| e.to_string())?;
-    let _ = app.emit("knowledge-state-reset", &serde_json::json!({
-        "restored_snapshot_id": snapshot_id,
-        "workspace_id": workspace_id,
-    }));
+    let _ = app.emit(
+        "knowledge-state-reset",
+        &serde_json::json!({
+            "restored_snapshot_id": snapshot_id,
+            "workspace_id": workspace_id,
+        }),
+    );
     let _ = app.emit("workspaces-changed", ());
     Ok(())
 }
@@ -810,8 +818,7 @@ pub fn get_learning_path(
     }
 
     // Build parent map from part_of links: child_id -> parent_id
-    let mut parent_of: std::collections::HashMap<String, String> =
-        std::collections::HashMap::new();
+    let mut parent_of: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     for (src, tgt, ltype) in &links {
         if ltype == "part_of" {
             parent_of.insert(src.clone(), tgt.clone());
@@ -871,7 +878,11 @@ pub fn get_learning_path(
     }
 
     // Sort by fewest unmet prereqs, then by name
-    items.sort_by(|a, b| a.unmet_prereqs.cmp(&b.unmet_prereqs).then(a.concept_name.cmp(&b.concept_name)));
+    items.sort_by(|a, b| {
+        a.unmet_prereqs
+            .cmp(&b.unmet_prereqs)
+            .then(a.concept_name.cmp(&b.concept_name))
+    });
     items.truncate(5);
 
     Ok(items)
@@ -899,69 +910,13 @@ pub struct ExtractConceptsResult {
 /// Stopwords that the heuristic extractor might pick up as Title-Case phrases
 /// but are too generic to be useful concepts.
 const EXTRACTION_STOPWORDS: &[&str] = &[
-    "the",
-    "this",
-    "that",
-    "with",
-    "from",
-    "have",
-    "will",
-    "would",
-    "should",
-    "could",
-    "about",
-    "there",
-    "these",
-    "those",
-    "what",
-    "when",
-    "where",
-    "which",
-    "other",
-    "some",
-    "more",
-    "also",
-    "here",
-    "just",
-    "like",
-    "then",
-    "than",
-    "each",
-    "every",
-    "does",
-    "been",
-    "being",
-    "into",
-    "over",
-    "only",
-    "very",
-    "after",
-    "before",
-    "between",
-    "through",
-    "under",
-    "above",
-    "below",
+    "the", "this", "that", "with", "from", "have", "will", "would", "should", "could", "about",
+    "there", "these", "those", "what", "when", "where", "which", "other", "some", "more", "also",
+    "here", "just", "like", "then", "than", "each", "every", "does", "been", "being", "into",
+    "over", "only", "very", "after", "before", "between", "through", "under", "above", "below",
     // generic CS/learning noise
-    "code",
-    "data",
-    "test",
-    "step",
-    "task",
-    "note",
-    "item",
-    "part",
-    "type",
-    "file",
-    "list",
-    "name",
-    "info",
-    "text",
-    "help",
-    "main",
-    "work",
-    "user",
-    "next",
+    "code", "data", "test", "step", "task", "note", "item", "part", "type", "file", "list", "name",
+    "info", "text", "help", "main", "work", "user", "next",
 ];
 
 fn is_meaningful_concept(name: &str) -> bool {
@@ -1136,23 +1091,27 @@ pub fn undo_last_analysis(state: State<DbState>, workspace_id: String) -> Result
 
         conn.execute(
             "DELETE FROM concept_links WHERE last_modified_by_job = ?1",
-            rusqlite::params![job_id]
-        ).map_err(|e| e.to_string())?;
+            rusqlite::params![job_id],
+        )
+        .map_err(|e| e.to_string())?;
 
         conn.execute(
             "UPDATE concept_links SET last_modified_by_job = NULL WHERE last_modified_by_job = ?1",
-            rusqlite::params![job_id]
-        ).map_err(|e| e.to_string())?;
+            rusqlite::params![job_id],
+        )
+        .map_err(|e| e.to_string())?;
 
         conn.execute(
             "DELETE FROM concept_change_proposals WHERE job_id = ?1",
-            rusqlite::params![job_id]
-        ).map_err(|e| e.to_string())?;
+            rusqlite::params![job_id],
+        )
+        .map_err(|e| e.to_string())?;
 
         conn.execute(
             "UPDATE analyze_jobs SET status = 'undone' WHERE id = ?1",
-            rusqlite::params![job_id]
-        ).map_err(|e| e.to_string())?;
+            rusqlite::params![job_id],
+        )
+        .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -1277,10 +1236,9 @@ fn resolve_reset_workspace_ids(
             Ok(vec![id.to_string()])
         }
         KnowledgeResetScope::WorkspaceWithChildren => {
-            let id = req
-                .workspace_id
-                .as_deref()
-                .ok_or_else(|| "workspace_id is required for workspace-with-children reset".to_string())?;
+            let id = req.workspace_id.as_deref().ok_or_else(|| {
+                "workspace_id is required for workspace-with-children reset".to_string()
+            })?;
             descendant_workspace_ids(conn, id)
         }
         KnowledgeResetScope::AllWorkspaces => {
@@ -1386,12 +1344,15 @@ fn preview_knowledge_reset(
         )?;
         result.concept_mentions = count_sql(
             conn,
-            &format!("SELECT COUNT(*) FROM concept_mentions WHERE concept_id IN ({concept_subquery})"),
+            &format!(
+                "SELECT COUNT(*) FROM concept_mentions WHERE concept_id IN ({concept_subquery})"
+            ),
             workspace_ids,
         )?;
         result.graph_statistics = count_by_workspace(conn, "graph_statistics", workspace_ids)?;
         result.roadmap_snapshots = count_by_workspace(conn, "roadmap_snapshots", workspace_ids)?;
-        result.change_proposals = count_by_workspace(conn, "concept_change_proposals", workspace_ids)?;
+        result.change_proposals =
+            count_by_workspace(conn, "concept_change_proposals", workspace_ids)?;
         result.learning_goals_detached = count_sql(
             conn,
             &format!(
@@ -1448,8 +1409,10 @@ fn preview_knowledge_reset(
     }
 
     if options.clear_prompt_bank.unwrap_or(true) {
-        result.prompt_bank_prompts = count_by_workspace(conn, "workspace_prompt_bank", workspace_ids)?;
-        result.prompt_bank_jobs = count_by_workspace(conn, "workspace_prompt_bank_jobs", workspace_ids)?;
+        result.prompt_bank_prompts =
+            count_by_workspace(conn, "workspace_prompt_bank", workspace_ids)?;
+        result.prompt_bank_jobs =
+            count_by_workspace(conn, "workspace_prompt_bank_jobs", workspace_ids)?;
     }
 
     Ok(result)
@@ -1509,7 +1472,8 @@ fn apply_knowledge_reset(
             ),
             workspace_ids,
         )?;
-        result.change_proposals = delete_by_workspace(conn, "concept_change_proposals", workspace_ids)?;
+        result.change_proposals =
+            delete_by_workspace(conn, "concept_change_proposals", workspace_ids)?;
         result.graph_statistics = delete_by_workspace(conn, "graph_statistics", workspace_ids)?;
         result.roadmap_snapshots = delete_by_workspace(conn, "roadmap_snapshots", workspace_ids)?;
         result.concept_nodes = delete_by_workspace(conn, "concept_nodes", workspace_ids)?;
@@ -1540,8 +1504,10 @@ fn apply_knowledge_reset(
     }
 
     if options.clear_prompt_bank.unwrap_or(true) {
-        result.prompt_bank_prompts = delete_by_workspace(conn, "workspace_prompt_bank", workspace_ids)?;
-        result.prompt_bank_jobs = delete_by_workspace(conn, "workspace_prompt_bank_jobs", workspace_ids)?;
+        result.prompt_bank_prompts =
+            delete_by_workspace(conn, "workspace_prompt_bank", workspace_ids)?;
+        result.prompt_bank_jobs =
+            delete_by_workspace(conn, "workspace_prompt_bank_jobs", workspace_ids)?;
     }
 
     Ok(result)
@@ -1557,28 +1523,27 @@ pub fn list_change_proposals(
         "SELECT id, workspace_id, job_id, proposal_type, target_node_id, payload, reason, created_at \
          FROM concept_change_proposals WHERE workspace_id = ?1 ORDER BY created_at DESC"
     ).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params![workspace_id], |row| {
-        Ok(ChangeProposal {
-            id: row.get(0)?,
-            workspace_id: row.get(1)?,
-            job_id: row.get(2)?,
-            proposal_type: row.get(3)?,
-            target_node_id: row.get(4)?,
-            payload: row.get(5)?,
-            reason: row.get(6)?,
-            created_at: row.get(7)?,
+    let items = stmt
+        .query_map(rusqlite::params![workspace_id], |row| {
+            Ok(ChangeProposal {
+                id: row.get(0)?,
+                workspace_id: row.get(1)?,
+                job_id: row.get(2)?,
+                proposal_type: row.get(3)?,
+                target_node_id: row.get(4)?,
+                payload: row.get(5)?,
+                reason: row.get(6)?,
+                created_at: row.get(7)?,
+            })
         })
-    }).map_err(|e| e.to_string())?
-    .collect::<Result<Vec<_>, _>>()
-    .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
     Ok(items)
 }
 
 #[tauri::command]
-pub fn apply_change_proposal(
-    state: State<DbState>,
-    id: String,
-) -> Result<(), String> {
+pub fn apply_change_proposal(state: State<DbState>, id: String) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let proposal: ChangeProposal = conn.query_row(
         "SELECT id, workspace_id, job_id, proposal_type, target_node_id, payload, reason, created_at \
@@ -1606,7 +1571,10 @@ pub fn apply_change_proposal(
                 let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
                 let mut param_idx = 1;
 
-                if let Some(desc) = payload_val.get("concept_description").and_then(|v| v.as_str()) {
+                if let Some(desc) = payload_val
+                    .get("concept_description")
+                    .and_then(|v| v.as_str())
+                {
                     updates.push(format!("concept_description = ?{}", param_idx));
                     params.push(Box::new(desc.to_string()));
                     param_idx += 1;
@@ -1621,7 +1589,8 @@ pub fn apply_change_proposal(
                     params.push(Box::new(level.to_string()));
                     param_idx += 1;
                 }
-                if let Some(source_model) = payload_val.get("source_model").and_then(|v| v.as_str()) {
+                if let Some(source_model) = payload_val.get("source_model").and_then(|v| v.as_str())
+                {
                     updates.push(format!("source_model = ?{}", param_idx));
                     params.push(Box::new(source_model.to_string()));
                     param_idx += 1;
@@ -1644,25 +1613,36 @@ pub fn apply_change_proposal(
                     );
                     params.push(Box::new(target_id));
 
-                    let ref_params: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-                    conn.execute(&query, ref_params.as_slice()).map_err(|e| e.to_string())?;
+                    let ref_params: Vec<&dyn rusqlite::ToSql> =
+                        params.iter().map(|p| p.as_ref()).collect();
+                    conn.execute(&query, ref_params.as_slice())
+                        .map_err(|e| e.to_string())?;
                 }
             }
         }
     } else if proposal.proposal_type == "supersede" || proposal.proposal_type == "merge" {
         if let Some(target_id) = proposal.target_node_id {
             if let Ok(payload_val) = serde_json::from_str::<serde_json::Value>(&proposal.payload) {
-                if let Some(successor_id) = payload_val.get("successor_id").and_then(|v| v.as_str()) {
+                if let Some(successor_id) = payload_val.get("successor_id").and_then(|v| v.as_str())
+                {
                     let reason_str = proposal.reason.unwrap_or_else(|| "superseded".to_string());
-                    
+
                     if !would_create_cycle_local(&conn, successor_id, &target_id).unwrap_or(true) {
                         conn.execute(
                             "UPDATE concept_nodes \
                              SET superseded_by = ?1, superseded_at = ?2, supersede_reason = ?3, \
                                  last_modified_by_job = ?4, updated_at = ?5 \
                              WHERE id = ?6 AND (superseded_by IS NULL OR superseded_by = '');",
-                            rusqlite::params![successor_id, now, reason_str, job_id, now, target_id],
-                        ).map_err(|e| e.to_string())?;
+                            rusqlite::params![
+                                successor_id,
+                                now,
+                                reason_str,
+                                job_id,
+                                now,
+                                target_id
+                            ],
+                        )
+                        .map_err(|e| e.to_string())?;
 
                         conn.execute(
                             "UPDATE concept_nodes \
@@ -1676,13 +1656,15 @@ pub fn apply_change_proposal(
                              SET target_id = ?1, last_modified_by_job = ?2 \
                              WHERE target_id = ?3 AND json_array_length(user_edited_fields) > 0;",
                             rusqlite::params![successor_id, job_id, target_id],
-                        ).map_err(|e| e.to_string())?;
+                        )
+                        .map_err(|e| e.to_string())?;
                         conn.execute(
                             "UPDATE concept_links \
                              SET source_id = ?1, last_modified_by_job = ?2 \
                              WHERE source_id = ?3 AND json_array_length(user_edited_fields) > 0;",
                             rusqlite::params![successor_id, job_id, target_id],
-                        ).map_err(|e| e.to_string())?;
+                        )
+                        .map_err(|e| e.to_string())?;
                     }
                 }
             }
@@ -1692,12 +1674,17 @@ pub fn apply_change_proposal(
     conn.execute(
         "DELETE FROM concept_change_proposals WHERE id = ?1",
         rusqlite::params![id],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }
 
-fn would_create_cycle_local(conn: &rusqlite::Connection, start_id: &str, target_id: &str) -> rusqlite::Result<bool> {
+fn would_create_cycle_local(
+    conn: &rusqlite::Connection,
+    start_id: &str,
+    target_id: &str,
+) -> rusqlite::Result<bool> {
     if start_id == target_id {
         return Ok(true);
     }
@@ -1726,15 +1713,13 @@ fn would_create_cycle_local(conn: &rusqlite::Connection, start_id: &str, target_
 }
 
 #[tauri::command]
-pub fn dismiss_change_proposal(
-    state: State<DbState>,
-    id: String,
-) -> Result<(), String> {
+pub fn dismiss_change_proposal(state: State<DbState>, id: String) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute(
         "DELETE FROM concept_change_proposals WHERE id = ?1",
         rusqlite::params![id],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -1748,7 +1733,7 @@ pub struct KnowledgeSettings {
 #[tauri::command]
 pub fn get_knowledge_settings(state: State<DbState>) -> Result<KnowledgeSettings, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    
+
     let up_mode = conn
         .query_row(
             "SELECT value FROM settings WHERE key = 'knowledge.upgrade_mode'",
@@ -1972,38 +1957,98 @@ mod knowledge_reset_tests {
         insert_reset_fixture(&conn, "ws-1", "one");
         insert_reset_fixture(&conn, "ws-2", "two");
 
-        let preview = reset_knowledge_state_inner(&mut conn, KnowledgeResetRequest {
-            scope: KnowledgeResetScope::Workspace,
-            workspace_id: Some("ws-1".to_string()),
-            options: None,
-            dry_run: Some(true),
-        })
+        let preview = reset_knowledge_state_inner(
+            &mut conn,
+            KnowledgeResetRequest {
+                scope: KnowledgeResetScope::Workspace,
+                workspace_id: Some("ws-1".to_string()),
+                options: None,
+                dry_run: Some(true),
+            },
+        )
         .unwrap();
         assert_eq!(preview.concept_nodes, 2);
         assert_eq!(preview.roadmap_snapshots, 1);
         assert_eq!(preview.generated_cards_deleted, 2);
-        assert_eq!(count(&conn, "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = 'ws-1'"), 2);
+        assert_eq!(
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = 'ws-1'"
+            ),
+            2
+        );
 
-        let result = reset_knowledge_state_inner(&mut conn, KnowledgeResetRequest {
-            scope: KnowledgeResetScope::Workspace,
-            workspace_id: Some("ws-1".to_string()),
-            options: None,
-            dry_run: Some(false),
-        })
+        let result = reset_knowledge_state_inner(
+            &mut conn,
+            KnowledgeResetRequest {
+                scope: KnowledgeResetScope::Workspace,
+                workspace_id: Some("ws-1".to_string()),
+                options: None,
+                dry_run: Some(false),
+            },
+        )
         .unwrap();
         assert_eq!(result.concept_nodes, 2);
         assert_eq!(result.learning_goals_detached, 1);
 
-        assert_eq!(count(&conn, "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = 'ws-1'"), 0);
-        assert_eq!(count(&conn, "SELECT COUNT(*) FROM analyze_jobs WHERE workspace_id = 'ws-1'"), 0);
-        assert_eq!(count(&conn, "SELECT COUNT(*) FROM roadmap_snapshots WHERE workspace_id = 'ws-1'"), 0);
-        assert_eq!(count(&conn, "SELECT COUNT(*) FROM workspace_prompt_bank WHERE workspace_id = 'ws-1'"), 0);
-        assert_eq!(count(&conn, "SELECT COUNT(*) FROM flashcard_topics WHERE workspace_id = 'ws-1'"), 0);
+        assert_eq!(
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = 'ws-1'"
+            ),
+            0
+        );
+        assert_eq!(
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM analyze_jobs WHERE workspace_id = 'ws-1'"
+            ),
+            0
+        );
+        assert_eq!(
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM roadmap_snapshots WHERE workspace_id = 'ws-1'"
+            ),
+            0
+        );
+        assert_eq!(
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM workspace_prompt_bank WHERE workspace_id = 'ws-1'"
+            ),
+            0
+        );
+        assert_eq!(
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM flashcard_topics WHERE workspace_id = 'ws-1'"
+            ),
+            0
+        );
         assert_eq!(count(&conn, "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = 'ws-1' AND source_type != 'manual'"), 0);
-        assert_eq!(count(&conn, "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = 'ws-1'"), 1);
-        assert_eq!(count(&conn, "SELECT COUNT(*) FROM project_notes WHERE workspace_id = 'ws-1'"), 1);
+        assert_eq!(
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = 'ws-1'"
+            ),
+            1
+        );
+        assert_eq!(
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM project_notes WHERE workspace_id = 'ws-1'"
+            ),
+            1
+        );
         assert_eq!(count(&conn, "SELECT COUNT(*) FROM learning_goals WHERE workspace_id = 'ws-1' AND concept_id IS NULL"), 1);
-        assert_eq!(count(&conn, "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = 'ws-2'"), 2);
+        assert_eq!(
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = 'ws-2'"
+            ),
+            2
+        );
     }
 
     #[test]
@@ -2018,18 +2063,33 @@ mod knowledge_reset_tests {
         insert_reset_fixture(&conn, "child", "child");
         insert_reset_fixture(&conn, "sibling", "sibling");
 
-        let result = reset_knowledge_state_inner(&mut conn, KnowledgeResetRequest {
-            scope: KnowledgeResetScope::WorkspaceWithChildren,
-            workspace_id: Some("root".to_string()),
-            options: None,
-            dry_run: Some(false),
-        })
+        let result = reset_knowledge_state_inner(
+            &mut conn,
+            KnowledgeResetRequest {
+                scope: KnowledgeResetScope::WorkspaceWithChildren,
+                workspace_id: Some("root".to_string()),
+                options: None,
+                dry_run: Some(false),
+            },
+        )
         .unwrap();
 
         assert_eq!(result.workspace_count, 2);
         assert_eq!(result.concept_nodes, 4);
-        assert_eq!(count(&conn, "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id IN ('root', 'child')"), 0);
-        assert_eq!(count(&conn, "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = 'sibling'"), 2);
+        assert_eq!(
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id IN ('root', 'child')"
+            ),
+            0
+        );
+        assert_eq!(
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = 'sibling'"
+            ),
+            2
+        );
     }
 
     #[test]
@@ -2040,20 +2100,29 @@ mod knowledge_reset_tests {
         insert_workspace(&conn, "ws-1", None);
         insert_reset_fixture(&conn, "ws-1", "one");
 
-        let result = reset_knowledge_state_inner(&mut conn, KnowledgeResetRequest {
-            scope: KnowledgeResetScope::Workspace,
-            workspace_id: Some("ws-1".to_string()),
-            options: Some(KnowledgeResetOptions {
-                delete_generated_cards: Some(false),
-                ..Default::default()
-            }),
-            dry_run: Some(false),
-        })
+        let result = reset_knowledge_state_inner(
+            &mut conn,
+            KnowledgeResetRequest {
+                scope: KnowledgeResetScope::Workspace,
+                workspace_id: Some("ws-1".to_string()),
+                options: Some(KnowledgeResetOptions {
+                    delete_generated_cards: Some(false),
+                    ..Default::default()
+                }),
+                dry_run: Some(false),
+            },
+        )
         .unwrap();
 
         assert_eq!(result.generated_cards_deleted, 0);
         assert_eq!(result.generated_cards_detached, 2);
-        assert_eq!(count(&conn, "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = 'ws-1'"), 3);
+        assert_eq!(
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = 'ws-1'"
+            ),
+            3
+        );
         assert_eq!(count(&conn, "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = 'ws-1' AND source_type = 'manual' AND source_id IS NULL AND topic_id IS NULL"), 3);
     }
 
@@ -2074,8 +2143,13 @@ mod knowledge_reset_tests {
             )
             .unwrap();
 
-        conn.execute("DELETE FROM concept_nodes WHERE workspace_id = 'ws-1'", []).unwrap();
-        conn.execute("DELETE FROM graph_statistics WHERE workspace_id = 'ws-1'", []).unwrap();
+        conn.execute("DELETE FROM concept_nodes WHERE workspace_id = 'ws-1'", [])
+            .unwrap();
+        conn.execute(
+            "DELETE FROM graph_statistics WHERE workspace_id = 'ws-1'",
+            [],
+        )
+        .unwrap();
         conn.execute(
             "INSERT INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, created_at, updated_at, hierarchy_level)
              VALUES ('replacement-node', 'ws-1', 'Replacement', '', 'topic', '[]', '[]', '[]', datetime('now'), datetime('now'), 'concept')",
@@ -2093,10 +2167,16 @@ mod knowledge_reset_tests {
         let payload: RoadmapSnapshotPayload = serde_json::from_str(&payload_json).unwrap();
 
         let tx = conn.transaction().unwrap();
-        tx.execute("DELETE FROM concept_change_proposals WHERE workspace_id = 'ws-1'", [])
-            .unwrap();
-        tx.execute("DELETE FROM graph_statistics WHERE workspace_id = 'ws-1'", [])
-            .unwrap();
+        tx.execute(
+            "DELETE FROM concept_change_proposals WHERE workspace_id = 'ws-1'",
+            [],
+        )
+        .unwrap();
+        tx.execute(
+            "DELETE FROM graph_statistics WHERE workspace_id = 'ws-1'",
+            [],
+        )
+        .unwrap();
         tx.execute("DELETE FROM concept_nodes WHERE workspace_id = 'ws-1'", [])
             .unwrap();
         for node in &payload.nodes {
@@ -2171,13 +2251,25 @@ mod knowledge_reset_tests {
         }
         tx.commit().unwrap();
 
-        assert_eq!(count(&conn, "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = 'ws-1'"), 2);
+        assert_eq!(
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = 'ws-1'"
+            ),
+            2
+        );
         assert_eq!(
             count(&conn, "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = 'ws-1' AND name = 'Replacement'"),
             0
         );
         assert_eq!(count(&conn, "SELECT COUNT(*) FROM concept_links"), 1);
         assert_eq!(count(&conn, "SELECT COUNT(*) FROM concept_mentions"), 1);
-        assert_eq!(count(&conn, "SELECT COUNT(*) FROM graph_statistics WHERE workspace_id = 'ws-1'"), 1);
+        assert_eq!(
+            count(
+                &conn,
+                "SELECT COUNT(*) FROM graph_statistics WHERE workspace_id = 'ws-1'"
+            ),
+            1
+        );
     }
 }

@@ -50,10 +50,24 @@ pub fn list_chat_sessions(
 ) -> Result<Vec<ChatSession>, String> {
     let started = std::time::Instant::now();
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    let result = chat_service::list_sessions(&conn, &workspace_id, &folder_id, limit, offset, include_descendants.unwrap_or(false));
+    let result = chat_service::list_sessions(
+        &conn,
+        &workspace_id,
+        &folder_id,
+        limit,
+        offset,
+        include_descendants.unwrap_or(false),
+    );
     let ms = started.elapsed().as_millis();
     if ms >= 16 {
-        logging::log_debug("perf", format!("list_chat_sessions {}ms count={}", ms, result.as_ref().map(|v| v.len()).unwrap_or(0)));
+        logging::log_debug(
+            "perf",
+            format!(
+                "list_chat_sessions {}ms count={}",
+                ms,
+                result.as_ref().map(|v| v.len()).unwrap_or(0)
+            ),
+        );
     }
     result
 }
@@ -98,7 +112,11 @@ pub fn get_related_chats(
         .iter()
         .filter_map(|tag| {
             let cleaned = tag.trim().replace('"', "");
-            if cleaned.is_empty() { None } else { Some(format!("\"{}\"", cleaned)) }
+            if cleaned.is_empty() {
+                None
+            } else {
+                Some(format!("\"{}\"", cleaned))
+            }
         })
         .collect::<Vec<_>>()
         .join(" OR ");
@@ -259,7 +277,14 @@ pub fn get_messages(
     let result = chat_service::get_messages(&conn, &session_id, limit, offset);
     let ms = started.elapsed().as_millis();
     if ms >= 16 {
-        logging::log_debug("perf", format!("get_messages {}ms count={}", ms, result.as_ref().map(|v| v.len()).unwrap_or(0)));
+        logging::log_debug(
+            "perf",
+            format!(
+                "get_messages {}ms count={}",
+                ms,
+                result.as_ref().map(|v| v.len()).unwrap_or(0)
+            ),
+        );
     }
     result
 }
@@ -276,7 +301,16 @@ pub fn update_chat_session(
     is_unread: Option<bool>,
 ) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    chat_service::update_session(&conn, &id, title, is_pinned, system_prompt, model_name, exclude_from_analytics, is_unread)
+    chat_service::update_session(
+        &conn,
+        &id,
+        title,
+        is_pinned,
+        system_prompt,
+        model_name,
+        exclude_from_analytics,
+        is_unread,
+    )
 }
 
 #[tauri::command]
@@ -307,7 +341,12 @@ pub fn get_recent_sessions(
     include_descendants: Option<bool>,
 ) -> Result<Vec<ChatSession>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    chat_service::get_recent(&conn, &workspace_id, limit, include_descendants.unwrap_or(false))
+    chat_service::get_recent(
+        &conn,
+        &workspace_id,
+        limit,
+        include_descendants.unwrap_or(false),
+    )
 }
 
 #[tauri::command]

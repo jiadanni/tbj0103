@@ -2,15 +2,13 @@
 // Layout: projects/<uuid>.json per project, design_chats/<uuid>.json per project chat.
 // conversations.json contains only orphan chats (no project link).
 
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
-use serde::Deserialize;
 
 use super::{
-    ChatFileData, ChatFileMessage,
-    ClaudeConversationPreview, ClaudeProjectPreview,
-    ClaudeMemoryPreview, ClaudeProjectMemoryPreview,
-    extract_claude_message_content_v2,
+    extract_claude_message_content_v2, ChatFileData, ChatFileMessage, ClaudeConversationPreview,
+    ClaudeMemoryPreview, ClaudeProjectMemoryPreview, ClaudeProjectPreview,
 };
 
 // ── v2-specific structs ───────────────────────────────────────────────────────
@@ -136,7 +134,11 @@ fn design_chat_to_chat_data(chat: &V2DesignChat) -> Option<ChatFileData> {
     if chat.messages.is_empty() {
         return None;
     }
-    let messages: Vec<ChatFileMessage> = chat.messages.iter().filter_map(v2_message_to_chat).collect();
+    let messages: Vec<ChatFileMessage> = chat
+        .messages
+        .iter()
+        .filter_map(v2_message_to_chat)
+        .collect();
     if messages.is_empty() {
         return None;
     }
@@ -170,7 +172,8 @@ pub fn preview_v2_projects(
         if path.extension().and_then(|e| e.to_str()) != Some("json") {
             continue;
         }
-        let bytes = std::fs::read(&path).map_err(|e| format!("Cannot read {}: {e}", path.display()))?;
+        let bytes =
+            std::fs::read(&path).map_err(|e| format!("Cannot read {}: {e}", path.display()))?;
         let project: V2Project = serde_json::from_slice(&bytes)
             .map_err(|e| format!("Invalid project JSON {}: {e}", path.display()))?;
 
@@ -214,7 +217,8 @@ pub fn preview_v2_design_chats(
         if path.extension().and_then(|e| e.to_str()) != Some("json") {
             continue;
         }
-        let bytes = std::fs::read(&path).map_err(|e| format!("Cannot read {}: {e}", path.display()))?;
+        let bytes =
+            std::fs::read(&path).map_err(|e| format!("Cannot read {}: {e}", path.display()))?;
         let chat: V2DesignChat = serde_json::from_slice(&bytes)
             .map_err(|e| format!("Invalid design_chat JSON {}: {e}", path.display()))?;
 
@@ -230,17 +234,28 @@ pub fn preview_v2_design_chats(
                 let raw = extract_claude_message_content_v2(m);
                 let mut out = String::new();
                 for (i, ch) in raw.chars().enumerate() {
-                    if i >= 280 { break; }
+                    if i >= 280 {
+                        break;
+                    }
                     out.push(ch);
                 }
                 out
             })
             .unwrap_or_default();
-        let messages = chat.messages.iter().map(|m| {
-            let role = if m.sender == "human" { "user" } else { "assistant" }.to_string();
-            let content = extract_claude_message_content_v2(m);
-            super::ClaudeMessagePreview { role, content }
-        }).collect();
+        let messages = chat
+            .messages
+            .iter()
+            .map(|m| {
+                let role = if m.sender == "human" {
+                    "user"
+                } else {
+                    "assistant"
+                }
+                .to_string();
+                let content = extract_claude_message_content_v2(m);
+                super::ClaudeMessagePreview { role, content }
+            })
+            .collect();
         let preview = ClaudeConversationPreview {
             uuid: chat.uuid.clone(),
             name: chat.title.clone(),
@@ -251,7 +266,10 @@ pub fn preview_v2_design_chats(
             first_user_message,
             messages,
         };
-        by_project.entry(chat.project.uuid).or_default().push(preview);
+        by_project
+            .entry(chat.project.uuid)
+            .or_default()
+            .push(preview);
     }
 
     Ok(by_project)
@@ -265,10 +283,13 @@ pub fn parse_v2_memories(
 ) -> Result<(std::collections::HashSet<String>, ClaudeMemoryPreview), String> {
     let mem_path = folder_path.join("memories.json");
     if !mem_path.exists() {
-        return Ok((std::collections::HashSet::new(), ClaudeMemoryPreview {
-            conversations_memory: String::new(),
-            folder_memories: Vec::new(),
-        }));
+        return Ok((
+            std::collections::HashSet::new(),
+            ClaudeMemoryPreview {
+                conversations_memory: String::new(),
+                folder_memories: Vec::new(),
+            },
+        ));
     }
 
     let bytes = std::fs::read(&mem_path).map_err(|e| format!("Cannot read memories.json: {e}"))?;
@@ -299,10 +320,13 @@ pub fn parse_v2_memories(
         });
     }
 
-    Ok((memory_uuids, ClaudeMemoryPreview {
-        conversations_memory: account.conversations_memory,
-        folder_memories,
-    }))
+    Ok((
+        memory_uuids,
+        ClaudeMemoryPreview {
+            conversations_memory: account.conversations_memory,
+            folder_memories,
+        },
+    ))
 }
 
 /// Parse all `design_chats/<uuid>.json` filtered to `selected_ids`.
@@ -326,7 +350,8 @@ pub fn parse_v2_design_chats_filtered(
         if path.extension().and_then(|e| e.to_str()) != Some("json") {
             continue;
         }
-        let bytes = std::fs::read(&path).map_err(|e| format!("Cannot read {}: {e}", path.display()))?;
+        let bytes =
+            std::fs::read(&path).map_err(|e| format!("Cannot read {}: {e}", path.display()))?;
         let chat: V2DesignChat = match serde_json::from_slice(&bytes) {
             Ok(c) => c,
             Err(_) => continue,

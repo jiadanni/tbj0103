@@ -39,8 +39,9 @@ fn load_tree(
             let tags_json: String = r.get(5)?;
             let aliases_json: String = r.get(6)?;
             let refs_json: String = r.get(7)?;
-            let level_str: String =
-                r.get::<_, Option<String>>(13)?.unwrap_or_else(|| "concept".to_string());
+            let level_str: String = r
+                .get::<_, Option<String>>(13)?
+                .unwrap_or_else(|| "concept".to_string());
             Ok(ConceptNode {
                 id: r.get(0)?,
                 workspace_id: r.get(1)?,

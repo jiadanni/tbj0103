@@ -307,12 +307,16 @@ pub fn write_session_file(
         };
 
         // Remove the plaintext twin at the new location
-        let _ = std::fs::remove_file(session_file_path_for_session(conn, chats_dir, session_id, false));
+        let _ = std::fs::remove_file(session_file_path_for_session(
+            conn, chats_dir, session_id, false,
+        ));
         let out = serde_json::to_vec_pretty(&envelope).map_err(|e| e.to_string())?;
         std::fs::write(&target_path, out).map_err(|e| e.to_string())?;
     } else {
         // Remove the encrypted twin at the new location
-        let _ = std::fs::remove_file(session_file_path_for_session(conn, chats_dir, session_id, true));
+        let _ = std::fs::remove_file(session_file_path_for_session(
+            conn, chats_dir, session_id, true,
+        ));
         std::fs::write(&target_path, &json_bytes).map_err(|e| e.to_string())?;
     }
 
@@ -323,8 +327,12 @@ pub fn write_session_file(
 /// workspace/project subdirectory and the legacy flat location.
 pub fn delete_session_file(conn: &Connection, chats_dir: &Path, session_id: &str) {
     // Delete from the current (subdirectory) location
-    let _ = std::fs::remove_file(session_file_path_for_session(conn, chats_dir, session_id, false));
-    let _ = std::fs::remove_file(session_file_path_for_session(conn, chats_dir, session_id, true));
+    let _ = std::fs::remove_file(session_file_path_for_session(
+        conn, chats_dir, session_id, false,
+    ));
+    let _ = std::fs::remove_file(session_file_path_for_session(
+        conn, chats_dir, session_id, true,
+    ));
     // Also clean up any legacy flat-dir files
     let _ = std::fs::remove_file(session_file_path(chats_dir, session_id, false));
     let _ = std::fs::remove_file(session_file_path(chats_dir, session_id, true));
@@ -834,8 +842,15 @@ pub fn reencrypt_all_files(
     Ok(count)
 }
 
-fn reencrypt_walk(dir: &Path, old_passphrase: Option<&str>, new_passphrase: Option<&str>, count: &mut usize) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+fn reencrypt_walk(
+    dir: &Path,
+    old_passphrase: Option<&str>,
+    new_passphrase: Option<&str>,
+    count: &mut usize,
+) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
@@ -996,7 +1011,7 @@ pub fn parse_gemini_takeout(html: &str) -> std::result::Result<Vec<ChatFileData>
                 .to_string()
                 .trim()
                 .to_string();
-            
+
             let mut safe_prompt = prompt_text
                 .replace("&nbsp;", " ")
                 .replace("&quot;", "\"")
@@ -1071,9 +1086,15 @@ pub fn parse_gemini_takeout(html: &str) -> std::result::Result<Vec<ChatFileData>
 }
 
 fn create_session_from_messages(messages: Vec<ChatFileMessage>) -> ChatFileData {
-    let first_ts = messages.first().map(|m| m.timestamp.clone()).unwrap_or_default();
-    let first_prompt = messages.first().map(|m| m.content.clone()).unwrap_or_default();
-    
+    let first_ts = messages
+        .first()
+        .map(|m| m.timestamp.clone())
+        .unwrap_or_default();
+    let first_prompt = messages
+        .first()
+        .map(|m| m.content.clone())
+        .unwrap_or_default();
+
     // Create a title from the first prompt (limit to ~120 chars, char-safe)
     let flat_prompt = first_prompt.replace('\n', " ");
     let title = if flat_prompt.chars().count() > 120 {
@@ -1093,7 +1114,6 @@ fn create_session_from_messages(messages: Vec<ChatFileMessage>) -> ChatFileData 
         messages,
     }
 }
-
 
 // ── ChatGPT JSON parser ──────────────────────────────────────────────────────
 
@@ -1165,7 +1185,9 @@ pub fn discover_chatgpt_files(folder: &Path) -> Result<Vec<PathBuf>, String> {
         let path = entry.path();
         if path.is_file() {
             if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
-                if filename == "conversations.json" || (filename.starts_with("conversations-") && filename.ends_with(".json")) {
+                if filename == "conversations.json"
+                    || (filename.starts_with("conversations-") && filename.ends_with(".json"))
+                {
                     paths.push(path);
                 }
             }
@@ -1178,7 +1200,10 @@ pub fn discover_chatgpt_files(folder: &Path) -> Result<Vec<PathBuf>, String> {
 
 /// Parse a single ChatGPT conversation from the export format.
 pub fn parse_gpt_conversation(conv: &GptConversation) -> Result<ChatFileData, String> {
-    let mapping = conv.mapping.as_ref().ok_or_else(|| "Mapping is missing".to_string())?;
+    let mapping = conv
+        .mapping
+        .as_ref()
+        .ok_or_else(|| "Mapping is missing".to_string())?;
 
     let current_node = if let Some(ref cn) = conv.current_node {
         if mapping.contains_key(cn) {
@@ -1240,7 +1265,13 @@ pub fn parse_gpt_conversation(conv: &GptConversation) -> Result<ChatFileData, St
 
     for node in path_nodes {
         if let Some(msg) = node.message {
-            let role = msg.author.as_ref().and_then(|a| a.role.as_deref()).unwrap_or("").trim().to_lowercase();
+            let role = msg
+                .author
+                .as_ref()
+                .and_then(|a| a.role.as_deref())
+                .unwrap_or("")
+                .trim()
+                .to_lowercase();
             if !matches!(role.as_str(), "user" | "assistant" | "system") {
                 continue; // Skip unsupported node types quietly
             }
@@ -1267,7 +1298,8 @@ pub fn parse_gpt_conversation(conv: &GptConversation) -> Result<ChatFileData, St
             }
 
             let model_name = msg.metadata.as_ref().and_then(|meta| {
-                meta.get("model_slug").and_then(|m| m.as_str().map(|s| s.to_string()))
+                meta.get("model_slug")
+                    .and_then(|m| m.as_str().map(|s| s.to_string()))
             });
 
             let timestamp = if let Some(t) = msg.create_time {
@@ -1302,12 +1334,22 @@ pub fn parse_gpt_conversation(conv: &GptConversation) -> Result<ChatFileData, St
         return Err("No importable user, assistant, or system messages found".to_string());
     }
 
-    let created_at = messages.first().map(|m| m.timestamp.clone()).unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
-    let updated_at = messages.last().map(|m| m.timestamp.clone()).unwrap_or_else(|| created_at.clone());
+    let created_at = messages
+        .first()
+        .map(|m| m.timestamp.clone())
+        .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+    let updated_at = messages
+        .last()
+        .map(|m| m.timestamp.clone())
+        .unwrap_or_else(|| created_at.clone());
 
     let raw_title = conv.title.clone().unwrap_or_default();
     let title = if raw_title.trim().is_empty() {
-        let first_prompt = messages.iter().find(|m| m.role == "user").map(|m| m.content.clone()).unwrap_or_default();
+        let first_prompt = messages
+            .iter()
+            .find(|m| m.role == "user")
+            .map(|m| m.content.clone())
+            .unwrap_or_default();
         let flat_prompt = first_prompt.replace('\n', " ");
         if flat_prompt.chars().count() > 120 {
             let truncated: String = flat_prompt.chars().take(117).collect();
@@ -1321,7 +1363,11 @@ pub fn parse_gpt_conversation(conv: &GptConversation) -> Result<ChatFileData, St
         raw_title
     };
 
-    let last_model = messages.iter().rev().find_map(|m| m.model.clone()).unwrap_or_else(|| "chatgpt".to_string());
+    let last_model = messages
+        .iter()
+        .rev()
+        .find_map(|m| m.model.clone())
+        .unwrap_or_else(|| "chatgpt".to_string());
 
     Ok(ChatFileData {
         id: uuid::Uuid::new_v4().to_string(),
@@ -1333,7 +1379,6 @@ pub fn parse_gpt_conversation(conv: &GptConversation) -> Result<ChatFileData, St
         messages,
     })
 }
-
 
 // ── Claude Desktop JSON parser ───────────────────────────────────────────────
 
@@ -1494,17 +1539,23 @@ pub(super) fn extract_claude_message_content_v2(msg: &claude_v2::V2Message) -> S
         match block.block_type.as_str() {
             "text" => {
                 if let Some(ref t) = block.text {
-                    if !t.is_empty() { parts.push(t.clone()); }
+                    if !t.is_empty() {
+                        parts.push(t.clone());
+                    }
                 }
             }
             "thinking" => {
                 if let Some(ref t) = block.thinking {
-                    if !t.is_empty() { parts.push(format!("<think>\n{}\n</think>", t.trim())); }
+                    if !t.is_empty() {
+                        parts.push(format!("<think>\n{}\n</think>", t.trim()));
+                    }
                 }
             }
             "tool_use" => {
                 if let Some(ref name) = block.name {
-                    let input_str = block.input.as_ref()
+                    let input_str = block
+                        .input
+                        .as_ref()
                         .map(|v| serde_json::to_string_pretty(v).unwrap_or_default())
                         .unwrap_or_default();
                     if !input_str.is_empty() {
@@ -1744,7 +1795,9 @@ pub struct ClaudeProjectMemoryPreview {
 }
 
 /// Parse `conversations.json` and return lightweight previews (no message content).
-pub fn preview_claude_conversations(bytes: &[u8]) -> Result<Vec<ClaudeConversationPreview>, String> {
+pub fn preview_claude_conversations(
+    bytes: &[u8],
+) -> Result<Vec<ClaudeConversationPreview>, String> {
     let conversations: Vec<ClaudeConversation> =
         serde_json::from_slice(bytes).map_err(|e| format!("Invalid Claude Desktop JSON: {e}"))?;
 
@@ -1762,11 +1815,20 @@ pub fn preview_claude_conversations(bytes: &[u8]) -> Result<Vec<ClaudeConversati
                     truncate_chars(&raw, 280)
                 })
                 .unwrap_or_default();
-            let messages = c.chat_messages.iter().map(|m| {
-                let role = if m.sender == "human" { "user" } else { "assistant" }.to_string();
-                let content = extract_claude_message_content(m);
-                ClaudeMessagePreview { role, content }
-            }).collect();
+            let messages = c
+                .chat_messages
+                .iter()
+                .map(|m| {
+                    let role = if m.sender == "human" {
+                        "user"
+                    } else {
+                        "assistant"
+                    }
+                    .to_string();
+                    let content = extract_claude_message_content(m);
+                    ClaudeMessagePreview { role, content }
+                })
+                .collect();
             ClaudeConversationPreview {
                 uuid: c.uuid,
                 name: c.name,
@@ -1784,7 +1846,9 @@ pub fn preview_claude_conversations(bytes: &[u8]) -> Result<Vec<ClaudeConversati
 fn truncate_chars(s: &str, max_chars: usize) -> String {
     let mut out = String::new();
     for (i, ch) in s.chars().enumerate() {
-        if i >= max_chars { break; }
+        if i >= max_chars {
+            break;
+        }
         out.push(ch);
     }
     out
@@ -1801,8 +1865,7 @@ pub fn parse_claude_conversations_filtered(
     }
     let conversations: Vec<ClaudeConversation> =
         serde_json::from_slice(bytes).map_err(|e| format!("Invalid Claude Desktop JSON: {e}"))?;
-    let id_set: std::collections::HashSet<&str> =
-        selected_ids.iter().map(|s| s.as_str()).collect();
+    let id_set: std::collections::HashSet<&str> = selected_ids.iter().map(|s| s.as_str()).collect();
     Ok(conversations
         .iter()
         .filter(|c| id_set.contains(c.uuid.as_str()))
@@ -2053,38 +2116,56 @@ mod tests {
     fn test_parsing_actual_v2_sample_export() {
         use std::path::Path;
         let export_path = Path::new("/home/urljenkins/Source/tbj0103/Samples/claude/2026-06-04");
-        
+
         // 1. preview_v2_design_chats
         let convs_by_project = claude_v2::preview_v2_design_chats(export_path).unwrap();
         // The only design chat in this sample has 0 messages, so it is skipped.
-        assert!(convs_by_project.is_empty(), "design chats should be empty in this sample");
-        
+        assert!(
+            convs_by_project.is_empty(),
+            "design chats should be empty in this sample"
+        );
+
         // 2. load_v2_project_name_map
         let name_map = claude_v2::load_v2_project_name_map(export_path);
         assert!(!name_map.is_empty(), "project name map should not be empty");
-        
+
         // 3. parse_v2_memories
-        let (memory_uuids, memories) = claude_v2::parse_v2_memories(export_path, &name_map).unwrap();
-        assert!(!memories.folder_memories.is_empty(), "folder memories should not be empty");
-        
+        let (memory_uuids, memories) =
+            claude_v2::parse_v2_memories(export_path, &name_map).unwrap();
+        assert!(
+            !memories.folder_memories.is_empty(),
+            "folder memories should not be empty"
+        );
+
         // 4. preview_v2_projects
-        let projects = claude_v2::preview_v2_projects(export_path, &memory_uuids, &convs_by_project).unwrap();
+        let projects =
+            claude_v2::preview_v2_projects(export_path, &memory_uuids, &convs_by_project).unwrap();
         assert!(!projects.is_empty(), "projects should not be empty");
         assert_eq!(projects.len(), 18, "should have 18 projects");
-        
+
         // 5. parse_v2_design_chats_filtered
-        let design_chats_filtered = claude_v2::parse_v2_design_chats_filtered(export_path, &[]).unwrap();
-        assert!(design_chats_filtered.is_empty(), "filtered design chats should be empty in this sample");
-        
+        let design_chats_filtered =
+            claude_v2::parse_v2_design_chats_filtered(export_path, &[]).unwrap();
+        assert!(
+            design_chats_filtered.is_empty(),
+            "filtered design chats should be empty in this sample"
+        );
+
         // 6. conversations.json (orphan conversations)
         let conv_path = export_path.join("conversations.json");
         if conv_path.is_file() {
             let bytes = std::fs::read(conv_path).unwrap();
             let orphans = preview_claude_conversations(&bytes).unwrap();
-            assert!(!orphans.is_empty(), "orphan conversations should not be empty");
-            
+            assert!(
+                !orphans.is_empty(),
+                "orphan conversations should not be empty"
+            );
+
             let parsed_orphans = parse_claude_conversations_filtered(&bytes, &[]).unwrap();
-            assert!(!parsed_orphans.is_empty(), "parsed orphan conversations should not be empty");
+            assert!(
+                !parsed_orphans.is_empty(),
+                "parsed orphan conversations should not be empty"
+            );
         }
     }
 }

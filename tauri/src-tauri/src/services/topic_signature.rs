@@ -260,9 +260,9 @@ fn merge_topic_tags(primary: Vec<TopicTag>, secondary: Vec<TopicTag>, max: usize
         };
 
         // Check for semantic duplicates via synonym table
-        let is_duplicate = seen.iter().any(|existing: &String| {
-            tags_match_fuzzy(existing, &normalized)
-        });
+        let is_duplicate = seen
+            .iter()
+            .any(|existing: &String| tags_match_fuzzy(existing, &normalized));
 
         if !is_duplicate && seen.insert(normalized.clone()) {
             merged.push(TopicTag {
@@ -516,9 +516,13 @@ rust cargo toml ownership borrow checker cargo dependency management\n";
     fn extract_json_with_nested_objects() {
         use super::extract_json_object;
 
-        let input = r#"Here is the result: {"topics":["rust","python"],"nested":{"key":"val"}} extra text"#;
+        let input =
+            r#"Here is the result: {"topics":["rust","python"],"nested":{"key":"val"}} extra text"#;
         let result = extract_json_object(input).unwrap();
-        assert_eq!(result, r#"{"topics":["rust","python"],"nested":{"key":"val"}}"#);
+        assert_eq!(
+            result,
+            r#"{"topics":["rust","python"],"nested":{"key":"val"}}"#
+        );
     }
 
     #[test]
@@ -627,7 +631,10 @@ Chat excerpts:\n{sample}"
             }
         }
     } else {
-        match client.send_message_with_options_observed(model, messages, Some("0s"), &ctx).await {
+        match client
+            .send_message_with_options_observed(model, messages, Some("0s"), &ctx)
+            .await
+        {
             Ok(r) => r,
             Err(_) => return heuristic,
         }

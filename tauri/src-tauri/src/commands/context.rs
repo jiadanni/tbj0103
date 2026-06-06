@@ -122,10 +122,8 @@ pub async fn assemble_and_send(
         let budget = crate::services::context_assembler::budget_for_context_window(
             crate::services::context_assembler::DEFAULT_CONTEXT_SIZE,
         );
-        let messages = crate::services::context_assembler::truncate_messages(
-            messages,
-            budget.conversation,
-        );
+        let messages =
+            crate::services::context_assembler::truncate_messages(messages, budget.conversation);
 
         let _ = app.emit(
             &format!("context-sources-{}", req.session_id),
@@ -138,7 +136,13 @@ pub async fn assemble_and_send(
         );
 
         return client
-            .stream_message("context_assembler", &app, &req.session_id, &req.model_name, messages)
+            .stream_message(
+                "context_assembler",
+                &app,
+                &req.session_id,
+                &req.model_name,
+                messages,
+            )
             .await;
     }
 
@@ -158,7 +162,10 @@ pub async fn assemble_and_send(
     };
 
     let query_embedding = if let (Some(msg), Some(model)) = (&last_user_message, &embedding_model) {
-        client.generate_embedding("context_assembler", model, msg).await.ok()
+        client
+            .generate_embedding("context_assembler", model, msg)
+            .await
+            .ok()
     } else {
         None
     };
@@ -204,6 +211,12 @@ pub async fn assemble_and_send(
 
     // Call stream_message
     client
-        .stream_message("context_assembler", &app, &req.session_id, &req.model_name, messages)
+        .stream_message(
+            "context_assembler",
+            &app,
+            &req.session_id,
+            &req.model_name,
+            messages,
+        )
         .await
 }

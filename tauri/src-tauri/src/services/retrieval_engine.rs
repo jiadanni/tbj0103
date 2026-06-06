@@ -158,11 +158,11 @@ mod tests {
                 content: "Tauri is great for desktop apps.".to_string(),
                 score: 0.8,
                 chunk_index: 1,
-            }
+            },
         ];
 
         let prompt = build_grounded_prompt("What is Tauri?", &chunks);
-        
+
         assert!(prompt.contains("doc1.txt"));
         assert!(prompt.contains("doc2.md"));
         assert!(prompt.contains("Tauri is great for desktop apps."));

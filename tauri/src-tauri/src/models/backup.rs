@@ -162,5 +162,5 @@ pub struct GlobalBackupSnapshot {
     pub app_version: String,
     pub workspaces: Vec<WorkspaceBackup>,
     pub settings: serde_json::Value, // App-wide settings
-    pub stats: serde_json::Value,     // Overall statistics
+    pub stats: serde_json::Value,    // Overall statistics
 }

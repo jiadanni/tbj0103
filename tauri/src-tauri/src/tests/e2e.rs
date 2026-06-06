@@ -1,8 +1,8 @@
-use crate::models::workspace::CreateWorkspaceRequest;
-use crate::models::chat::{CreateChatSessionRequest, AddMessageRequest, MessageRole};
-use crate::services::workspace_service;
-use crate::services::chat_service;
 use crate::db::test_utils::tests::setup_test_db;
+use crate::models::chat::{AddMessageRequest, CreateChatSessionRequest, MessageRole};
+use crate::models::workspace::CreateWorkspaceRequest;
+use crate::services::chat_service;
+use crate::services::workspace_service;
 
 #[test]
 fn test_critical_path_workspace_chat_message() {
@@ -31,7 +31,8 @@ fn test_critical_path_workspace_chat_message() {
         parent_session_id: None,
         branch_message_id: None,
     };
-    let session = chat_service::create_session(&conn, chat_req).expect("Failed to create chat session");
+    let session =
+        chat_service::create_session(&conn, chat_req).expect("Failed to create chat session");
     assert_eq!(session.title, "E2E Test Chat");
     assert_eq!(session.workspace_id, workspace.id);
 
@@ -50,12 +51,14 @@ fn test_critical_path_workspace_chat_message() {
     assert_eq!(message.role, MessageRole::User);
 
     // Verify DB State
-    let messages = chat_service::get_messages(&conn, &session.id, None, None).expect("Failed to get messages");
+    let messages =
+        chat_service::get_messages(&conn, &session.id, None, None).expect("Failed to get messages");
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].id, message.id);
     assert_eq!(messages[0].content, "Hello E2E Test!");
 
-    let sessions = chat_service::list_sessions(&conn, &workspace.id, "", None, None, true).expect("Failed to list sessions");
+    let sessions = chat_service::list_sessions(&conn, &workspace.id, "", None, None, true)
+        .expect("Failed to list sessions");
     assert_eq!(sessions.len(), 1);
     assert_eq!(sessions[0].id, session.id);
 }
@@ -98,7 +101,8 @@ fn test_critical_path_workspace_chat_message_with_folder() {
         parent_session_id: None,
         branch_message_id: None,
     };
-    let session = chat_service::create_session(&conn, chat_req).expect("Failed to create chat session");
+    let session =
+        chat_service::create_session(&conn, chat_req).expect("Failed to create chat session");
     assert_eq!(session.folder_id, folder.id);
 
     // 4. Add Message
@@ -114,11 +118,13 @@ fn test_critical_path_workspace_chat_message_with_folder() {
     let message = chat_service::add_message(&conn, msg_req).expect("Failed to add message");
 
     // Verify DB State
-    let messages = chat_service::get_messages(&conn, &session.id, None, None).expect("Failed to get messages");
+    let messages =
+        chat_service::get_messages(&conn, &session.id, None, None).expect("Failed to get messages");
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].id, message.id);
 
-    let sessions = chat_service::list_sessions(&conn, &workspace.id, &folder.id, None, None, true).expect("Failed to list sessions");
+    let sessions = chat_service::list_sessions(&conn, &workspace.id, &folder.id, None, None, true)
+        .expect("Failed to list sessions");
     assert_eq!(sessions.len(), 1);
     assert_eq!(sessions[0].id, session.id);
 }

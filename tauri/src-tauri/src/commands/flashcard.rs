@@ -287,9 +287,23 @@ pub async fn generate_flashcards(
         card.source_type = "ai_generated".to_string();
         tx.execute(
             INSERT_CARD_SQL,
-            rusqlite::params![card.id, card.workspace_id, card.front, card.back, card.source_type, card.source_id, card.topic_id,
-                              card.ease_factor, card.interval, card.repetitions, card.next_review_date, card.last_reviewed_at, card.created_at],
-        ).map_err(|e| e.to_string())?;
+            rusqlite::params![
+                card.id,
+                card.workspace_id,
+                card.front,
+                card.back,
+                card.source_type,
+                card.source_id,
+                card.topic_id,
+                card.ease_factor,
+                card.interval,
+                card.repetitions,
+                card.next_review_date,
+                card.last_reviewed_at,
+                card.created_at
+            ],
+        )
+        .map_err(|e| e.to_string())?;
         cards.push(card);
     }
     tx.commit().map_err(|e| e.to_string())?;
@@ -335,7 +349,9 @@ pub async fn generate_flashcards_from_concept(
         role: "user".to_string(),
         content: prompt,
     }];
-    let raw = client.send_message("flashcard", &req.model, messages).await?;
+    let raw = client
+        .send_message("flashcard", &req.model, messages)
+        .await?;
 
     let trimmed = raw.trim();
     let json_str = if let Some(start) = trimmed.find('[') {
@@ -369,9 +385,23 @@ pub async fn generate_flashcards_from_concept(
         card.source_id = Some(req.concept_id.clone());
         tx.execute(
             INSERT_CARD_SQL,
-            rusqlite::params![card.id, card.workspace_id, card.front, card.back, card.source_type, card.source_id, card.topic_id,
-                              card.ease_factor, card.interval, card.repetitions, card.next_review_date, card.last_reviewed_at, card.created_at],
-        ).map_err(|e| e.to_string())?;
+            rusqlite::params![
+                card.id,
+                card.workspace_id,
+                card.front,
+                card.back,
+                card.source_type,
+                card.source_id,
+                card.topic_id,
+                card.ease_factor,
+                card.interval,
+                card.repetitions,
+                card.next_review_date,
+                card.last_reviewed_at,
+                card.created_at
+            ],
+        )
+        .map_err(|e| e.to_string())?;
         cards.push(card);
     }
     tx.commit().map_err(|e| e.to_string())?;
@@ -451,7 +481,9 @@ pub async fn extract_flashcards_from_content(
         role: "user".to_string(),
         content: prompt,
     }];
-    let raw = client.send_message("flashcard", &req.model, messages).await?;
+    let raw = client
+        .send_message("flashcard", &req.model, messages)
+        .await?;
 
     let trimmed = raw.trim();
     let json_str = if let Some(start) = trimmed.find('[') {
@@ -487,15 +519,28 @@ pub async fn extract_flashcards_from_content(
         card.source_id = req.source_id.clone();
         tx.execute(
             INSERT_CARD_SQL,
-            rusqlite::params![card.id, card.workspace_id, card.front, card.back, card.source_type, card.source_id, card.topic_id,
-                              card.ease_factor, card.interval, card.repetitions, card.next_review_date, card.last_reviewed_at, card.created_at],
-        ).map_err(|e| e.to_string())?;
+            rusqlite::params![
+                card.id,
+                card.workspace_id,
+                card.front,
+                card.back,
+                card.source_type,
+                card.source_id,
+                card.topic_id,
+                card.ease_factor,
+                card.interval,
+                card.repetitions,
+                card.next_review_date,
+                card.last_reviewed_at,
+                card.created_at
+            ],
+        )
+        .map_err(|e| e.to_string())?;
         cards.push(card);
     }
     tx.commit().map_err(|e| e.to_string())?;
     Ok(cards)
 }
-
 
 /// List flashcard topics for a workspace (derived from chat topic signatures).
 #[tauri::command]
@@ -544,14 +589,16 @@ pub async fn generate_flashcards_for_topic(
              FROM flashcard_topics WHERE id = ?1",
             rusqlite::params![req.topic_id],
             |r| {
-                Ok(crate::services::flashcard_topic_service::FlashcardTopicRow {
-                    id: r.get(0)?,
-                    workspace_id: r.get(1)?,
-                    topic: r.get(2)?,
-                    mastery_score: r.get(3)?,
-                    last_generated_at: r.get(4)?,
-                    card_count: r.get(5)?,
-                })
+                Ok(
+                    crate::services::flashcard_topic_service::FlashcardTopicRow {
+                        id: r.get(0)?,
+                        workspace_id: r.get(1)?,
+                        topic: r.get(2)?,
+                        mastery_score: r.get(3)?,
+                        last_generated_at: r.get(4)?,
+                        card_count: r.get(5)?,
+                    },
+                )
             },
         )
         .map_err(|e| format!("Topic not found: {e}"))?
@@ -621,7 +668,10 @@ pub fn suggest_next_topic(
         if due_count > 0 {
             return Ok(Some(SuggestedTopic {
                 topic,
-                reason: format!("{due_count} card{} due", if due_count == 1 { "" } else { "s" }),
+                reason: format!(
+                    "{due_count} card{} due",
+                    if due_count == 1 { "" } else { "s" }
+                ),
                 due_count,
             }));
         }
@@ -733,7 +783,8 @@ pub fn suggest_next_concept(
             Ok((
                 r.get(0)?,
                 r.get(1)?,
-                r.get::<_, Option<String>>(2)?.unwrap_or_else(|| "concept".to_string()),
+                r.get::<_, Option<String>>(2)?
+                    .unwrap_or_else(|| "concept".to_string()),
                 r.get(3)?,
                 r.get(4)?,
                 r.get(5)?,
@@ -746,7 +797,10 @@ pub fn suggest_next_concept(
                 concept_id: id,
                 concept_name: name,
                 hierarchy_level: level,
-                reason: format!("{due_count} card{} due", if due_count == 1 { "" } else { "s" }),
+                reason: format!(
+                    "{due_count} card{} due",
+                    if due_count == 1 { "" } else { "s" }
+                ),
                 due_count,
                 avg_ease,
                 card_count: total,
@@ -772,7 +826,8 @@ pub fn suggest_next_concept(
             Ok((
                 r.get(0)?,
                 r.get(1)?,
-                r.get::<_, Option<String>>(2)?.unwrap_or_else(|| "concept".to_string()),
+                r.get::<_, Option<String>>(2)?
+                    .unwrap_or_else(|| "concept".to_string()),
                 r.get(3)?,
                 r.get(4)?,
             ))
@@ -806,7 +861,8 @@ pub fn suggest_next_concept(
             Ok((
                 r.get(0)?,
                 r.get(1)?,
-                r.get::<_, Option<String>>(2)?.unwrap_or_else(|| "concept".to_string()),
+                r.get::<_, Option<String>>(2)?
+                    .unwrap_or_else(|| "concept".to_string()),
             ))
         })
         .ok();

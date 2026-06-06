@@ -164,7 +164,10 @@ pub fn list_sessions(
 
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let rows = if folder_id.is_empty() {
-        stmt.query_map(rusqlite::params![workspace_id, limit, offset], row_to_session)
+        stmt.query_map(
+            rusqlite::params![workspace_id, limit, offset],
+            row_to_session,
+        )
     } else {
         stmt.query_map(
             rusqlite::params![workspace_id, folder_id, limit, offset],
@@ -324,7 +327,8 @@ pub fn move_sessions(
         return Ok(());
     }
 
-    let previous_paths = chat_file_store::capture_session_file_variants(conn, chats_dir, session_ids);
+    let previous_paths =
+        chat_file_store::capture_session_file_variants(conn, chats_dir, session_ids);
     let target_folder_id = target_folder_id.unwrap_or_default();
 
     conn.execute_batch("BEGIN IMMEDIATE")
@@ -385,7 +389,8 @@ pub fn batch_move_sessions(
         return Ok(BatchMoveSessionsOutcome::default());
     }
 
-    let previous_paths = chat_file_store::capture_session_file_variants(conn, chats_dir, session_ids);
+    let previous_paths =
+        chat_file_store::capture_session_file_variants(conn, chats_dir, session_ids);
     conn.execute_batch("BEGIN IMMEDIATE")
         .map_err(|e| e.to_string())?;
 
@@ -457,13 +462,14 @@ pub fn batch_move_sessions(
 
             for (source_folder_id, source_project) in &source_projects {
                 let normalized_name = source_project.name.trim().to_lowercase();
-                let target_folder_id =
-                    if let Some(existing_id) = existing_by_name.get(&normalized_name) {
-                        existing_id.clone()
-                    } else {
-                        let new_project =
-                            Folder::new(target_workspace_id.to_string(), source_project.name.clone());
-                        conn.execute(
+                let target_folder_id = if let Some(existing_id) =
+                    existing_by_name.get(&normalized_name)
+                {
+                    existing_id.clone()
+                } else {
+                    let new_project =
+                        Folder::new(target_workspace_id.to_string(), source_project.name.clone());
+                    conn.execute(
                             "INSERT INTO folders (id, workspace_id, name, folder_description, custom_instructions, color, icon, created_at, updated_at)
                              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                             rusqlite::params![
@@ -479,9 +485,9 @@ pub fn batch_move_sessions(
                             ],
                         )
                         .map_err(|e| e.to_string())?;
-                        outcome.folders_created.push(new_project.id.clone());
-                        new_project.id
-                    };
+                    outcome.folders_created.push(new_project.id.clone());
+                    new_project.id
+                };
                 outcome
                     .folder_mapping
                     .insert(source_folder_id.clone(), target_folder_id);
@@ -578,7 +584,11 @@ pub fn add_message(conn: &Connection, req: AddMessageRequest) -> Result<Message,
     .map_err(|e| e.to_string())?;
 
     let now = chrono::Utc::now().to_rfc3339();
-    let is_unread_val = if message.role == MessageRole::Assistant { 1 } else { 0 };
+    let is_unread_val = if message.role == MessageRole::Assistant {
+        1
+    } else {
+        0
+    };
     let _ = conn.execute(
         "UPDATE chat_sessions
          SET updated_at = ?1,
@@ -813,7 +823,6 @@ pub fn get_message_variants(conn: &Connection, message_id: &str) -> Result<Vec<M
     }
 }
 
-
 /// Deletes the given message and every message in the same session created at
 /// or after its timestamp. Returns the number of rows deleted.
 pub fn delete_message_and_following(
@@ -878,14 +887,18 @@ pub fn count_sessions_per_child_workspace(
 mod tests {
     use super::*;
     use crate::db::test_utils::tests::setup_test_db;
-    use crate::services::workspace_service;
     use crate::models::workspace::CreateWorkspaceRequest;
+    use crate::services::workspace_service;
 
     fn setup_workspace(conn: &Connection) -> String {
-        let ws = workspace_service::create(conn, CreateWorkspaceRequest {
-            name: "Test Workspace".to_string(),
-            description: None,
-        }).unwrap();
+        let ws = workspace_service::create(
+            conn,
+            CreateWorkspaceRequest {
+                name: "Test Workspace".to_string(),
+                description: None,
+            },
+        )
+        .unwrap();
         ws.id
     }
 
@@ -894,7 +907,7 @@ mod tests {
         let pool = setup_test_db();
         let conn = pool.get().unwrap();
         let ws_id = setup_workspace(&conn);
-        
+
         let req = CreateChatSessionRequest {
             workspace_id: ws_id.clone(),
             folder_id: "".to_string(),
@@ -906,10 +919,10 @@ mod tests {
             parent_session_id: None,
             branch_message_id: None,
         };
-        
+
         let created = create_session(&conn, req).unwrap();
         assert_eq!(created.title, "Test Chat");
-        
+
         let fetched = get_session(&conn, &created.id).unwrap().unwrap();
         assert_eq!(fetched.id, created.id);
         assert_eq!(fetched.workspace_id, ws_id);
@@ -920,34 +933,42 @@ mod tests {
         let pool = setup_test_db();
         let conn = pool.get().unwrap();
         let ws_id = setup_workspace(&conn);
-        
-        create_session(&conn, CreateChatSessionRequest {
-            workspace_id: ws_id.clone(),
-            folder_id: "".to_string(),
-            title: Some("Apple".to_string()),
-            model_name: None,
-            system_prompt: None,
-            is_incognito: None,
-            exclude_from_analytics: None,
-            parent_session_id: None,
-            branch_message_id: None,
-        }).unwrap();
-        
-        create_session(&conn, CreateChatSessionRequest {
-            workspace_id: ws_id.clone(),
-            folder_id: "".to_string(),
-            title: Some("Banana".to_string()),
-            model_name: None,
-            system_prompt: None,
-            is_incognito: None,
-            exclude_from_analytics: None,
-            parent_session_id: None,
-            branch_message_id: None,
-        }).unwrap();
-        
+
+        create_session(
+            &conn,
+            CreateChatSessionRequest {
+                workspace_id: ws_id.clone(),
+                folder_id: "".to_string(),
+                title: Some("Apple".to_string()),
+                model_name: None,
+                system_prompt: None,
+                is_incognito: None,
+                exclude_from_analytics: None,
+                parent_session_id: None,
+                branch_message_id: None,
+            },
+        )
+        .unwrap();
+
+        create_session(
+            &conn,
+            CreateChatSessionRequest {
+                workspace_id: ws_id.clone(),
+                folder_id: "".to_string(),
+                title: Some("Banana".to_string()),
+                model_name: None,
+                system_prompt: None,
+                is_incognito: None,
+                exclude_from_analytics: None,
+                parent_session_id: None,
+                branch_message_id: None,
+            },
+        )
+        .unwrap();
+
         let all = list_sessions(&conn, &ws_id, "", None, None, false).unwrap();
         assert_eq!(all.len(), 2);
-        
+
         let search = search_sessions(&conn, &ws_id, None, "App", false).unwrap();
         assert_eq!(search.len(), 1);
         assert_eq!(search[0].title, "Apple");
@@ -958,25 +979,39 @@ mod tests {
         let pool = setup_test_db();
         let conn = pool.get().unwrap();
         let ws_id = setup_workspace(&conn);
-        
-        let s = create_session(&conn, CreateChatSessionRequest {
-            workspace_id: ws_id.clone(),
-            folder_id: "".to_string(),
-            title: Some("To be deleted".to_string()),
-            model_name: None,
-            system_prompt: None,
-            is_incognito: None,
-            exclude_from_analytics: None,
-            parent_session_id: None,
-            branch_message_id: None,
-        }).unwrap();
-        
+
+        let s = create_session(
+            &conn,
+            CreateChatSessionRequest {
+                workspace_id: ws_id.clone(),
+                folder_id: "".to_string(),
+                title: Some("To be deleted".to_string()),
+                model_name: None,
+                system_prompt: None,
+                is_incognito: None,
+                exclude_from_analytics: None,
+                parent_session_id: None,
+                branch_message_id: None,
+            },
+        )
+        .unwrap();
+
         soft_delete(&conn, &s.id).unwrap();
-        assert_eq!(list_sessions(&conn, &ws_id, "", None, None, false).unwrap().len(), 0);
+        assert_eq!(
+            list_sessions(&conn, &ws_id, "", None, None, false)
+                .unwrap()
+                .len(),
+            0
+        );
         assert_eq!(list_deleted(&conn, &ws_id, false).unwrap().len(), 1);
-        
+
         restore(&conn, &ws_id, &s.id).unwrap();
-        assert_eq!(list_sessions(&conn, &ws_id, "", None, None, false).unwrap().len(), 1);
+        assert_eq!(
+            list_sessions(&conn, &ws_id, "", None, None, false)
+                .unwrap()
+                .len(),
+            1
+        );
     }
 
     #[test]
@@ -984,39 +1019,51 @@ mod tests {
         let pool = setup_test_db();
         let conn = pool.get().unwrap();
         let ws_id = setup_workspace(&conn);
-        
-        let s = create_session(&conn, CreateChatSessionRequest {
-            workspace_id: ws_id.clone(),
-            folder_id: "".to_string(),
-            title: None,
-            model_name: None,
-            system_prompt: None,
-            is_incognito: None,
-            exclude_from_analytics: None,
-            parent_session_id: None,
-            branch_message_id: None,
-        }).unwrap();
-        
-        add_message(&conn, AddMessageRequest {
-            workspace_id: ws_id.clone(),
-            session_id: s.id.clone(),
-            role: MessageRole::User,
-            content: "Hello".to_string(),
-            model_name: None,
-            tokens_used: None,
-            duration_ms: None,
-        }).unwrap();
-        
-        add_message(&conn, AddMessageRequest {
-            workspace_id: ws_id.clone(),
-            session_id: s.id.clone(),
-            role: MessageRole::Assistant,
-            content: "Hi there!".to_string(),
-            model_name: Some("gpt-4".to_string()),
-            tokens_used: Some(10),
-            duration_ms: Some(500),
-        }).unwrap();
-        
+
+        let s = create_session(
+            &conn,
+            CreateChatSessionRequest {
+                workspace_id: ws_id.clone(),
+                folder_id: "".to_string(),
+                title: None,
+                model_name: None,
+                system_prompt: None,
+                is_incognito: None,
+                exclude_from_analytics: None,
+                parent_session_id: None,
+                branch_message_id: None,
+            },
+        )
+        .unwrap();
+
+        add_message(
+            &conn,
+            AddMessageRequest {
+                workspace_id: ws_id.clone(),
+                session_id: s.id.clone(),
+                role: MessageRole::User,
+                content: "Hello".to_string(),
+                model_name: None,
+                tokens_used: None,
+                duration_ms: None,
+            },
+        )
+        .unwrap();
+
+        add_message(
+            &conn,
+            AddMessageRequest {
+                workspace_id: ws_id.clone(),
+                session_id: s.id.clone(),
+                role: MessageRole::Assistant,
+                content: "Hi there!".to_string(),
+                model_name: Some("gpt-4".to_string()),
+                tokens_used: Some(10),
+                duration_ms: Some(500),
+            },
+        )
+        .unwrap();
+
         let messages = get_messages(&conn, &s.id, None, None).unwrap();
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[0].role, MessageRole::User);
@@ -1031,29 +1078,45 @@ mod tests {
         let conn = pool.get().unwrap();
         // Parent workspace with a child
         let parent_id = setup_workspace(&conn);
-        let child = workspace_service::create_child(&conn, crate::models::workspace::CreateChildWorkspaceRequest {
-            parent_id: parent_id.clone(),
-            name: "Child WS".to_string(),
-            description: None,
-        }).unwrap();
+        let child = workspace_service::create_child(
+            &conn,
+            crate::models::workspace::CreateChildWorkspaceRequest {
+                parent_id: parent_id.clone(),
+                name: "Child WS".to_string(),
+                description: None,
+            },
+        )
+        .unwrap();
         // Create a session in the child workspace
-        create_session(&conn, CreateChatSessionRequest {
-            workspace_id: child.id.clone(),
-            folder_id: "".to_string(),
-            title: Some("Child Session".to_string()),
-            model_name: None,
-            system_prompt: None,
-            is_incognito: None,
-            exclude_from_analytics: None,
-            parent_session_id: None,
-            branch_message_id: None,
-        }).unwrap();
+        create_session(
+            &conn,
+            CreateChatSessionRequest {
+                workspace_id: child.id.clone(),
+                folder_id: "".to_string(),
+                title: Some("Child Session".to_string()),
+                model_name: None,
+                system_prompt: None,
+                is_incognito: None,
+                exclude_from_analytics: None,
+                parent_session_id: None,
+                branch_message_id: None,
+            },
+        )
+        .unwrap();
         // Without bubbling: parent sees 0 sessions
         let exact = list_sessions(&conn, &parent_id, "", None, None, false).unwrap();
-        assert_eq!(exact.len(), 0, "parent should not see child sessions without bubbling");
+        assert_eq!(
+            exact.len(),
+            0,
+            "parent should not see child sessions without bubbling"
+        );
         // With bubbling: parent sees the child's session
         let bubbled = list_sessions(&conn, &parent_id, "", None, None, true).unwrap();
-        assert_eq!(bubbled.len(), 1, "parent should see child sessions with bubbling");
+        assert_eq!(
+            bubbled.len(),
+            1,
+            "parent should see child sessions with bubbling"
+        );
         assert_eq!(bubbled[0].title, "Child Session");
     }
 
@@ -1062,25 +1125,37 @@ mod tests {
         let pool = setup_test_db();
         let conn = pool.get().unwrap();
         let parent_id = setup_workspace(&conn);
-        let child = workspace_service::create_child(&conn, crate::models::workspace::CreateChildWorkspaceRequest {
-            parent_id: parent_id.clone(),
-            name: "Child WS".to_string(),
-            description: None,
-        }).unwrap();
+        let child = workspace_service::create_child(
+            &conn,
+            crate::models::workspace::CreateChildWorkspaceRequest {
+                parent_id: parent_id.clone(),
+                name: "Child WS".to_string(),
+                description: None,
+            },
+        )
+        .unwrap();
         // Create a session in the parent workspace
-        create_session(&conn, CreateChatSessionRequest {
-            workspace_id: parent_id.clone(),
-            folder_id: "".to_string(),
-            title: Some("Parent Session".to_string()),
-            model_name: None,
-            system_prompt: None,
-            is_incognito: None,
-            exclude_from_analytics: None,
-            parent_session_id: None,
-            branch_message_id: None,
-        }).unwrap();
+        create_session(
+            &conn,
+            CreateChatSessionRequest {
+                workspace_id: parent_id.clone(),
+                folder_id: "".to_string(),
+                title: Some("Parent Session".to_string()),
+                model_name: None,
+                system_prompt: None,
+                is_incognito: None,
+                exclude_from_analytics: None,
+                parent_session_id: None,
+                branch_message_id: None,
+            },
+        )
+        .unwrap();
         // Child with bubbling should only see its own sessions (none), not the parent's
         let child_view = list_sessions(&conn, &child.id, "", None, None, true).unwrap();
-        assert_eq!(child_view.len(), 0, "child should never see parent sessions even with bubbling");
+        assert_eq!(
+            child_view.len(),
+            0,
+            "child should never see parent sessions even with bubbling"
+        );
     }
 }

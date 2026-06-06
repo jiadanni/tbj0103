@@ -83,7 +83,10 @@ mod tests {
 
     #[test]
     fn normalize_collapses_whitespace_and_case() {
-        assert_eq!(normalize_concept_name("  Python  Decorators  "), "python decorator");
+        assert_eq!(
+            normalize_concept_name("  Python  Decorators  "),
+            "python decorator"
+        );
         assert_eq!(normalize_concept_name("F-Strings"), "f-string");
         assert_eq!(normalize_concept_name("class"), "class");
     }

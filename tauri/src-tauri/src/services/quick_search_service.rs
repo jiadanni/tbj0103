@@ -3,13 +3,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::services::workspace_hierarchy::descendant_workspace_ids;
 
-pub const QUICK_SEARCH_KIND_FILTERS: [&str; 5] = [
-    "conversation",
-    "message",
-    "artifact",
-    "memory",
-    "summary",
-];
+pub const QUICK_SEARCH_KIND_FILTERS: [&str; 5] =
+    ["conversation", "message", "artifact", "memory", "summary"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuickSearchResult {
@@ -42,7 +37,12 @@ pub fn query(
     let resolved_ids = resolve_workspace_ids(conn, workspace_id, include_descendants)?;
     let trimmed = query.trim();
     if trimmed.is_empty() {
-        return recent_results(conn, limit, resolved_ids.as_deref(), effective_kind_filters.as_deref());
+        return recent_results(
+            conn,
+            limit,
+            resolved_ids.as_deref(),
+            effective_kind_filters.as_deref(),
+        );
     }
 
     let fts_query = build_fts_query(trimmed).ok_or_else(|| "Enter a search query.".to_string())?;
@@ -260,14 +260,17 @@ fn recent_results(
                 placeholders.push(format!("?{}", params.len() + 1));
                 params.push(Box::new(ws_id.clone()));
             }
-            sql.push_str(&format!(" AND cs.workspace_id IN ({})", placeholders.join(", ")));
+            sql.push_str(&format!(
+                " AND cs.workspace_id IN ({})",
+                placeholders.join(", ")
+            ));
         }
     }
 
     sql.push_str(
         r#"
         ORDER BY COALESCE(cs.last_accessed_at, cs.updated_at) DESC, cs.updated_at DESC
-        LIMIT ?"#
+        LIMIT ?"#,
     );
     sql.push_str(&(params.len() + 1).to_string());
 

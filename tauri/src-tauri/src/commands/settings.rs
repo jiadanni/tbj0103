@@ -790,11 +790,7 @@ pub fn update_settings(
         "hide_native_menu",
         &settings.hide_native_menu.to_string(),
     )?;
-    set_setting(
-        &conn,
-        "show_gen_info",
-        &settings.show_gen_info.to_string(),
-    )?;
+    set_setting(&conn, "show_gen_info", &settings.show_gen_info.to_string())?;
     set_setting(
         &conn,
         "show_gen_info_token_count",
@@ -858,7 +854,9 @@ pub fn update_settings(
     set_setting(
         &conn,
         "workspace_glossary_refresh_interval_minutes",
-        &settings.workspace_glossary_refresh_interval_minutes.to_string(),
+        &settings
+            .workspace_glossary_refresh_interval_minutes
+            .to_string(),
     )?;
     set_setting(
         &conn,
@@ -987,7 +985,9 @@ fn encode_known_setting(key: &str, value: &serde_json::Value) -> Result<String, 
             } else if let Some(n) = value.as_i64() {
                 Ok(n.to_string())
             } else if let Some(s) = value.as_str() {
-                let _: f64 = s.parse().map_err(|e| format!("Invalid float for setting: {e}"))?;
+                let _: f64 = s
+                    .parse()
+                    .map_err(|e| format!("Invalid float for setting: {e}"))?;
                 Ok(s.to_string())
             } else {
                 Err(format!("Expected float or string for setting key '{key}'"))
@@ -1194,7 +1194,13 @@ pub async fn get_core_settings(state: State<'_, DbState>) -> Result<CoreSettings
 
         let switch_workspace_section = lookup("switch_workspace_section").unwrap_or_else(|| {
             lookup("switch_workspace_to_chat")
-                .map(|v| if v == "true" { "/chat".to_string() } else { String::new() })
+                .map(|v| {
+                    if v == "true" {
+                        "/chat".to_string()
+                    } else {
+                        String::new()
+                    }
+                })
                 .unwrap_or(def.switch_workspace_section.clone())
         });
 
@@ -1543,11 +1549,13 @@ mod tests {
 
             let decoded_1: String = get_setting(&conn, key)
                 .and_then(|v| serde_json::from_str(&v).ok())
-                .unwrap_or_else(|| panic!(
-                    "key `{key}` did not round-trip through JSON decode \
+                .unwrap_or_else(|| {
+                    panic!(
+                        "key `{key}` did not round-trip through JSON decode \
                     — its reader is probably missing `serde_json::from_str` \
                     (this is the menubar_icon_style bug shape)"
-                ));
+                    )
+                });
             assert_eq!(
                 &decoded_1, sample,
                 "key `{key}` decoded to a different value than was written"

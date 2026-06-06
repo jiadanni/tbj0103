@@ -27,7 +27,13 @@ pub async fn list_artifacts(
     include_descendants: Option<bool>,
 ) -> Result<Vec<ArtifactSummary>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    artifact_service::list_artifacts(&conn, &workspace_id, limit, offset, include_descendants.unwrap_or(false))
+    artifact_service::list_artifacts(
+        &conn,
+        &workspace_id,
+        limit,
+        offset,
+        include_descendants.unwrap_or(false),
+    )
 }
 
 #[tauri::command]

@@ -95,7 +95,8 @@ fn fetch_questions(
             })
         })
         .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 fn fetch_answers(conn: &rusqlite::Connection, quiz_id: &str) -> Result<Vec<QuizAnswer>, String> {
@@ -119,7 +120,8 @@ fn fetch_answers(conn: &rusqlite::Connection, quiz_id: &str) -> Result<Vec<QuizA
             })
         })
         .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -168,14 +170,8 @@ pub async fn create_quiz(
         (labels, get_ollama_base_url(&conn), model)
     };
 
-    let generated = generate_questions(
-        ollama_url,
-        &model,
-        &req.kind,
-        &topic_labels,
-        target_count,
-    )
-    .await?;
+    let generated =
+        generate_questions(ollama_url, &model, &req.kind, &topic_labels, target_count).await?;
 
     let quiz_id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
@@ -276,7 +272,8 @@ pub fn list_quizzes(
             })
         })
         .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

@@ -276,7 +276,21 @@ fn get_dashboard_summary_inner(
         avg_ease,
         topics_due_for_review,
         top_due_topic,
-    ): (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, f64, i64, Option<String>) = conn
+    ): (
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        f64,
+        i64,
+        Option<String>,
+    ) = conn
         .query_row(&counts_sql, params![&workspace_id], |row| {
             Ok((
                 row.get(0)?,

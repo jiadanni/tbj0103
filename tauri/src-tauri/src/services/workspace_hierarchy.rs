@@ -63,9 +63,7 @@ pub fn descendant_workspace_ids(conn: &Connection, root_id: &str) -> Result<Vec<
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map(rusqlite::params![root_id], |row| {
-            row.get::<_, String>(0)
-        })
+        .query_map(rusqlite::params![root_id], |row| row.get::<_, String>(0))
         .map_err(|e| e.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())

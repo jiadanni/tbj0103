@@ -1,11 +1,11 @@
 use chrono::Local;
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
-use r2d2::Pool;
-use r2d2_sqlite::SqliteConnectionManager;
 
 fn timestamp() -> String {
     // Local time, second precision, no timezone offset. Sub-second timestamps
@@ -34,15 +34,16 @@ pub fn get_min_log_level() -> String {
         2 => "warn",
         3 => "error",
         _ => "info",
-    }.to_string()
+    }
+    .to_string()
 }
 
 fn level_to_u8(level: &str) -> u8 {
     match level {
         "debug" => 0,
-        "warn"  => 2,
+        "warn" => 2,
         "error" => 3,
-        _       => 1,
+        _ => 1,
     }
 }
 
@@ -211,7 +212,13 @@ impl BufferedLogger {
         }
     }
 
-    fn push_aggregated(&mut self, level: &str, source: &str, message_template: &str, metadata: &str) {
+    fn push_aggregated(
+        &mut self,
+        level: &str,
+        source: &str,
+        message_template: &str,
+        metadata: &str,
+    ) {
         let key = AggregationKey {
             level: level.to_string(),
             source: source.to_string(),
@@ -245,7 +252,9 @@ impl BufferedLogger {
         let Ok(conn) = self.pool.get() else { return };
 
         // Use a transaction for the entire batch.
-        let Ok(tx) = conn.unchecked_transaction() else { return };
+        let Ok(tx) = conn.unchecked_transaction() else {
+            return;
+        };
 
         // Write individual buffered entries.
         for entry in self.buffer.drain(..) {
@@ -258,7 +267,10 @@ impl BufferedLogger {
         // Write aggregated entries — append count to message if > 1.
         for (key, agg) in self.aggregated.drain() {
             let message = if agg.count > 1 {
-                format!("{} (x{}, {}-{})", key.message_template, agg.count, agg.first_timestamp, agg.last_timestamp)
+                format!(
+                    "{} (x{}, {}-{})",
+                    key.message_template, agg.count, agg.first_timestamp, agg.last_timestamp
+                )
             } else {
                 key.message_template
             };
@@ -315,7 +327,13 @@ pub fn log_buffered(level: &str, source: &str, message: &str, metadata: &str) {
 pub fn log_buffered_aggregated(level: &str, source: &str, message_template: &str, metadata: &str) {
     if level == "error" {
         let tag = "ERROR";
-        eprintln!("[{}] [{}] [{}] {}", timestamp(), tag, source, message_template);
+        eprintln!(
+            "[{}] [{}] [{}] {}",
+            timestamp(),
+            tag,
+            source,
+            message_template
+        );
         persist(level, source, message_template, metadata);
         return;
     }
@@ -329,7 +347,13 @@ pub fn log_buffered_aggregated(level: &str, source: &str, message_template: &str
         "warn" => "WARN",
         _ => "INFO",
     };
-    eprintln!("[{}] [{}] [{}] {}", timestamp(), tag, source, message_template);
+    eprintln!(
+        "[{}] [{}] [{}] {}",
+        timestamp(),
+        tag,
+        source,
+        message_template
+    );
 
     if let Some(logger) = BUFFERED_LOGGER.get() {
         if let Ok(mut logger) = logger.lock() {
@@ -357,7 +381,9 @@ pub fn flush_buffered() {
 pub fn persist_batch(entries: &[(String, String, String, String, String)]) {
     let Some(pool) = DB_POOL.get() else { return };
     let Ok(conn) = pool.get() else { return };
-    let Ok(tx) = conn.unchecked_transaction() else { return };
+    let Ok(tx) = conn.unchecked_transaction() else {
+        return;
+    };
     for (ts, level, source, message, metadata) in entries {
         let _ = tx.execute(
             "INSERT INTO app_logs (timestamp, level, source, message, metadata) VALUES (?1, ?2, ?3, ?4, ?5)",

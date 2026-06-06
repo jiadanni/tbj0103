@@ -985,7 +985,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
     )?;
     if applied_v35 == 0 {
         let _ = conn.execute_batch(
-            "ALTER TABLE concept_nodes ADD COLUMN hierarchy_level TEXT DEFAULT 'concept';"
+            "ALTER TABLE concept_nodes ADD COLUMN hierarchy_level TEXT DEFAULT 'concept';",
         );
         let _ = conn.execute_batch(
             "CREATE INDEX IF NOT EXISTS idx_concept_nodes_hierarchy ON concept_nodes(workspace_id, hierarchy_level);"
@@ -1020,9 +1020,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         let _ = conn.execute_batch(
             "ALTER TABLE workspaces ADD COLUMN parent_workspace_id TEXT REFERENCES workspaces(id) ON DELETE SET NULL;",
         );
-        conn.execute_batch(
-            "INSERT INTO _migrations(name) VALUES('v37_workspace_parent_id');",
-        )?;
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v37_workspace_parent_id');")?;
     }
 
     // v38: add icon field to workspaces for visual identification
@@ -1032,12 +1030,9 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         |row| row.get(0),
     )?;
     if applied_v38 == 0 {
-        let _ = conn.execute_batch(
-            "ALTER TABLE workspaces ADD COLUMN icon TEXT NOT NULL DEFAULT '';",
-        );
-        conn.execute_batch(
-            "INSERT INTO _migrations(name) VALUES('v38_workspace_icon');",
-        )?;
+        let _ =
+            conn.execute_batch("ALTER TABLE workspaces ADD COLUMN icon TEXT NOT NULL DEFAULT '';");
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v38_workspace_icon');")?;
     }
 
     // v39: add variant_group_id to messages and index variant lookups
@@ -1062,7 +1057,9 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         |row| row.get(0),
     )?;
     if applied_v40 == 0 {
-        let _ = conn.execute_batch("ALTER TABLE ai_models ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0;");
+        let _ = conn.execute_batch(
+            "ALTER TABLE ai_models ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0;",
+        );
         conn.execute_batch("INSERT INTO _migrations(name) VALUES('v40_ai_models_is_hidden');")?;
     }
 
@@ -1088,7 +1085,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
 
     if applied_v42 == 0 {
         let _ = conn.execute_batch("ALTER TABLE workspaces ADD COLUMN last_message_at TEXT;");
-        
+
         // Initial population: set last_message_at for all workspaces based on existing messages
         conn.execute_batch(
             "UPDATE workspaces 
@@ -1099,7 +1096,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
                 WHERE s.workspace_id = workspaces.id
                 ORDER BY m.created_at DESC
                 LIMIT 1
-             );"
+             );",
         )?;
 
         // Create the trigger
@@ -1110,10 +1107,12 @@ fn run_migrations(conn: &Connection) -> Result<()> {
                  UPDATE workspaces 
                  SET last_message_at = NEW.created_at
                  WHERE id = (SELECT workspace_id FROM chat_sessions WHERE id = NEW.session_id);
-             END;"
+             END;",
         )?;
 
-        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v42_workspace_last_message_at');")?;
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v42_workspace_last_message_at');",
+        )?;
     }
 
     // v43: migrate switch_workspace_to_chat (bool) → switch_workspace_section (string)
@@ -1140,7 +1139,9 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             "INSERT OR REPLACE INTO settings (key, value) VALUES ('switch_workspace_section', ?1)",
             [new_value],
         )?;
-        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v43_switch_workspace_section');")?;
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v43_switch_workspace_section');",
+        )?;
     }
 
     // v44: per-model num_ctx override. NULL means "use default".
@@ -1186,7 +1187,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
                  SET last_message_at = NEW.created_at
                  WHERE id = (SELECT workspace_id FROM chat_sessions WHERE id = NEW.session_id)
                    AND (last_message_at IS NULL OR NEW.created_at > last_message_at);
-             END;"
+             END;",
         )?;
 
         // Correct any values that may have been set backwards by the old trigger:
@@ -1198,10 +1199,12 @@ fn run_migrations(conn: &Connection) -> Result<()> {
                  FROM messages m
                  JOIN chat_sessions s ON m.session_id = s.id
                  WHERE s.workspace_id = workspaces.id
-             );"
+             );",
         )?;
 
-        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v46_fix_workspace_last_message_at_trigger');")?;
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v46_fix_workspace_last_message_at_trigger');",
+        )?;
     }
 
     // v47: raise migration suggestion threshold from 0.3 to 0.5
@@ -1218,7 +1221,9 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             "UPDATE settings SET value = '0.5' WHERE key = 'migration_suggestion_threshold' AND value = '0.3'",
             [],
         );
-        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v47_raise_migration_threshold');")?;
+        conn.execute_batch(
+            "INSERT INTO _migrations(name) VALUES('v47_raise_migration_threshold');",
+        )?;
     }
 
     // v48: memory_summaries table + migrate context→fact + drop context CHECK
@@ -1240,7 +1245,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
                 generated_at TEXT NOT NULL DEFAULT (datetime('now')),
                 edited_at TEXT,
                 UNIQUE(scope, workspace_id)
-            );"
+            );",
         )?;
 
         // Migrate context memories to fact
@@ -1286,7 +1291,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
                 PRIMARY KEY (job_id, chunk_index)
             );
             CREATE INDEX IF NOT EXISTS idx_analyze_jobs_workspace
-                ON analyze_jobs(workspace_id, started_at DESC);"
+                ON analyze_jobs(workspace_id, started_at DESC);",
         )?;
         conn.execute_batch("INSERT INTO _migrations(name) VALUES('v49_analyze_jobs');")?;
     }
@@ -1386,9 +1391,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         |row| row.get(0),
     )?;
     if applied_v54 == 0 {
-        let _ = conn.execute_batch(
-            "ALTER TABLE learning_cards ADD COLUMN topic_id TEXT;",
-        );
+        let _ = conn.execute_batch("ALTER TABLE learning_cards ADD COLUMN topic_id TEXT;");
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS flashcard_topics (
                 id TEXT PRIMARY KEY NOT NULL,
@@ -1658,13 +1661,9 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             );
         }
         if !has_last_reinforced {
-            let _ = conn.execute_batch(
-                "ALTER TABLE memories ADD COLUMN last_reinforced_at TEXT;",
-            );
+            let _ = conn.execute_batch("ALTER TABLE memories ADD COLUMN last_reinforced_at TEXT;");
         }
-        conn.execute_batch(
-            "INSERT INTO _migrations(name) VALUES('v61_memories_reinforcement');",
-        )?;
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v61_memories_reinforcement');")?;
     }
 
     // v62: add supersession columns to memories so the contradiction-detection
@@ -1692,20 +1691,15 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         // existing databases we add a plain TEXT column — referential integrity
         // is best-effort here and the application clears stale ids on delete.
         if !has_by {
-            let _ = conn
-                .execute_batch("ALTER TABLE memories ADD COLUMN superseded_by TEXT;");
+            let _ = conn.execute_batch("ALTER TABLE memories ADD COLUMN superseded_by TEXT;");
         }
         if !has_at {
-            let _ = conn
-                .execute_batch("ALTER TABLE memories ADD COLUMN superseded_at TEXT;");
+            let _ = conn.execute_batch("ALTER TABLE memories ADD COLUMN superseded_at TEXT;");
         }
         if !has_reason {
-            let _ = conn
-                .execute_batch("ALTER TABLE memories ADD COLUMN superseded_reason TEXT;");
+            let _ = conn.execute_batch("ALTER TABLE memories ADD COLUMN superseded_reason TEXT;");
         }
-        conn.execute_batch(
-            "INSERT INTO _migrations(name) VALUES('v62_memories_supersession');",
-        )?;
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v62_memories_supersession');")?;
     }
 
     // v63: add `parent_checked_at` to `concept_nodes` so the LLM-driven
@@ -1728,9 +1722,8 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             names.iter().any(|n| n == "parent_checked_at")
         };
         if !has_parent_checked_at {
-            let _ = conn.execute_batch(
-                "ALTER TABLE concept_nodes ADD COLUMN parent_checked_at TEXT;",
-            );
+            let _ =
+                conn.execute_batch("ALTER TABLE concept_nodes ADD COLUMN parent_checked_at TEXT;");
         }
         // Dedupe any existing duplicate concept_links rows before adding the
         // unique index — keep the earliest row per (source_id, target_id,
@@ -1747,9 +1740,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_concept_links_source_target_type
                  ON concept_links(source_id, target_id, link_type);",
         );
-        conn.execute_batch(
-            "INSERT INTO _migrations(name) VALUES('v63_concept_hierarchy_job');",
-        )?;
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v63_concept_hierarchy_job');")?;
     }
 
     // v64: clean up legacy `part_of` rows whose (child, parent) hierarchy
@@ -1777,9 +1768,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
                    )
                );",
         );
-        conn.execute_batch(
-            "INSERT INTO _migrations(name) VALUES('v64_cleanup_invalid_part_of');",
-        )?;
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v64_cleanup_invalid_part_of');")?;
     }
 
     // v65: persistent workspace prompt bank for explorer/starter prompts.
@@ -1856,7 +1845,9 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             let _ = conn.execute_batch("ALTER TABLE concept_nodes ADD COLUMN source_model TEXT;");
         }
         if !has_conf {
-            let _ = conn.execute_batch("ALTER TABLE concept_nodes ADD COLUMN confidence REAL NOT NULL DEFAULT 0.5;");
+            let _ = conn.execute_batch(
+                "ALTER TABLE concept_nodes ADD COLUMN confidence REAL NOT NULL DEFAULT 0.5;",
+            );
         }
         if !has_uef {
             let _ = conn.execute_batch("ALTER TABLE concept_nodes ADD COLUMN user_edited_fields TEXT NOT NULL DEFAULT '[]';");
@@ -1868,10 +1859,12 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             let _ = conn.execute_batch("ALTER TABLE concept_nodes ADD COLUMN superseded_at TEXT;");
         }
         if !has_sup_re {
-            let _ = conn.execute_batch("ALTER TABLE concept_nodes ADD COLUMN supersede_reason TEXT;");
+            let _ =
+                conn.execute_batch("ALTER TABLE concept_nodes ADD COLUMN supersede_reason TEXT;");
         }
         if !has_job {
-            let _ = conn.execute_batch("ALTER TABLE concept_nodes ADD COLUMN last_modified_by_job TEXT;");
+            let _ = conn
+                .execute_batch("ALTER TABLE concept_nodes ADD COLUMN last_modified_by_job TEXT;");
         }
 
         // 2. Alter concept_links
@@ -1892,13 +1885,16 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             let _ = conn.execute_batch("ALTER TABLE concept_links ADD COLUMN source_model TEXT;");
         }
         if !has_link_conf {
-            let _ = conn.execute_batch("ALTER TABLE concept_links ADD COLUMN confidence REAL NOT NULL DEFAULT 0.5;");
+            let _ = conn.execute_batch(
+                "ALTER TABLE concept_links ADD COLUMN confidence REAL NOT NULL DEFAULT 0.5;",
+            );
         }
         if !has_link_uef {
             let _ = conn.execute_batch("ALTER TABLE concept_links ADD COLUMN user_edited_fields TEXT NOT NULL DEFAULT '[]';");
         }
         if !has_link_job {
-            let _ = conn.execute_batch("ALTER TABLE concept_links ADD COLUMN last_modified_by_job TEXT;");
+            let _ = conn
+                .execute_batch("ALTER TABLE concept_links ADD COLUMN last_modified_by_job TEXT;");
         }
 
         // 3. Create proposals table & default settings keys
@@ -1978,9 +1974,7 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         if has_folder == 0 {
             conn.execute_batch("ALTER TABLE project_notes ADD COLUMN folder TEXT;")?;
         }
-        conn.execute_batch(
-            "INSERT INTO _migrations(name) VALUES('v69_project_notes_folder');",
-        )?;
+        conn.execute_batch("INSERT INTO _migrations(name) VALUES('v69_project_notes_folder');")?;
     }
 
     let applied_v70: i64 = conn.query_row(
@@ -1996,7 +1990,9 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             |row| row.get(0),
         )?;
         if has_is_pinned == 0 {
-            conn.execute_batch("ALTER TABLE project_notes ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0;")?;
+            conn.execute_batch(
+                "ALTER TABLE project_notes ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0;",
+            )?;
         }
         conn.execute_batch(
             "CREATE INDEX IF NOT EXISTS idx_project_notes_workspace_pinned_updated
@@ -2121,9 +2117,8 @@ fn run_migrations(conn: &Connection) -> Result<()> {
 /// `topic_id` column is left untouched.
 fn migrate_topics_to_concepts(conn: &Connection) -> Result<()> {
     // Collect candidate (workspace_id, topic, topic_id) rows.
-    let mut stmt = conn.prepare(
-        "SELECT id, workspace_id, topic, created_at FROM flashcard_topics",
-    )?;
+    let mut stmt =
+        conn.prepare("SELECT id, workspace_id, topic, created_at FROM flashcard_topics")?;
     let rows: Vec<(String, String, String, String)> = stmt
         .query_map([], |r| {
             Ok((
@@ -2228,7 +2223,11 @@ fn dedupe_ai_models(conn: &Connection) -> Result<()> {
                 .skip(1)
                 .find_map(|row| {
                     let name = row.1.trim();
-                    if name.is_empty() { None } else { Some(name.to_string()) }
+                    if name.is_empty() {
+                        None
+                    } else {
+                        Some(name.to_string())
+                    }
                 })
                 .unwrap_or_default()
         } else {
@@ -2268,7 +2267,10 @@ fn dedupe_ai_models(conn: &Connection) -> Result<()> {
         )?;
 
         for row in rows.iter().skip(1) {
-            conn.execute("DELETE FROM ai_models WHERE id = ?1", rusqlite::params![row.0])?;
+            conn.execute(
+                "DELETE FROM ai_models WHERE id = ?1",
+                rusqlite::params![row.0],
+            )?;
         }
     }
 
@@ -2365,18 +2367,29 @@ mod tests {
             .expect("Failed to count merged rows");
         assert_eq!(count, 1);
 
-        let (id, role_tags, is_paid, enabled, tokens_used_total): (String, String, i32, i32, i64) = conn
-            .query_row(
+        let (id, role_tags, is_paid, enabled, tokens_used_total): (String, String, i32, i32, i64) =
+            conn.query_row(
                 "SELECT id, role_tags, is_paid, enabled, tokens_used_total
                  FROM ai_models
                  WHERE provider = 'ollama' AND model_id = 'gemma4:latest'",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
             )
             .expect("Failed to fetch merged row");
 
         assert_eq!(id, "model-a");
-        assert_eq!(serde_json::from_str::<Vec<String>>(&role_tags).expect("Invalid role tag json"), vec!["chat", "vision"]);
+        assert_eq!(
+            serde_json::from_str::<Vec<String>>(&role_tags).expect("Invalid role tag json"),
+            vec!["chat", "vision"]
+        );
         assert_eq!(is_paid, 1);
         assert_eq!(enabled, 1);
         assert_eq!(tokens_used_total, 125);
@@ -2543,7 +2556,15 @@ mod tests {
                  FROM sources
                  WHERE id = 'doc-1'",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
             )
             .expect("Failed to fetch migrated document source");
         assert_eq!(doc_row.0, "notes.md");
@@ -2553,11 +2574,9 @@ mod tests {
         assert_eq!(doc_row.4, 1);
 
         let web_title: String = conn
-            .query_row(
-                "SELECT title FROM sources WHERE id = 'web-1'",
-                [],
-                |row| row.get(0),
-            )
+            .query_row("SELECT title FROM sources WHERE id = 'web-1'", [], |row| {
+                row.get(0)
+            })
             .expect("Failed to fetch migrated web source");
         assert_eq!(web_title, "Example");
 

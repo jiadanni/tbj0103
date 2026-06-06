@@ -32,10 +32,7 @@ pub struct LogFrontendEventRequest {
 }
 
 #[tauri::command]
-pub fn get_logs(
-    state: State<DbState>,
-    req: GetLogsRequest,
-) -> Result<Vec<LogEntry>, String> {
+pub fn get_logs(state: State<DbState>, req: GetLogsRequest) -> Result<Vec<LogEntry>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
 
     let mut conditions: Vec<String> = Vec::new();
@@ -123,10 +120,7 @@ pub fn get_log_sources(state: State<DbState>) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-pub fn clear_logs(
-    state: State<DbState>,
-    before: Option<String>,
-) -> Result<u64, String> {
+pub fn clear_logs(state: State<DbState>, before: Option<String>) -> Result<u64, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let deleted = if let Some(ref before) = before {
         conn.execute(
@@ -147,7 +141,9 @@ pub fn set_log_level(level: String) -> Result<(), String> {
             crate::logging::set_min_log_level(&level);
             Ok(())
         }
-        other => Err(format!("Invalid log level '{other}'. Must be debug, info, warn, or error.")),
+        other => Err(format!(
+            "Invalid log level '{other}'. Must be debug, info, warn, or error."
+        )),
     }
 }
 
@@ -183,9 +179,7 @@ pub struct LogFrontendEventBatchRequest {
 }
 
 #[tauri::command]
-pub async fn log_frontend_events_batch(
-    req: LogFrontendEventBatchRequest,
-) -> Result<(), String> {
+pub async fn log_frontend_events_batch(req: LogFrontendEventBatchRequest) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         let entries: Vec<(String, String, String, String, String)> = req
             .events
@@ -196,9 +190,7 @@ pub async fn log_frontend_events_batch(
                     _ => "info".to_string(),
                 };
                 let metadata = e.metadata.clone().unwrap_or_else(|| "{}".to_string());
-                let ts = chrono::Local::now()
-                    .format("%Y-%m-%dT%H:%M:%S")
-                    .to_string();
+                let ts = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
                 (ts, level, e.source.clone(), e.message.clone(), metadata)
             })
             .collect();

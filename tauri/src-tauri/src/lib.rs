@@ -13,11 +13,11 @@ pub mod services;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
-use tauri::{AppHandle, Manager};
 #[cfg(target_os = "linux")]
 use tauri::PhysicalPosition;
 #[cfg(target_os = "linux")]
 use tauri::PhysicalSize;
+use tauri::{AppHandle, Manager};
 use tauri::{WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_global_shortcut::ShortcutState;
@@ -134,7 +134,9 @@ fn apply_saved_main_window_state(
             let max_x = monitor_position.x + monitor_size.width as i32 - next_state.width as i32;
             let max_y = monitor_position.y + monitor_size.height as i32 - next_state.height as i32;
 
-            next_state.x = next_state.x.clamp(monitor_position.x, max_x.max(monitor_position.x));
+            next_state.x = next_state
+                .x
+                .clamp(monitor_position.x, max_x.max(monitor_position.x));
             next_state.y = next_state.y.clamp(safe_top, max_y.max(safe_top));
         }
     } else {
@@ -166,11 +168,7 @@ pub fn run() {
             .payload()
             .downcast_ref::<&'static str>()
             .copied()
-            .or_else(|| {
-                info.payload()
-                    .downcast_ref::<String>()
-                    .map(|s| s.as_str())
-            })
+            .or_else(|| info.payload().downcast_ref::<String>().map(|s| s.as_str()))
             .unwrap_or("Box<dyn Any>");
         let location = info
             .location()
@@ -215,7 +213,10 @@ pub fn run() {
             app.manage(commands::security::AuthState::default());
 
             // Boot state lets the unlock IPC handlers know where the DB lives.
-            app.manage(commands::boot::BootState::new(app_dir.clone(), db_path.clone()));
+            app.manage(commands::boot::BootState::new(
+                app_dir.clone(),
+                db_path.clone(),
+            ));
 
             if crate::services::db_encryption::sidecar_exists(&db_path) {
                 // Encrypted DB. Skip pool init — the frontend will show the
@@ -583,7 +584,10 @@ pub fn run() {
         .run(tauri::generate_context!());
 
     if let Err(err) = run_result {
-        crate::logging::log_error("app", format!("error while running tauri application: {err}"));
+        crate::logging::log_error(
+            "app",
+            format!("error while running tauri application: {err}"),
+        );
     }
 }
 
@@ -598,7 +602,9 @@ pub fn complete_db_dependent_setup(
 ) -> Result<(), String> {
     use tauri::Manager;
 
-    let conn = pool.get().map_err(|e| format!("Failed to get DB connection: {e}"))?;
+    let conn = pool
+        .get()
+        .map_err(|e| format!("Failed to get DB connection: {e}"))?;
 
     commands::settings::sync_autostart(&app, &conn)
         .map_err(|e| format!("Failed to synchronize autostart setting: {e}"))?;
@@ -624,7 +630,9 @@ pub fn complete_db_dependent_setup(
 
     crate::logging::init_pool(pool.clone());
     {
-        let log_conn = pool.get().map_err(|e| format!("Failed to get DB connection: {e}"))?;
+        let log_conn = pool
+            .get()
+            .map_err(|e| format!("Failed to get DB connection: {e}"))?;
         if let Ok(row) = log_conn.query_row(
             "SELECT value FROM settings WHERE key = 'log_level'",
             [],
@@ -639,12 +647,12 @@ pub fn complete_db_dependent_setup(
 
     app.manage(db::DbState(pool));
     app.manage(commands::chat_file::ChatsDirState(chats_dir));
-    app.manage(commands::chat_file::ChatCryptoState(
-        std::sync::Mutex::new(passphrase),
-    ));
-    app.manage(commands::ollama::StreamAbortState(
-        std::sync::Mutex::new(std::collections::HashMap::new()),
-    ));
+    app.manage(commands::chat_file::ChatCryptoState(std::sync::Mutex::new(
+        passphrase,
+    )));
+    app.manage(commands::ollama::StreamAbortState(std::sync::Mutex::new(
+        std::collections::HashMap::new(),
+    )));
     let (bg_cancel_tx, _) = tokio::sync::watch::channel(0u64);
     app.manage(commands::ollama::BackgroundInferenceCancel(bg_cancel_tx));
     app.manage(commands::quick_search::QuickSearchRuntimeState::default());
@@ -658,15 +666,13 @@ pub fn complete_db_dependent_setup(
         ));
     }
 
-    let mcp_manager = std::sync::Arc::new(tokio::sync::Mutex::new(
-        mcp_client::MCPClientManager::new(),
-    ));
+    let mcp_manager =
+        std::sync::Arc::new(tokio::sync::Mutex::new(mcp_client::MCPClientManager::new()));
     app.manage(mcp_manager);
 
     ensure_quick_search_window(&app)
         .map_err(|e| format!("Failed to create quick search window: {e}"))?;
-    build_tray_icon(&app)
-        .map_err(|e| format!("Failed to create tray icon: {e}"))?;
+    build_tray_icon(&app).map_err(|e| format!("Failed to create tray icon: {e}"))?;
 
     {
         let runtime_state = app.state::<commands::quick_search::QuickSearchRuntimeState>();
@@ -720,7 +726,9 @@ pub fn complete_db_dependent_setup(
             window.on_window_event(move |event| {
                 let should_persist = matches!(
                     event,
-                    WindowEvent::Moved(_) | WindowEvent::Resized(_) | WindowEvent::CloseRequested { .. }
+                    WindowEvent::Moved(_)
+                        | WindowEvent::Resized(_)
+                        | WindowEvent::CloseRequested { .. }
                 );
                 if !should_persist {
                     return;
@@ -773,8 +781,7 @@ pub fn complete_db_dependent_setup(
     let should_use_native_menu = cfg!(target_os = "macos") && !hide_native_menu;
 
     if should_use_native_menu {
-        let menu = app_menu::build_menu(&app)
-            .map_err(|e| format!("Failed to build menu: {e}"))?;
+        let menu = app_menu::build_menu(&app).map_err(|e| format!("Failed to build menu: {e}"))?;
         app.set_menu(menu)
             .map_err(|e| format!("Failed to set menu: {e}"))?;
     } else {
@@ -825,16 +832,25 @@ pub fn complete_db_dependent_setup(
                     {
                         Ok(Some(ids)) => ids,
                         _ => {
-                            tokio::time::sleep(std::time::Duration::from_secs(interval_minutes * 60)).await;
+                            tokio::time::sleep(std::time::Duration::from_secs(
+                                interval_minutes * 60,
+                            ))
+                            .await;
                             continue;
                         }
                     }
                 };
 
                 for id in workspace_ids {
-                    let _ = crate::services::topic_signature::recompute_workspace_signature_with_ai(
-                        &db, &id, None, None, Some(cancel_rx.clone()),
-                    ).await;
+                    let _ =
+                        crate::services::topic_signature::recompute_workspace_signature_with_ai(
+                            &db,
+                            &id,
+                            None,
+                            None,
+                            Some(cancel_rx.clone()),
+                        )
+                        .await;
                 }
             }
             tokio::time::sleep(std::time::Duration::from_secs(interval_minutes * 60)).await;
@@ -949,10 +965,8 @@ fn load_tray_icon(app: &AppHandle) -> Result<tauri::image::Image<'static>, Strin
     let icon_style = {
         let db_state = app.state::<crate::db::DbState>();
         match db_state.0.get() {
-            Ok(conn) => {
-                commands::settings::get_setting(&conn, "menubar_icon_style")
-                    .unwrap_or_else(|| "monochrome".to_string())
-            }
+            Ok(conn) => commands::settings::get_setting(&conn, "menubar_icon_style")
+                .unwrap_or_else(|| "monochrome".to_string()),
             Err(_) => "monochrome".to_string(),
         }
     };
@@ -1018,7 +1032,11 @@ fn create_monochrome_tray_icon(style: &str) -> Result<tauri::image::Image<'stati
         }
     }
 
-    Ok(tauri::image::Image::new_owned(rgba_data, SIZE as u32, SIZE as u32))
+    Ok(tauri::image::Image::new_owned(
+        rgba_data,
+        SIZE as u32,
+        SIZE as u32,
+    ))
 }
 
 /// Create a tray icon that signals an active AI task is running.
@@ -1030,8 +1048,8 @@ fn create_ai_active_tray_icon() -> Result<tauri::image::Image<'static>, String> 
 
     let center = SIZE as i32 / 2;
     let outer_r: i32 = SIZE as i32 / 2 - 2; // ring outer radius
-    let inner_r: i32 = outer_r - 3;          // ring inner radius (ring width = 3px)
-    let dot_r: i32 = 2;                       // centre dot radius
+    let inner_r: i32 = outer_r - 3; // ring inner radius (ring width = 3px)
+    let dot_r: i32 = 2; // centre dot radius
 
     for y in 0..SIZE {
         for x in 0..SIZE {
@@ -1041,19 +1059,23 @@ fn create_ai_active_tray_icon() -> Result<tauri::image::Image<'static>, String> 
 
             // Render outer ring OR centre dot
             let in_ring = d2 <= outer_r * outer_r && d2 > inner_r * inner_r;
-            let in_dot  = d2 <= dot_r * dot_r;
+            let in_dot = d2 <= dot_r * dot_r;
 
             if in_ring || in_dot {
                 let idx = (y * SIZE + x) * 4;
-                rgba_data[idx]     = 0;   // R (black — macOS will invert for dark menu bar)
-                rgba_data[idx + 1] = 0;   // G
-                rgba_data[idx + 2] = 0;   // B
+                rgba_data[idx] = 0; // R (black — macOS will invert for dark menu bar)
+                rgba_data[idx + 1] = 0; // G
+                rgba_data[idx + 2] = 0; // B
                 rgba_data[idx + 3] = 255; // A
             }
         }
     }
 
-    Ok(tauri::image::Image::new_owned(rgba_data, SIZE as u32, SIZE as u32))
+    Ok(tauri::image::Image::new_owned(
+        rgba_data,
+        SIZE as u32,
+        SIZE as u32,
+    ))
 }
 
 /// Update the menu-bar / system-tray icon to indicate whether an AI task is
@@ -1066,15 +1088,14 @@ pub fn set_tray_ai_active(app: &AppHandle, active: bool) {
         create_ai_active_tray_icon()
     } else {
         // Restore the normal icon (respects user's icon-style preference)
-        load_tray_icon(app)
-            .or_else(|_| {
-                app.default_window_icon()
-                    .map(|i| {
-                        use tauri::image::Image;
-                        Image::new_owned(i.rgba().to_owned(), i.width(), i.height())
-                    })
-                    .ok_or_else(|| "No icon available".to_string())
-            })
+        load_tray_icon(app).or_else(|_| {
+            app.default_window_icon()
+                .map(|i| {
+                    use tauri::image::Image;
+                    Image::new_owned(i.rgba().to_owned(), i.width(), i.height())
+                })
+                .ok_or_else(|| "No icon available".to_string())
+        })
     };
     if let Ok(icon) = icon {
         let _ = tray.set_icon(Some(icon));

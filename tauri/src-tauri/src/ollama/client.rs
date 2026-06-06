@@ -357,7 +357,12 @@ impl OllamaClient {
         let mut extra_parts = extras.to_vec();
         extra_parts.push(("error", error.to_string()));
         let fields = Self::summary_fields(ctx, method, path, Some(duration), None, &extra_parts);
-        crate::logging::log_buffered("error", "ollama", &format!("[ERR] {}", fields.join(" ")), "{}");
+        crate::logging::log_buffered(
+            "error",
+            "ollama",
+            &format!("[ERR] {}", fields.join(" ")),
+            "{}",
+        );
     }
 
     #[cfg(debug_assertions)]
@@ -578,21 +583,18 @@ impl OllamaClient {
         if let Some(t) = ctx.timeout_override {
             req = req.timeout(t);
         }
-        let response = req
-            .send()
-            .await
-            .map_err(|e| {
-                let message = format!("Ollama connection error: {e}");
-                self.log_http_error(
-                    "POST",
-                    "/api/chat",
-                    started_at.elapsed(),
-                    ctx,
-                    &message,
-                    &[],
-                );
-                message
-            })?;
+        let response = req.send().await.map_err(|e| {
+            let message = format!("Ollama connection error: {e}");
+            self.log_http_error(
+                "POST",
+                "/api/chat",
+                started_at.elapsed(),
+                ctx,
+                &message,
+                &[],
+            );
+            message
+        })?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -760,14 +762,7 @@ impl OllamaClient {
                     } else {
                         format!("Stream error: {e}")
                     };
-                    self.log_http_error(
-                        "POST",
-                        "/api/chat",
-                        elapsed,
-                        ctx,
-                        &message,
-                        &[],
-                    );
+                    self.log_http_error("POST", "/api/chat", elapsed, ctx, &message, &[]);
                     // Free the runner — most stream errors here are caused by
                     // the model OOMing or being killed, which leaves the entry
                     // in /api/ps until keep_alive expires.
@@ -798,12 +793,8 @@ impl OllamaClient {
                     if parsed.done {
                         // Flush any pending text together with the final chunk
                         pending_chunk.push_str(&content);
-                        let duration_ms = parsed
-                            .total_duration
-                            .map(|ns| ns / 1_000_000);
-                        let load_duration_ms = parsed
-                            .load_duration
-                            .map(|ns| ns / 1_000_000);
+                        let duration_ms = parsed.total_duration.map(|ns| ns / 1_000_000);
+                        let load_duration_ms = parsed.load_duration.map(|ns| ns / 1_000_000);
                         let _ = app.emit(
                             &event_name,
                             StreamEvent {
@@ -1286,8 +1277,9 @@ impl OllamaClient {
         {
             if let Ok(guard) = capability_cache().lock() {
                 for model in &mut models {
-                    if let Some((caps, fetched_at)) =
-                        guard.entries.get(&(self.base_url.clone(), model.name.clone()))
+                    if let Some((caps, fetched_at)) = guard
+                        .entries
+                        .get(&(self.base_url.clone(), model.name.clone()))
                     {
                         if fetched_at.elapsed() < CAPABILITY_CACHE_TTL {
                             model.capabilities = caps.clone();
@@ -1375,7 +1367,9 @@ impl OllamaClient {
             // fetches in the summary log.
             let was_cached = {
                 if let Ok(guard) = capability_cache().lock() {
-                    guard.entries.get(&(self.base_url.clone(), model.name.clone()))
+                    guard
+                        .entries
+                        .get(&(self.base_url.clone(), model.name.clone()))
                         .map(|(_, fetched_at)| fetched_at.elapsed() < CAPABILITY_CACHE_TTL)
                         .unwrap_or(false)
                 } else {
@@ -1384,13 +1378,17 @@ impl OllamaClient {
             };
 
             let mut enriched_model = model;
-            let caps = self.fetch_model_capabilities_observed(&enriched_model.name, ctx).await;
+            let caps = self
+                .fetch_model_capabilities_observed(&enriched_model.name, ctx)
+                .await;
             // fetch_model_capabilities_observed only writes the cache on HTTP success
             // (even when the parsed capabilities list is empty/None), so cache
             // presence after the call is the most reliable success signal.
             let fetch_ok = {
                 if let Ok(guard) = capability_cache().lock() {
-                    guard.entries.contains_key(&(self.base_url.clone(), enriched_model.name.clone()))
+                    guard
+                        .entries
+                        .contains_key(&(self.base_url.clone(), enriched_model.name.clone()))
                 } else {
                     caps.is_some()
                 }
@@ -1443,7 +1441,10 @@ impl OllamaClient {
         // share a model name don't serve each other's stale capability data.
         {
             if let Ok(guard) = capability_cache().lock() {
-                if let Some((caps, fetched_at)) = guard.entries.get(&(self.base_url.clone(), model.to_string())) {
+                if let Some((caps, fetched_at)) = guard
+                    .entries
+                    .get(&(self.base_url.clone(), model.to_string()))
+                {
                     if fetched_at.elapsed() < CAPABILITY_CACHE_TTL {
                         return caps.clone();
                     }
@@ -1482,7 +1483,10 @@ impl OllamaClient {
                 "/api/show",
                 started_at.elapsed(),
                 ctx,
-                &format!("Ollama returned status {} for model details", response.status()),
+                &format!(
+                    "Ollama returned status {} for model details",
+                    response.status()
+                ),
                 &[
                     ("model", model.to_string()),
                     ("status", response.status().as_u16().to_string()),
@@ -1521,7 +1525,10 @@ impl OllamaClient {
         // for CAPABILITY_CACHE_TTL regardless of how many times the model list
         // cache expires.
         if let Ok(mut guard) = capability_cache().lock() {
-            guard.entries.insert((self.base_url.clone(), model.to_string()), (caps.clone(), Instant::now()));
+            guard.entries.insert(
+                (self.base_url.clone(), model.to_string()),
+                (caps.clone(), Instant::now()),
+            );
         }
         caps
     }
@@ -1715,7 +1722,10 @@ impl OllamaClient {
 
     /// Query Ollama `/api/ps` for the currently-loaded model list.
     /// Returned models include `size_vram` so the UI can display memory use.
-    pub async fn list_loaded_models(&self, source: &'static str) -> Result<Vec<LoadedModelInfo>, String> {
+    pub async fn list_loaded_models(
+        &self,
+        source: &'static str,
+    ) -> Result<Vec<LoadedModelInfo>, String> {
         let ctx = RequestContext {
             source: Some(source),
             ..Default::default()
@@ -1731,14 +1741,7 @@ impl OllamaClient {
         let started_at = Instant::now();
         let response = self.client.get(&url).send().await.map_err(|e| {
             let message = format!("Failed to query loaded models: {e}");
-            self.log_http_error(
-                "GET",
-                "/api/ps",
-                started_at.elapsed(),
-                ctx,
-                &message,
-                &[],
-            );
+            self.log_http_error("GET", "/api/ps", started_at.elapsed(), ctx, &message, &[]);
             message
         })?;
 
@@ -1758,14 +1761,7 @@ impl OllamaClient {
         let status = response.status().as_u16();
         let parsed: LoadedModelsResponse = response.json().await.map_err(|e| {
             let message = format!("Failed to parse /api/ps: {e}");
-            self.log_http_error(
-                "GET",
-                "/api/ps",
-                started_at.elapsed(),
-                ctx,
-                &message,
-                &[],
-            );
+            self.log_http_error("GET", "/api/ps", started_at.elapsed(), ctx, &message, &[]);
             message
         })?;
         self.log_http_success("GET", "/api/ps", status, started_at.elapsed(), ctx, &[]);

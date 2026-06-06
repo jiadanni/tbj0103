@@ -1,8 +1,6 @@
 use crate::db::DbState;
 use crate::services::background_scheduler::BackgroundTaskEvent;
-use crate::services::prompt_bank::{
-    self, PromptBankJob, PromptBankStatus, PromptSuggestion,
-};
+use crate::services::prompt_bank::{self, PromptBankJob, PromptBankStatus, PromptSuggestion};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 fn emit_prompt_bank_task(

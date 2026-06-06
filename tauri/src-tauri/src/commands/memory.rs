@@ -4,7 +4,9 @@ use crate::models::memory::{
     UpdateMemoryRequest,
 };
 use crate::ollama::client::{OllamaClient, OllamaMessage};
-use crate::services::model_settings::{get_configured_chat_model, get_embedding_model, get_ollama_base_url};
+use crate::services::model_settings::{
+    get_configured_chat_model, get_embedding_model, get_ollama_base_url,
+};
 use tauri::State;
 
 fn row_to_memory(row: &rusqlite::Row) -> rusqlite::Result<Memory> {
@@ -50,7 +52,10 @@ async fn store_memory_embedding(
         return;
     };
 
-    if let Ok(embedding) = client.generate_embedding("memory_command", &embedding_model, content).await {
+    if let Ok(embedding) = client
+        .generate_embedding("memory_command", &embedding_model, content)
+        .await
+    {
         if let Ok(conn) = state.0.get() {
             let embedding_bytes = crate::services::vector_index::f32_vec_to_bytes(&embedding);
             let now = chrono::Utc::now().to_rfc3339();
@@ -343,7 +348,9 @@ Example: [{{"content": "User is studying machine learning", "memory_type": "fact
         role: "user".to_string(),
         content: prompt,
     }];
-    let raw = client.send_message("memory_command", &req.model, messages).await?;
+    let raw = client
+        .send_message("memory_command", &req.model, messages)
+        .await?;
 
     // 4. Parse JSON array from response
     let trimmed = raw.trim();
@@ -456,7 +463,11 @@ fn snapshot_current_summary(
         Ok((summary_id, content, is_auto)) if !content.trim().is_empty() => {
             let snap_id = uuid::Uuid::new_v4().to_string();
             let now = chrono::Utc::now().to_rfc3339();
-            let ws_id = if scope == "global" { None } else { workspace_id };
+            let ws_id = if scope == "global" {
+                None
+            } else {
+                workspace_id
+            };
             conn.execute(
                 "INSERT INTO memory_summary_snapshots (id, summary_id, scope, workspace_id, content, is_auto_generated, snapshotted_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -518,7 +529,11 @@ pub fn upsert_memory_summary(
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
-    let ws_id = if scope == "global" { None } else { workspace_id };
+    let ws_id = if scope == "global" {
+        None
+    } else {
+        workspace_id
+    };
 
     snapshot_current_summary(&conn, &scope, ws_id.as_deref())?;
 
@@ -561,17 +576,21 @@ pub async fn regenerate_memory_summary(
             let mut stmt = conn.prepare(
                 "SELECT content, memory_type FROM memories WHERE scope = 'global' AND is_active = 1 ORDER BY created_at ASC"
             ).map_err(|e| e.to_string())?;
-            let rows = stmt.query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            }).map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })
+                .map_err(|e| e.to_string())?;
             items = rows.flatten().collect();
         } else if let Some(ref ws_id) = workspace_id {
             let mut stmt = conn.prepare(
                 "SELECT content, memory_type FROM memories WHERE scope = 'workspace' AND workspace_id = ?1 AND is_active = 1 ORDER BY created_at ASC"
             ).map_err(|e| e.to_string())?;
-            let rows = stmt.query_map(rusqlite::params![ws_id], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            }).map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(rusqlite::params![ws_id], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })
+                .map_err(|e| e.to_string())?;
             items = rows.flatten().collect();
         }
         items
@@ -582,7 +601,11 @@ pub async fn regenerate_memory_summary(
         let conn = state.0.get().map_err(|e| e.to_string())?;
         let id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
-        let ws_id = if scope == "global" { None } else { workspace_id.clone() };
+        let ws_id = if scope == "global" {
+            None
+        } else {
+            workspace_id.clone()
+        };
         snapshot_current_summary(&conn, &scope, ws_id.as_deref())?;
         conn.execute(
             "INSERT INTO memory_summaries (id, scope, workspace_id, content, is_auto_generated, generated_at, edited_at)
@@ -595,11 +618,13 @@ pub async fn regenerate_memory_summary(
     }
 
     // Build context for LLM
-    let facts_text: Vec<String> = memories.iter()
+    let facts_text: Vec<String> = memories
+        .iter()
         .filter(|(_, t)| t == "fact")
         .map(|(c, _)| format!("- {}", c))
         .collect();
-    let prefs_text: Vec<String> = memories.iter()
+    let prefs_text: Vec<String> = memories
+        .iter()
         .filter(|(_, t)| t == "preference")
         .map(|(c, _)| format!("- {}", c))
         .collect();
@@ -649,7 +674,11 @@ pub async fn regenerate_memory_summary(
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
-    let ws_id = if scope == "global" { None } else { workspace_id.clone() };
+    let ws_id = if scope == "global" {
+        None
+    } else {
+        workspace_id.clone()
+    };
     snapshot_current_summary(&conn, &scope, ws_id.as_deref())?;
     conn.execute(
         "INSERT INTO memory_summaries (id, scope, workspace_id, content, is_auto_generated, generated_at, edited_at)
@@ -688,8 +717,11 @@ pub fn list_memory_summary_snapshots(
             cols
         );
         let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-        let rows = stmt.query_map([], row_to_snapshot).map_err(|e| e.to_string())?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+        let rows = stmt
+            .query_map([], row_to_snapshot)
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?
     } else {
         let sql = format!(
             "SELECT {} FROM memory_summary_snapshots WHERE scope = 'workspace' AND workspace_id = ?1 ORDER BY snapshotted_at DESC",
@@ -699,7 +731,8 @@ pub fn list_memory_summary_snapshots(
         let rows = stmt
             .query_map(rusqlite::params![workspace_id], row_to_snapshot)
             .map_err(|e| e.to_string())?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?
     };
     Ok(items)
 }
@@ -736,17 +769,24 @@ pub fn restore_memory_summary_snapshot(
     let cols = "id, scope, workspace_id, content, is_auto_generated, generated_at, edited_at";
     let summary = if snap.scope == "global" {
         conn.query_row(
-            &format!("SELECT {} FROM memory_summaries WHERE scope = 'global'", cols),
+            &format!(
+                "SELECT {} FROM memory_summaries WHERE scope = 'global'",
+                cols
+            ),
             [],
             row_to_summary,
         )
     } else {
         conn.query_row(
-            &format!("SELECT {} FROM memory_summaries WHERE scope = 'workspace' AND workspace_id = ?1", cols),
+            &format!(
+                "SELECT {} FROM memory_summaries WHERE scope = 'workspace' AND workspace_id = ?1",
+                cols
+            ),
             rusqlite::params![snap.workspace_id],
             row_to_summary,
         )
-    }.map_err(|e| e.to_string())?;
+    }
+    .map_err(|e| e.to_string())?;
 
     Ok(summary)
 }

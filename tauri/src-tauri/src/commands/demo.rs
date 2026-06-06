@@ -45,7 +45,10 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
 
     // Remove any previous demo data
     for ws_id in DEMO_WORKSPACE_IDS {
-        let _ = conn.execute("DELETE FROM workspaces WHERE id = ?1", rusqlite::params![ws_id]);
+        let _ = conn.execute(
+            "DELETE FROM workspaces WHERE id = ?1",
+            rusqlite::params![ws_id],
+        );
     }
 
     // ── Workspace 1: AI & Machine Learning ──────────────────────────────
@@ -180,13 +183,41 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
     }
 
     let ai_links: Vec<(&str, &str, &str)> = vec![
-        ("demo-concept-attention-0000000000001", "demo-concept-transformer-000000000001", "supports"),
-        ("demo-concept-qkv-00000000000000000001", "demo-concept-attention-0000000000001", "part_of"),
-        ("demo-concept-mlh-00000000000000000001", "demo-concept-attention-0000000000001", "related"),
-        ("demo-concept-scaling-laws-000000000001", "demo-concept-transformer-000000000001", "supports"),
-        ("demo-concept-emergent-abilities-001", "demo-concept-scaling-laws-000000000001", "example"),
-        ("demo-concept-llm-finetuning-0000001", "demo-concept-transformer-000000000001", "supports"),
-        ("demo-concept-tokenization-00000000001", "demo-concept-llm-finetuning-0000001", "prerequisite"),
+        (
+            "demo-concept-attention-0000000000001",
+            "demo-concept-transformer-000000000001",
+            "supports",
+        ),
+        (
+            "demo-concept-qkv-00000000000000000001",
+            "demo-concept-attention-0000000000001",
+            "part_of",
+        ),
+        (
+            "demo-concept-mlh-00000000000000000001",
+            "demo-concept-attention-0000000000001",
+            "related",
+        ),
+        (
+            "demo-concept-scaling-laws-000000000001",
+            "demo-concept-transformer-000000000001",
+            "supports",
+        ),
+        (
+            "demo-concept-emergent-abilities-001",
+            "demo-concept-scaling-laws-000000000001",
+            "example",
+        ),
+        (
+            "demo-concept-llm-finetuning-0000001",
+            "demo-concept-transformer-000000000001",
+            "supports",
+        ),
+        (
+            "demo-concept-tokenization-00000000001",
+            "demo-concept-llm-finetuning-0000001",
+            "prerequisite",
+        ),
     ];
     for (src, tgt, ltype) in &ai_links {
         let lid = uuid::Uuid::new_v4().to_string();
@@ -217,7 +248,9 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
 
     // Daily notes for AI workspace (past 7 days)
     for days_ago in 0..7i64 {
-        let date = (chrono::Utc::now() - chrono::Duration::days(days_ago)).format("%Y-%m-%d").to_string();
+        let date = (chrono::Utc::now() - chrono::Duration::days(days_ago))
+            .format("%Y-%m-%d")
+            .to_string();
         let dnid = uuid::Uuid::new_v4().to_string();
         let content = if days_ago == 0 {
             format!("## Daily Note — {date}\n\nFinished scaling laws reading. The compute-optimal tradeoffs are counterintuitive.\n\n- Read Chinchilla paper on compute allocation\n- Explored emergent abilities across model sizes\n- Connected scaling laws to fine-tuning strategy")
@@ -461,14 +494,46 @@ Compared to RNNs ($O(n \\cdot d^2)$), self-attention is $O(n^2 \\cdot d)$, makin
     }
 
     let music_links: Vec<(&str, &str, &str)> = vec![
-        ("demo-concept-intervals-00000000000000001", "demo-concept-major-scale-0000000000001", "part_of"),
-        ("demo-concept-tritone-000000000000000001", "demo-concept-intervals-00000000000000001", "related"),
-        ("demo-concept-circle-fifths-000000000001", "demo-concept-major-scale-0000000000001", "related"),
-        ("demo-concept-cadence-000000000000000001", "demo-concept-tritone-000000000000000001", "related"),
-        ("demo-concept-chord-progression-00000001", "demo-concept-circle-fifths-000000000001", "supports"),
-        ("demo-concept-time-signature-000000000001", "demo-concept-polyrhythm-00000000000001", "prerequisite"),
-        ("demo-concept-syncopation-00000000000001", "demo-concept-time-signature-000000000001", "supports"),
-        ("demo-concept-polyrhythm-00000000000001", "demo-concept-syncopation-00000000000001", "related"),
+        (
+            "demo-concept-intervals-00000000000000001",
+            "demo-concept-major-scale-0000000000001",
+            "part_of",
+        ),
+        (
+            "demo-concept-tritone-000000000000000001",
+            "demo-concept-intervals-00000000000000001",
+            "related",
+        ),
+        (
+            "demo-concept-circle-fifths-000000000001",
+            "demo-concept-major-scale-0000000000001",
+            "related",
+        ),
+        (
+            "demo-concept-cadence-000000000000000001",
+            "demo-concept-tritone-000000000000000001",
+            "related",
+        ),
+        (
+            "demo-concept-chord-progression-00000001",
+            "demo-concept-circle-fifths-000000000001",
+            "supports",
+        ),
+        (
+            "demo-concept-time-signature-000000000001",
+            "demo-concept-polyrhythm-00000000000001",
+            "prerequisite",
+        ),
+        (
+            "demo-concept-syncopation-00000000000001",
+            "demo-concept-time-signature-000000000001",
+            "supports",
+        ),
+        (
+            "demo-concept-polyrhythm-00000000000001",
+            "demo-concept-syncopation-00000000000001",
+            "related",
+        ),
     ];
     for (src, tgt, ltype) in &music_links {
         let lid = uuid::Uuid::new_v4().to_string();
@@ -499,7 +564,9 @@ Compared to RNNs ($O(n \\cdot d^2)$), self-attention is $O(n^2 \\cdot d)$, makin
 
     // Daily notes for Music Theory workspace (past 7 days)
     for days_ago in 0..7i64 {
-        let date = (chrono::Utc::now() - chrono::Duration::days(days_ago)).format("%Y-%m-%d").to_string();
+        let date = (chrono::Utc::now() - chrono::Duration::days(days_ago))
+            .format("%Y-%m-%d")
+            .to_string();
         let dnid = uuid::Uuid::new_v4().to_string();
         let content = if days_ago == 0 {
             format!("## Daily Note — {date}\n\nPolyrhythms blew my mind today. 3:2 creates such interesting tension.\n\n- Analyzed drum patterns with polyrhythmic layers\n- Listened to progressive rock with unusual meters\n- Created concept links between syncopation and polyrhythm")
@@ -573,8 +640,18 @@ Key topics:
 
     // Music Workspace: Concepts (Continued)
     let more_music_concepts: Vec<(&str, &str, &str, &str)> = vec![
-        ("demo-concept-jazz-harmony-000000001", "Jazz Harmony", "Complex harmonic structures characteristic of jazz music.", "topic"),
-        ("demo-concept-ii-v-i-000000000000001", "ii-V-I Progression", "The most common chord progression in jazz and bebop.", "definition"),
+        (
+            "demo-concept-jazz-harmony-000000001",
+            "Jazz Harmony",
+            "Complex harmonic structures characteristic of jazz music.",
+            "topic",
+        ),
+        (
+            "demo-concept-ii-v-i-000000000000001",
+            "ii-V-I Progression",
+            "The most common chord progression in jazz and bebop.",
+            "definition",
+        ),
     ];
     for (id, name, desc, ctype) in &more_music_concepts {
         conn.execute(
@@ -722,13 +799,41 @@ Key topics:
     }
 
     let rome_links: Vec<(&str, &str, &str)> = vec![
-        ("demo-concept-caesar-000000000000000001", "demo-concept-republic-00000000000000001", "related"),
-        ("demo-concept-augustus-000000000000000001", "demo-concept-caesar-000000000000000001", "supports"),
-        ("demo-concept-senate-0000000000000000001", "demo-concept-republic-00000000000000001", "part_of"),
-        ("demo-concept-marius-00000000000000001", "demo-concept-legion-000000000000000001", "supports"),
-        ("demo-concept-centurion-0000000000000001", "demo-concept-legion-000000000000000001", "part_of"),
-        ("demo-concept-cicero-00000000000000001", "demo-concept-caesar-000000000000000001", "contradicts"),
-        ("demo-concept-tacitus-00000000000000001", "demo-concept-legion-000000000000000001", "related"),
+        (
+            "demo-concept-caesar-000000000000000001",
+            "demo-concept-republic-00000000000000001",
+            "related",
+        ),
+        (
+            "demo-concept-augustus-000000000000000001",
+            "demo-concept-caesar-000000000000000001",
+            "supports",
+        ),
+        (
+            "demo-concept-senate-0000000000000000001",
+            "demo-concept-republic-00000000000000001",
+            "part_of",
+        ),
+        (
+            "demo-concept-marius-00000000000000001",
+            "demo-concept-legion-000000000000000001",
+            "supports",
+        ),
+        (
+            "demo-concept-centurion-0000000000000001",
+            "demo-concept-legion-000000000000000001",
+            "part_of",
+        ),
+        (
+            "demo-concept-cicero-00000000000000001",
+            "demo-concept-caesar-000000000000000001",
+            "contradicts",
+        ),
+        (
+            "demo-concept-tacitus-00000000000000001",
+            "demo-concept-legion-000000000000000001",
+            "related",
+        ),
     ];
     for (src, tgt, ltype) in &rome_links {
         let lid = uuid::Uuid::new_v4().to_string();
@@ -759,7 +864,9 @@ Key topics:
 
     // Daily notes for Rome workspace (past 7 days)
     for days_ago in 0..7i64 {
-        let date = (chrono::Utc::now() - chrono::Duration::days(days_ago)).format("%Y-%m-%d").to_string();
+        let date = (chrono::Utc::now() - chrono::Duration::days(days_ago))
+            .format("%Y-%m-%d")
+            .to_string();
         let dnid = uuid::Uuid::new_v4().to_string();
         let content = if days_ago == 0 {
             format!("## Daily Note — {date}\n\nRoman military organization is fascinating. Centurions were essentially NCOs running the machine.\n\n- Researched legion structure from primary sources\n- Compared Roman vs barbarian tactics\n- Built out Roman military concept map")

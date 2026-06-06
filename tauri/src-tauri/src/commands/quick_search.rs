@@ -69,7 +69,9 @@ pub fn get_quick_search_context(
         .map_err(|_| "Quick search workspace context is unavailable.".to_string())?
         .clone();
 
-    Ok(QuickSearchContext { preferred_workspace_id })
+    Ok(QuickSearchContext {
+        preferred_workspace_id,
+    })
 }
 
 #[tauri::command]

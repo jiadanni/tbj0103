@@ -214,7 +214,11 @@ const RESTORE_TABLE_ORDER: [&str; 21] = [
 ];
 
 #[tauri::command]
-pub fn create_backup(auth: State<AuthState>, state: State<DbState>, workspace_id: String) -> Result<String, String> {
+pub fn create_backup(
+    auth: State<AuthState>,
+    state: State<DbState>,
+    workspace_id: String,
+) -> Result<String, String> {
     require_auth(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
 
@@ -269,7 +273,11 @@ pub fn list_backups(_state: State<DbState>) -> Result<Vec<BackupInfo>, String> {
 }
 
 #[tauri::command]
-pub fn restore_backup(auth: State<AuthState>, state: State<DbState>, backup_json: String) -> Result<String, String> {
+pub fn restore_backup(
+    auth: State<AuthState>,
+    state: State<DbState>,
+    backup_json: String,
+) -> Result<String, String> {
     require_auth(&auth, &state)?;
     let mut conn = state.0.get().map_err(|e| e.to_string())?;
     let backup: serde_json::Value =
@@ -539,7 +547,10 @@ fn json_to_sql_value(value: &serde_json::Value) -> Result<Value, String> {
 
 /// Create a global backup containing all workspaces
 #[tauri::command]
-pub fn create_global_backup(auth: State<AuthState>, state: State<DbState>) -> Result<String, String> {
+pub fn create_global_backup(
+    auth: State<AuthState>,
+    state: State<DbState>,
+) -> Result<String, String> {
     require_auth(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
 
@@ -647,13 +658,20 @@ pub fn create_global_backup(auth: State<AuthState>, state: State<DbState>) -> Re
 
 /// Restore from a global backup (all workspaces)
 #[tauri::command]
-pub fn restore_global_backup(auth: State<AuthState>, state: State<DbState>, backup_json: String) -> Result<Vec<String>, String> {
+pub fn restore_global_backup(
+    auth: State<AuthState>,
+    state: State<DbState>,
+    backup_json: String,
+) -> Result<Vec<String>, String> {
     require_auth(&auth, &state)?;
     let mut conn = state.0.get().map_err(|e| e.to_string())?;
     let backup: serde_json::Value =
         serde_json::from_str(&backup_json).map_err(|e| format!("Invalid backup JSON: {e}"))?;
 
-    let is_global = backup.get("is_global").and_then(|v| v.as_bool()).unwrap_or(false);
+    let is_global = backup
+        .get("is_global")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     if !is_global {
         return Err("This backup is not marked as a global backup".to_string());
     }

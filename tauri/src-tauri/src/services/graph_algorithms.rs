@@ -111,8 +111,8 @@ pub fn compute_pagerank(
                     src_rank / out_count.max(1.0)
                 })
                 .sum();
-            let rank = (1.0 - damping_factor) / n as f64
-                + damping_factor * (incoming_sum + sink_rank_sum);
+            let rank =
+                (1.0 - damping_factor) / n as f64 + damping_factor * (incoming_sum + sink_rank_sum);
             new_ranks.insert(id, rank);
         }
         ranks = new_ranks;
