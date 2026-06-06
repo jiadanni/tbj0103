@@ -3703,9 +3703,6 @@ export default function PreferencesView() {
                       <section className="space-y-3" data-pref-section>
                         <div className="pb-1.5 border-b border-[var(--border-color)]">
                           <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Startup & background</h3>
-                          <p className="text-xs text-[var(--text-muted)]/80 mt-1">
-                            Control how Aetherium launches and whether it stays available after the main window closes.
-                          </p>
                         </div>
 
                         <div className="flex items-start gap-3 py-0.5">
