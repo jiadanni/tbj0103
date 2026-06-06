@@ -210,8 +210,52 @@ pub fn run() {
                 .map_err(|e| format!("Failed to get app data directory: {e}"))?;
             std::fs::create_dir_all(&app_dir)?;
             let db_path = app_dir.join("aetherium.db");
-            let pool = db::initialize_database(&db_path)
-                .map_err(|e| format!("Failed to initialize database: {e}"))?;
+
+            // DB encryption gate. When a sidecar file exists, the on-disk DB
+            // is (or is becoming) SQLCipher-encrypted with a PIN-wrapped DEK.
+            // The pool can only be opened with the unwrapped key, which
+            // requires a PIN from the user. Until the pre-DB unlock UI lands,
+            // we accept the PIN via the AETHERIUM_DB_PIN env var (intended
+            // for testing); otherwise we fail fast with a clear message
+            // rather than silently opening a different file.
+            let pool = if crate::services::db_encryption::sidecar_exists(&db_path) {
+                let pin = std::env::var("AETHERIUM_DB_PIN").map_err(|_| {
+                    "Database encryption is configured but no unlock UI is wired yet. \
+                     Set AETHERIUM_DB_PIN to test, or delete the sidecar to disable.".to_string()
+                })?;
+                let sidecar = crate::services::db_encryption::read_sidecar(&db_path)?;
+                let dek = crate::services::db_encryption::unwrap_dek_with_pin(&db_path, &pin)?;
+                let mut keep_encrypted = true;
+                match sidecar.pending_action.as_deref() {
+                    Some("encrypt") => {
+                        crate::services::db_encryption::encrypt_in_place(&db_path, &dek)?;
+                        let mut cleared = sidecar;
+                        cleared.pending_action = None;
+                        crate::services::db_encryption::write_sidecar(&db_path, &cleared)?;
+                    }
+                    Some("decrypt") => {
+                        crate::services::db_encryption::decrypt_in_place(&db_path, &dek)?;
+                        crate::services::db_encryption::remove_sidecar(&db_path)?;
+                        keep_encrypted = false;
+                    }
+                    Some(other) => {
+                        return Err(format!("Unknown pending DB action: {other}").into());
+                    }
+                    None => {}
+                }
+                if keep_encrypted {
+                    let mut key = [0u8; 32];
+                    key.copy_from_slice(&*dek);
+                    db::initialize_database_with_key(&db_path, Some(key))
+                        .map_err(|e| format!("Failed to initialize encrypted database: {e}"))?
+                } else {
+                    db::initialize_database(&db_path)
+                        .map_err(|e| format!("Failed to initialize database: {e}"))?
+                }
+            } else {
+                db::initialize_database(&db_path)
+                    .map_err(|e| format!("Failed to initialize database: {e}"))?
+            };
 
             let conn = pool.get().map_err(|e| format!("Failed to get DB connection: {e}"))?;
 
@@ -678,6 +722,10 @@ pub fn run() {
             commands::security::authenticate_biometric,
             commands::security::unlock_app,
             commands::security::lock_app,
+            commands::security::get_db_encryption_status,
+            commands::security::enable_db_encryption,
+            commands::security::disable_db_encryption,
+            commands::security::cancel_pending_db_encryption,
             // Graph algorithm commands
             commands::graph::compute_pagerank,
             commands::graph::find_shortest_path,

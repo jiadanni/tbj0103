@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use pbkdf2::pbkdf2_hmac;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::db::DbState;
 
@@ -226,14 +226,27 @@ pub fn set_pin_passcode(
     let existing_hash = get_setting(&conn, PIN_HASH_KEY).unwrap_or_default();
 
     if !existing_hash.trim().is_empty() {
-        let provided = current_pin.ok_or_else(|| "Current PIN is required.".to_string())?;
-        if !verify_pin_hash(&provided, &existing_hash)? {
+        let provided = current_pin
+            .as_ref()
+            .ok_or_else(|| "Current PIN is required.".to_string())?;
+        if !verify_pin_hash(provided, &existing_hash)? {
             return Err("Current PIN is incorrect.".to_string());
         }
     }
 
     let hash = generate_pin_hash(&new_pin);
     set_setting(&conn, PIN_HASH_KEY, &hash)?;
+
+    // If DB encryption is configured, re-wrap the DEK with a KEK derived from
+    // the new PIN. Without this, changing the PIN would break unlock.
+    let db_path = db_path_from_app(&app)?;
+    if crate::services::db_encryption::sidecar_exists(&db_path) {
+        let provided = current_pin
+            .ok_or_else(|| "Current PIN is required to re-wrap the encryption key.".to_string())?;
+        let dek = crate::services::db_encryption::unwrap_dek_with_pin(&db_path, &provided)?;
+        crate::services::db_encryption::rewrap_dek(&db_path, &dek, &new_pin)?;
+    }
+
     let _ = app.emit("settings-changed", ());
     Ok(())
 }
@@ -316,6 +329,16 @@ pub fn remove_pin_passcode(
         return Err("Current PIN is incorrect.".to_string());
     }
 
+    // Removing the PIN while DB encryption is configured would leave the
+    // encrypted DB orphaned (no way to derive the KEK). Require the user
+    // to disable encryption first.
+    let db_path = db_path_from_app(&app)?;
+    if crate::services::db_encryption::sidecar_exists(&db_path) {
+        return Err(
+            "Disable database encryption before removing the PIN passcode.".to_string(),
+        );
+    }
+
     set_setting(&conn, PIN_HASH_KEY, "")?;
     set_setting(&conn, "pin_lock_enabled", "false")?;
     set_setting(&conn, "touch_id_enabled", "false")?;
@@ -375,5 +398,181 @@ pub fn unlock_app(auth: State<AuthState>) -> Result<(), String> {
 #[tauri::command]
 pub fn lock_app(auth: State<AuthState>) -> Result<(), String> {
     auth.0.store(false, Ordering::Release);
+    Ok(())
+}
+
+// ─── DB encryption ────────────────────────────────────────────────────────
+//
+// PIN-tied SQLCipher encryption. The DEK is a random 32 bytes wrapped by a
+// PIN-derived KEK (Argon2id). The wrapped DEK lives in a sidecar file next
+// to the DB so we can detect "encryption configured" without opening the DB.
+//
+// Enable/disable do NOT swap the live DB pool. They stage the change in a
+// pending sidecar and prompt the user to restart; the actual encrypt/decrypt
+// runs at next launch before the pool is built.
+
+use std::path::PathBuf;
+
+use crate::services::db_encryption;
+
+fn db_path_from_app(app: &AppHandle) -> Result<PathBuf, String> {
+    let app_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data dir: {e}"))?;
+    Ok(app_dir.join("aetherium.db"))
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DbEncryptionStatus {
+    /// True when the sidecar file exists. Indicates encryption is configured
+    /// (or pending) regardless of whether the live DB has been re-encrypted yet.
+    pub configured: bool,
+    /// True when there is a pending encrypt/decrypt action that will run on
+    /// next launch. When set, the UI should prompt the user to restart.
+    pub pending_restart: bool,
+    /// "encrypt" | "decrypt" | "" — what will happen on next launch.
+    pub pending_action: String,
+}
+
+#[tauri::command]
+pub async fn get_db_encryption_status(app: AppHandle) -> Result<DbEncryptionStatus, String> {
+    let db_path = db_path_from_app(&app)?;
+    tokio::task::spawn_blocking(move || -> Result<DbEncryptionStatus, String> {
+        let configured = db_encryption::sidecar_exists(&db_path);
+        if !configured {
+            return Ok(DbEncryptionStatus {
+                configured: false,
+                pending_restart: false,
+                pending_action: String::new(),
+            });
+        }
+        let sidecar = db_encryption::read_sidecar(&db_path).ok();
+        let pending = sidecar
+            .as_ref()
+            .and_then(|s| s.pending_action.clone())
+            .unwrap_or_default();
+        Ok(DbEncryptionStatus {
+            configured,
+            pending_restart: !pending.is_empty(),
+            pending_action: pending,
+        })
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
+}
+
+/// Stage DB encryption. Verifies the supplied PIN against the configured
+/// PIN hash, generates a fresh DEK, wraps it with a PIN-derived KEK, and
+/// writes the sidecar with `pending_action = "encrypt"`. The actual
+/// `encrypt_in_place` runs at next launch.
+#[tauri::command]
+pub async fn enable_db_encryption(
+    app: AppHandle,
+    state: State<'_, DbState>,
+    pin: String,
+) -> Result<(), String> {
+    validate_pin(&pin)?;
+
+    // PIN must be configured first; encryption is layered on top of it.
+    let pool = state.0.clone();
+    let stored_hash = tokio::task::spawn_blocking(move || -> Result<String, String> {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        Ok(get_setting(&conn, PIN_HASH_KEY).unwrap_or_default())
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))??;
+
+    if stored_hash.trim().is_empty() {
+        return Err("Configure a PIN passcode before enabling database encryption.".to_string());
+    }
+    if !verify_pin_hash(&pin, &stored_hash)? {
+        return Err("Incorrect PIN.".to_string());
+    }
+
+    let db_path = db_path_from_app(&app)?;
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        if db_encryption::sidecar_exists(&db_path) {
+            return Err("Database encryption is already configured.".to_string());
+        }
+        let mut sidecar = db_encryption::build_sidecar_for_pin(&pin)?;
+        sidecar.pending_action = Some("encrypt".to_string());
+        db_encryption::write_sidecar(&db_path, &sidecar)?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))??;
+
+    let _ = app.emit("settings-changed", ());
+    Ok(())
+}
+
+/// Stage DB decryption. Verifies the PIN can unwrap the DEK, then marks the
+/// sidecar with `pending_action = "decrypt"`. The actual `decrypt_in_place`
+/// runs at next launch.
+#[tauri::command]
+pub async fn disable_db_encryption(app: AppHandle, pin: String) -> Result<(), String> {
+    validate_pin(&pin)?;
+    let db_path = db_path_from_app(&app)?;
+
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        if !db_encryption::sidecar_exists(&db_path) {
+            return Err("Database encryption is not configured.".to_string());
+        }
+        // Verify PIN by attempting to unwrap.
+        let _dek = db_encryption::unwrap_dek_with_pin(&db_path, &pin)?;
+        let mut sidecar = db_encryption::read_sidecar(&db_path)?;
+        sidecar.pending_action = Some("decrypt".to_string());
+        db_encryption::write_sidecar(&db_path, &sidecar)?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))??;
+
+    let _ = app.emit("settings-changed", ());
+    Ok(())
+}
+
+/// Cancel a pending encrypt/decrypt action staged by enable/disable.
+#[tauri::command]
+pub async fn cancel_pending_db_encryption(app: AppHandle, pin: String) -> Result<(), String> {
+    validate_pin(&pin)?;
+    let db_path = db_path_from_app(&app)?;
+
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        if !db_encryption::sidecar_exists(&db_path) {
+            return Err("Nothing to cancel.".to_string());
+        }
+        let mut sidecar = db_encryption::read_sidecar(&db_path)?;
+        let pending = sidecar.pending_action.clone().unwrap_or_default();
+        if pending.is_empty() {
+            return Err("No pending action to cancel.".to_string());
+        }
+
+        // For "encrypt" pending: DB is still plain, so we can just delete the
+        // sidecar (revert to plain). For "decrypt" pending: DB is encrypted —
+        // we need the PIN to confirm cancellation and we leave the sidecar in
+        // place but clear the marker.
+        match pending.as_str() {
+            "encrypt" => {
+                // Verify PIN by trying to unwrap before deleting.
+                let _ = db_encryption::unwrap_dek_with_pin(&db_path, &pin)?;
+                db_encryption::remove_sidecar(&db_path)?;
+            }
+            "decrypt" => {
+                let _ = db_encryption::unwrap_dek_with_pin(&db_path, &pin)?;
+                sidecar.pending_action = None;
+                db_encryption::write_sidecar(&db_path, &sidecar)?;
+            }
+            other => {
+                return Err(format!("Unknown pending action: {other}"));
+            }
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))??;
+
+    let _ = app.emit("settings-changed", ());
     Ok(())
 }

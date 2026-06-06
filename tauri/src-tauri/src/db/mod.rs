@@ -82,12 +82,32 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v68_roadmap_snapshots",
     "v69_project_notes_folder",
     "v70_project_notes_pinning",
+    "v71_conversation_summary_types",
+    "v72_make_memories_workspace_nullable",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
+    initialize_database_with_key(path, None)
+}
+
+/// Initialize the database, optionally with a SQLCipher key. When `key` is
+/// `Some`, every pooled connection runs `PRAGMA key` before use; the bootstrap
+/// connection that runs migrations is keyed up front too. When `None`, the
+/// behavior is byte-identical to the pre-encryption path.
+pub fn initialize_database_with_key(
+    path: &Path,
+    key: Option<[u8; 32]>,
+) -> Result<Pool<SqliteConnectionManager>> {
     // We first open a direct connection to run pragmas, create tables and migrations,
     // ensuring this happens sequentially before the pool is used by commands.
     let conn = Connection::open(path)?;
+
+    if let Some(k) = key.as_ref() {
+        crate::services::db_encryption::apply_key(&conn, k).map_err(|msg| {
+            rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some(msg))
+        })?;
+    }
+
     let is_fresh_database: bool = conn.query_row(
         "SELECT COUNT(*) = 0
          FROM sqlite_master
@@ -119,7 +139,12 @@ pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>>
     // the SQLite lock instead of immediately returning SQLITE_BUSY — without
     // it, two writers racing (e.g. update_settings + the log flusher) can
     // produce silent write failures or surface as long unrelated stalls.
-    let manager = SqliteConnectionManager::file(path).with_init(|c| {
+    let key_for_pool = key;
+    let manager = SqliteConnectionManager::file(path).with_init(move |c| {
+        if let Some(k) = key_for_pool.as_ref() {
+            let hex: String = k.iter().map(|b| format!("{b:02x}")).collect();
+            c.execute_batch(&format!("PRAGMA key = \"x'{hex}'\";"))?;
+        }
         c.execute_batch("PRAGMA foreign_keys=ON;")?;
         c.busy_timeout(std::time::Duration::from_secs(5))?;
         Ok(())
@@ -2034,6 +2059,52 @@ fn run_migrations(conn: &Connection) -> Result<()> {
              END
              WHERE kind = 'summary';
              INSERT INTO _migrations(name) VALUES('v71_conversation_summary_types');",
+        )?;
+    }
+
+    let applied_v72: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v72_make_memories_workspace_nullable'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v72 == 0 {
+        conn.execute_batch(
+            "PRAGMA foreign_keys=OFF;
+             ALTER TABLE memories RENAME TO memories_old;
+             CREATE TABLE memories (
+                 id TEXT PRIMARY KEY NOT NULL,
+                 workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
+                 folder_id TEXT NOT NULL DEFAULT '',
+                 content TEXT NOT NULL,
+                 memory_type TEXT NOT NULL DEFAULT 'fact'
+                     CHECK(memory_type IN ('fact', 'preference')),
+                 scope TEXT NOT NULL DEFAULT 'workspace'
+                     CHECK(scope IN ('global', 'workspace')),
+                 source_session_id TEXT,
+                 is_pinned INTEGER NOT NULL DEFAULT 0,
+                 is_active INTEGER NOT NULL DEFAULT 1,
+                 reinforcement_count INTEGER NOT NULL DEFAULT 1,
+                 last_reinforced_at TEXT,
+                 superseded_by TEXT REFERENCES memories(id) ON DELETE SET NULL,
+                 superseded_at TEXT,
+                 superseded_reason TEXT,
+                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+             );
+             INSERT INTO memories (
+                 id, workspace_id, folder_id, content, memory_type, scope, source_session_id,
+                 is_pinned, is_active, reinforcement_count, last_reinforced_at,
+                 superseded_by, superseded_at, superseded_reason, created_at, updated_at
+             )
+             SELECT
+                 id, workspace_id, folder_id, content, memory_type, scope, source_session_id,
+                 is_pinned, is_active, reinforcement_count, last_reinforced_at,
+                 superseded_by, superseded_at, superseded_reason, created_at, updated_at
+             FROM memories_old;
+             DROP TABLE memories_old;
+             PRAGMA foreign_keys=ON;
+             INSERT INTO _migrations(name) VALUES('v72_make_memories_workspace_nullable');",
         )?;
     }
 

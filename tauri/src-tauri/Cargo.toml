@@ -27,7 +27,7 @@ ndarray = "0.15"
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.32", features = ["bundled-sqlcipher-vendored-openssl"] }
 r2d2 = "0.8"
 r2d2_sqlite = "0.25"
 reqwest = { version = "0.12", features = ["json", "stream"] }
@@ -50,6 +50,9 @@ dirs = "5.0"
 aes-gcm = "0.10"
 pbkdf2 = "0.12"
 hmac = "0.12"
+argon2 = "0.5"
+zeroize = { version = "1.8", features = ["zeroize_derive"] }
+rand = "0.8"
 sysinfo = "0.30"
 
 [target.'cfg(target_os = "macos")'.dependencies]

@@ -38,4 +38,5 @@ pub mod workspace_glossary;
 pub mod workspace_hierarchy;
 pub mod workspace_service;
 pub mod dictionary_service;
+pub mod db_encryption;
 
