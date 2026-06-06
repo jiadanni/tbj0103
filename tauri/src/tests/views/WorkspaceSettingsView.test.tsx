@@ -17,7 +17,13 @@ const apiMocks = vi.hoisted(() => ({
   listMemories: vi.fn(),
   deleteWorkspaceFacts: vi.fn(() => Promise.resolve(0)),
   getMemorySummary: vi.fn(),
+  upsertMemorySummary: vi.fn(),
+  regenerateMemorySummary: vi.fn(),
   listSummarySnapshots: vi.fn(() => Promise.resolve([])),
+  restoreMemorySummarySnapshot: vi.fn(),
+  createMemory: vi.fn(),
+  updateMemory: vi.fn(),
+  deleteMemory: vi.fn(),
   getTopicSignature: vi.fn(),
   listGlossaryTerms: vi.fn(),
   resolveGlossaryTerm: vi.fn(),
@@ -45,7 +51,13 @@ vi.mock("@/lib/api", () => ({
       list: apiMocks.listMemories,
       deleteWorkspaceFacts: apiMocks.deleteWorkspaceFacts,
       getSummary: apiMocks.getMemorySummary,
+      upsertSummary: apiMocks.upsertMemorySummary,
+      regenerateSummary: apiMocks.regenerateMemorySummary,
       listSummarySnapshots: apiMocks.listSummarySnapshots,
+      restoreSummarySnapshot: apiMocks.restoreMemorySummarySnapshot,
+      create: apiMocks.createMemory,
+      update: apiMocks.updateMemory,
+      delete: apiMocks.deleteMemory,
     },
     topicSignature: {
       get: apiMocks.getTopicSignature,
@@ -132,6 +144,7 @@ describe("WorkspaceSettingsView", () => {
   beforeEach(() => {
     useWorkspaceStore.setState(INITIAL);
     vi.clearAllMocks();
+    localStorage.removeItem("ws-sections-collapsed");
 
     apiMocks.getSummary.mockResolvedValue({
       workspace_id: "ws-1",
@@ -291,6 +304,36 @@ describe("WorkspaceSettingsView", () => {
     expect(screen.getByText("User prefers concise answers.")).toBeInTheDocument();
 
     confirmSpy.mockRestore();
+  });
+
+  it("shows workspace memory summary length guidance in settings", async () => {
+    apiMocks.getMemorySummary.mockResolvedValue({
+      id: "summary-1",
+      scope: "workspace",
+      workspace_id: "root-1",
+      content: "Daniel is learning Python and wants compact, accurate project memory.",
+      is_auto_generated: true,
+      generated_at: "2026-01-01T00:00:00Z",
+      edited_at: null,
+    });
+
+    useWorkspaceStore.setState({
+      workspaces: [
+        makeWorkspace({ id: "root-1", name: "Parent Workspace" }),
+      ],
+      activeWorkspaceId: "root-1",
+      activeParentWorkspaceId: "root-1",
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkspaceSettingsView />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText(/~18 tokens/)).toBeInTheDocument();
+    expect(screen.getByText(/Target under 1,500 chars/)).toBeInTheDocument();
+    expect(screen.getByText("Good")).toBeInTheDocument();
   });
 
   it("shows the created date only in the right-side details area", async () => {

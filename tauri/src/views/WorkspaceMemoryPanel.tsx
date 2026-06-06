@@ -5,6 +5,8 @@ import { CompactMenuSelect } from "../components/CompactMenuSelect";
 import { Tooltip } from "../components/Tooltip";
 
 const MEMORY_TYPES: Memory["memory_type"][] = ["fact", "preference"];
+const SUMMARY_IDEAL_CHARS = 1500;
+const SUMMARY_WARNING_CHARS = 3000;
 
 function formatTimestamp(value: string) {
   const date = new Date(value);
@@ -15,6 +17,32 @@ function formatTimestamp(value: string) {
     hour: "numeric",
     minute: "2-digit",
   }).format(date);
+}
+
+function estimateTokens(text: string) {
+  return Math.ceil(text.length / 4);
+}
+
+function getSummaryLengthTone(charCount: number) {
+  if (charCount >= SUMMARY_WARNING_CHARS) {
+    return {
+      label: "Large",
+      className: "text-amber-400",
+      helper: "Large summaries can crowd out retrieved memories on local models.",
+    };
+  }
+  if (charCount > SUMMARY_IDEAL_CHARS) {
+    return {
+      label: "Watch",
+      className: "text-yellow-400",
+      helper: "Best as dense project context; move long references into sources.",
+    };
+  }
+  return {
+    label: "Good",
+    className: "text-emerald-400",
+    helper: "Small enough to inject like Claude-style project memory.",
+  };
 }
 
 interface WorkspaceMemoryPanelProps {
@@ -78,6 +106,10 @@ export default function WorkspaceMemoryPanel({ workspaceId, onMemoryCountChange,
   const displayedSummaryContent = viewingSnapshot ? viewingSnapshot.content : (summary?.content || "");
   const displayedTimestamp = viewingSnapshot ? viewingSnapshot.snapshotted_at : summary?.generated_at;
   const displayedIsAuto = viewingSnapshot ? viewingSnapshot.is_auto_generated : summary?.is_auto_generated;
+  const summaryLengthText = summaryEditing ? summaryDraft : displayedSummaryContent;
+  const summaryCharCount = summaryLengthText.trim().length;
+  const summaryTokenEstimate = estimateTokens(summaryLengthText);
+  const summaryLengthTone = getSummaryLengthTone(summaryCharCount);
 
   async function saveSummary() {
     setSummarySubmitting(true);
@@ -234,6 +266,16 @@ export default function WorkspaceMemoryPanel({ workspaceId, onMemoryCountChange,
                   rows={8}
                   className="min-h-[12rem] w-full resize-y rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-2 text-xs leading-relaxed text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
                 />
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-2 text-[10px]">
+                  <div className="flex items-center gap-2">
+                    <span className={`font-semibold ${summaryLengthTone.className}`}>{summaryLengthTone.label}</span>
+                    <span className="text-[var(--text-muted)]">
+                      {summaryCharCount.toLocaleString()} chars · ~{summaryTokenEstimate.toLocaleString()} tokens
+                    </span>
+                  </div>
+                  <span className="text-[var(--text-muted)]">Target under {SUMMARY_IDEAL_CHARS.toLocaleString()} chars</span>
+                  <p className="basis-full text-[var(--text-muted)]">{summaryLengthTone.helper}</p>
+                </div>
                 <div className="flex justify-end gap-1.5">
                   <button
                     onClick={() => { setSummaryEditing(false); setSummaryDraft(summary?.content ?? ""); }}
@@ -251,12 +293,23 @@ export default function WorkspaceMemoryPanel({ workspaceId, onMemoryCountChange,
                 </div>
               </div>
             ) : (
-              <p
-                onClick={() => setSummaryEditing(true)}
-                className="cursor-pointer text-xs leading-relaxed text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
-              >
-                {displayedSummaryContent || "No summary yet. Click to write one, or regenerate from facts."}
-              </p>
+              <div className="space-y-2">
+                <p
+                  onClick={() => setSummaryEditing(true)}
+                  className="cursor-pointer text-xs leading-relaxed text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+                >
+                  {displayedSummaryContent || "No summary yet. Click to write one, or regenerate from facts."}
+                </p>
+                {displayedSummaryContent && (
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px]">
+                    <span className={`font-semibold ${summaryLengthTone.className}`}>{summaryLengthTone.label}</span>
+                    <span className="text-[var(--text-muted)]">
+                      {summaryCharCount.toLocaleString()} chars · ~{summaryTokenEstimate.toLocaleString()} tokens
+                    </span>
+                    <span className="text-[var(--text-muted)]">Target under {SUMMARY_IDEAL_CHARS.toLocaleString()} chars</span>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
