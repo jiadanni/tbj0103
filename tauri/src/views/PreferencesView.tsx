@@ -31,6 +31,7 @@ import type { PreferencesSection } from "../components/navigationItems";
 import { PRIMARY_NAV_ITEMS } from "../components/navigationItems";
 import { SectionNavTopTabs } from "../components/chrome/SectionNavTopTabs";
 import { SectionNavDropdownSelect } from "../components/chrome/SectionNavDropdownSelect";
+import { SinglePaneWorkspaceSidebar } from "../components/chrome/SinglePaneWorkspaceSidebar";
 import { useAiModelSync } from "../hooks/useAiModelSync";
 import { useNavigationHistory } from "../hooks/useNavigationHistory";
 import { usePrefsWindowMode } from "../lib/prefsWindowMode";
@@ -1204,21 +1205,16 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
 
           <div className="flex flex-1 min-h-0 overflow-hidden">
             {workspaceNavigation === "sidebar" && (
-              <div className="w-[85px] shrink-0 bg-[var(--bg-sidebar)] border-r border-[var(--border-color)] p-1 flex flex-col gap-0.5" data-testid="single-pane-workspace-sidebar">
-                <div className="text-[0.55em] uppercase tracking-wider text-[var(--text-muted)] font-bold px-1.5 py-0.5 opacity-60 mb-0.5">Workspaces</div>
-                {parentWorkspaces.map((ws, index) => (
-                  <div
-                    key={ws.id}
-                    className={`px-1.5 py-0.5 rounded text-[0.6em] truncate leading-tight select-none ${
-                      index === 0
-                        ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)] font-semibold border-l-2 border-[var(--accent-color)]"
-                        : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/40"
-                    }`}
-                  >
-                    {ws.name}
-                  </div>
-                ))}
-              </div>
+              <SinglePaneWorkspaceSidebar
+                density="compact"
+                headerLabel="Workspaces"
+                testId="single-pane-workspace-sidebar"
+                items={parentWorkspaces.map((ws, index) => ({
+                  id: ws.id,
+                  name: ws.name,
+                  isActive: index === 0,
+                }))}
+              />
             )}
 
             {subWorkspaceNavigation === "sidebar" && activeWorkspaceChildren.length > 0 && (

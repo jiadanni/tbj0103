@@ -58,6 +58,7 @@ import { CompactMenuSelect } from "./CompactMenuSelect";
 import StatusBar from "./StatusBar";
 import { SectionNavTopTabs } from "./chrome/SectionNavTopTabs";
 import { SectionNavDropdownSelect } from "./chrome/SectionNavDropdownSelect";
+import { SinglePaneWorkspaceSidebar as SinglePaneWorkspaceSidebarChrome } from "./chrome/SinglePaneWorkspaceSidebar";
 import { useNavigationHistory } from "../hooks/useNavigationHistory";
 
 // Lazy-load heavy views that import large dependencies (d3, CodeMirror, etc.)
@@ -1118,82 +1119,62 @@ function SinglePaneWorkspaceSidebar() {
     selectWorkspace(ws.id);
   }
 
+  const items = rootWorkspaces.map((ws) => ({
+    id: ws.id,
+    name: ws.name,
+    isActive: ws.id === activeRootId,
+    isDragTarget: dragOverWorkspaceId === ws.id,
+    onClick: () => selectWorkspace(ws.id),
+    onDragOver: (event: React.DragEvent<HTMLButtonElement>) => {
+      if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) { return; }
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      setDragOverWorkspaceId(ws.id);
+    },
+    onDragEnter: (event: React.DragEvent<HTMLButtonElement>) => {
+      if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) { return; }
+      event.preventDefault();
+      setDragOverWorkspaceId(ws.id);
+      if (dragHoverTimerRef.current) { clearTimeout(dragHoverTimerRef.current); }
+      dragHoverTimerRef.current = setTimeout(() => selectWorkspace(ws.id), 600);
+    },
+    onDragLeave: (event: React.DragEvent<HTMLButtonElement>) => {
+      const related = event.relatedTarget as Node | null;
+      if (related && event.currentTarget.contains(related)) { return; }
+      if (dragOverWorkspaceId === ws.id) { setDragOverWorkspaceId(null); }
+      if (dragHoverTimerRef.current) {
+        clearTimeout(dragHoverTimerRef.current);
+        dragHoverTimerRef.current = null;
+      }
+    },
+    onDrop: (event: React.DragEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      setDragOverWorkspaceId(null);
+      if (dragHoverTimerRef.current) {
+        clearTimeout(dragHoverTimerRef.current);
+        dragHoverTimerRef.current = null;
+      }
+      const raw = event.dataTransfer.getData("application/x-chat-session-ids");
+      if (!raw) { return; }
+      try {
+        const sessionIds = JSON.parse(raw) as string[];
+        if (sessionIds.length > 0) {
+          void api.chat.moveSessions(sessionIds, ws.id).then(() => selectWorkspace(ws.id));
+        }
+      } catch { /* ignore malformed data */ }
+    },
+  }));
+
   return (
-    <div
-      className="flex h-full w-[180px] shrink-0 flex-col border-r border-[var(--border-color)] bg-[var(--bg-sidebar)]"
-      data-testid="single-pane-workspace-sidebar"
-    >
-      <div className="flex items-center justify-between px-3 pt-3 pb-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
-        <span>Workspaces</span>
-        <Tooltip content="New Workspace" position="right">
-          <button
-            onClick={() => setCreating(true)}
-            className="flex h-5 w-5 items-center justify-center rounded text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-            aria-label="New Workspace"
-          >
-            <Plus size={12} />
-          </button>
-        </Tooltip>
-      </div>
-      <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
-        {rootWorkspaces.map((ws) => {
-          const isActive = ws.id === activeRootId;
-          const isDragTarget = dragOverWorkspaceId === ws.id;
-          return (
-            <button
-              key={ws.id}
-              onClick={() => selectWorkspace(ws.id)}
-              onDragOver={(event) => {
-                if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {return;}
-                event.preventDefault();
-                event.dataTransfer.dropEffect = "move";
-                setDragOverWorkspaceId(ws.id);
-              }}
-              onDragEnter={(event) => {
-                if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {return;}
-                event.preventDefault();
-                setDragOverWorkspaceId(ws.id);
-                if (dragHoverTimerRef.current) {clearTimeout(dragHoverTimerRef.current);}
-                dragHoverTimerRef.current = setTimeout(() => selectWorkspace(ws.id), 600);
-              }}
-              onDragLeave={(event) => {
-                const related = event.relatedTarget as Node | null;
-                if (related && event.currentTarget.contains(related)) {return;}
-                if (dragOverWorkspaceId === ws.id) {setDragOverWorkspaceId(null);}
-                if (dragHoverTimerRef.current) {
-                  clearTimeout(dragHoverTimerRef.current);
-                  dragHoverTimerRef.current = null;
-                }
-              }}
-              onDrop={(event) => {
-                event.preventDefault();
-                setDragOverWorkspaceId(null);
-                if (dragHoverTimerRef.current) {
-                  clearTimeout(dragHoverTimerRef.current);
-                  dragHoverTimerRef.current = null;
-                }
-                const raw = event.dataTransfer.getData("application/x-chat-session-ids");
-                if (!raw) {return;}
-                try {
-                  const sessionIds = JSON.parse(raw) as string[];
-                  if (sessionIds.length > 0) {
-                    void api.chat.moveSessions(sessionIds, ws.id).then(() => selectWorkspace(ws.id));
-                  }
-                } catch { /* ignore malformed data */ }
-              }}
-              className={`flex w-full items-center rounded-md px-2 py-1.5 text-left text-xs truncate transition-colors ${
-                isDragTarget
-                  ? "bg-[var(--accent-color)]/20 text-[var(--accent-color)] ring-1 ring-inset ring-[var(--accent-color)]"
-                  : isActive
-                    ? "bg-[var(--accent-color)] text-white"
-                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-              }`}
-            >
-              {ws.name}
-            </button>
-          );
-        })}
-      </div>
+    <>
+      <SinglePaneWorkspaceSidebarChrome
+        density="comfortable"
+        headerLabel="Workspaces"
+        testId="single-pane-workspace-sidebar"
+        onCreate={() => setCreating(true)}
+        createTooltip="New Workspace"
+        items={items}
+      />
       {creating && (
         <PromptDialog
           title="Create Workspace"
@@ -1203,7 +1184,7 @@ function SinglePaneWorkspaceSidebar() {
           onCancel={() => setCreating(false)}
         />
       )}
-    </div>
+    </>
   );
 }
 
