@@ -7,7 +7,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
-import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Sparkles, Columns2, ChevronLeft, ChevronRight, BarChart2, Library, History, Search, Paperclip, Send, FileEdit, ArrowUpDown, UserCircle, SlidersHorizontal, RotateCcw, Loader2, X } from "lucide-react";
+import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Sparkles, Columns2, ChevronLeft, ChevronRight, Search, Paperclip, Send, ArrowUpDown, UserCircle, SlidersHorizontal, RotateCcw, Loader2, X } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat, type CoreSettings, type AiSettings, type AdvancedSettings, type KnowledgeResetOptions, type KnowledgeResetResult, type ScheduledJobSetting, type ScheduledJobStatus, type BackgroundJobRunMode, type BackgroundProcessingScope } from "../lib/api";
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
@@ -31,6 +31,7 @@ import type { PreferencesSection } from "../components/navigationItems";
 import { PRIMARY_NAV_ITEMS } from "../components/navigationItems";
 import { SectionNavTopTabs } from "../components/chrome/SectionNavTopTabs";
 import { SectionNavDropdownSelect } from "../components/chrome/SectionNavDropdownSelect";
+import { SectionNavSidebar } from "../components/chrome/SectionNavSidebar";
 import { SinglePaneWorkspaceSidebar } from "../components/chrome/SinglePaneWorkspaceSidebar";
 import { WorkspaceNavDropdownSelect } from "../components/chrome/WorkspaceNavDropdownSelect";
 import { useAiModelSync } from "../hooks/useAiModelSync";
@@ -1237,31 +1238,15 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
 
             {sectionNavigation === "sidebar" && (
               <div className="w-14 shrink-0 bg-[var(--bg-sidebar)] border-r border-[var(--border-color)] py-1.5 flex flex-col justify-between items-center select-none" data-testid="sidebar">
-                <div className="flex flex-col gap-0.5 px-1 w-full">
-                  {[
-                    { label: "Dashboard", icon: BarChart2, active: false },
-                    { label: "Chat", icon: MessageSquare, active: true },
-                    { label: "Notes", icon: FileEdit, active: false },
-                    { label: "Sources", icon: Library, active: false },
-                    { label: "Learning", icon: GraduationCap, active: false },
-                    { label: "History", icon: History, active: false },
-                  ].map((item) => {
-                    const Icon = item.icon;
-                    return (
-                      <div
-                        key={item.label}
-                        className={`flex flex-col items-center justify-center w-full py-1 rounded-lg text-[0.55em] transition-colors select-none ${
-                          item.active
-                            ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)] font-semibold"
-                            : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/50"
-                        }`}
-                      >
-                        <Icon size={12} strokeWidth={1.5} className="mb-0.5" />
-                        <span className="scale-[0.9] origin-center truncate w-full text-center">{item.label}</span>
-                      </div>
-                    );
-                  })}
-                </div>
+                <SectionNavSidebar
+                  density="compact"
+                  items={PRIMARY_NAV_ITEMS.map((item, index) => ({
+                    id: item.path,
+                    label: item.label,
+                    icon: item.icon,
+                    isActive: index === 2,
+                  }))}
+                />
                 <div className="flex flex-col items-center gap-1 w-full px-1 pt-1.5 border-t border-[var(--border-color)]/60">
                   <div className="text-[var(--text-secondary)] text-[0.5em] flex items-center justify-center gap-0.5 hover:bg-[var(--bg-hover)] w-full py-0.5 rounded cursor-pointer scale-[0.85]">
                     <ChevronLeft size={8} />

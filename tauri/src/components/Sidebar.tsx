@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { PRIMARY_NAV_ITEMS } from "./navigationItems";
 import type { NavigationItem } from "./navigationItems";
+import { SectionNavSidebar } from "./chrome/SectionNavSidebar";
 import { api } from "../lib/api";
 import { useChatStore } from "../stores/chatStore";
 
@@ -161,50 +162,67 @@ export default function Sidebar({
     <div className={`flex h-full flex-col bg-[var(--bg-sidebar)] border-r border-[var(--border-color)] shrink-0 transition-[width] duration-200 ${labelsVisible ? "w-44" : "w-14 items-center"}`}>
       {/* Scrollable nav section */}
       <div className="flex-1 overflow-y-auto py-4 w-full">
-        <nav className={labelsVisible ? "px-2.5 space-y-1" : "flex flex-col items-center gap-1 px-1.5"}>
-          {PRIMARY_NAV_ITEMS.map((item) => {
-            const isActive = activeSegment === item.path;
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.path}
-                onClick={() => {
-                  goToSection(item.path);
-                  setContextMenu(null);
-                  setTooltip(null);
-                }}
-                onMouseEnter={(event) => showTooltip(item.label, event.currentTarget)}
-                onMouseLeave={hideTooltip}
-                onFocus={(event) => showTooltip(item.label, event.currentTarget)}
-                onBlur={hideTooltip}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  setTooltip(null);
-                  setContextMenu({ item, x: event.clientX, y: event.clientY });
-                }}
-                aria-label={!labelsVisible ? item.label : undefined}
-                aria-current={isActive ? "page" : undefined}
-                className={
-                  !labelsVisible
-                    ? `flex items-center justify-center w-10 h-10 rounded-xl transition-colors select-none ${
-                        isActive
-                          ? activeNavClassName
-                          : inactiveNavClassName
-                      }`
-                    : `w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-sm transition-colors select-none ${
-                        isActive
-                          ? activeNavClassName
-                          : inactiveNavClassName
-                      }`
-                }
-              >
-                <Icon size={!labelsVisible ? 20 : 18} strokeWidth={1.5} />
-                {labelsVisible && <span className="flex-1 text-left">{item.label}</span>}
-              </button>
-            );
-          })}
-        </nav>
+        {labelsVisible ? (
+          <nav className="px-2.5 space-y-1">
+            {PRIMARY_NAV_ITEMS.map((item) => {
+              const isActive = activeSegment === item.path;
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.path}
+                  onClick={() => {
+                    goToSection(item.path);
+                    setContextMenu(null);
+                    setTooltip(null);
+                  }}
+                  onMouseEnter={(event) => showTooltip(item.label, event.currentTarget)}
+                  onMouseLeave={hideTooltip}
+                  onFocus={(event) => showTooltip(item.label, event.currentTarget)}
+                  onBlur={hideTooltip}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setTooltip(null);
+                    setContextMenu({ item, x: event.clientX, y: event.clientY });
+                  }}
+                  aria-current={isActive ? "page" : undefined}
+                  className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-sm transition-colors select-none ${
+                    isActive ? activeNavClassName : inactiveNavClassName
+                  }`}
+                >
+                  <Icon size={18} strokeWidth={1.5} />
+                  <span className="flex-1 text-left">{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+        ) : (
+          <SectionNavSidebar
+            density="comfortable"
+            navClassName="flex flex-col items-center gap-1 px-1.5"
+            items={PRIMARY_NAV_ITEMS.map((item) => ({
+              id: item.path,
+              label: item.label,
+              icon: item.icon,
+              isActive: activeSegment === item.path,
+              onClick: () => {
+                goToSection(item.path);
+                setContextMenu(null);
+                setTooltip(null);
+              },
+              onMouseEnter: (event) => showTooltip(item.label, event.currentTarget),
+              onMouseLeave: hideTooltip,
+              onFocus: (event) => showTooltip(item.label, event.currentTarget),
+              onBlur: hideTooltip,
+              onContextMenu: (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setTooltip(null);
+                setContextMenu({ item, x: event.clientX, y: event.clientY });
+              },
+            }))}
+          />
+        )}
       </div>
 
       {/* Fixed bottom controls */}
