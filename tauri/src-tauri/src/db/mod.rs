@@ -7,6 +7,8 @@ use std::path::Path;
 #[cfg(test)]
 pub mod test_utils;
 
+pub type DbPool = Pool<SqliteConnectionManager>;
+
 pub struct DbState(pub Pool<SqliteConnectionManager>);
 
 const ALL_MIGRATION_NAMES: &[&str] = &[

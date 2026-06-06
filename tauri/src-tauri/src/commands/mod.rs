@@ -1,5 +1,6 @@
 pub mod ai_knowledge;
 pub mod ai_model;
+pub mod boot;
 pub mod alarm;
 pub mod artifact;
 pub mod backup;

@@ -10,6 +10,8 @@ import { getPrefsWindowSingleInstance } from "./lib/prefsWindowMode";
 import Layout from "./components/Layout";
 import ZoomIndicator from "./components/ZoomIndicator";
 import AuthenticationView from "./views/AuthenticationView";
+import BootUnlockView from "./views/BootUnlockView";
+import type { BootStatus } from "./lib/api";
 import { useNavigationHistory } from "./hooks/useNavigationHistory";
 import { useNavigationHotkeys } from "./hooks/useNavigationHotkeys";
 
@@ -124,6 +126,11 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState("Loading…");
+  // null = still checking; { unlock_required: true } gates the rest of boot
+  // behind the BootUnlockView. Once the user enters their PIN successfully,
+  // boot_unlock opens the DB pool and we re-check; the rest of the app boots
+  // normally from there.
+  const [bootGate, setBootGate] = useState<BootStatus | null>(null);
   const [zoomVisible, setZoomVisible] = useState(false);
   const zoomTimeoutRef = useRef<number | null>(null);
 
@@ -291,8 +298,25 @@ export default function App() {
     };
   }, []);
 
+  // Boot gate: check whether the DB needs to be unlocked before we run the
+  // main settings/workspaces fetch (which would fail without an open pool).
+  useEffect(() => {
+    let cancelled = false;
+    api.boot.checkState().then((status) => {
+      if (cancelled) {return;}
+      setBootGate(status);
+    }).catch(() => {
+      if (cancelled) {return;}
+      // If the boot probe itself fails, assume no encryption and continue —
+      // the main boot effect will surface any real errors.
+      setBootGate({ unlock_required: false, pending_action: "" });
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   // Boot: load settings + workspaces
   useEffect(() => {
+    if (!bootGate || bootGate.unlock_required) {return;}
     let cancelled = false;
 
     async function boot() {
@@ -374,7 +398,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [setWorkspaces]);
+  }, [setWorkspaces, bootGate]);
 
   // Listen for workspace changes from other windows
   useEffect(() => {
@@ -472,6 +496,18 @@ export default function App() {
       cancelled = true;
     };
   }, [activeWorkspaceId, primaryWorkspaceId, secondaryWorkspaceId, setFoldersForWorkspace, splitMode]);
+
+  // Show the boot unlock screen when the DB is encrypted and the pool has
+  // not yet been opened. The successful unlock command triggers the boot
+  // gate to be re-checked, which lets the main boot effect run.
+  if (bootGate?.unlock_required) {
+    return (
+      <BootUnlockView
+        status={bootGate}
+        onUnlocked={() => setBootGate({ unlock_required: false, pending_action: "" })}
+      />
+    );
+  }
 
   if (isLoading) {
     // Inline styles so this screen is visible even if theme CSS variables

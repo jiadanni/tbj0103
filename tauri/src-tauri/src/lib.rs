@@ -203,7 +203,6 @@ pub fn run() {
                 Some(vec!["--autostart"]),
             ))?;
 
-            // Initialize SQLite database
             let app_dir = app
                 .path()
                 .app_data_dir()
@@ -211,306 +210,24 @@ pub fn run() {
             std::fs::create_dir_all(&app_dir)?;
             let db_path = app_dir.join("aetherium.db");
 
-            // DB encryption gate. When a sidecar file exists, the on-disk DB
-            // is (or is becoming) SQLCipher-encrypted with a PIN-wrapped DEK.
-            // The pool can only be opened with the unwrapped key, which
-            // requires a PIN from the user. Until the pre-DB unlock UI lands,
-            // we accept the PIN via the AETHERIUM_DB_PIN env var (intended
-            // for testing); otherwise we fail fast with a clear message
-            // rather than silently opening a different file.
-            let pool = if crate::services::db_encryption::sidecar_exists(&db_path) {
-                let pin = std::env::var("AETHERIUM_DB_PIN").map_err(|_| {
-                    "Database encryption is configured but no unlock UI is wired yet. \
-                     Set AETHERIUM_DB_PIN to test, or delete the sidecar to disable.".to_string()
-                })?;
-                let sidecar = crate::services::db_encryption::read_sidecar(&db_path)?;
-                let dek = crate::services::db_encryption::unwrap_dek_with_pin(&db_path, &pin)?;
-                let mut keep_encrypted = true;
-                match sidecar.pending_action.as_deref() {
-                    Some("encrypt") => {
-                        crate::services::db_encryption::encrypt_in_place(&db_path, &dek)?;
-                        let mut cleared = sidecar;
-                        cleared.pending_action = None;
-                        crate::services::db_encryption::write_sidecar(&db_path, &cleared)?;
-                    }
-                    Some("decrypt") => {
-                        crate::services::db_encryption::decrypt_in_place(&db_path, &dek)?;
-                        crate::services::db_encryption::remove_sidecar(&db_path)?;
-                        keep_encrypted = false;
-                    }
-                    Some(other) => {
-                        return Err(format!("Unknown pending DB action: {other}").into());
-                    }
-                    None => {}
-                }
-                if keep_encrypted {
-                    let mut key = [0u8; 32];
-                    key.copy_from_slice(&*dek);
-                    db::initialize_database_with_key(&db_path, Some(key))
-                        .map_err(|e| format!("Failed to initialize encrypted database: {e}"))?
-                } else {
-                    db::initialize_database(&db_path)
-                        .map_err(|e| format!("Failed to initialize database: {e}"))?
-                }
-            } else {
-                db::initialize_database(&db_path)
-                    .map_err(|e| format!("Failed to initialize database: {e}"))?
-            };
-
-            let conn = pool.get().map_err(|e| format!("Failed to get DB connection: {e}"))?;
-
-            commands::settings::sync_autostart(&app.handle().clone(), &conn)
-                .map_err(|e| format!("Failed to synchronize autostart setting: {e}"))?;
-            let should_open_in_background = commands::settings::should_open_in_background(&conn);
-            #[cfg(target_os = "linux")]
-            let saved_main_window_state = load_saved_main_window_state(&conn);
-            let quick_search_shortcut: String = conn
-                .query_row(
-                    "SELECT value FROM settings WHERE key = 'quick_search_shortcut'",
-                    [],
-                    |row| row.get(0),
-                )
-                .ok()
-                .and_then(|value: String| serde_json::from_str(&value).ok())
-                .unwrap_or_else(|| "CmdOrCtrl+Shift+K".to_string());
-
-            // Resolve the chats directory and try to load encryption passphrase
-            let chats_dir = app_dir.join("chats");
-            let passphrase = commands::chat_file::load_crypto_state_from_keyring(&conn);
-            crate::services::quick_search_index::ensure_populated(&conn)
-                .map_err(|e| format!("Failed to populate quick search index: {e}"))?;
-
-            drop(conn);
-
-            // Initialize persistent logging with the DB pool
-            crate::logging::init_pool(pool.clone());
-            // Apply persisted log level before starting the flush timer.
-            {
-                let log_conn = pool.get().map_err(|e| format!("Failed to get DB connection: {e}"))?;
-                if let Ok(row) = log_conn.query_row(
-                    "SELECT value FROM settings WHERE key = 'log_level'",
-                    [],
-                    |r| r.get::<_, String>(0),
-                ) {
-                    if let Ok(level) = serde_json::from_str::<String>(&row) {
-                        crate::logging::set_min_log_level(&level);
-                    }
-                }
-            }
-            crate::logging::start_flush_timer();
-
-            app.manage(db::DbState(pool));
-            app.manage(commands::chat_file::ChatsDirState(chats_dir));
-            app.manage(commands::chat_file::ChatCryptoState(
-                std::sync::Mutex::new(passphrase),
-            ));
-            app.manage(commands::ollama::StreamAbortState(
-                std::sync::Mutex::new(std::collections::HashMap::new()),
-            ));
-            let (bg_cancel_tx, _) = tokio::sync::watch::channel(0u64);
-            app.manage(commands::ollama::BackgroundInferenceCancel(bg_cancel_tx));
-            app.manage(commands::quick_search::QuickSearchRuntimeState::default());
+            // AuthState is always managed early so that DB-encryption commands
+            // (which run from the boot screen, before the pool exists) work.
             app.manage(commands::security::AuthState::default());
 
-            #[cfg(feature = "llamacpp")]
-            {
-                // Initialize llama.cpp worker
-                let worker_state = llamacpp::worker::spawn_inference_worker(app.handle().clone());
-                app.manage(worker_state);
-                app.manage(commands::llamacpp::LlamacppCancelState(
-                    std::sync::Mutex::new(std::collections::HashMap::new()),
-                ));
+            // Boot state lets the unlock IPC handlers know where the DB lives.
+            app.manage(commands::boot::BootState::new(app_dir.clone(), db_path.clone()));
+
+            if crate::services::db_encryption::sidecar_exists(&db_path) {
+                // Encrypted DB. Skip pool init — the frontend will show the
+                // unlock route and call boot_unlock(pin) once the PIN is
+                // entered. complete_db_dependent_setup runs from there.
+                return Ok(());
             }
 
-            // Initialize MCP Client Manager
-            let mcp_manager = std::sync::Arc::new(tokio::sync::Mutex::new(
-                mcp_client::MCPClientManager::new()
-            ));
-            app.manage(mcp_manager);
-
-            ensure_quick_search_window(app)
-                .map_err(|e| format!("Failed to create quick search window: {e}"))?;
-            let tray_handle = app.handle().clone();
-            build_tray_icon(&tray_handle)
-                .map_err(|e| format!("Failed to create tray icon: {e}"))?;
-
-            {
-                let runtime_state = app.state::<commands::quick_search::QuickSearchRuntimeState>();
-                commands::quick_search::apply_shortcut(
-                    app.handle(),
-                    &runtime_state,
-                    commands::quick_search::normalize_shortcut(&quick_search_shortcut),
-                )
-                .map_err(|e| format!("Failed to register quick search shortcut: {e}"))?;
-            }
-
-            if let Some(window) = app.get_webview_window("main") {
-                let app_handle = app.handle().clone();
-                let main_window = window.clone();
-                window.on_window_event(move |event| {
-                    if let WindowEvent::CloseRequested { api, .. } = event {
-                        if commands::settings::should_keep_running_in_tray(&app_handle) {
-                            api.prevent_close();
-                            let _ = main_window.hide();
-                        }
-                    }
-                });
-
-                if should_open_in_background {
-                    let _ = window.hide();
-                } else {
-                    let _ = window.set_focus();
-                    #[cfg(target_os = "linux")]
-                    {
-                        if let Some(state) = saved_main_window_state.as_ref() {
-                            let _ = apply_saved_main_window_state(state, &window);
-                        } else {
-                            // Already maximized by tauri.conf.json default, but we re-apply here
-                            // as a fallback. Removed center() to avoid conflict with maximize().
-                            let _ = window.maximize();
-                        }
-                    }
-                    #[cfg(not(target_os = "linux"))]
-                    {
-                        let _ = window.maximize();
-                    }
-                }
-
-                #[cfg(target_os = "linux")]
-                {
-                    use std::sync::{Arc, Mutex};
-
-                    let app_handle = app.handle().clone();
-                    let main_window = window.clone();
-                    // Holds the handle of the pending debounced save task so it can be
-                    // cancelled and rescheduled on every resize/move event, preventing
-                    // rapid-fire GTK API calls that corrupt glibc's allocator on X11.
-                    let pending: Arc<Mutex<Option<tauri::async_runtime::JoinHandle<()>>>> =
-                        Arc::new(Mutex::new(None));
-
-                    window.on_window_event(move |event| {
-                        let should_persist = matches!(
-                            event,
-                            WindowEvent::Moved(_) | WindowEvent::Resized(_) | WindowEvent::CloseRequested { .. }
-                        );
-                        if !should_persist {
-                            return;
-                        }
-
-                        if let Ok(mut guard) = pending.lock() {
-                            if let Some(handle) = guard.take() {
-                                handle.abort();
-                            }
-                        }
-
-                        let app_handle2 = app_handle.clone();
-                        let main_window2 = main_window.clone();
-                        let pending2 = pending.clone();
-
-                        let handle = tauri::async_runtime::spawn(async move {
-                            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-                            let db_state = app_handle2.state::<db::DbState>();
-                            if let Ok(conn) = db_state.0.get() {
-                                let _ = save_main_window_state(&conn, &main_window2);
-                            }
-                            if let Ok(mut guard) = pending2.lock() {
-                                *guard = None;
-                            }
-                        });
-
-                        if let Ok(mut guard) = pending.lock() {
-                            *guard = Some(handle);
-                        }
-                    });
-                }
-            }
-
-            let hide_native_menu = {
-                let db_state = app.state::<db::DbState>();
-                if let Ok(conn) = db_state.0.get() {
-                    let val: String = conn.query_row(
-                        "SELECT value FROM settings WHERE key = 'hide_native_menu'",
-                        [],
-                        |row| row.get(0)
-                    ).unwrap_or_else(|_| "false".to_string());
-                    val == "true"
-                } else {
-                    false
-                }
-            };
-
-            let should_use_native_menu = cfg!(target_os = "macos") && !hide_native_menu;
-
-            if should_use_native_menu {
-                let menu = app_menu::build_menu(app.handle())
-                    .map_err(|e| format!("Failed to build menu: {e}"))?;
-                app.set_menu(menu)
-                    .map_err(|e| format!("Failed to set menu: {e}"))?;
-            } else {
-                let _ = app.remove_menu();
-            }
-
-            // Start background scheduler
-            crate::services::background_scheduler::start_scheduler(app.handle().clone());
-
-            // Spawn background timer for topic signatures
-            let app_handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                // Initial delay
-                tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-                loop {
-                    let interval_minutes = {
-                        let pool = app_handle.state::<db::DbState>().0.clone();
-                        tokio::task::spawn_blocking(move || -> u64 {
-                            let Ok(conn) = pool.get() else { return 30; };
-                            let val: String = conn.query_row(
-                                "SELECT value FROM settings WHERE key = 'topic_analysis_interval_minutes'",
-                                [],
-                                |row| row.get(0)
-                            ).unwrap_or_else(|_| "30".to_string());
-                            val.parse::<u64>().unwrap_or(30)
-                        })
-                        .await
-                        .unwrap_or(30)
-                    };
-
-                    {
-                        let db = app_handle.state::<db::DbState>();
-                        let cancel_rx = app_handle
-                            .state::<commands::ollama::BackgroundInferenceCancel>()
-                            .0
-                            .subscribe();
-                        let workspace_ids: Vec<String> = {
-                            let pool = db.0.clone();
-                            match tokio::task::spawn_blocking(move || -> Option<Vec<String>> {
-                                let conn = pool.get().ok()?;
-                                conn.prepare("SELECT id FROM workspaces")
-                                    .and_then(|mut stmt| {
-                                        stmt.query_map([], |row| row.get::<_, String>(0))?
-                                            .collect::<Result<Vec<_>, _>>()
-                                    })
-                                    .ok()
-                            })
-                            .await
-                            {
-                                Ok(Some(ids)) => ids,
-                                _ => {
-                                    tokio::time::sleep(std::time::Duration::from_secs(interval_minutes * 60)).await;
-                                    continue;
-                                }
-                            }
-                        };
-
-                        for id in workspace_ids {
-                            let _ = crate::services::topic_signature::recompute_workspace_signature_with_ai(
-                                &db, &id, None, None, Some(cancel_rx.clone()),
-                            ).await;
-                        }
-                    }
-                    tokio::time::sleep(std::time::Duration::from_secs(interval_minutes * 60)).await;
-                }
-            });
-
+            // Plain DB path: open immediately and finish setup.
+            let pool = db::initialize_database(&db_path)
+                .map_err(|e| format!("Failed to initialize database: {e}"))?;
+            complete_db_dependent_setup(app.handle().clone(), app_dir, pool)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -728,6 +445,9 @@ pub fn run() {
             commands::security::enable_db_encryption,
             commands::security::disable_db_encryption,
             commands::security::cancel_pending_db_encryption,
+            // Boot orchestration (pre-DB IPC for the unlock route)
+            commands::boot::boot_check_state,
+            commands::boot::boot_unlock,
             // Graph algorithm commands
             commands::graph::compute_pagerank,
             commands::graph::find_shortest_path,
@@ -866,7 +586,264 @@ pub fn run() {
     }
 }
 
-fn ensure_quick_search_window(app: &tauri::App) -> Result<(), String> {
+/// Runs the second half of app setup that requires a working DB pool. Called
+/// either directly from `setup` (no encryption, no unlock needed) or from
+/// `boot_unlock` (after the user supplies the PIN). Splits cleanly because
+/// nothing in the body needs the `&mut App` reference — only `AppHandle`.
+pub fn complete_db_dependent_setup(
+    app: AppHandle,
+    app_dir: std::path::PathBuf,
+    pool: crate::db::DbPool,
+) -> Result<(), String> {
+    use tauri::Manager;
+
+    let conn = pool.get().map_err(|e| format!("Failed to get DB connection: {e}"))?;
+
+    commands::settings::sync_autostart(&app, &conn)
+        .map_err(|e| format!("Failed to synchronize autostart setting: {e}"))?;
+    let should_open_in_background = commands::settings::should_open_in_background(&conn);
+    #[cfg(target_os = "linux")]
+    let saved_main_window_state = load_saved_main_window_state(&conn);
+    let quick_search_shortcut: String = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'quick_search_shortcut'",
+            [],
+            |row| row.get(0),
+        )
+        .ok()
+        .and_then(|value: String| serde_json::from_str(&value).ok())
+        .unwrap_or_else(|| "CmdOrCtrl+Shift+K".to_string());
+
+    let chats_dir = app_dir.join("chats");
+    let passphrase = commands::chat_file::load_crypto_state_from_keyring(&conn);
+    crate::services::quick_search_index::ensure_populated(&conn)
+        .map_err(|e| format!("Failed to populate quick search index: {e}"))?;
+
+    drop(conn);
+
+    crate::logging::init_pool(pool.clone());
+    {
+        let log_conn = pool.get().map_err(|e| format!("Failed to get DB connection: {e}"))?;
+        if let Ok(row) = log_conn.query_row(
+            "SELECT value FROM settings WHERE key = 'log_level'",
+            [],
+            |r| r.get::<_, String>(0),
+        ) {
+            if let Ok(level) = serde_json::from_str::<String>(&row) {
+                crate::logging::set_min_log_level(&level);
+            }
+        }
+    }
+    crate::logging::start_flush_timer();
+
+    app.manage(db::DbState(pool));
+    app.manage(commands::chat_file::ChatsDirState(chats_dir));
+    app.manage(commands::chat_file::ChatCryptoState(
+        std::sync::Mutex::new(passphrase),
+    ));
+    app.manage(commands::ollama::StreamAbortState(
+        std::sync::Mutex::new(std::collections::HashMap::new()),
+    ));
+    let (bg_cancel_tx, _) = tokio::sync::watch::channel(0u64);
+    app.manage(commands::ollama::BackgroundInferenceCancel(bg_cancel_tx));
+    app.manage(commands::quick_search::QuickSearchRuntimeState::default());
+
+    #[cfg(feature = "llamacpp")]
+    {
+        let worker_state = llamacpp::worker::spawn_inference_worker(app.clone());
+        app.manage(worker_state);
+        app.manage(commands::llamacpp::LlamacppCancelState(
+            std::sync::Mutex::new(std::collections::HashMap::new()),
+        ));
+    }
+
+    let mcp_manager = std::sync::Arc::new(tokio::sync::Mutex::new(
+        mcp_client::MCPClientManager::new(),
+    ));
+    app.manage(mcp_manager);
+
+    ensure_quick_search_window(&app)
+        .map_err(|e| format!("Failed to create quick search window: {e}"))?;
+    build_tray_icon(&app)
+        .map_err(|e| format!("Failed to create tray icon: {e}"))?;
+
+    {
+        let runtime_state = app.state::<commands::quick_search::QuickSearchRuntimeState>();
+        commands::quick_search::apply_shortcut(
+            &app,
+            &runtime_state,
+            commands::quick_search::normalize_shortcut(&quick_search_shortcut),
+        )
+        .map_err(|e| format!("Failed to register quick search shortcut: {e}"))?;
+    }
+
+    if let Some(window) = app.get_webview_window("main") {
+        let app_handle = app.clone();
+        let main_window = window.clone();
+        window.on_window_event(move |event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                if commands::settings::should_keep_running_in_tray(&app_handle) {
+                    api.prevent_close();
+                    let _ = main_window.hide();
+                }
+            }
+        });
+
+        if should_open_in_background {
+            let _ = window.hide();
+        } else {
+            let _ = window.set_focus();
+            #[cfg(target_os = "linux")]
+            {
+                if let Some(state) = saved_main_window_state.as_ref() {
+                    let _ = apply_saved_main_window_state(state, &window);
+                } else {
+                    let _ = window.maximize();
+                }
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                let _ = window.maximize();
+            }
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            use std::sync::{Arc, Mutex};
+
+            let app_handle = app.clone();
+            let main_window = window.clone();
+            let pending: Arc<Mutex<Option<tauri::async_runtime::JoinHandle<()>>>> =
+                Arc::new(Mutex::new(None));
+
+            window.on_window_event(move |event| {
+                let should_persist = matches!(
+                    event,
+                    WindowEvent::Moved(_) | WindowEvent::Resized(_) | WindowEvent::CloseRequested { .. }
+                );
+                if !should_persist {
+                    return;
+                }
+
+                if let Ok(mut guard) = pending.lock() {
+                    if let Some(handle) = guard.take() {
+                        handle.abort();
+                    }
+                }
+
+                let app_handle2 = app_handle.clone();
+                let main_window2 = main_window.clone();
+                let pending2 = pending.clone();
+
+                let handle = tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                    let db_state = app_handle2.state::<db::DbState>();
+                    if let Ok(conn) = db_state.0.get() {
+                        let _ = save_main_window_state(&conn, &main_window2);
+                    }
+                    if let Ok(mut guard) = pending2.lock() {
+                        *guard = None;
+                    }
+                });
+
+                if let Ok(mut guard) = pending.lock() {
+                    *guard = Some(handle);
+                }
+            });
+        }
+    }
+
+    let hide_native_menu = {
+        let db_state = app.state::<db::DbState>();
+        if let Ok(conn) = db_state.0.get() {
+            let val: String = conn
+                .query_row(
+                    "SELECT value FROM settings WHERE key = 'hide_native_menu'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap_or_else(|_| "false".to_string());
+            val == "true"
+        } else {
+            false
+        }
+    };
+
+    let should_use_native_menu = cfg!(target_os = "macos") && !hide_native_menu;
+
+    if should_use_native_menu {
+        let menu = app_menu::build_menu(&app)
+            .map_err(|e| format!("Failed to build menu: {e}"))?;
+        app.set_menu(menu)
+            .map_err(|e| format!("Failed to set menu: {e}"))?;
+    } else {
+        let _ = app.remove_menu();
+    }
+
+    crate::services::background_scheduler::start_scheduler(app.clone());
+
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+        loop {
+            let interval_minutes = {
+                let pool = app_handle.state::<db::DbState>().0.clone();
+                tokio::task::spawn_blocking(move || -> u64 {
+                    let Ok(conn) = pool.get() else { return 30; };
+                    let val: String = conn
+                        .query_row(
+                            "SELECT value FROM settings WHERE key = 'topic_analysis_interval_minutes'",
+                            [],
+                            |row| row.get(0),
+                        )
+                        .unwrap_or_else(|_| "30".to_string());
+                    val.parse::<u64>().unwrap_or(30)
+                })
+                .await
+                .unwrap_or(30)
+            };
+
+            {
+                let db = app_handle.state::<db::DbState>();
+                let cancel_rx = app_handle
+                    .state::<commands::ollama::BackgroundInferenceCancel>()
+                    .0
+                    .subscribe();
+                let workspace_ids: Vec<String> = {
+                    let pool = db.0.clone();
+                    match tokio::task::spawn_blocking(move || -> Option<Vec<String>> {
+                        let conn = pool.get().ok()?;
+                        conn.prepare("SELECT id FROM workspaces")
+                            .and_then(|mut stmt| {
+                                stmt.query_map([], |row| row.get::<_, String>(0))?
+                                    .collect::<Result<Vec<_>, _>>()
+                            })
+                            .ok()
+                    })
+                    .await
+                    {
+                        Ok(Some(ids)) => ids,
+                        _ => {
+                            tokio::time::sleep(std::time::Duration::from_secs(interval_minutes * 60)).await;
+                            continue;
+                        }
+                    }
+                };
+
+                for id in workspace_ids {
+                    let _ = crate::services::topic_signature::recompute_workspace_signature_with_ai(
+                        &db, &id, None, None, Some(cancel_rx.clone()),
+                    ).await;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(interval_minutes * 60)).await;
+        }
+    });
+
+    Ok(())
+}
+
+fn ensure_quick_search_window(app: &AppHandle) -> Result<(), String> {
     if app.get_webview_window("quick-search").is_some() {
         return Ok(());
     }

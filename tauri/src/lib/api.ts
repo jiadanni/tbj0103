@@ -804,6 +804,12 @@ export interface SecurityStatus {
   biometric_label: string;
 }
 
+export interface BootStatus {
+  unlock_required: boolean;
+  /** "encrypt" | "decrypt" | "" — staged action that will run during boot_unlock. */
+  pending_action: string;
+}
+
 export interface DbEncryptionStatus {
   /** True when a sidecar key-wrap file exists (encryption configured or pending). */
   configured: boolean;
@@ -1387,6 +1393,13 @@ export const api = {
     enableDbEncryption: (pin: string) => invoke<void>("enable_db_encryption", { pin }),
     disableDbEncryption: (pin: string) => invoke<void>("disable_db_encryption", { pin }),
     cancelPendingDbEncryption: (pin: string) => invoke<void>("cancel_pending_db_encryption", { pin }),
+  },
+
+  boot: {
+    /** Polls whether the DB is locked and an unlock route should mount before the main app. */
+    checkState: () => invoke<BootStatus>("boot_check_state"),
+    /** Supplies the PIN that unwraps the DEK, processes any pending action, and opens the pool. */
+    unlock: (pin: string) => invoke<void>("boot_unlock", { pin }),
   },
 
   graph: {
