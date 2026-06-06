@@ -2958,14 +2958,6 @@ export default function ChatView() {
   }, [sessionTokensUsed, setTitlebarTokenCount]);
   const isCurrentlyStreaming = streamingSessionId === activeChatId;
 
-  // Stable Virtuoso Footer — lives inside the scroll area so growing content
-  // doesn't resize the Virtuoso container (which causes layout thrashing).
-  const VirtuosoFooter = useCallback(() => (
-    <StreamingBubble activeChatId={activeChatId} chatMessageStyle={chatMessageStyle} expandChatToWindowWidth={expandChatToWindowWidth} />
-  ), [activeChatId, chatMessageStyle, expandChatToWindowWidth]);
-
-  const virtuosoComponents = useMemo(() => ({ Footer: VirtuosoFooter }), [VirtuosoFooter]);
-
   const activeSession = activeChatId ? (sessionById.get(activeChatId) ?? null) : null;
   const activeSessionWorkspaceId = activeSession?.workspace_id ?? effectiveWorkspaceId;
   const activeWorkspaceName = workspaceById.get(effectiveWorkspaceId ?? "")?.name ?? "No workspace";
@@ -4359,6 +4351,8 @@ export default function ChatView() {
     setInput((prev) => mergeComposerInput(prev, suggestion.prompt));
     requestAnimationFrame(() => resizeAndFocusComposer(suggestion.prompt.length));
   }
+  const handleComposerSuggestionRef = useRef(handleComposerSuggestion);
+  handleComposerSuggestionRef.current = handleComposerSuggestion;
 
   const deleteSession = useCallback(async (id: string) => {
     if (!effectiveWorkspaceId) { return; }
@@ -5013,6 +5007,54 @@ export default function ChatView() {
     ? canRefreshSessionTitle(activeSession, useChatStore.getState().messages)
     : false;
 
+  // Stable Virtuoso Footer — lives inside the scroll area so growing content
+  // doesn't resize the Virtuoso container (which causes layout thrashing).
+  const VirtuosoFooter = useCallback(() => {
+    const shouldShowFollowUps =
+      !!chatFollowUpRow
+      && !isCurrentlyStreaming
+      && activeMessages.length > 0
+      && activeMessages[activeMessages.length - 1].role === "assistant";
+
+    return (
+      <>
+        <StreamingBubble
+          activeChatId={activeChatId}
+          chatMessageStyle={chatMessageStyle}
+          expandChatToWindowWidth={expandChatToWindowWidth}
+        />
+        {shouldShowFollowUps && (
+          <div
+            data-testid="chat-follow-ups"
+            className={`${chatMessageStyle === "minimal" ? "px-8 pb-8" : "pl-4 pr-[52px] pb-4"}`}
+          >
+            <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} mx-auto min-w-0`}>
+              <ComposerSuggestionRows
+                rows={[chatFollowUpRow]}
+                disabled={isStreaming}
+                disableImmediateSend={!selectedModel || !effectiveWorkspaceId}
+                variant="follow-up"
+                onSuggestionClick={(s, send) => handleComposerSuggestionRef.current(s, send)}
+              />
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }, [
+    activeChatId,
+    activeMessages,
+    chatFollowUpRow,
+    chatMessageStyle,
+    effectiveWorkspaceId,
+    expandChatToWindowWidth,
+    isCurrentlyStreaming,
+    isStreaming,
+    selectedModel,
+  ]);
+
+  const virtuosoComponents = useMemo(() => ({ Footer: VirtuosoFooter }), [VirtuosoFooter]);
+
   // Extract all suggestions for the waterfall background
   const waterfallSuggestions = useMemo(() => {
     if (activeChatId) { return []; }
@@ -5357,25 +5399,6 @@ export default function ChatView() {
                         components={virtuosoComponents}
                       />
                     </div>
-                    {chatFollowUpRow
-                      && !isCurrentlyStreaming
-                      && activeMessages.length > 0
-                      && activeMessages[activeMessages.length - 1].role === "assistant" && (
-                      <div
-                        data-testid="chat-follow-ups"
-                        className="flex-shrink-0 px-4 pb-3 sm:px-6"
-                      >
-                        <div className={`${expandChatToWindowWidth ? "w-full" : "w-full max-w-5xl"} mx-auto min-w-0`}>
-                          <ComposerSuggestionRows
-                            rows={[chatFollowUpRow]}
-                            disabled={isStreaming}
-                            disableImmediateSend={!selectedModel || !effectiveWorkspaceId}
-                            variant="follow-up"
-                            onSuggestionClick={handleComposerSuggestion}
-                          />
-                        </div>
-                      </div>
-                    )}
                     <ChatMinimap
                       messages={activeMessages}
                       virtuosoRef={virtuosoRef}
