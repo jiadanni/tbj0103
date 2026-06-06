@@ -1029,8 +1029,15 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                 <span className="w-2.5 h-2.5 rounded-full bg-[#27C93F] opacity-80" />
               </div>
             ) : (
-              <div className="flex items-center gap-1.5 shrink-0">
-                <span className="w-3.5 h-3.5 rounded bg-[var(--accent-color)] text-white flex items-center justify-center font-extrabold text-[0.55em]">A</span>
+              // Non-mac: real app renders AppHeaderMenu (a hamburger dropdown) here.
+              // Show a minimal stylized representation rather than a duplicate "A"
+              // badge — the real "A" lives in the sidebar footer (see Sidebar.tsx).
+              <div className="flex items-center shrink-0 text-[var(--text-secondary)]" aria-hidden="true">
+                <div className="flex flex-col gap-[2px]">
+                  <span className="block h-[1.5px] w-3 rounded-full bg-current opacity-60" />
+                  <span className="block h-[1.5px] w-3 rounded-full bg-current opacity-60" />
+                  <span className="block h-[1.5px] w-3 rounded-full bg-current opacity-60" />
+                </div>
               </div>
             )}
 
@@ -1047,19 +1054,24 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                 </div>
               ) : workspaceNavigation === "top-tabs" ? (
                 <div className="flex gap-1 items-end relative -bottom-[1px] h-full" data-no-drag>
-                  {parentWorkspaces.map((ws, index) => (
-                    <div
-                      key={ws.id}
-                      className={`text-[0.65em] px-2 py-0.5 rounded-t-md border border-b-0 border-[var(--border-color)] select-none whitespace-nowrap cursor-pointer transition-all ${
-                        index === 0
-                          ? "font-semibold text-[var(--accent-color)] bg-[var(--bg-primary)] border-t-2 border-t-[var(--accent-color)] shadow-sm"
-                          : "text-[var(--text-muted)] bg-[var(--bg-sidebar)]/50 hover:bg-[var(--bg-hover)]/40"
-                      }`}
-                      style={index === 0 ? { borderTopColor: "var(--accent-color)" } : {}}
-                    >
-                      {ws.name}
-                    </div>
-                  ))}
+                  {parentWorkspaces.map((ws, index) => {
+                    const isActive = index === 0;
+                    return (
+                      <div
+                        key={ws.id}
+                        className={`relative text-[0.65em] px-2 py-0.5 rounded-t-md border border-b-0 select-none whitespace-nowrap cursor-pointer transition-all ${
+                          isActive
+                            ? "font-semibold text-[var(--text-primary)] bg-[var(--bg-primary)] border-[var(--border-color)]"
+                            : "text-[var(--text-muted)] bg-[var(--bg-sidebar)]/50 border-transparent hover:bg-[var(--bg-hover)]/40"
+                        }`}
+                      >
+                        {isActive && (
+                          <span className="absolute inset-x-1.5 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
+                        )}
+                        {ws.name}
+                      </div>
+                    );
+                  })}
                   <button className="h-5 w-5 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] rounded flex items-center justify-center mb-0.5">
                     <Plus size={10} />
                   </button>
