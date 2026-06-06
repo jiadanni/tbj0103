@@ -369,7 +369,7 @@ mod tests {
     #[test]
     fn csv_has_header_and_rows() {
         let nodes = vec![
-            make_node("c1", "Intro", HierarchyLevel::Chapter),
+            make_node("c1", "Intro", HierarchyLevel::Section),
             make_node("n1", "Variables, scoped", HierarchyLevel::Concept),
         ];
         let links = vec![part_of("n1", "c1")];
@@ -382,7 +382,7 @@ mod tests {
     #[test]
     fn mermaid_emits_graph_td_and_edges() {
         let nodes = vec![
-            make_node("c1", "Intro", HierarchyLevel::Chapter),
+            make_node("c1", "Intro", HierarchyLevel::Section),
             make_node("n1", "Vars", HierarchyLevel::Concept),
         ];
         let links = vec![part_of("n1", "c1")];

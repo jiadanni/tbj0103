@@ -2089,7 +2089,7 @@ mod tests {
                 (id, session_id, workspace_id, summary_type, content, key_topics,
                  message_range_start, message_range_end, token_count, created_at, updated_at)
              VALUES
-                ('sum1', 's1', 'w1', 'rolling',
+                ('sum1', 's1', 'w1', 'info',
                  'The user is exploring Rust ownership, borrowing, lifetimes, and how the compiler prevents invalid aliasing while preserving memory safety.',
                  '[]', 0, 1, 20, datetime('now'), datetime('now'))",
             [],
