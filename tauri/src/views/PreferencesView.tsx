@@ -1218,25 +1218,17 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
             )}
 
             {subWorkspaceNavigation === "sidebar" && activeWorkspaceChildren.length > 0 && (
-              <div className="w-[85px] shrink-0 bg-[var(--bg-sidebar)] border-r border-[var(--border-color)] p-1 flex flex-col gap-0.5" data-testid="single-pane-subworkspace-sidebar">
-                <div className="text-[0.55em] uppercase tracking-wider text-[var(--text-muted)] font-bold px-1.5 py-0.5 opacity-60 mb-0.5">Sub-spaces</div>
-                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[0.6em] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/40 truncate leading-tight select-none">
-                  <svg width="4" height="4" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
-                  <span className="truncate">Overview</span>
-                </div>
-                {activeWorkspaceChildren.map((child, index) => (
-                  <div
-                    key={child.id}
-                    className={`px-1.5 py-0.5 rounded text-[0.6em] truncate leading-tight select-none ${
-                      index === 0
-                        ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)] font-semibold border-l-2 border-[var(--accent-color)]"
-                        : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/40"
-                    }`}
-                  >
-                    {child.name}
-                  </div>
-                ))}
-              </div>
+              <SinglePaneWorkspaceSidebar
+                density="compact"
+                headerLabel="Sub-spaces"
+                testId="single-pane-subworkspace-sidebar"
+                overview={{ label: "Overview" }}
+                items={activeWorkspaceChildren.map((child, index) => ({
+                  id: child.id,
+                  name: child.name,
+                  isActive: index === 0,
+                }))}
+              />
             )}
 
             {sectionNavigation === "sidebar" && (

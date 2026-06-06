@@ -1226,53 +1226,29 @@ function SinglePaneSubWorkspaceSidebar() {
   }
 
   return (
-    <div
-      className="flex h-full w-[180px] shrink-0 flex-col border-r border-[var(--border-color)] bg-[var(--bg-sidebar)]"
-      data-testid="single-pane-subworkspace-sidebar"
-    >
-      <div className="flex items-center justify-between px-3 pt-3 pb-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
-        <span>Sub-workspaces</span>
-        <Tooltip content="New Sub-workspace" position="right">
-          <button
-            onClick={() => setCreating(true)}
-            className="flex h-5 w-5 items-center justify-center rounded text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-            aria-label="New Sub-workspace"
-          >
-            <Plus size={12} />
-          </button>
-        </Tooltip>
-      </div>
-      <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
-        {parent && (
-          <button
-            onClick={() => selectWorkspace(parent.id, { allowRoot: true })}
-            className={`flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs truncate transition-colors ${
-              activeWorkspaceId === parent.id
-                ? "bg-[var(--accent-color)] text-white"
-                : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-            }`}
-          >
-            <svg width="6" height="6" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
-            <span className="truncate">Overview</span>
-          </button>
-        )}
-        {children.map((ws) => {
-          const isActive = ws.id === activeWorkspaceId;
-          return (
-            <button
-              key={ws.id}
-              onClick={() => selectWorkspace(ws.id)}
-              className={`flex w-full items-center rounded-md px-2 py-1.5 text-left text-xs truncate transition-colors ${
-                isActive
-                  ? "bg-[var(--accent-color)] text-white"
-                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-              }`}
-            >
-              {ws.name}
-            </button>
-          );
-        })}
-      </div>
+    <>
+      <SinglePaneWorkspaceSidebarChrome
+        density="comfortable"
+        headerLabel="Sub-workspaces"
+        testId="single-pane-subworkspace-sidebar"
+        onCreate={() => setCreating(true)}
+        createTooltip="New Sub-workspace"
+        overview={
+          parent
+            ? {
+                label: "Overview",
+                isActive: activeWorkspaceId === parent.id,
+                onClick: () => selectWorkspace(parent.id, { allowRoot: true }),
+              }
+            : undefined
+        }
+        items={children.map((ws) => ({
+          id: ws.id,
+          name: ws.name,
+          isActive: ws.id === activeWorkspaceId,
+          onClick: () => selectWorkspace(ws.id),
+        }))}
+      />
       {creating && (
         <PromptDialog
           title="New Sub-workspace"
@@ -1283,7 +1259,7 @@ function SinglePaneSubWorkspaceSidebar() {
           onCancel={() => setCreating(false)}
         />
       )}
-    </div>
+    </>
   );
 }
 

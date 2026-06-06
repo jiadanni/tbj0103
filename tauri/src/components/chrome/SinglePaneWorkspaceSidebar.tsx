@@ -25,9 +25,15 @@ interface SinglePaneWorkspaceSidebarProps {
   onCreate?: () => void;
   createTooltip?: string;
   testId?: string;
-  /** Optional extra content rendered before the items list (e.g. a static
-   *  "Overview" entry for sub-workspace sidebars). */
-  beforeItems?: React.ReactNode;
+  /** Optional dot-prefixed "Overview" entry rendered before the items
+   *  list. Used by the sub-workspace sidebar to surface the parent
+   *  workspace. When `onClick` is omitted the entry is non-interactive
+   *  (used by the preview). */
+  overview?: {
+    label: string;
+    isActive?: boolean;
+    onClick?: () => void;
+  };
 }
 
 const SIZES = {
@@ -45,6 +51,8 @@ const SIZES = {
     headerButton:
       "flex h-5 w-5 items-center justify-center rounded text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]",
     headerIconSize: 12,
+    overviewGap: "gap-1.5",
+    overviewDotSize: 6,
   },
   compact: {
     container: "w-[85px] p-1 gap-0.5",
@@ -59,6 +67,8 @@ const SIZES = {
     headerButton:
       "flex h-3 w-3 items-center justify-center rounded text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]",
     headerIconSize: 8,
+    overviewGap: "gap-1",
+    overviewDotSize: 4,
   },
 } as const;
 
@@ -76,7 +86,7 @@ export function SinglePaneWorkspaceSidebar({
   onCreate,
   createTooltip,
   testId,
-  beforeItems,
+  overview,
 }: SinglePaneWorkspaceSidebarProps) {
   const sizes = SIZES[density];
 
@@ -90,6 +100,42 @@ export function SinglePaneWorkspaceSidebar({
       <Plus size={sizes.headerIconSize} />
     </button>
   ) : null;
+
+  const overviewEntry = overview
+    ? (() => {
+        const className = `flex w-full items-center text-left truncate transition-colors ${sizes.overviewGap} ${sizes.item} ${
+          overview.isActive ? sizes.itemActive : sizes.itemInactive
+        }`;
+        const dot = (
+          <svg
+            width={sizes.overviewDotSize}
+            height={sizes.overviewDotSize}
+            viewBox="0 0 6 6"
+            className="fill-current opacity-80 shrink-0"
+          >
+            <circle cx="3" cy="3" r="3" />
+          </svg>
+        );
+        if (overview.onClick) {
+          return (
+            <button
+              type="button"
+              onClick={overview.onClick}
+              className={className}
+            >
+              {dot}
+              <span className="truncate">{overview.label}</span>
+            </button>
+          );
+        }
+        return (
+          <div className={`${className} select-none`}>
+            {dot}
+            <span className="truncate">{overview.label}</span>
+          </div>
+        );
+      })()
+    : null;
 
   return (
     <div
@@ -107,7 +153,7 @@ export function SinglePaneWorkspaceSidebar({
         )}
       </div>
       <div className={sizes.list}>
-        {beforeItems}
+        {overviewEntry}
         {items.map((item) => {
           const className = `flex w-full items-center text-left truncate transition-colors ${sizes.item} ${
             item.isDragTarget
