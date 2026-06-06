@@ -32,6 +32,7 @@ import { PRIMARY_NAV_ITEMS } from "../components/navigationItems";
 import { SectionNavTopTabs } from "../components/chrome/SectionNavTopTabs";
 import { SectionNavDropdownSelect } from "../components/chrome/SectionNavDropdownSelect";
 import { SectionNavSidebar } from "../components/chrome/SectionNavSidebar";
+import { McMenubarMock } from "../components/chrome/McMenubarMock";
 import { SinglePaneWorkspaceSidebar } from "../components/chrome/SinglePaneWorkspaceSidebar";
 import { WorkspaceNavDropdownSelect } from "../components/chrome/WorkspaceNavDropdownSelect";
 import { useAiModelSync } from "../hooks/useAiModelSync";
@@ -988,34 +989,11 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
       {/* Simulated Desktop Container */}
       <div className="w-full flex flex-col items-center justify-center bg-[var(--bg-secondary)]/35 rounded-2xl p-4 border border-[var(--border-color)]/60 shadow-inner">
         {/* Mock macOS Menubar */}
-        <div className="w-full h-6 bg-[var(--bg-sidebar)]/80 text-[var(--text-muted)] text-[0.7em] px-3 rounded-t-xl flex justify-between items-center select-none border-t border-x border-[var(--border-color)]">
-          <div className="flex gap-2.5 items-center">
-            <span className="font-semibold text-[var(--text-primary)]"></span>
-            <span className="font-medium text-[var(--text-secondary)]">Aetherium</span>
-            {!dbSettings.hide_native_menu && (
-              <div className="flex gap-2.5 opacity-60">
-                <span>File</span>
-                <span>Edit</span>
-                <span>View</span>
-                <span>Workspace</span>
-              </div>
-            )}
-          </div>
-          <div className="flex gap-2.5 items-center">
-            <span>Jobs: {dbSettings.background_inference_enabled ? "Active" : "Disabled"}</span>
-            <span>100%</span>
-            <div className="flex items-center">
-              {dbSettings.menubar_icon_style === "white" ? (
-                <span className="w-3.5 h-3.5 rounded bg-white flex items-center justify-center text-black font-extrabold text-[8px]">A</span>
-              ) : dbSettings.menubar_icon_style === "black" ? (
-                <span className="w-3.5 h-3.5 rounded bg-black text-white flex items-center justify-center font-extrabold text-[8px] border border-white/20">A</span>
-              ) : (
-                /* monochrome (adapts to text color) */
-                <span className="w-3.5 h-3.5 rounded bg-[var(--text-secondary)]/20 text-[var(--text-secondary)] flex items-center justify-center font-extrabold text-[8px]">A</span>
-              )}
-            </div>
-          </div>
-        </div>
+        <McMenubarMock
+          showAppMenu={!dbSettings.hide_native_menu}
+          backgroundInferenceEnabled={dbSettings.background_inference_enabled}
+          iconStyle={dbSettings.menubar_icon_style as "monochrome" | "white" | "black"}
+        />
 
         {/* Mock App Window */}
         <div
