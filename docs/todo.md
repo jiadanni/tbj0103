@@ -48,8 +48,9 @@ Legend: [x] Complete · [/] Partial · [ ] Not started
 - [ ] **Robust Stream Handling**: Refactor backend streaming to use stateful UTF-8 decoding to handle split multi-byte characters and JSON fragments reliably.
 
 ## 🛡️ Security & Privacy
-- [ ] **Database Encryption**: Integrate SQLCipher or implement application-level encryption for content columns (currently stored in plaintext).
-- [ ] **PIN Recovery flow**: Implement a "Mnemonic/Recovery Key" fallback or a secure "Reset App Data" flow on the PIN screen.
+- [x] **Database Encryption**: SQLCipher integration with PIN-tied DEK wrapping (Argon2id KEK, AES-256-GCM, sidecar key-wrap file). Enable/disable stages a pending action that runs at next launch via a pre-DB unlock view. Default off. See `services/db_encryption.rs`, `commands/boot.rs`, `views/BootUnlockView.tsx`.
+- [ ] **Biometric DEK in OS keychain**: macOS Keychain with `biometryCurrentSet` and Windows Hello via `KeyCredentialManager` to skip PIN typing on unlock. Linux remains PIN-only (no consistent biometric-gated secret store). Land alongside any unlock-flow polish.
+- [ ] **PIN Recovery flow**: Implement a "Mnemonic/Recovery Key" fallback or a secure "Reset App Data" flow on the PIN screen. With DB encryption enabled, losing the PIN means losing the data — recovery becomes load-bearing.
 - [ ] **Secure JSON Extraction**: Replace substring-based extraction with a state machine to handle Markdown-wrapped AI responses more reliably.
 
 ## 📅 Data Lifecycle & Integrations
