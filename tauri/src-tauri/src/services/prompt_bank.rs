@@ -495,20 +495,131 @@ async fn generate_batch(
             &ctx,
         )
         .await?;
-    let json = if let (Some(start), Some(end)) = (response.find('['), response.rfind(']')) {
-        if end > start { &response[start..=end] } else { &response }
-    } else {
-        &response
-    };
-    let parsed = serde_json::from_str::<Vec<GeneratedPrompt>>(json)
-        .or_else(|_| serde_json::from_str::<Vec<String>>(json).map(|items| {
-            items
-                .into_iter()
-                .map(|prompt| GeneratedPrompt { prompt, tags: context.tags.iter().take(3).cloned().collect() })
-                .collect()
-        }))
+    let parsed = parse_generated_prompts(&response, &context.tags)
         .map_err(|e| format!("Failed to parse generated prompts: {e}"))?;
     Ok(parsed)
+}
+
+fn parse_generated_prompts(response: &str, fallback_tags: &[String]) -> Result<Vec<GeneratedPrompt>, String> {
+    let trimmed = response.trim();
+    let stripped = strip_code_fences(trimmed);
+    let candidates = extract_json_candidates(stripped);
+    let mut last_err: Option<String> = None;
+    for candidate in candidates {
+        let value: serde_json::Value = match serde_json::from_str(&candidate) {
+            Ok(v) => v,
+            Err(e) => {
+                last_err = Some(e.to_string());
+                continue;
+            }
+        };
+        let items = collect_prompt_items(&value);
+        if items.is_empty() {
+            continue;
+        }
+        let prompts: Vec<GeneratedPrompt> = items
+            .into_iter()
+            .filter_map(|v| coerce_generated_prompt(&v, fallback_tags))
+            .collect();
+        if !prompts.is_empty() {
+            return Ok(prompts);
+        }
+    }
+    Err(last_err.unwrap_or_else(|| "no parseable prompts found in response".to_string()))
+}
+
+fn strip_code_fences(input: &str) -> &str {
+    let trimmed = input.trim();
+    if let Some(rest) = trimmed.strip_prefix("```") {
+        let rest = rest.trim_start_matches(|c: char| c.is_alphanumeric()).trim_start_matches('\n');
+        if let Some(end) = rest.rfind("```") {
+            return rest[..end].trim();
+        }
+        return rest.trim();
+    }
+    trimmed
+}
+
+fn extract_json_candidates(input: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let trimmed = input.trim();
+    if !trimmed.is_empty() {
+        out.push(trimmed.to_string());
+    }
+    if let (Some(s), Some(e)) = (input.find('['), input.rfind(']')) {
+        if e > s {
+            out.push(input[s..=e].to_string());
+        }
+    }
+    if let (Some(s), Some(e)) = (input.find('{'), input.rfind('}')) {
+        if e > s {
+            out.push(input[s..=e].to_string());
+        }
+    }
+    out
+}
+
+fn collect_prompt_items(value: &serde_json::Value) -> Vec<serde_json::Value> {
+    match value {
+        serde_json::Value::Array(items) => items.clone(),
+        serde_json::Value::Object(map) => {
+            for key in ["prompts", "questions", "items", "data", "results"] {
+                if let Some(serde_json::Value::Array(items)) = map.get(key) {
+                    return items.clone();
+                }
+            }
+            if map.contains_key("prompt") || map.contains_key("text") || map.contains_key("question") {
+                return vec![value.clone()];
+            }
+            Vec::new()
+        }
+        _ => Vec::new(),
+    }
+}
+
+fn coerce_generated_prompt(value: &serde_json::Value, fallback_tags: &[String]) -> Option<GeneratedPrompt> {
+    let (prompt, tags) = match value {
+        serde_json::Value::String(s) => (s.clone(), Vec::new()),
+        serde_json::Value::Object(map) => {
+            let prompt = extract_string_field(map, &["prompt", "text", "question", "content", "value"])?;
+            let tags = map
+                .get("tags")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|t| t.as_str().map(|s| s.to_string()))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            (prompt, tags)
+        }
+        _ => return None,
+    };
+    let prompt = prompt.trim().to_string();
+    if prompt.is_empty() {
+        return None;
+    }
+    let tags = if tags.is_empty() {
+        fallback_tags.iter().take(3).cloned().collect()
+    } else {
+        tags
+    };
+    Some(GeneratedPrompt { prompt, tags })
+}
+
+fn extract_string_field(map: &serde_json::Map<String, serde_json::Value>, keys: &[&str]) -> Option<String> {
+    for key in keys {
+        match map.get(*key) {
+            Some(serde_json::Value::String(s)) => return Some(s.clone()),
+            Some(serde_json::Value::Object(inner)) => {
+                if let Some(s) = extract_string_field(inner, keys) {
+                    return Some(s);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 async fn insert_prompt(
