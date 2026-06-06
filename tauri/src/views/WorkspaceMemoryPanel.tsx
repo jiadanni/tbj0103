@@ -38,6 +38,7 @@ export default function WorkspaceMemoryPanel({ workspaceId, onMemoryCountChange,
   const [historyIndex, setHistoryIndex] = useState(0);
   const [restoring, setRestoring] = useState(false);
   const [deletingFacts, setDeletingFacts] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const loadMemories = useCallback(async () => {
     if (!workspaceId) { return; }
@@ -120,11 +121,14 @@ export default function WorkspaceMemoryPanel({ workspaceId, onMemoryCountChange,
   async function createMemory() {
     if (!newContent.trim() || !workspaceId) { return; }
     setSubmitting(true);
+    setError(null);
     try {
       const created = await api.memory.create(newContent.trim(), "workspace", newType, workspaceId);
       setMemories((prev) => [created, ...prev]);
       setNewContent("");
       setNewType("fact");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSubmitting(false);
     }
@@ -155,6 +159,12 @@ export default function WorkspaceMemoryPanel({ workspaceId, onMemoryCountChange,
 
   return (
     <div className="space-y-4">
+      {error && (
+        <div className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          <span className="flex-1">{error}</span>
+          <button onClick={() => setError(null)} className="shrink-0 text-red-400/60 hover:text-red-400">✕</button>
+        </div>
+      )}
       <div className="space-y-4 pl-0">
           {/* Summary */}
           <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-4">
