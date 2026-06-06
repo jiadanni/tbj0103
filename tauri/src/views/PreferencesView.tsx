@@ -2466,6 +2466,10 @@ export default function PreferencesView() {
   const [aiModels, setAiModels] = useState<AiModel[]>([]);
   const [modelSpeedStats, setModelSpeedStats] = useState<Record<string, ModelSpeedStat>>({});
   const [securityStatus, setSecurityStatus] = useState<SecurityStatus | null>(null);
+  const [dbEncryptionStatus, setDbEncryptionStatus] = useState<{ configured: boolean; pending_restart: boolean; pending_action: string } | null>(null);
+  const [encryptionPin, setEncryptionPin] = useState("");
+  const [encryptionMessage, setEncryptionMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [encryptionBusy, setEncryptionBusy] = useState(false);
 
   const [draggedModelId, setDraggedModelId] = useState<string | null>(null);
   const [dragOverModelId, setDragOverModelId] = useState<string | null>(null);
@@ -3038,6 +3042,7 @@ export default function PreferencesView() {
     if (activeTab === "security" && !probed.has("security")) {
       probed.add("security");
       api.security.getStatus().then(setSecurityStatus).catch(() => { });
+      api.security.getDbEncryptionStatus().then(setDbEncryptionStatus).catch(() => { });
     }
     if (activeTab === "mcp" && !probed.has("mcp")) {
       probed.add("mcp");
@@ -5603,6 +5608,140 @@ export default function PreferencesView() {
                           </div>
                         </section>
                       )}
+
+                      {/* ── Database encryption ── */}
+                      <section className="space-y-3" data-pref-section>
+                        <div className="pb-1.5 border-b border-[var(--border-color)] flex items-start justify-between gap-4">
+                          <div>
+                            <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Database encryption</h3>
+                            <p className="text-xs text-[var(--text-muted)]/80 mt-1 max-w-sm">
+                              Encrypts the SQLite database file at rest with SQLCipher. The key is wrapped with your PIN — losing the PIN means losing the data.
+                            </p>
+                          </div>
+                          {dbEncryptionStatus?.pending_restart ? (
+                            <span className="text-[11px] px-2 py-1 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-400 whitespace-nowrap">
+                              Restart pending
+                            </span>
+                          ) : dbEncryptionStatus?.configured ? (
+                            <span className="text-[11px] px-2 py-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
+                              On
+                            </span>
+                          ) : (
+                            <span className="text-[11px] px-2 py-1 rounded-full border border-[var(--border-color)] text-[var(--text-muted)]">
+                              Off
+                            </span>
+                          )}
+                        </div>
+
+                        {!securityStatus?.pin_enabled && (
+                          <p className="text-xs text-amber-400">
+                            Set a PIN passcode first — database encryption is layered on top of it.
+                          </p>
+                        )}
+
+                        {dbEncryptionStatus?.pending_restart && (
+                          <p className="text-xs text-[var(--text-secondary)]">
+                            A change to encrypt the database is staged. It will run on the next app launch. The pre-launch unlock UI is not yet shipped — for now, the app requires the <code>AETHERIUM_DB_PIN</code> environment variable to be set on startup, or you can cancel the pending action below.
+                          </p>
+                        )}
+
+                        {securityStatus?.pin_enabled && (
+                          <>
+                            <div>
+                              <label className="text-xs text-[var(--text-secondary)] mb-1.5 block font-medium">PIN</label>
+                              <input
+                                type="password"
+                                inputMode="numeric"
+                                autoComplete="one-time-code"
+                                value={encryptionPin}
+                                onChange={(e) => { setEncryptionPin(e.target.value.replace(/\D/g, "").slice(0, 8)); setEncryptionMessage(null); }}
+                                placeholder="Confirm with PIN"
+                                className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                              />
+                            </div>
+
+                            {encryptionMessage && (
+                              <p className={`text-xs ${encryptionMessage.type === "success" ? "text-emerald-400" : "text-red-400"}`}>
+                                {encryptionMessage.text}
+                              </p>
+                            )}
+
+                            <div className="flex flex-wrap gap-2 pt-1">
+                              {!dbEncryptionStatus?.configured && !dbEncryptionStatus?.pending_restart && (
+                                <button
+                                  disabled={encryptionBusy || encryptionPin.length < 4}
+                                  onClick={async () => {
+                                    setEncryptionBusy(true);
+                                    setEncryptionMessage(null);
+                                    try {
+                                      await api.security.enableDbEncryption(encryptionPin);
+                                      const refreshed = await api.security.getDbEncryptionStatus();
+                                      setDbEncryptionStatus(refreshed);
+                                      setEncryptionPin("");
+                                      setEncryptionMessage({ type: "success", text: "Encryption staged. It will run on the next app launch." });
+                                    } catch (err) {
+                                      setEncryptionMessage({ type: "error", text: err instanceof Error ? err.message : String(err) });
+                                    } finally {
+                                      setEncryptionBusy(false);
+                                    }
+                                  }}
+                                  className="px-3.5 py-2 rounded-lg bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-90 disabled:opacity-60"
+                                >
+                                  {encryptionBusy ? "Working..." : "Enable encryption"}
+                                </button>
+                              )}
+
+                              {dbEncryptionStatus?.configured && !dbEncryptionStatus.pending_restart && (
+                                <button
+                                  disabled={encryptionBusy || encryptionPin.length < 4}
+                                  onClick={async () => {
+                                    setEncryptionBusy(true);
+                                    setEncryptionMessage(null);
+                                    try {
+                                      await api.security.disableDbEncryption(encryptionPin);
+                                      const refreshed = await api.security.getDbEncryptionStatus();
+                                      setDbEncryptionStatus(refreshed);
+                                      setEncryptionPin("");
+                                      setEncryptionMessage({ type: "success", text: "Decryption staged. It will run on the next app launch." });
+                                    } catch (err) {
+                                      setEncryptionMessage({ type: "error", text: err instanceof Error ? err.message : String(err) });
+                                    } finally {
+                                      setEncryptionBusy(false);
+                                    }
+                                  }}
+                                  className="px-3.5 py-2 rounded-lg border border-[var(--border-color)] text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-60"
+                                >
+                                  {encryptionBusy ? "Working..." : "Disable encryption"}
+                                </button>
+                              )}
+
+                              {dbEncryptionStatus?.pending_restart && (
+                                <button
+                                  disabled={encryptionBusy || encryptionPin.length < 4}
+                                  onClick={async () => {
+                                    setEncryptionBusy(true);
+                                    setEncryptionMessage(null);
+                                    try {
+                                      await api.security.cancelPendingDbEncryption(encryptionPin);
+                                      const refreshed = await api.security.getDbEncryptionStatus();
+                                      setDbEncryptionStatus(refreshed);
+                                      setEncryptionPin("");
+                                      setEncryptionMessage({ type: "success", text: "Pending action cancelled." });
+                                    } catch (err) {
+                                      setEncryptionMessage({ type: "error", text: err instanceof Error ? err.message : String(err) });
+                                    } finally {
+                                      setEncryptionBusy(false);
+                                    }
+                                  }}
+                                  className="px-3.5 py-2 rounded-lg border border-[var(--border-color)] text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-60"
+                                >
+                                  {encryptionBusy ? "Working..." : "Cancel pending action"}
+                                </button>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </section>
                     </div>
                   </div>
 

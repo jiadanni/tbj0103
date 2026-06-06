@@ -804,6 +804,15 @@ export interface SecurityStatus {
   biometric_label: string;
 }
 
+export interface DbEncryptionStatus {
+  /** True when a sidecar key-wrap file exists (encryption configured or pending). */
+  configured: boolean;
+  /** True when a state change is staged and will run on next launch. */
+  pending_restart: boolean;
+  /** "encrypt" | "decrypt" | "" */
+  pending_action: string;
+}
+
 export interface BacklinkEntry {
   source_type: string; source_id: string; context: string; concept_name: string;
 }
@@ -1374,6 +1383,10 @@ export const api = {
     authenticateBiometric: () => invoke<boolean>("authenticate_biometric"),
     unlockApp: () => invoke<void>("unlock_app"),
     lockApp: () => invoke<void>("lock_app"),
+    getDbEncryptionStatus: () => invoke<DbEncryptionStatus>("get_db_encryption_status"),
+    enableDbEncryption: (pin: string) => invoke<void>("enable_db_encryption", { pin }),
+    disableDbEncryption: (pin: string) => invoke<void>("disable_db_encryption", { pin }),
+    cancelPendingDbEncryption: (pin: string) => invoke<void>("cancel_pending_db_encryption", { pin }),
   },
 
   graph: {
