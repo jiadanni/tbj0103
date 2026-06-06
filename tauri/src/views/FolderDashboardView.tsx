@@ -55,6 +55,51 @@ function MetricCard({
   );
 }
 
+function QuickActionsCard({
+  onNewChat,
+  onNewNote,
+  onUploadSource,
+  onPractice,
+}: {
+  onNewChat: () => void;
+  onNewNote: () => void;
+  onUploadSource: () => void;
+  onPractice: () => void;
+}) {
+  const actions: { label: string; icon: React.ReactNode; onClick: () => void }[] = [
+    { label: "New Chat", icon: <MessageSquare size={14} />, onClick: onNewChat },
+    { label: "New Note", icon: <FileText size={14} />, onClick: onNewNote },
+    { label: "Upload Source", icon: <Plus size={14} />, onClick: onUploadSource },
+    { label: "Practice", icon: <Target size={14} />, onClick: onPractice },
+  ];
+  return (
+    <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
+          Quick Actions
+        </h2>
+      </div>
+      <div className="grid grid-cols-2 gap-1.5">
+        {actions.map((action) => (
+          <button
+            key={action.label}
+            type="button"
+            onClick={action.onClick}
+            className="group flex items-center gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-2 py-2 text-left transition-colors hover:border-[rgba(var(--accent-color-rgb),0.35)] hover:bg-[var(--bg-hover)]"
+          >
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]">
+              {action.icon}
+            </span>
+            <span className="truncate text-xs font-medium text-[var(--text-primary)]">
+              {action.label}
+            </span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function EmptyStateActionCard({
   icon,
   title,
@@ -234,18 +279,24 @@ export default function FolderDashboardView() {
 
       {/* Top strip: metrics + goals + continue learning side-by-side */}
       <div className="border-b border-[var(--border-color)] bg-[var(--bg-primary)] px-4 py-3">
-        <div className="grid items-stretch gap-3 xl:grid-cols-[minmax(15rem,1fr)_minmax(18rem,1fr)_minmax(22rem,1.4fr)]">
-          <div className="grid grid-cols-3 content-start gap-2 sm:grid-cols-5 xl:grid-cols-2 2xl:grid-cols-3">
+        <div className="grid items-stretch gap-3 xl:grid-cols-[minmax(14rem,1fr)_minmax(16rem,1fr)_minmax(16rem,1fr)_minmax(20rem,1.3fr)]">
+          <div className="grid grid-cols-2 content-start gap-2 sm:grid-cols-4 xl:grid-cols-2">
             <MetricCard label="Due Review" value={summary.review.topics_due_for_review} />
             <MetricCard label="Active Goals" value={summary.overview.active_goals} />
             <MetricCard label="Topics" value={summary.overview.topics} />
             <MetricCard label="Sources" value={summary.overview.sources} />
-            <MetricCard label="Completed Goals" value={summary.overview.completed_goals} accent="bg-emerald-400" />
           </div>
 
           <GoalsCard
             workspaceId={activeWorkspaceId}
             includeDescendants={includeDescendants}
+          />
+
+          <QuickActionsCard
+            onNewChat={() => navigate("/chat", { state: { createNewChat: true } })}
+            onNewNote={() => navigate("/notes")}
+            onUploadSource={() => navigate("/sources")}
+            onPractice={() => navigate(summary.review.route.path, summary.review.route.state ? { state: summary.review.route.state } : undefined)}
           />
 
           <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3">
