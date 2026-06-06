@@ -48,16 +48,20 @@ function logIpcEvent(level: "debug" | "error", message: string, payload: Observa
   logger(`[ipc] ${message}`, { ...currentWorkspaceContext(), ...payload });
 }
 
+function shouldLogIpcSuccess(command: string, durationMs: number): boolean {
+  return durationMs >= ipcSlowThresholdMs(command);
+}
+
 // Wrap every IPC so command duration is logged. `invoke` is the local name used
 // throughout this file; the underlying Tauri call goes through `_rawTauriInvoke`.
-// Slow commands (>= 50ms) and all errors are logged so queue stalls show up in
-// the dev terminal alongside scheduler / ollama lines.
+// Slow commands and all errors are logged so queue stalls show up in the dev
+// terminal alongside scheduler / ollama lines.
 async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   const startedAt = browserPerformance.now();
   try {
     const result = await _rawTauriInvoke<T>(command, args);
     const durationMs = Number((browserPerformance.now() - startedAt).toFixed(1));
-    if (durationMs >= 50) {
+    if (shouldLogIpcSuccess(command, durationMs)) {
       logIpcEvent("debug", `<- ${command}`, { command, durationMs });
     }
     return result;
@@ -121,13 +125,15 @@ async function invokeObserved<T>(
     const result = await _rawTauriInvoke<T>(command, args);
     const durationMs = Number((browserPerformance.now() - startedAt).toFixed(3));
     const status = durationMs >= ipcSlowThresholdMs(command) ? "slow" : "ok";
-    logIpcEvent("debug", `<- ${command}`, {
-      ...meta,
-      requestId,
-      durationMs,
-      status,
-      summary: formatIpcSummary(status, command, { ...meta, requestId, durationMs }),
-    });
+    if (status === "slow" || shouldLogIpcSuccess(command, durationMs)) {
+      logIpcEvent("debug", `<- ${command}`, {
+        ...meta,
+        requestId,
+        durationMs,
+        status,
+        summary: formatIpcSummary(status, command, { ...meta, requestId, durationMs }),
+      });
+    }
     return result;
   } catch (error) {
     const durationMs = Number((browserPerformance.now() - startedAt).toFixed(3));

@@ -44,10 +44,18 @@ function GenericSkeleton() {
   );
 }
 
+function shouldLogRouteSuspense(): boolean {
+  return import.meta.env.DEV && window.localStorage.getItem("aetherium:debug-route-suspense") === "1";
+}
+
 export default function RouteSkeleton() {
   const location = useLocation();
   const segment = location.pathname.split("/")[1] ?? "";
   useEffect(() => {
+    if (!shouldLogRouteSuspense()) {
+      return;
+    }
+
     const startedAt = window.performance.now();
     // eslint-disable-next-line no-console
     console.log(`[route] suspense fallback shown for /${segment}`);
