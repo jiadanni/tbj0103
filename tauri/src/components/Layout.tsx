@@ -57,6 +57,7 @@ import { useChatStore } from "../stores/chatStore";
 import { CompactMenuSelect } from "./CompactMenuSelect";
 import StatusBar from "./StatusBar";
 import { SectionNavTopTabs } from "./chrome/SectionNavTopTabs";
+import { SectionNavDropdownSelect } from "./chrome/SectionNavDropdownSelect";
 import { useNavigationHistory } from "../hooks/useNavigationHistory";
 
 // Lazy-load heavy views that import large dependencies (d3, CodeMirror, etc.)
@@ -1967,7 +1968,7 @@ function TopTabsNavigation() {
  * The section (route) picker control on its own. Carries its own routing, so it
  * can be dropped into the standalone bar or the combined titlebar line.
  */
-function SectionDropdownSelect() {
+function useSectionDropdownData() {
   const navigate = useNavigate();
   const location = useLocation();
   const [, startNavTransition] = React.useTransition();
@@ -1989,30 +1990,39 @@ function SectionDropdownSelect() {
     ? activeSegment
     : sectionOptions[0]?.value ?? "/folder";
 
+  const handleChange = (value: string) => {
+    if (value === "/chat") {
+      useChatStore.getState().setActiveChatId(null);
+    }
+    startNavTransition(() => { navigate(value); });
+  };
+
+  return { sectionOptions, selectedPath, handleChange };
+}
+
+function SectionDropdownSelect() {
+  const { sectionOptions, selectedPath, handleChange } = useSectionDropdownData();
   return (
-    <CompactMenuSelect
-      label="Section"
-      value={selectedPath}
+    <SectionNavDropdownSelect
+      density="comfortable"
+      showRow={false}
       options={sectionOptions}
-      onChange={(value) => {
-        if (value === "/chat") {
-          useChatStore.getState().setActiveChatId(null);
-        }
-        startNavTransition(() => { navigate(value); });
-      }}
-      widthClassName="min-w-0 w-full max-w-[260px] sm:w-[240px]"
+      value={selectedPath}
+      onChange={handleChange}
     />
   );
 }
 
 function CompactSectionNavigation() {
+  const { sectionOptions, selectedPath, handleChange } = useSectionDropdownData();
   return (
-    <div className="flex h-10 items-center gap-3 border-b border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 shrink-0">
-      <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
-        Section
-      </span>
-      <SectionDropdownSelect />
-    </div>
+    <SectionNavDropdownSelect
+      density="comfortable"
+      showRow={true}
+      options={sectionOptions}
+      value={selectedPath}
+      onChange={handleChange}
+    />
   );
 }
 

@@ -30,6 +30,7 @@ import { MOD_KEY, isLinux, isMac } from "../lib/platform";
 import type { PreferencesSection } from "../components/navigationItems";
 import { PRIMARY_NAV_ITEMS } from "../components/navigationItems";
 import { SectionNavTopTabs } from "../components/chrome/SectionNavTopTabs";
+import { SectionNavDropdownSelect } from "../components/chrome/SectionNavDropdownSelect";
 import { useAiModelSync } from "../hooks/useAiModelSync";
 import { useNavigationHistory } from "../hooks/useNavigationHistory";
 import { usePrefsWindowMode } from "../lib/prefsWindowMode";
@@ -1189,13 +1190,16 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
 
           {/* Section dropdown on its own row (when not combined into the titlebar) */}
           {sectionNavigation === "top-dropdown" && !combineSectionDropdown && (
-            <div className="h-7 flex items-center gap-2 px-3 bg-[var(--bg-secondary)] border-b border-[var(--border-color)] shrink-0 select-none">
-              <span className="text-[0.5em] font-bold uppercase tracking-wider text-[var(--text-muted)]">Section</span>
-              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] text-[0.6em] text-[var(--text-secondary)] font-medium">
-                <span>Chat</span>
-                <ChevronDown size={8} className="text-[var(--text-muted)]" />
-              </div>
-            </div>
+            <SectionNavDropdownSelect
+              density="compact"
+              showRow={true}
+              options={PRIMARY_NAV_ITEMS.map((item) => ({
+                label: item.label,
+                value: item.path,
+                icon: item.icon,
+              }))}
+              value="/chat"
+            />
           )}
 
           <div className="flex flex-1 min-h-0 overflow-hidden">
