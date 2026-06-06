@@ -584,6 +584,15 @@ export interface ScheduledJobStatus {
   due_label: string;
 }
 
+export type BackgroundProcessingScope = "current_workspace" | "selected_workspaces" | "all_workspaces";
+
+export interface QueueBackgroundProcessingRequest {
+  scope: BackgroundProcessingScope;
+  workspace_ids: string[];
+  task_types: string[];
+  include_imported: boolean;
+}
+
 export interface WorkspaceGlossaryTerm {
   id: string;
   workspace_id: string;
@@ -2104,6 +2113,8 @@ export const api = {
       invoke<ScheduledJobStatus[]>("get_scheduled_job_statuses"),
     queueNow: (taskType: string) =>
       invoke<void>("queue_background_job_now", { taskType }),
+    queueProcessingNow: (req: QueueBackgroundProcessingRequest) =>
+      invoke<void>("queue_background_processing_now", { req }),
     setScheduledTaskSetting: (key: string, value: string) =>
       invoke<void>("set_scheduled_task_setting", { key, value }),
     setCurrentWorkspaceId: (workspaceId: string | null) =>

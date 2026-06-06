@@ -57,6 +57,7 @@ const apiMocks = vi.hoisted(() => ({
   })),
   llamacppListModels: vi.fn(() => Promise.resolve([])),
   workspaceList: vi.fn(() => Promise.resolve([])),
+  queueBackgroundProcessingNow: vi.fn(() => Promise.resolve()),
 }));
 
 const settingsStoreState = {
@@ -144,6 +145,25 @@ const settingsStoreState = {
 };
 
 const workspaceStoreState = {
+  workspaces: [
+    {
+      id: "workspace-1",
+      name: "Imported Chats",
+      description: "",
+      prompt_instructions: "",
+      topic_signature: {},
+      signature_updated_at: null,
+      is_hidden: false,
+      created_at: "",
+      updated_at: "",
+      parent_workspace_id: null,
+      icon: "",
+      order_index: 0,
+      last_message_at: null,
+      survey_data: null,
+    },
+  ],
+  activeWorkspaceId: "workspace-1",
   workspaceNavigation: "sidebar" as const,
   sectionNavigation: "sidebar" as const,
   workspaceSortOrder: "name-asc" as const,
@@ -217,11 +237,12 @@ vi.mock("@/lib/api", () => ({
             enabled: true,
             state: "scheduled",
             run_mode: "auto",
-            due_label: "checks every minute when idle",
+            due_label: "checks every 5 min when idle and data changed",
           },
         ]),
       ),
       queueNow: vi.fn(() => Promise.resolve()),
+      queueProcessingNow: apiMocks.queueBackgroundProcessingNow,
       setScheduledTaskSetting: vi.fn(() => Promise.resolve()),
     },
   },
@@ -525,7 +546,45 @@ describe("PreferencesView", () => {
 
     expect(await screen.findByText("Play-button confirmation timeout")).toBeInTheDocument();
     expect(screen.getByText("Memory Extraction")).toBeInTheDocument();
-    expect(screen.getAllByText("checks every minute when idle").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("checks every 5 min when idle and data changed").length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: /run next/i }).length).toBeGreaterThan(0);
+  });
+
+  it("queues granular Data Controls background processing", async () => {
+    window.localStorage.setItem("preferencesActiveTab", "data");
+    render(
+      <MemoryRouter initialEntries={["/settings?section=data"]}>
+        <PreferencesView />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Run Background Processing Now")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Selected workspaces"));
+    fireEvent.click(screen.getByLabelText("Imported Chats"));
+    fireEvent.click(screen.getByText("Summarization"));
+
+    fireEvent.click(screen.getByRole("button", { name: /run now/i }));
+
+    await waitFor(() => {
+      expect(apiMocks.queueBackgroundProcessingNow).toHaveBeenCalledWith({
+        scope: "selected_workspaces",
+        workspace_ids: ["workspace-1"],
+        task_types: expect.arrayContaining([
+          "memory_extraction",
+          "workspace_glossary",
+        ]),
+        include_imported: true,
+      });
+    });
+    const calls = apiMocks.queueBackgroundProcessingNow.mock.calls as unknown as Array<[unknown]>;
+    const payload = calls[0]?.[0] as
+      | { task_types: string[] }
+      | undefined;
+    expect(payload).toBeDefined();
+    if (!payload) {
+      throw new Error("Missing background processing payload");
+    }
+    expect(payload.task_types).not.toContain("summarization");
   });
 });

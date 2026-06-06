@@ -33,10 +33,7 @@ pub fn sync_topics_from_signatures(_conn: &Connection, _workspace_id: &str) -> R
 /// as a top-level concept (no parent). Idempotent — case-insensitive match against
 /// `concept_nodes.name` and `aliases`. This is the new bridge that replaces the
 /// legacy `flashcard_topics` path so the Learning hub sees one taxonomy.
-pub fn sync_concepts_from_signatures(
-    conn: &Connection,
-    workspace_id: &str,
-) -> Result<(), String> {
+pub fn sync_concepts_from_signatures(conn: &Connection, workspace_id: &str) -> Result<(), String> {
     let sig_json: String = conn
         .query_row(
             "SELECT topic_signature FROM workspaces WHERE id = ?1",
@@ -49,7 +46,12 @@ pub fn sync_concepts_from_signatures(
     let mut seen: Vec<String> = Vec::new();
     for tag in &signature.auto_detected_tags {
         let t = tag.tag.trim();
-        if !t.is_empty() && !signature.excluded_tags.iter().any(|e| e.eq_ignore_ascii_case(t)) {
+        if !t.is_empty()
+            && !signature
+                .excluded_tags
+                .iter()
+                .any(|e| e.eq_ignore_ascii_case(t))
+        {
             seen.push(t.to_string());
         }
     }
@@ -88,7 +90,11 @@ fn group_key(t: &str) -> String {
         .trim_end_matches("er")
         .trim_end_matches('s')
         .to_string();
-    if stripped.len() >= 3 { stripped } else { first }
+    if stripped.len() >= 3 {
+        stripped
+    } else {
+        first
+    }
 }
 
 /// Group topics by their first-word key. When ≥2 siblings share a key,
@@ -218,6 +224,14 @@ pub async fn generate_for_topic(
 
 /// Background scheduler tick. Generates at most one batch per call across all workspaces.
 pub async fn tick(state: &DbState, ollama_url: Option<String>) -> Result<(), String> {
+    tick_for_workspaces(state, ollama_url, None).await
+}
+
+pub async fn tick_for_workspaces(
+    state: &DbState,
+    ollama_url: Option<String>,
+    workspace_filter: Option<&[String]>,
+) -> Result<(), String> {
     let (workspace_ids, model, min_interval) = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
         let model = get_model_for_job(&conn, "flashcard_model").unwrap_or_default();
@@ -238,6 +252,10 @@ pub async fn tick(state: &DbState, ollama_url: Option<String>) -> Result<(), Str
             .query_map([], |r| r.get::<_, String>(0))
             .map_err(|e| e.to_string())?
             .filter_map(Result::ok)
+            .filter(|id| match workspace_filter {
+                Some(filter) => filter.iter().any(|ws| ws == id),
+                None => true,
+            })
             .collect();
         (ids, model, interval)
     };
@@ -268,21 +286,31 @@ pub async fn tick(state: &DbState, ollama_url: Option<String>) -> Result<(), Str
                 )
                 .map_err(|e| e.to_string())?;
             let cooldown = format!("-{min_interval} minutes");
-            stmt.query_row(rusqlite::params![ws_id, TARGET_CARDS_PER_TOPIC, cooldown], |r| {
-                Ok(FlashcardTopicRow {
-                    id: r.get(0)?,
-                    workspace_id: r.get(1)?,
-                    topic: r.get(2)?,
-                    mastery_score: r.get(3)?,
-                    last_generated_at: r.get(4)?,
-                    card_count: r.get(5)?,
-                })
-            })
+            stmt.query_row(
+                rusqlite::params![ws_id, TARGET_CARDS_PER_TOPIC, cooldown],
+                |r| {
+                    Ok(FlashcardTopicRow {
+                        id: r.get(0)?,
+                        workspace_id: r.get(1)?,
+                        topic: r.get(2)?,
+                        mastery_score: r.get(3)?,
+                        last_generated_at: r.get(4)?,
+                        card_count: r.get(5)?,
+                    })
+                },
+            )
             .ok()
         };
 
         if let Some(topic) = due {
-            let _ = generate_for_topic(state, &topic, &model, DEFAULT_BATCH_SIZE, ollama_url.clone()).await;
+            let _ = generate_for_topic(
+                state,
+                &topic,
+                &model,
+                DEFAULT_BATCH_SIZE,
+                ollama_url.clone(),
+            )
+            .await;
             return Ok(()); // One batch per tick.
         }
     }

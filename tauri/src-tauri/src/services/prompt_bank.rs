@@ -1,7 +1,9 @@
 use crate::db::DbState;
 use crate::models::workspace::TopicSignature;
 use crate::ollama::client::{cosine_similarity, OllamaClient, OllamaMessage, RequestContext};
-use crate::services::model_settings::{get_embedding_model, get_model_for_job, get_ollama_base_url};
+use crate::services::model_settings::{
+    get_embedding_model, get_model_for_job, get_ollama_base_url,
+};
 use crate::services::vector_index::{bytes_to_f32_vec, f32_vec_to_bytes};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
@@ -86,7 +88,11 @@ fn parse_tags(json: &str) -> Vec<String> {
     serde_json::from_str::<Vec<String>>(json).unwrap_or_default()
 }
 
-fn topic_context(sig: &TopicSignature, workspace_name: &str, survey_data: Option<&str>) -> (String, Vec<String>) {
+fn topic_context(
+    sig: &TopicSignature,
+    workspace_name: &str,
+    survey_data: Option<&str>,
+) -> (String, Vec<String>) {
     let mut tags: Vec<String> = sig
         .auto_detected_tags
         .iter()
@@ -121,7 +127,8 @@ fn load_context(conn: &Connection, workspace_id: &str) -> Result<WorkspacePrompt
     let (topic_text, tags) = topic_context(&sig, &name, survey_data.as_deref());
     let model = get_model_for_job(conn, "topic_signature_model")
         .ok_or_else(|| "No background model configured".to_string())?;
-    let ollama_url = get_ollama_base_url(conn).unwrap_or_else(|| "http://localhost:11434".to_string());
+    let ollama_url =
+        get_ollama_base_url(conn).unwrap_or_else(|| "http://localhost:11434".to_string());
     Ok(WorkspacePromptContext {
         workspace_id: workspace_id.to_string(),
         workspace_name: name,
@@ -179,10 +186,18 @@ pub fn get_status(db: &DbState, workspace_id: &str) -> Result<PromptBankStatus, 
         )
         .optional()
         .map_err(|e| e.to_string())?;
-    Ok(PromptBankStatus { prompt_count, active_job, latest_job })
+    Ok(PromptBankStatus {
+        prompt_count,
+        active_job,
+        latest_job,
+    })
 }
 
-pub async fn list_suggestions(db: &DbState, workspace_id: &str, limit: usize) -> Result<Vec<PromptSuggestion>, String> {
+pub async fn list_suggestions(
+    db: &DbState,
+    workspace_id: &str,
+    limit: usize,
+) -> Result<Vec<PromptSuggestion>, String> {
     let limit = limit.clamp(1, 24);
     let (context, rows) = {
         let conn = db.0.get().map_err(|e| e.to_string())?;
@@ -218,7 +233,12 @@ pub async fn list_suggestions(db: &DbState, workspace_id: &str, limit: usize) ->
     let query_embedding = if let Some(model) = context.embedding_model.as_deref() {
         let client = OllamaClient::new(Some(context.ollama_url.clone()))?;
         client
-            .generate_embedding_with_options("prompt_bank_rank", model, &context.topic_text, Some("0s"))
+            .generate_embedding_with_options(
+                "prompt_bank_rank",
+                model,
+                &context.topic_text,
+                Some("0s"),
+            )
             .await
             .ok()
     } else {
@@ -233,25 +253,33 @@ pub async fn list_suggestions(db: &DbState, workspace_id: &str, limit: usize) ->
 
     let mut scored = rows
         .into_iter()
-        .map(|(id, prompt, tags_json, embedding, quality_score, used_count)| {
-            let tags = parse_tags(&tags_json);
-            let embedding_score = query_embedding.as_ref().and_then(|query| {
-                embedding
-                    .as_ref()
-                    .map(|bytes| cosine_similarity(query, &bytes_to_f32_vec(bytes)) as f64)
-            });
-            let text_score = tags
-                .iter()
-                .filter(|tag| query_terms.contains(&tag.to_lowercase()))
-                .count() as f64
-                + prompt
-                    .split(|ch: char| !ch.is_alphanumeric())
-                    .filter(|term| query_terms.contains(&term.to_lowercase()))
+        .map(
+            |(id, prompt, tags_json, embedding, quality_score, used_count)| {
+                let tags = parse_tags(&tags_json);
+                let embedding_score = query_embedding.as_ref().and_then(|query| {
+                    embedding
+                        .as_ref()
+                        .map(|bytes| cosine_similarity(query, &bytes_to_f32_vec(bytes)) as f64)
+                });
+                let text_score = tags
+                    .iter()
+                    .filter(|tag| query_terms.contains(&tag.to_lowercase()))
                     .count() as f64
-                    * 0.2;
-            let score = embedding_score.unwrap_or(text_score) + quality_score - (used_count as f64 * 0.01);
-            PromptSuggestion { id, prompt, tags, score }
-        })
+                    + prompt
+                        .split(|ch: char| !ch.is_alphanumeric())
+                        .filter(|term| query_terms.contains(&term.to_lowercase()))
+                        .count() as f64
+                        * 0.2;
+                let score = embedding_score.unwrap_or(text_score) + quality_score
+                    - (used_count as f64 * 0.01);
+                PromptSuggestion {
+                    id,
+                    prompt,
+                    tags,
+                    score,
+                }
+            },
+        )
         .collect::<Vec<_>>();
 
     scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
@@ -259,12 +287,20 @@ pub async fn list_suggestions(db: &DbState, workspace_id: &str, limit: usize) ->
     Ok(scored)
 }
 
-pub fn create_job(db: &DbState, workspace_id: &str, target_count: i64) -> Result<PromptBankJob, String> {
+pub fn create_job(
+    db: &DbState,
+    workspace_id: &str,
+    target_count: i64,
+) -> Result<PromptBankJob, String> {
     let conn = db.0.get().map_err(|e| e.to_string())?;
     create_job_with_conn(&conn, workspace_id, target_count)
 }
 
-fn create_job_with_conn(conn: &Connection, workspace_id: &str, target_count: i64) -> Result<PromptBankJob, String> {
+fn create_job_with_conn(
+    conn: &Connection,
+    workspace_id: &str,
+    target_count: i64,
+) -> Result<PromptBankJob, String> {
     if let Some(job) = conn
         .query_row(
             "SELECT id, workspace_id, status, target_count, generated_count, model, error, started_at, completed_at
@@ -303,7 +339,10 @@ fn create_job_with_conn(conn: &Connection, workspace_id: &str, target_count: i64
     })
 }
 
-pub async fn run_job_by_id(pool: Pool<SqliteConnectionManager>, job_id: String) -> Result<(), String> {
+pub async fn run_job_by_id(
+    pool: Pool<SqliteConnectionManager>,
+    job_id: String,
+) -> Result<(), String> {
     let (workspace_id, target_count) = {
         let conn = pool.get().map_err(|e| e.to_string())?;
         conn.query_row(
@@ -317,19 +356,46 @@ pub async fn run_job_by_id(pool: Pool<SqliteConnectionManager>, job_id: String) 
 }
 
 pub async fn tick(db: &DbState) -> Result<Option<PromptBankJob>, String> {
+    tick_for_workspaces(db, None).await
+}
+
+pub async fn tick_for_workspaces(
+    db: &DbState,
+    workspace_filter: Option<&[String]>,
+) -> Result<Option<PromptBankJob>, String> {
     let maybe_job = {
         let conn = db.0.get().map_err(|e| e.to_string())?;
-        let queued = conn
-            .query_row(
-                "SELECT id, workspace_id, status, target_count, generated_count, model, error, started_at, completed_at
-                 FROM workspace_prompt_bank_jobs
-                 WHERE status = 'queued'
-                 ORDER BY created_at ASC LIMIT 1",
-                [],
-                job_from_row,
-            )
-            .optional()
-            .map_err(|e| e.to_string())?;
+        let queued = if let Some(workspace_filter) = workspace_filter {
+            let mut queued = None;
+            for workspace_id in workspace_filter {
+                queued = conn
+                    .query_row(
+                        "SELECT id, workspace_id, status, target_count, generated_count, model, error, started_at, completed_at
+                         FROM workspace_prompt_bank_jobs
+                         WHERE status = 'queued' AND workspace_id = ?1
+                         ORDER BY created_at ASC LIMIT 1",
+                        params![workspace_id],
+                        job_from_row,
+                    )
+                    .optional()
+                    .map_err(|e| e.to_string())?;
+                if queued.is_some() {
+                    break;
+                }
+            }
+            queued
+        } else {
+            conn.query_row(
+                    "SELECT id, workspace_id, status, target_count, generated_count, model, error, started_at, completed_at
+                     FROM workspace_prompt_bank_jobs
+                     WHERE status = 'queued'
+                     ORDER BY created_at ASC LIMIT 1",
+                    [],
+                    job_from_row,
+                )
+                .optional()
+                .map_err(|e| e.to_string())?
+        };
         if queued.is_some() {
             queued
         } else {
@@ -337,9 +403,32 @@ pub async fn tick(db: &DbState) -> Result<Option<PromptBankJob>, String> {
             // is in a sub-workspace) over background drip to other workspaces.
             let current_workspace_id =
                 crate::services::model_settings::get_current_workspace_id(&conn);
-            let workspace_id = conn
-                .query_row(
-                    "SELECT w.id
+            let workspace_id = if let Some(workspace_filter) = workspace_filter {
+                let mut found = None;
+                for candidate_id in workspace_filter {
+                    found = conn
+                        .query_row(
+                            "SELECT w.id
+                             FROM workspaces w
+                             LEFT JOIN workspace_prompt_bank p ON p.workspace_id = w.id AND p.dismissed_at IS NULL
+                             LEFT JOIN workspace_prompt_bank_jobs j ON j.workspace_id = w.id AND j.status IN ('queued','running')
+                             WHERE w.id = ?2 AND w.is_hidden = 0 AND j.id IS NULL
+                             GROUP BY w.id
+                             HAVING COUNT(p.id) < ?1
+                             LIMIT 1",
+                            params![REFILL_WATERMARK, candidate_id],
+                            |row| row.get::<_, String>(0),
+                        )
+                        .optional()
+                        .map_err(|e| e.to_string())?;
+                    if found.is_some() {
+                        break;
+                    }
+                }
+                found
+            } else {
+                conn.query_row(
+                        "SELECT w.id
                      FROM workspaces w
                      LEFT JOIN workspace_prompt_bank p ON p.workspace_id = w.id AND p.dismissed_at IS NULL
                      LEFT JOIN workspace_prompt_bank_jobs j ON j.workspace_id = w.id AND j.status IN ('queued','running')
@@ -352,11 +441,12 @@ pub async fn tick(db: &DbState) -> Result<Option<PromptBankJob>, String> {
                             ELSE 2 END ASC,
                        COALESCE(w.last_message_at, w.updated_at) DESC
                      LIMIT 1",
-                    params![REFILL_WATERMARK, current_workspace_id.clone().unwrap_or_default()],
-                    |row| row.get::<_, String>(0),
-                )
-                .optional()
-                .map_err(|e| e.to_string())?;
+                        params![REFILL_WATERMARK, current_workspace_id.clone().unwrap_or_default()],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .optional()
+                    .map_err(|e| e.to_string())?
+            };
             match workspace_id {
                 Some(id) => Some(create_job_with_conn(&conn, &id, DEFAULT_TARGET_COUNT)?),
                 None => None,
@@ -365,7 +455,9 @@ pub async fn tick(db: &DbState) -> Result<Option<PromptBankJob>, String> {
     };
 
     if let Some(job) = maybe_job {
-        if let Err(error) = run_generation(db.0.clone(), &job.id, &job.workspace_id, job.target_count).await {
+        if let Err(error) =
+            run_generation(db.0.clone(), &job.id, &job.workspace_id, job.target_count).await
+        {
             mark_job_failed(&db.0, &job.id, &error);
             return Err(error);
         }
@@ -474,7 +566,11 @@ async fn generate_batch(
         context.workspace_name,
         context.tags.join(", ")
     );
-    if let Some(survey) = context.survey_data.as_deref().filter(|s| !s.trim().is_empty()) {
+    if let Some(survey) = context
+        .survey_data
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+    {
         prompt.push_str(&format!("Learner goals/context: {}\n", survey.trim()));
     }
     prompt.push_str(
@@ -490,7 +586,10 @@ async fn generate_batch(
     let response = client
         .send_message_with_options_observed(
             &context.model,
-            vec![OllamaMessage { role: "user".to_string(), content: prompt }],
+            vec![OllamaMessage {
+                role: "user".to_string(),
+                content: prompt,
+            }],
             Some("0s"),
             &ctx,
         )
@@ -500,7 +599,10 @@ async fn generate_batch(
     Ok(parsed)
 }
 
-fn parse_generated_prompts(response: &str, fallback_tags: &[String]) -> Result<Vec<GeneratedPrompt>, String> {
+fn parse_generated_prompts(
+    response: &str,
+    fallback_tags: &[String],
+) -> Result<Vec<GeneratedPrompt>, String> {
     let trimmed = response.trim();
     let stripped = strip_code_fences(trimmed);
     let candidates = extract_json_candidates(stripped);
@@ -531,7 +633,9 @@ fn parse_generated_prompts(response: &str, fallback_tags: &[String]) -> Result<V
 fn strip_code_fences(input: &str) -> &str {
     let trimmed = input.trim();
     if let Some(rest) = trimmed.strip_prefix("```") {
-        let rest = rest.trim_start_matches(|c: char| c.is_alphanumeric()).trim_start_matches('\n');
+        let rest = rest
+            .trim_start_matches(|c: char| c.is_alphanumeric())
+            .trim_start_matches('\n');
         if let Some(end) = rest.rfind("```") {
             return rest[..end].trim();
         }
@@ -568,7 +672,10 @@ fn collect_prompt_items(value: &serde_json::Value) -> Vec<serde_json::Value> {
                     return items.clone();
                 }
             }
-            if map.contains_key("prompt") || map.contains_key("text") || map.contains_key("question") {
+            if map.contains_key("prompt")
+                || map.contains_key("text")
+                || map.contains_key("question")
+            {
                 return vec![value.clone()];
             }
             Vec::new()
@@ -577,11 +684,15 @@ fn collect_prompt_items(value: &serde_json::Value) -> Vec<serde_json::Value> {
     }
 }
 
-fn coerce_generated_prompt(value: &serde_json::Value, fallback_tags: &[String]) -> Option<GeneratedPrompt> {
+fn coerce_generated_prompt(
+    value: &serde_json::Value,
+    fallback_tags: &[String],
+) -> Option<GeneratedPrompt> {
     let (prompt, tags) = match value {
         serde_json::Value::String(s) => (s.clone(), Vec::new()),
         serde_json::Value::Object(map) => {
-            let prompt = extract_string_field(map, &["prompt", "text", "question", "content", "value"])?;
+            let prompt =
+                extract_string_field(map, &["prompt", "text", "question", "content", "value"])?;
             let tags = map
                 .get("tags")
                 .and_then(|v| v.as_array())
@@ -607,7 +718,10 @@ fn coerce_generated_prompt(value: &serde_json::Value, fallback_tags: &[String]) 
     Some(GeneratedPrompt { prompt, tags })
 }
 
-fn extract_string_field(map: &serde_json::Map<String, serde_json::Value>, keys: &[&str]) -> Option<String> {
+fn extract_string_field(
+    map: &serde_json::Map<String, serde_json::Value>,
+    keys: &[&str],
+) -> Option<String> {
     for key in keys {
         match map.get(*key) {
             Some(serde_json::Value::String(s)) => return Some(s.clone()),
@@ -704,8 +818,16 @@ mod tests {
     fn topic_context_excludes_excluded_tags_and_keeps_custom_tags() {
         let sig = TopicSignature {
             auto_detected_tags: vec![
-                TopicTag { tag: "Rust".to_string(), weight: 1, source: "auto".to_string() },
-                TopicTag { tag: "React".to_string(), weight: 1, source: "auto".to_string() },
+                TopicTag {
+                    tag: "Rust".to_string(),
+                    weight: 1,
+                    source: "auto".to_string(),
+                },
+                TopicTag {
+                    tag: "React".to_string(),
+                    weight: 1,
+                    source: "auto".to_string(),
+                },
             ],
             custom_tags: vec!["Tauri".to_string()],
             excluded_tags: vec!["React".to_string()],

@@ -1,3 +1,4 @@
+use crate::commands::background_jobs::QueueBackgroundProcessingRequest;
 use crate::db::DbState;
 use crate::services::model_settings::{
     get_confirm_timeout_seconds, get_heavy_model, get_model_for_job, get_run_mode, RunMode,
@@ -21,7 +22,8 @@ static PENDING: LazyLock<Mutex<PendingMap>> = LazyLock::new(|| Mutex::new(HashMa
 
 /// Cancel flags for currently-running jobs. The stop button in the status bar
 /// sets these; running jobs check between stages and abort cooperatively.
-static CANCEL_FLAGS: LazyLock<Mutex<HashMap<String, bool>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+static CANCEL_FLAGS: LazyLock<Mutex<HashMap<String, bool>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Live in-memory queue/running state for scheduler-managed jobs. This powers
 /// the frontend queue view for jobs that do not persist their own status in
@@ -31,6 +33,7 @@ static ACTIVE_JOBS: LazyLock<Mutex<HashMap<String, ActiveBackgroundJob>>> =
 static MANUAL_QUEUE: LazyLock<Mutex<VecDeque<String>>> =
     LazyLock::new(|| Mutex::new(VecDeque::new()));
 static MANUAL_DRAIN_RUNNING: AtomicBool = AtomicBool::new(false);
+static MANUAL_PROCESSING_RUNNING: AtomicBool = AtomicBool::new(false);
 static NEXT_TICK_AT: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 
 /// Single-permit semaphore serializing every background job — scheduler ticks
@@ -44,7 +47,11 @@ static JOB_LOCK: LazyLock<Arc<Semaphore>> = LazyLock::new(|| Arc::new(Semaphore:
 /// this; the returned permit must be held for the duration of the job and
 /// dropped on completion.
 pub async fn acquire_job_permit() -> OwnedSemaphorePermit {
-    JOB_LOCK.clone().acquire_owned().await.expect("JOB_LOCK semaphore closed")
+    JOB_LOCK
+        .clone()
+        .acquire_owned()
+        .await
+        .expect("JOB_LOCK semaphore closed")
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -91,6 +98,7 @@ fn job_label(task_type: &str) -> &'static str {
         "hover_definition_scan" => "Hover Definitions",
         "concept_hierarchy" => "Topic Hierarchy",
         "workspace_prompt_bank" => "Starter Prompts / Topic Signatures",
+        "manual_data_processing" => "Background Processing",
         "git_sync" => "Git Sync",
         _ => "Background Job",
     }
@@ -114,7 +122,7 @@ pub struct BackgroundTaskEvent {
 #[derive(Debug, Clone, Serialize)]
 pub struct BackgroundTaskPromptEvent {
     pub task_type: String,
-    pub mode: String, // "confirm_only" | "dual_model"
+    pub mode: String,   // "confirm_only" | "dual_model"
     pub status: String, // "pending" | "dismissed" | "confirmed" | "cancelled"
     #[serde(skip_serializing_if = "Option::is_none")]
     pub heavy_model: Option<String>,
@@ -393,7 +401,9 @@ fn interval_due_label(_next_tick_at: Option<&str>, ticks_remaining: u32) -> Stri
 }
 
 fn every_tick_label(tick_interval: u32) -> String {
-    let minutes = tick_interval.max(1).saturating_mul(SCHEDULER_INTERVAL_MINUTES);
+    let minutes = tick_interval
+        .max(1)
+        .saturating_mul(SCHEDULER_INTERVAL_MINUTES);
     format!("checks every {minutes} min when idle and data changed")
 }
 
@@ -440,9 +450,10 @@ fn max_source_updated_sql(workspace_id_expr: &str) -> String {
 fn has_auto_work(conn: &rusqlite::Connection, job_key: &str) -> bool {
     match job_key {
         "memory_extraction" => {
-            let threshold = crate::commands::settings::get_setting(conn, "memory_extraction_threshold")
-                .and_then(|value| value.parse::<i64>().ok())
-                .unwrap_or(5);
+            let threshold =
+                crate::commands::settings::get_setting(conn, "memory_extraction_threshold")
+                    .and_then(|value| value.parse::<i64>().ok())
+                    .unwrap_or(5);
             eligible_count(
                 conn,
                 &format!(
@@ -462,9 +473,10 @@ fn has_auto_work(conn: &rusqlite::Connection, job_key: &str) -> bool {
             )
         }
         "summarization" => {
-            let min_messages = crate::commands::settings::get_setting(conn, "summarization_min_messages")
-                .and_then(|value| value.parse::<i64>().ok())
-                .unwrap_or(1);
+            let min_messages =
+                crate::commands::settings::get_setting(conn, "summarization_min_messages")
+                    .and_then(|value| value.parse::<i64>().ok())
+                    .unwrap_or(1);
             eligible_count(
                 conn,
                 &format!(
@@ -642,24 +654,40 @@ async fn lookup_ollama_url(app: &AppHandle) -> Option<String> {
     .flatten()
 }
 
-async fn run_manual_job(app: &AppHandle, task_type: &str, _model: Option<String>) -> Result<(), String> {
+async fn run_manual_job(
+    app: &AppHandle,
+    task_type: &str,
+    _model: Option<String>,
+) -> Result<(), String> {
     let db = app.state::<DbState>();
     let ollama_url = lookup_ollama_url(app).await;
     match task_type {
-        "memory_extraction" => memory_pipeline::process_auto_memory_extraction(&db, ollama_url).await,
-        "workspace_glossary" => workspace_glossary::refresh_due_workspaces(&db).await.map(|_| ()),
-        "hover_definition_scan" => workspace_glossary::scan_recent_sessions_for_missing_terms(&db).await.map(|_| ()),
+        "memory_extraction" => {
+            memory_pipeline::process_auto_memory_extraction(&db, ollama_url).await
+        }
+        "workspace_glossary" => workspace_glossary::refresh_due_workspaces(&db)
+            .await
+            .map(|_| ()),
+        "hover_definition_scan" => workspace_glossary::scan_recent_sessions_for_missing_terms(&db)
+            .await
+            .map(|_| ()),
         "summarization" => {
             let sessions: Vec<(String, String)> = {
                 let pool = db.0.clone();
                 tokio::task::spawn_blocking(move || -> Vec<(String, String)> {
-                    let Ok(conn) = pool.get() else { return Vec::new(); };
-                    let idle = crate::commands::settings::get_setting(&conn, "memory_extraction_idle_minutes")
-                        .and_then(|v| v.parse::<u32>().ok())
-                        .unwrap_or(5);
-                    let max = crate::commands::settings::get_setting(&conn, "summarization_max_sessions")
-                        .and_then(|v| v.parse::<u32>().ok())
-                        .unwrap_or(5);
+                    let Ok(conn) = pool.get() else {
+                        return Vec::new();
+                    };
+                    let idle = crate::commands::settings::get_setting(
+                        &conn,
+                        "memory_extraction_idle_minutes",
+                    )
+                    .and_then(|v| v.parse::<u32>().ok())
+                    .unwrap_or(5);
+                    let max =
+                        crate::commands::settings::get_setting(&conn, "summarization_max_sessions")
+                            .and_then(|v| v.parse::<u32>().ok())
+                            .unwrap_or(5);
                     let sql = format!(
                         "SELECT cs.id, cs.workspace_id FROM chat_sessions cs
                          WHERE datetime(cs.updated_at) > datetime('now', '-{} minutes')
@@ -670,7 +698,9 @@ async fn run_manual_job(app: &AppHandle, task_type: &str, _model: Option<String>
                          LIMIT {}",
                         idle, max
                     );
-                    let Ok(mut stmt) = conn.prepare(&sql) else { return Vec::new(); };
+                    let Ok(mut stmt) = conn.prepare(&sql) else {
+                        return Vec::new();
+                    };
                     stmt.query_map([], |row| {
                         Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
                     })
@@ -694,14 +724,18 @@ async fn run_manual_job(app: &AppHandle, task_type: &str, _model: Option<String>
                     any_failed = true;
                 }
             }
-            if any_failed { Err("Summarization failed".to_string()) } else { Ok(()) }
+            if any_failed {
+                Err("Summarization failed".to_string())
+            } else {
+                Ok(())
+            }
         }
         "flashcard_generation" => {
             crate::services::flashcard_topic_service::tick(&db, ollama_url).await
         }
-        "concept_hierarchy" => {
-            crate::services::concept_hierarchy_service::tick(&db, ollama_url).await.map(|_| ())
-        }
+        "concept_hierarchy" => crate::services::concept_hierarchy_service::tick(&db, ollama_url)
+            .await
+            .map(|_| ()),
         "workspace_prompt_bank" => crate::services::prompt_bank::tick(&db).await.map(|_| ()),
         other => Err(format!("Unknown background job: {other}")),
     }
@@ -723,7 +757,11 @@ async fn drain_manual_queue(app: AppHandle) {
     }
 
     loop {
-        let Some(task_type) = MANUAL_QUEUE.lock().ok().and_then(|mut queue| queue.pop_front()) else {
+        let Some(task_type) = MANUAL_QUEUE
+            .lock()
+            .ok()
+            .and_then(|mut queue| queue.pop_front())
+        else {
             MANUAL_DRAIN_RUNNING.store(false, Ordering::SeqCst);
             return;
         };
@@ -753,7 +791,11 @@ async fn drain_manual_queue(app: AppHandle) {
         emit_task(
             &app,
             &task_type,
-            if cancelled || result.is_err() { "failed" } else { "completed" },
+            if cancelled || result.is_err() {
+                "failed"
+            } else {
+                "completed"
+            },
             &message,
             model,
         );
@@ -780,6 +822,359 @@ pub fn queue_manual_job(app: AppHandle, task_type: String) -> Result<(), String>
         None,
     );
     tauri::async_runtime::spawn(drain_manual_queue(app));
+    Ok(())
+}
+
+fn normalize_manual_processing_tasks(task_types: &[String]) -> Result<Vec<String>, String> {
+    let mut tasks = Vec::new();
+    for task_type in task_types {
+        if !SCHEDULED_JOB_KEYS.contains(&task_type.as_str()) {
+            return Err(format!("Unknown scheduled job: {task_type}"));
+        }
+        if !tasks.iter().any(|task| task == task_type) {
+            tasks.push(task_type.clone());
+        }
+    }
+    if tasks.is_empty() {
+        tasks.extend(SCHEDULED_JOB_KEYS.iter().map(|task| (*task).to_string()));
+    }
+    Ok(tasks)
+}
+
+fn resolve_processing_workspaces(
+    conn: &rusqlite::Connection,
+    req: &QueueBackgroundProcessingRequest,
+) -> Result<Vec<String>, String> {
+    match req.scope.as_str() {
+        "current_workspace" => {
+            let workspace_id = crate::services::model_settings::get_current_workspace_id(conn)
+                .filter(|id| !id.trim().is_empty())
+                .ok_or_else(|| "No current workspace is selected".to_string())?;
+            Ok(vec![workspace_id])
+        }
+        "selected_workspaces" => {
+            if req.workspace_ids.is_empty() {
+                return Err("Select at least one workspace".to_string());
+            }
+            let mut ids = Vec::new();
+            for workspace_id in &req.workspace_ids {
+                let exists = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM workspaces WHERE id = ?1 AND is_hidden = 0",
+                        rusqlite::params![workspace_id],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .unwrap_or(0)
+                    > 0;
+                if exists && !ids.iter().any(|id| id == workspace_id) {
+                    ids.push(workspace_id.clone());
+                }
+            }
+            if ids.is_empty() {
+                return Err("Selected workspaces are unavailable".to_string());
+            }
+            Ok(ids)
+        }
+        "all_workspaces" => {
+            let mut stmt = conn
+                .prepare("SELECT id FROM workspaces WHERE is_hidden = 0 ORDER BY lower(name) ASC")
+                .map_err(|e| e.to_string())?;
+            let ids = stmt
+                .query_map([], |row| row.get::<_, String>(0))
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            if ids.is_empty() {
+                return Err("No workspaces are available".to_string());
+            }
+            Ok(ids)
+        }
+        other => Err(format!("Unsupported processing scope: {other}")),
+    }
+}
+
+async fn resolve_processing_workspaces_for_app(
+    app: &AppHandle,
+    req: &QueueBackgroundProcessingRequest,
+) -> Result<Vec<String>, String> {
+    let db = app.state::<DbState>();
+    let pool = db.0.clone();
+    let req = req.clone();
+    tokio::task::spawn_blocking(move || -> Result<Vec<String>, String> {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        resolve_processing_workspaces(&conn, &req)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+async fn run_manual_processing_job(
+    app: &AppHandle,
+    task_type: &str,
+    workspace_ids: &[String],
+    include_imported: bool,
+) -> Result<(), String> {
+    let db = app.state::<DbState>();
+    let ollama_url = lookup_ollama_url(app).await;
+    match task_type {
+        "memory_extraction" => {
+            memory_pipeline::process_memory_extraction_for_workspaces(
+                &db,
+                workspace_ids,
+                include_imported,
+                ollama_url,
+            )
+            .await
+        }
+        "workspace_glossary" => {
+            let mut any_failed = false;
+            for workspace_id in workspace_ids {
+                if is_cancelled("manual_data_processing") {
+                    return Err("cancelled".to_string());
+                }
+                if workspace_glossary::refresh_workspace_glossary_with_options(
+                    &db,
+                    workspace_id,
+                    include_imported,
+                )
+                .await
+                .is_err()
+                {
+                    any_failed = true;
+                }
+            }
+            if any_failed {
+                Err("Workspace glossary failed".to_string())
+            } else {
+                Ok(())
+            }
+        }
+        "hover_definition_scan" => {
+            workspace_glossary::scan_sessions_for_missing_terms_with_options(
+                &db,
+                Some(workspace_ids),
+                include_imported,
+            )
+            .await
+            .map(|_| ())
+        }
+        "summarization" => {
+            let sessions =
+                collect_summary_sessions_for_workspaces(&db, workspace_ids, include_imported).await;
+            let mut any_failed = false;
+            for (session_id, workspace_id) in sessions {
+                if is_cancelled("manual_data_processing") {
+                    return Err("cancelled".to_string());
+                }
+                if summarization_service::generate_info_summary_with_imported(
+                    &db,
+                    &session_id,
+                    &workspace_id,
+                    ollama_url.clone(),
+                    include_imported,
+                )
+                .await
+                .is_err()
+                {
+                    any_failed = true;
+                }
+            }
+            if any_failed {
+                Err("Summarization failed".to_string())
+            } else {
+                Ok(())
+            }
+        }
+        "flashcard_generation" => {
+            crate::services::flashcard_topic_service::tick_for_workspaces(
+                &db,
+                ollama_url,
+                Some(workspace_ids),
+            )
+            .await
+        }
+        "concept_hierarchy" => crate::services::concept_hierarchy_service::tick_for_workspaces(
+            &db,
+            ollama_url,
+            Some(workspace_ids),
+        )
+        .await
+        .map(|_| ()),
+        "workspace_prompt_bank" => {
+            crate::services::prompt_bank::tick_for_workspaces(&db, Some(workspace_ids))
+                .await
+                .map(|_| ())
+        }
+        other => Err(format!("Unknown background job: {other}")),
+    }
+}
+
+async fn collect_summary_sessions_for_workspaces(
+    db: &DbState,
+    workspace_ids: &[String],
+    include_imported: bool,
+) -> Vec<(String, String)> {
+    let pool = db.0.clone();
+    let workspace_ids = workspace_ids.to_vec();
+    tokio::task::spawn_blocking(move || -> Vec<(String, String)> {
+        let Ok(conn) = pool.get() else {
+            return Vec::new();
+        };
+        let min_messages =
+            crate::commands::settings::get_setting(&conn, "summarization_min_messages")
+                .and_then(|value| value.parse::<i64>().ok())
+                .unwrap_or(1);
+        let mut sessions = Vec::new();
+        for workspace_id in workspace_ids {
+            let imported_clause = if include_imported {
+                ""
+            } else {
+                "AND cs.is_imported = 0"
+            };
+            let sql = format!(
+                "SELECT cs.id, cs.workspace_id
+                 FROM chat_sessions cs
+                 WHERE cs.workspace_id = ?1
+                   AND cs.is_incognito = 0
+                   AND cs.exclude_from_analytics = 0
+                   {imported_clause}
+                   AND (
+                     SELECT COUNT(*) FROM messages m WHERE m.session_id = cs.id
+                   ) >= ?2
+                   AND NOT EXISTS (
+                     SELECT 1
+                     FROM conversation_summaries s
+                     WHERE s.session_id = cs.id
+                       AND s.summary_type = 'info'
+                       AND s.message_range_end >= (
+                         SELECT COUNT(*) FROM messages m WHERE m.session_id = cs.id
+                       )
+                   )
+                 ORDER BY cs.updated_at DESC"
+            );
+            let Ok(mut stmt) = conn.prepare(&sql) else {
+                continue;
+            };
+            let mapped = stmt.query_map(rusqlite::params![workspace_id, min_messages], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            });
+            if let Ok(rows) = mapped {
+                sessions.extend(rows.filter_map(Result::ok));
+            }
+        }
+        sessions
+    })
+    .await
+    .unwrap_or_default()
+}
+
+async fn run_manual_processing_batch(
+    app: AppHandle,
+    req: QueueBackgroundProcessingRequest,
+    tasks: Vec<String>,
+    workspace_ids: Vec<String>,
+) {
+    let task_type = "manual_data_processing";
+    let _permit = acquire_job_permit().await;
+    emit_task(
+        &app,
+        task_type,
+        "started",
+        "Running background processing…",
+        None,
+    );
+    register_running(task_type);
+
+    let mut any_failed = false;
+    let mut completed = 0usize;
+    for task in &tasks {
+        if is_cancelled(task_type) {
+            any_failed = true;
+            break;
+        }
+        emit_task(
+            &app,
+            task_type,
+            "processing",
+            &format!("Running {}…", job_label(task)),
+            None,
+        );
+        match run_manual_processing_job(&app, task, &workspace_ids, req.include_imported).await {
+            Ok(()) => completed += 1,
+            Err(error) if error == "cancelled" => {
+                any_failed = true;
+                break;
+            }
+            Err(_) => any_failed = true,
+        }
+    }
+
+    let cancelled = is_cancelled(task_type);
+    let status = if cancelled || any_failed {
+        "failed"
+    } else {
+        "completed"
+    };
+    let message = if cancelled {
+        "Background processing cancelled".to_string()
+    } else if any_failed {
+        format!(
+            "Background processing finished with issues ({completed}/{})",
+            tasks.len()
+        )
+    } else {
+        format!("Background processing done ({completed}/{})", tasks.len())
+    };
+    emit_task(&app, task_type, status, &message, None);
+    unregister_running(task_type);
+    MANUAL_PROCESSING_RUNNING.store(false, Ordering::SeqCst);
+}
+
+pub fn queue_manual_processing(
+    app: AppHandle,
+    req: QueueBackgroundProcessingRequest,
+) -> Result<(), String> {
+    if MANUAL_PROCESSING_RUNNING
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return Err("Background processing is already queued or running".to_string());
+    }
+
+    let tasks = match normalize_manual_processing_tasks(&req.task_types) {
+        Ok(tasks) => tasks,
+        Err(error) => {
+            MANUAL_PROCESSING_RUNNING.store(false, Ordering::SeqCst);
+            return Err(error);
+        }
+    };
+
+    let app_for_resolve = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let resolved = resolve_processing_workspaces_for_app(&app_for_resolve, &req).await;
+        let workspace_ids = match resolved {
+            Ok(ids) => ids,
+            Err(error) => {
+                emit_task(
+                    &app_for_resolve,
+                    "manual_data_processing",
+                    "failed",
+                    &error,
+                    None,
+                );
+                MANUAL_PROCESSING_RUNNING.store(false, Ordering::SeqCst);
+                return;
+            }
+        };
+        emit_task(
+            &app_for_resolve,
+            "manual_data_processing",
+            "queued",
+            "Queued background processing…",
+            None,
+        );
+        run_manual_processing_batch(app_for_resolve, req, tasks, workspace_ids).await;
+    });
     Ok(())
 }
 
@@ -817,7 +1212,8 @@ async fn lookup_job_model(app: &AppHandle, job_key: &str) -> Option<String> {
 
 pub fn start_scheduler(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(SCHEDULER_INTERVAL_SECS as u64));
+        let mut interval =
+            tokio::time::interval(Duration::from_secs(SCHEDULER_INTERVAL_SECS as u64));
         let mut git_sync_tick: u32 = 0;
         let mut memory_tick: u32 = 0;
         let mut glossary_tick: u32 = 0;
@@ -904,7 +1300,9 @@ pub fn start_scheduler(app: AppHandle) {
             let background_inference_enabled = {
                 let pool = db.0.clone();
                 tokio::task::spawn_blocking(move || -> bool {
-                    let Ok(conn) = pool.get() else { return true; };
+                    let Ok(conn) = pool.get() else {
+                        return true;
+                    };
                     crate::commands::settings::get_setting(&conn, "background_inference_enabled")
                         .map(|v| v == "true")
                         .unwrap_or(true)
@@ -920,30 +1318,45 @@ pub fn start_scheduler(app: AppHandle) {
                     && has_auto_work_for_job(&app, "memory_extraction").await
                 {
                     let mem_default = lookup_job_model(&app, "memory_extraction_model").await;
-                    let (mem_run, mem_model) = gate_job(&app, "memory_extraction", mem_default).await;
+                    let (mem_run, mem_model) =
+                        gate_job(&app, "memory_extraction", mem_default).await;
                     if mem_run {
-                    let _permit = acquire_job_permit_with_queue(
-                        &app,
-                        "memory_extraction",
-                        "Queued for memory extraction…",
-                        "Extracting memories…",
-                        mem_model.clone(),
-                    ).await;
-                    register_running("memory_extraction");
-                    let mem_result = if is_cancelled("memory_extraction") {
-                        Err("cancelled".to_string())
-                    } else {
-                        memory_pipeline::process_auto_memory_extraction(&db, ollama_url.clone()).await
-                    };
-                    let cancelled = is_cancelled("memory_extraction");
-                    emit_task(
-                        &app,
-                        "memory_extraction",
-                        if cancelled { "failed" } else if mem_result.is_ok() { "completed" } else { "failed" },
-                        if cancelled { "Memory extraction cancelled" } else if mem_result.is_ok() { "Memory extraction done" } else { "Memory extraction failed" },
-                        mem_model,
-                    );
-                    unregister_running("memory_extraction");
+                        let _permit = acquire_job_permit_with_queue(
+                            &app,
+                            "memory_extraction",
+                            "Queued for memory extraction…",
+                            "Extracting memories…",
+                            mem_model.clone(),
+                        )
+                        .await;
+                        register_running("memory_extraction");
+                        let mem_result = if is_cancelled("memory_extraction") {
+                            Err("cancelled".to_string())
+                        } else {
+                            memory_pipeline::process_auto_memory_extraction(&db, ollama_url.clone())
+                                .await
+                        };
+                        let cancelled = is_cancelled("memory_extraction");
+                        emit_task(
+                            &app,
+                            "memory_extraction",
+                            if cancelled {
+                                "failed"
+                            } else if mem_result.is_ok() {
+                                "completed"
+                            } else {
+                                "failed"
+                            },
+                            if cancelled {
+                                "Memory extraction cancelled"
+                            } else if mem_result.is_ok() {
+                                "Memory extraction done"
+                            } else {
+                                "Memory extraction failed"
+                            },
+                            mem_model,
+                        );
+                        unregister_running("memory_extraction");
                     }
                 }
 
@@ -960,34 +1373,39 @@ pub fn start_scheduler(app: AppHandle) {
                     let (g_run, glossary_model) =
                         gate_job(&app, "workspace_glossary", glossary_default.clone()).await;
                     if g_run {
-                    let _permit = acquire_job_permit_with_queue(
-                        &app,
-                        "workspace_glossary",
-                        "Queued for glossary refresh…",
-                        "Refreshing workspace glossary…",
-                        glossary_model.clone(),
-                    ).await;
-                    register_running("workspace_glossary");
-                    let glossary_result = if is_cancelled("workspace_glossary") {
-                        Err("cancelled".to_string())
-                    } else {
-                        workspace_glossary::refresh_due_workspaces(&db).await
-                    };
-                    let cancelled = is_cancelled("workspace_glossary");
-                    emit_task(
-                        &app,
-                        "workspace_glossary",
-                        if cancelled || glossary_result.is_err() { "failed" } else { "completed" },
-                        if cancelled {
-                            "Workspace glossary cancelled"
-                        } else if glossary_result.is_ok() {
-                            "Workspace glossary refreshed"
+                        let _permit = acquire_job_permit_with_queue(
+                            &app,
+                            "workspace_glossary",
+                            "Queued for glossary refresh…",
+                            "Refreshing workspace glossary…",
+                            glossary_model.clone(),
+                        )
+                        .await;
+                        register_running("workspace_glossary");
+                        let glossary_result = if is_cancelled("workspace_glossary") {
+                            Err("cancelled".to_string())
                         } else {
-                            "Workspace glossary refresh failed"
-                        },
-                        glossary_model,
-                    );
-                    unregister_running("workspace_glossary");
+                            workspace_glossary::refresh_due_workspaces(&db).await
+                        };
+                        let cancelled = is_cancelled("workspace_glossary");
+                        emit_task(
+                            &app,
+                            "workspace_glossary",
+                            if cancelled || glossary_result.is_err() {
+                                "failed"
+                            } else {
+                                "completed"
+                            },
+                            if cancelled {
+                                "Workspace glossary cancelled"
+                            } else if glossary_result.is_ok() {
+                                "Workspace glossary refreshed"
+                            } else {
+                                "Workspace glossary refresh failed"
+                            },
+                            glossary_model,
+                        );
+                        unregister_running("workspace_glossary");
                     }
                 }
 
@@ -997,34 +1415,39 @@ pub fn start_scheduler(app: AppHandle) {
                     let (scan_run, scan_model) =
                         gate_job(&app, "hover_definition_scan", glossary_default).await;
                     if scan_run {
-                    let _permit = acquire_job_permit_with_queue(
-                        &app,
-                        "hover_definition_scan",
-                        "Queued for definition scan…",
-                        "Scanning chats for missing definitions…",
-                        scan_model.clone(),
-                    ).await;
-                    register_running("hover_definition_scan");
-                    let scan_result = if is_cancelled("hover_definition_scan") {
-                        Err("cancelled".to_string())
-                    } else {
-                        workspace_glossary::scan_recent_sessions_for_missing_terms(&db).await
-                    };
-                    let cancelled = is_cancelled("hover_definition_scan");
-                    emit_task(
-                        &app,
-                        "hover_definition_scan",
-                        if cancelled || scan_result.is_err() { "failed" } else { "completed" },
-                        if cancelled {
-                            "Hover definition scan cancelled"
-                        } else if scan_result.is_ok() {
-                            "Hover definition scan done"
+                        let _permit = acquire_job_permit_with_queue(
+                            &app,
+                            "hover_definition_scan",
+                            "Queued for definition scan…",
+                            "Scanning chats for missing definitions…",
+                            scan_model.clone(),
+                        )
+                        .await;
+                        register_running("hover_definition_scan");
+                        let scan_result = if is_cancelled("hover_definition_scan") {
+                            Err("cancelled".to_string())
                         } else {
-                            "Hover definition scan failed"
-                        },
-                        scan_model,
-                    );
-                    unregister_running("hover_definition_scan");
+                            workspace_glossary::scan_recent_sessions_for_missing_terms(&db).await
+                        };
+                        let cancelled = is_cancelled("hover_definition_scan");
+                        emit_task(
+                            &app,
+                            "hover_definition_scan",
+                            if cancelled || scan_result.is_err() {
+                                "failed"
+                            } else {
+                                "completed"
+                            },
+                            if cancelled {
+                                "Hover definition scan cancelled"
+                            } else if scan_result.is_ok() {
+                                "Hover definition scan done"
+                            } else {
+                                "Hover definition scan failed"
+                            },
+                            scan_model,
+                        );
+                        unregister_running("hover_definition_scan");
                     }
                 }
 
@@ -1034,23 +1457,33 @@ pub fn start_scheduler(app: AppHandle) {
                     && has_auto_work_for_job(&app, "summarization").await
                 {
                     let (summ_recency_minutes, summ_max_sessions) = {
-                    let pool = db.0.clone();
-                    tokio::task::spawn_blocking(move || -> (u32, u32) {
-                        let Ok(conn) = pool.get() else { return (5, 5); };
-                        let idle = crate::commands::settings::get_setting(&conn, "memory_extraction_idle_minutes")
+                        let pool = db.0.clone();
+                        tokio::task::spawn_blocking(move || -> (u32, u32) {
+                            let Ok(conn) = pool.get() else {
+                                return (5, 5);
+                            };
+                            let idle = crate::commands::settings::get_setting(
+                                &conn,
+                                "memory_extraction_idle_minutes",
+                            )
                             .and_then(|v| v.parse::<u32>().ok())
                             .unwrap_or(5);
-                        let max = crate::commands::settings::get_setting(&conn, "summarization_max_sessions")
+                            let max = crate::commands::settings::get_setting(
+                                &conn,
+                                "summarization_max_sessions",
+                            )
                             .and_then(|v| v.parse::<u32>().ok())
                             .unwrap_or(5);
-                        (idle, max)
-                    })
-                    .await
-                    .unwrap_or((5, 5))
-                };
+                            (idle, max)
+                        })
+                        .await
+                        .unwrap_or((5, 5))
+                    };
                     let pool = db.0.clone();
                     tokio::task::spawn_blocking(move || -> Vec<(String, String)> {
-                        let Ok(conn) = pool.get() else { return Vec::new(); };
+                        let Ok(conn) = pool.get() else {
+                            return Vec::new();
+                        };
                         let sql = format!(
                             "SELECT cs.id, cs.workspace_id FROM chat_sessions cs
                              WHERE datetime(cs.updated_at) > datetime('now', '-{} minutes')
@@ -1080,7 +1513,8 @@ pub fn start_scheduler(app: AppHandle) {
 
                 if !sessions.is_empty() {
                     let summ_default = lookup_job_model(&app, "summarization_model").await;
-                    let (summ_run, summ_model) = gate_job(&app, "summarization", summ_default).await;
+                    let (summ_run, summ_model) =
+                        gate_job(&app, "summarization", summ_default).await;
                     if summ_run {
                         let _permit = acquire_job_permit_with_queue(
                             &app,
@@ -1088,7 +1522,8 @@ pub fn start_scheduler(app: AppHandle) {
                             "Queued for summarization…",
                             "Summarizing chats…",
                             summ_model.clone(),
-                        ).await;
+                        )
+                        .await;
                         register_running("summarization");
                         let mut any_failed = false;
                         for (session_id, workspace_id) in sessions {
@@ -1112,7 +1547,13 @@ pub fn start_scheduler(app: AppHandle) {
                             &app,
                             "summarization",
                             if any_failed { "failed" } else { "completed" },
-                            if cancelled { "Summarization cancelled" } else if any_failed { "Summarization failed" } else { "Summarization done" },
+                            if cancelled {
+                                "Summarization cancelled"
+                            } else if any_failed {
+                                "Summarization failed"
+                            } else {
+                                "Summarization done"
+                            },
                             summ_model,
                         );
                         unregister_running("summarization");
@@ -1124,30 +1565,43 @@ pub fn start_scheduler(app: AppHandle) {
                     && has_auto_work_for_job(&app, "flashcard_generation").await
                 {
                     let fc_default = lookup_job_model(&app, "flashcard_model").await;
-                    let (fc_run, fc_model) = gate_job(&app, "flashcard_generation", fc_default).await;
+                    let (fc_run, fc_model) =
+                        gate_job(&app, "flashcard_generation", fc_default).await;
                     if fc_run {
-                    let _permit = acquire_job_permit_with_queue(
-                        &app,
-                        "flashcard_generation",
-                        "Queued for flashcard generation…",
-                        "Generating flashcards…",
-                        fc_model.clone(),
-                    ).await;
-                    register_running("flashcard_generation");
-                    let fc_result = if is_cancelled("flashcard_generation") {
-                        Err("cancelled".to_string())
-                    } else {
-                        crate::services::flashcard_topic_service::tick(&db, ollama_url.clone()).await
-                    };
-                    let cancelled = is_cancelled("flashcard_generation");
-                    emit_task(
-                        &app,
-                        "flashcard_generation",
-                        if cancelled || fc_result.is_err() { "failed" } else { "completed" },
-                        if cancelled { "Flashcard generation cancelled" } else if fc_result.is_ok() { "Flashcard generation done" } else { "Flashcard generation failed" },
-                        fc_model,
-                    );
-                    unregister_running("flashcard_generation");
+                        let _permit = acquire_job_permit_with_queue(
+                            &app,
+                            "flashcard_generation",
+                            "Queued for flashcard generation…",
+                            "Generating flashcards…",
+                            fc_model.clone(),
+                        )
+                        .await;
+                        register_running("flashcard_generation");
+                        let fc_result = if is_cancelled("flashcard_generation") {
+                            Err("cancelled".to_string())
+                        } else {
+                            crate::services::flashcard_topic_service::tick(&db, ollama_url.clone())
+                                .await
+                        };
+                        let cancelled = is_cancelled("flashcard_generation");
+                        emit_task(
+                            &app,
+                            "flashcard_generation",
+                            if cancelled || fc_result.is_err() {
+                                "failed"
+                            } else {
+                                "completed"
+                            },
+                            if cancelled {
+                                "Flashcard generation cancelled"
+                            } else if fc_result.is_ok() {
+                                "Flashcard generation done"
+                            } else {
+                                "Flashcard generation failed"
+                            },
+                            fc_model,
+                        );
+                        unregister_running("flashcard_generation");
                     }
                 }
 
@@ -1167,12 +1621,17 @@ pub fn start_scheduler(app: AppHandle) {
                             "Queued for topic linking…",
                             "Linking related topics…",
                             ch_model.clone(),
-                        ).await;
+                        )
+                        .await;
                         register_running("concept_hierarchy");
                         let ch_result = if is_cancelled("concept_hierarchy") {
                             Err("cancelled".to_string())
                         } else {
-                            crate::services::concept_hierarchy_service::tick(&db, ollama_url.clone()).await
+                            crate::services::concept_hierarchy_service::tick(
+                                &db,
+                                ollama_url.clone(),
+                            )
+                            .await
                         };
                         let cancelled = is_cancelled("concept_hierarchy");
                         let (status, message) = if cancelled {
@@ -1196,7 +1655,8 @@ pub fn start_scheduler(app: AppHandle) {
 
                 let prompt_bank_tick = PROMPT_BANK_TICK.fetch_add(1, Ordering::Relaxed) + 1;
                 let pb_default = lookup_job_model(&app, "topic_signature_model").await;
-                let (pb_run, prompt_bank_model) = if prompt_bank_tick.is_multiple_of(PROMPT_BANK_TICK_INTERVAL)
+                let (pb_run, prompt_bank_model) = if prompt_bank_tick
+                    .is_multiple_of(PROMPT_BANK_TICK_INTERVAL)
                     && has_auto_work_for_job(&app, "workspace_prompt_bank").await
                 {
                     gate_job(&app, "workspace_prompt_bank", pb_default).await
@@ -1210,7 +1670,8 @@ pub fn start_scheduler(app: AppHandle) {
                         "Queued for starter prompt refresh…",
                         "Refreshing starter prompts…",
                         prompt_bank_model.clone(),
-                    ).await;
+                    )
+                    .await;
                     register_running("workspace_prompt_bank");
                     let prompt_bank_result = if is_cancelled("workspace_prompt_bank") {
                         Err("cancelled".to_string())
@@ -1221,7 +1682,11 @@ pub fn start_scheduler(app: AppHandle) {
                     emit_task(
                         &app,
                         "workspace_prompt_bank",
-                        if cancelled || prompt_bank_result.is_err() { "failed" } else { "completed" },
+                        if cancelled || prompt_bank_result.is_err() {
+                            "failed"
+                        } else {
+                            "completed"
+                        },
                         if cancelled {
                             "Starter prompt refresh cancelled"
                         } else if prompt_bank_result.is_ok() {
@@ -1239,10 +1704,13 @@ pub fn start_scheduler(app: AppHandle) {
             let git_sync_ticks = {
                 let pool = db.0.clone();
                 tokio::task::spawn_blocking(move || -> u32 {
-                    let Ok(conn) = pool.get() else { return 10; };
-                    let mins: u32 = crate::commands::settings::get_setting(&conn, "git_sync_interval_minutes")
-                        .and_then(|v| v.parse().ok())
-                        .unwrap_or(5);
+                    let Ok(conn) = pool.get() else {
+                        return 10;
+                    };
+                    let mins: u32 =
+                        crate::commands::settings::get_setting(&conn, "git_sync_interval_minutes")
+                            .and_then(|v| v.parse().ok())
+                            .unwrap_or(5);
                     mins.div_ceil(SCHEDULER_INTERVAL_MINUTES).max(1)
                 })
                 .await
@@ -1252,7 +1720,9 @@ pub fn start_scheduler(app: AppHandle) {
                 let (sync_enabled, remote_url) = {
                     let pool = db.0.clone();
                     tokio::task::spawn_blocking(move || -> (bool, String) {
-                        let Ok(conn) = pool.get() else { return (false, String::new()); };
+                        let Ok(conn) = pool.get() else {
+                            return (false, String::new());
+                        };
                         let enabled = conn
                             .query_row(
                                 "SELECT value FROM settings WHERE key = 'git_sync_enabled'",
@@ -1322,7 +1792,11 @@ pub fn start_scheduler(app: AppHandle) {
                         &app,
                         "git_sync",
                         if sync_ok { "completed" } else { "failed" },
-                        if sync_ok { "Git sync done" } else { "Git sync failed" },
+                        if sync_ok {
+                            "Git sync done"
+                        } else {
+                            "Git sync failed"
+                        },
                         None,
                     );
                 }
@@ -1387,16 +1861,18 @@ fn model_setting_for_job(job_key: &str) -> &'static str {
 
 fn add_minutes_to_rfc3339(base: Option<&str>, minutes: u32) -> Option<String> {
     let base = base?;
-    chrono::DateTime::parse_from_rfc3339(base)
-        .ok()
-        .map(|date| (date.with_timezone(&chrono::Utc) + chrono::Duration::minutes(minutes as i64)).to_rfc3339())
+    chrono::DateTime::parse_from_rfc3339(base).ok().map(|date| {
+        (date.with_timezone(&chrono::Utc) + chrono::Duration::minutes(minutes as i64)).to_rfc3339()
+    })
 }
 
 fn add_scheduler_ticks_to_rfc3339(base: Option<&str>, ticks: u32) -> Option<String> {
     add_minutes_to_rfc3339(base, ticks.saturating_mul(SCHEDULER_INTERVAL_MINUTES))
 }
 
-pub fn list_scheduled_statuses(conn: &rusqlite::Connection) -> Result<Vec<ScheduledBackgroundJobStatus>, String> {
+pub fn list_scheduled_statuses(
+    conn: &rusqlite::Connection,
+) -> Result<Vec<ScheduledBackgroundJobStatus>, String> {
     let active_jobs = ACTIVE_JOBS
         .lock()
         .map(|map| map.clone())
@@ -1405,9 +1881,10 @@ pub fn list_scheduled_statuses(conn: &rusqlite::Connection) -> Result<Vec<Schedu
         .lock()
         .map(|queue| queue.iter().cloned().collect::<Vec<_>>())
         .unwrap_or_default();
-    let background_enabled = crate::commands::settings::get_setting(conn, "background_inference_enabled")
-        .map(|value| value == "true")
-        .unwrap_or(true);
+    let background_enabled =
+        crate::commands::settings::get_setting(conn, "background_inference_enabled")
+            .map(|value| value == "true")
+            .unwrap_or(true);
     let next_check_at = current_next_tick_at();
 
     Ok(SCHEDULED_JOB_KEYS
@@ -1425,7 +1902,12 @@ pub fn list_scheduled_statuses(conn: &rusqlite::Connection) -> Result<Vec<Schedu
             let is_manual_queued = queued_jobs.iter().any(|queued| queued == job_key);
             let has_work = background_enabled && has_auto_work(conn, job_key);
             let mut state = if background_enabled {
-                if has_work { "scheduled" } else { "no_eligible_work" }.to_string()
+                if has_work {
+                    "scheduled"
+                } else {
+                    "no_eligible_work"
+                }
+                .to_string()
             } else {
                 "disabled".to_string()
             };
@@ -1441,8 +1923,18 @@ pub fn list_scheduled_statuses(conn: &rusqlite::Connection) -> Result<Vec<Schedu
             let mut next_due_at = None;
 
             if let Some(job) = active {
-                state = if job.status == "queued" { "queued" } else { "running" }.to_string();
-                due_label = if job.status == "queued" { "queued to run" } else { "running now" }.to_string();
+                state = if job.status == "queued" {
+                    "queued"
+                } else {
+                    "running"
+                }
+                .to_string();
+                due_label = if job.status == "queued" {
+                    "queued to run"
+                } else {
+                    "running now"
+                }
+                .to_string();
             } else if is_manual_queued {
                 state = "queued".to_string();
                 due_label = "queued to run next".to_string();
@@ -1464,18 +1956,44 @@ pub fn list_scheduled_statuses(conn: &rusqlite::Connection) -> Result<Vec<Schedu
                         due_label = every_tick_label(FLASHCARD_TICK_INTERVAL);
                     }
                     "concept_hierarchy" => {
-                        let elapsed = HIERARCHY_TICK.load(Ordering::Relaxed) % HIERARCHY_TICK_INTERVAL;
-                        let remaining = if elapsed == 0 { HIERARCHY_TICK_INTERVAL } else { HIERARCHY_TICK_INTERVAL - elapsed };
-                        state = if remaining <= 1 { "due_now" } else { "scheduled" }.to_string();
+                        let elapsed =
+                            HIERARCHY_TICK.load(Ordering::Relaxed) % HIERARCHY_TICK_INTERVAL;
+                        let remaining = if elapsed == 0 {
+                            HIERARCHY_TICK_INTERVAL
+                        } else {
+                            HIERARCHY_TICK_INTERVAL - elapsed
+                        };
+                        state = if remaining <= 1 {
+                            "due_now"
+                        } else {
+                            "scheduled"
+                        }
+                        .to_string();
                         due_label = interval_due_label(next_check_at.as_deref(), remaining);
-                        next_due_at = add_scheduler_ticks_to_rfc3339(next_check_at.as_deref(), remaining.saturating_sub(1));
+                        next_due_at = add_scheduler_ticks_to_rfc3339(
+                            next_check_at.as_deref(),
+                            remaining.saturating_sub(1),
+                        );
                     }
                     "workspace_prompt_bank" => {
-                        let elapsed = PROMPT_BANK_TICK.load(Ordering::Relaxed) % PROMPT_BANK_TICK_INTERVAL;
-                        let remaining = if elapsed == 0 { PROMPT_BANK_TICK_INTERVAL } else { PROMPT_BANK_TICK_INTERVAL - elapsed };
-                        state = if remaining <= 1 { "due_now" } else { "scheduled" }.to_string();
+                        let elapsed =
+                            PROMPT_BANK_TICK.load(Ordering::Relaxed) % PROMPT_BANK_TICK_INTERVAL;
+                        let remaining = if elapsed == 0 {
+                            PROMPT_BANK_TICK_INTERVAL
+                        } else {
+                            PROMPT_BANK_TICK_INTERVAL - elapsed
+                        };
+                        state = if remaining <= 1 {
+                            "due_now"
+                        } else {
+                            "scheduled"
+                        }
+                        .to_string();
                         due_label = interval_due_label(next_check_at.as_deref(), remaining);
-                        next_due_at = add_scheduler_ticks_to_rfc3339(next_check_at.as_deref(), remaining.saturating_sub(1));
+                        next_due_at = add_scheduler_ticks_to_rfc3339(
+                            next_check_at.as_deref(),
+                            remaining.saturating_sub(1),
+                        );
                     }
                     _ => {}
                 }
@@ -1525,7 +2043,10 @@ pub fn list_active(conn: &rusqlite::Connection) -> Result<Vec<ActiveBackgroundJo
 
     for row in rows {
         let job = row.map_err(|e| e.to_string())?;
-        if let Some(existing) = jobs.iter_mut().find(|existing| existing.task_type == job.task_type) {
+        if let Some(existing) = jobs
+            .iter_mut()
+            .find(|existing| existing.task_type == job.task_type)
+        {
             *existing = job;
         } else {
             jobs.push(job);

@@ -256,6 +256,7 @@ pub fn run() {
             commands::background_jobs::dismiss_background_job,
             commands::background_jobs::cancel_background_job,
             commands::background_jobs::queue_background_job_now,
+            commands::background_jobs::queue_background_processing_now,
             commands::background_jobs::get_scheduled_task_settings,
             commands::background_jobs::get_scheduled_job_statuses,
             commands::background_jobs::set_scheduled_task_setting,

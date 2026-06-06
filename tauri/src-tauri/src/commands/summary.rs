@@ -29,6 +29,7 @@ pub async fn generate_summary(
         &summary_type,
         Some(ollama_url),
         force.unwrap_or(false),
+        false,
     )
     .await
 }

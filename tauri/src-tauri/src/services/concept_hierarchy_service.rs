@@ -76,7 +76,10 @@ fn resolve_model(conn: &Connection) -> Option<String> {
 /// been evaluated since the most recent concept was added to their workspace.
 /// Concepts evaluated *before* a peer was added are re-evaluated so a parent
 /// added after the child can still get linked.
-fn collect_candidates(conn: &Connection) -> rusqlite::Result<Vec<Candidate>> {
+fn collect_candidates(
+    conn: &Connection,
+    workspace_filter: Option<&[String]>,
+) -> rusqlite::Result<Vec<Candidate>> {
     // Prefer concepts in the active workspace (and its parent if user is in
     // a sub-workspace) so the user sees hierarchy links forming where they're
     // working. Other workspaces still drip through after active ones are
@@ -106,14 +109,22 @@ fn collect_candidates(conn: &Connection) -> rusqlite::Result<Vec<Candidate>> {
          LIMIT ?1",
     )?;
     let rows = stmt
-        .query_map(rusqlite::params![MAX_CANDIDATES_PER_TICK as i64, current_workspace_id], |r| {
-            Ok(Candidate {
-                id: r.get(0)?,
-                workspace_id: r.get(1)?,
-                name: r.get(2)?,
-                hierarchy_level: r.get(3)?,
-            })
-        })?
+        .query_map(
+            rusqlite::params![MAX_CANDIDATES_PER_TICK as i64, current_workspace_id],
+            |r| {
+                Ok(Candidate {
+                    id: r.get(0)?,
+                    workspace_id: r.get(1)?,
+                    name: r.get(2)?,
+                    hierarchy_level: r.get(3)?,
+                })
+            },
+        )?
+        .filter(|row| match (row, workspace_filter) {
+            (Ok(candidate), Some(filter)) => filter.iter().any(|ws| ws == &candidate.workspace_id),
+            (Ok(_), None) => true,
+            (Err(_), _) => true,
+        })
         .filter_map(Result::ok)
         .collect();
     Ok(rows)
@@ -121,7 +132,11 @@ fn collect_candidates(conn: &Connection) -> rusqlite::Result<Vec<Candidate>> {
 
 /// Load every other concept in the same workspace as candidate parents.
 /// Capped at `MAX_PROMPT_PEERS` (by recency) to bound prompt size.
-fn load_peers(conn: &Connection, workspace_id: &str, exclude_id: &str) -> rusqlite::Result<Vec<Peer>> {
+fn load_peers(
+    conn: &Connection,
+    workspace_id: &str,
+    exclude_id: &str,
+) -> rusqlite::Result<Vec<Peer>> {
     let mut stmt = conn.prepare(
         "SELECT id, name, hierarchy_level FROM concept_nodes
          WHERE workspace_id = ?1 AND id != ?2
@@ -147,7 +162,11 @@ fn load_peers(conn: &Connection, workspace_id: &str, exclude_id: &str) -> rusqli
 /// Walk the `part_of` chain upward from `start_id`; returns true if
 /// `target_id` is reachable. Used to prevent introducing a cycle when
 /// inserting `child -> parent`.
-fn would_create_cycle(conn: &Connection, start_id: &str, target_id: &str) -> rusqlite::Result<bool> {
+fn would_create_cycle(
+    conn: &Connection,
+    start_id: &str,
+    target_id: &str,
+) -> rusqlite::Result<bool> {
     if start_id == target_id {
         return Ok(true);
     }
@@ -180,9 +199,9 @@ fn would_create_cycle(conn: &Connection, start_id: &str, target_id: &str) -> rus
 /// case-insensitive on `name`. Lowest `created_at` wins on ties (handled by
 /// the caller's load order). Returns `None` for "NONE" / empty / unmatched.
 fn match_peer_by_name(reply: &str, peers: &[Peer]) -> Option<Peer> {
-    let trimmed = reply.trim().trim_matches(|c: char| {
-        c.is_ascii_punctuation() && c != '.' && c != '+' && c != '#'
-    });
+    let trimmed = reply
+        .trim()
+        .trim_matches(|c: char| c.is_ascii_punctuation() && c != '.' && c != '+' && c != '#');
     if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("NONE") {
         return None;
     }
@@ -192,11 +211,10 @@ fn match_peer_by_name(reply: &str, peers: &[Peer]) -> Option<Peer> {
     }
     // Fall back to a tolerant match: the reply may include a leading phrase
     // like "Parent: cargo" — pull the last quoted or bare token.
-    if let Some(p) = peers.iter().find(|p| {
-        trimmed
-            .to_lowercase()
-            .contains(&p.name.to_lowercase())
-    }) {
+    if let Some(p) = peers
+        .iter()
+        .find(|p| trimmed.to_lowercase().contains(&p.name.to_lowercase()))
+    {
         return Some(p.clone());
     }
     None
@@ -301,7 +319,12 @@ fn ensure_node(
     Ok(id)
 }
 
-fn ensure_part_of_link(conn: &Connection, child_id: &str, parent_id: &str, context: &str) -> rusqlite::Result<bool> {
+fn ensure_part_of_link(
+    conn: &Connection,
+    child_id: &str,
+    parent_id: &str,
+    context: &str,
+) -> rusqlite::Result<bool> {
     let new_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
     let inserted = conn.execute(
@@ -331,7 +354,12 @@ fn sweep_orphan_concepts(conn: &Connection, workspace_id: &str) -> rusqlite::Res
         "Auto-grouped uncategorized concepts.",
     )?;
 
-    let _ = ensure_part_of_link(conn, &section_id, &chapter_id, "auto: hierarchy orphan sweep")?;
+    let _ = ensure_part_of_link(
+        conn,
+        &section_id,
+        &chapter_id,
+        "auto: hierarchy orphan sweep",
+    )?;
 
     let mut stmt = conn.prepare(
         "SELECT n.id
@@ -350,7 +378,12 @@ fn sweep_orphan_concepts(conn: &Connection, workspace_id: &str) -> rusqlite::Res
 
     let mut linked = 0usize;
     for orphan_id in orphan_ids {
-        if ensure_part_of_link(conn, &orphan_id, &section_id, "auto: hierarchy orphan sweep")? {
+        if ensure_part_of_link(
+            conn,
+            &orphan_id,
+            &section_id,
+            "auto: hierarchy orphan sweep",
+        )? {
             linked += 1;
         }
     }
@@ -364,17 +397,30 @@ fn sweep_orphan_concepts(conn: &Connection, workspace_id: &str) -> rusqlite::Res
 /// `parent_checked_at` is *not* stamped on transport errors so the tick
 /// will retry it next time.
 pub async fn tick(state: &DbState, ollama_url: Option<String>) -> Result<TickReport, String> {
+    tick_for_workspaces(state, ollama_url, None).await
+}
+
+pub async fn tick_for_workspaces(
+    state: &DbState,
+    ollama_url: Option<String>,
+    workspace_filter: Option<&[String]>,
+) -> Result<TickReport, String> {
     let mut report = TickReport::default();
     let mut touched_workspaces: HashSet<String> = HashSet::new();
+    let workspace_filter = workspace_filter.map(|ids| ids.to_vec());
 
     let (candidates, model) = {
         let pool = state.0.clone();
-        tokio::task::spawn_blocking(move || -> Result<(Vec<Candidate>, Option<String>), String> {
-            let conn = pool.get().map_err(|e| e.to_string())?;
-            let model = resolve_model(&conn);
-            let cands = collect_candidates(&conn).map_err(|e| e.to_string())?;
-            Ok((cands, model))
-        })
+        let workspace_filter = workspace_filter.clone();
+        tokio::task::spawn_blocking(
+            move || -> Result<(Vec<Candidate>, Option<String>), String> {
+                let conn = pool.get().map_err(|e| e.to_string())?;
+                let model = resolve_model(&conn);
+                let cands = collect_candidates(&conn, workspace_filter.as_deref())
+                    .map_err(|e| e.to_string())?;
+                Ok((cands, model))
+            },
+        )
         .await
         .map_err(|e| format!("spawn_blocking join error: {e}"))??
     };
@@ -426,12 +472,7 @@ pub async fn tick(state: &DbState, ollama_url: Option<String>) -> Result<TickRep
         }];
 
         let reply = match client
-            .send_message_with_options(
-                "concept_hierarchy_service",
-                &model,
-                msgs,
-                Some("0s"),
-            )
+            .send_message_with_options("concept_hierarchy_service", &model, msgs, Some("0s"))
             .await
         {
             Ok(r) => r,
@@ -452,9 +493,7 @@ pub async fn tick(state: &DbState, ollama_url: Option<String>) -> Result<TickRep
             tokio::task::spawn_blocking(move || -> Result<bool, String> {
                 let conn = pool.get().map_err(|e| e.to_string())?;
                 let did_link = if let Some(parent_id) = &chosen_id {
-                    if would_create_cycle(&conn, parent_id, &cand_id)
-                        .map_err(|e| e.to_string())?
-                    {
+                    if would_create_cycle(&conn, parent_id, &cand_id).map_err(|e| e.to_string())? {
                         false
                     } else {
                         persist_link(&conn, &cand_id, parent_id).map_err(|e| e.to_string())?
@@ -550,9 +589,12 @@ mod tests {
         insert_concept(&conn, "c_toml", "w1", "cargo.toml");
         insert_part_of(&conn, "c_toml", "c_cargo");
 
-        let cands = collect_candidates(&conn).unwrap();
+        let cands = collect_candidates(&conn, None).unwrap();
         let names: Vec<_> = cands.iter().map(|c| c.name.as_str()).collect();
-        assert!(names.contains(&"cargo"), "unparented concepts should be candidates");
+        assert!(
+            names.contains(&"cargo"),
+            "unparented concepts should be candidates"
+        );
         assert!(
             !names.contains(&"cargo.toml"),
             "concepts with an existing part_of link must be excluded"
@@ -576,11 +618,25 @@ mod tests {
     #[test]
     fn match_peer_by_name_accepts_case_insensitive_and_none() {
         let peers = vec![
-            Peer { id: "1".into(), name: "Cargo".into(), hierarchy_level: "section".into() },
-            Peer { id: "2".into(), name: "Rust".into(), hierarchy_level: "section".into() },
+            Peer {
+                id: "1".into(),
+                name: "Cargo".into(),
+                hierarchy_level: "section".into(),
+            },
+            Peer {
+                id: "2".into(),
+                name: "Rust".into(),
+                hierarchy_level: "section".into(),
+            },
         ];
-        assert_eq!(match_peer_by_name("cargo", &peers).map(|p| p.id), Some("1".into()));
-        assert_eq!(match_peer_by_name(" RUST ", &peers).map(|p| p.id), Some("2".into()));
+        assert_eq!(
+            match_peer_by_name("cargo", &peers).map(|p| p.id),
+            Some("1".into())
+        );
+        assert_eq!(
+            match_peer_by_name(" RUST ", &peers).map(|p| p.id),
+            Some("2".into())
+        );
         assert!(match_peer_by_name("NONE", &peers).is_none());
         assert!(match_peer_by_name("", &peers).is_none());
         assert!(match_peer_by_name("Python", &peers).is_none());
@@ -623,6 +679,9 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert!(value.is_some(), "parent_checked_at should be populated after stamp");
+        assert!(
+            value.is_some(),
+            "parent_checked_at should be populated after stamp"
+        );
     }
 }

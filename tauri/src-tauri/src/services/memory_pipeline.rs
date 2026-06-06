@@ -65,10 +65,7 @@ fn dedup_threshold_for(conn: &rusqlite::Connection, memory_type: &str) -> f32 {
             "memory_dedup_threshold_preference",
             DEFAULT_DEDUP_THRESHOLD_PREFERENCE,
         ),
-        _ => (
-            "memory_dedup_threshold_fact",
-            DEFAULT_DEDUP_THRESHOLD_FACT,
-        ),
+        _ => ("memory_dedup_threshold_fact", DEFAULT_DEDUP_THRESHOLD_FACT),
     };
     crate::commands::settings::get_setting(conn, key)
         .and_then(|v| v.parse::<f32>().ok())
@@ -81,32 +78,73 @@ pub async fn process_auto_memory_extraction(
     state: &DbState,
     ollama_url: Option<String>,
 ) -> Result<(), String> {
+    process_memory_extraction_for_workspaces(state, &[], false, ollama_url).await
+}
+
+pub async fn process_memory_extraction_for_workspaces(
+    state: &DbState,
+    workspace_ids: &[String],
+    include_imported: bool,
+    ollama_url: Option<String>,
+) -> Result<(), String> {
     let threshold = get_extraction_threshold(state);
-    let idle_minutes = get_extraction_idle_minutes(state);
     let sessions = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
-        let sql = format!(
-            "SELECT id, workspace_id, folder_id, last_processed_message_count FROM chat_sessions \
-             WHERE datetime(updated_at) > datetime('now', '-{} minutes') \
-             AND is_incognito = 0 \
-             AND exclude_from_analytics = 0 \
-             AND is_imported = 0 \
-             ORDER BY updated_at DESC \
-             LIMIT 5",
-            idle_minutes
-        );
-        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-        let sessions = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, i64>(3)?,
-            ))
-        })
-        .map_err(|e| e.to_string())?
-        .filter_map(Result::ok)
-        .collect::<Vec<_>>();
+        let mut sessions = Vec::new();
+        if workspace_ids.is_empty() {
+            let idle_minutes = get_extraction_idle_minutes(state);
+            let sql = format!(
+                "SELECT id, workspace_id, folder_id, last_processed_message_count FROM chat_sessions \
+                 WHERE datetime(updated_at) > datetime('now', '-{} minutes') \
+                 AND is_incognito = 0 \
+                 AND exclude_from_analytics = 0 \
+                 AND is_imported = 0 \
+                 ORDER BY updated_at DESC \
+                 LIMIT 5",
+                idle_minutes
+            );
+            let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+            sessions = stmt
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, i64>(3)?,
+                    ))
+                })
+                .map_err(|e| e.to_string())?
+                .filter_map(Result::ok)
+                .collect::<Vec<_>>();
+        } else {
+            let imported_clause = if include_imported {
+                ""
+            } else {
+                "AND is_imported = 0"
+            };
+            let sql = format!(
+                "SELECT id, workspace_id, folder_id, last_processed_message_count FROM chat_sessions
+                 WHERE workspace_id = ?1
+                   AND is_incognito = 0
+                   AND exclude_from_analytics = 0
+                   {imported_clause}
+                 ORDER BY updated_at DESC"
+            );
+            let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+            for workspace_id in workspace_ids {
+                let rows = stmt
+                    .query_map(rusqlite::params![workspace_id], |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, i64>(3)?,
+                        ))
+                    })
+                    .map_err(|e| e.to_string())?;
+                sessions.extend(rows.filter_map(Result::ok));
+            }
+        }
         sessions
     };
 
@@ -296,48 +334,81 @@ pub async fn extract_and_store_memories(
                 }
 
                 // Try structured format first, fall back to plain strings
-                let items: Vec<(String, String)> = if let Ok(structured) = serde_json::from_str::<Vec<ExtractedItem>>(json_str) {
-                    structured.into_iter().filter_map(|item| {
-                        let content = item.content?;
-                        let mem_type = match item.memory_type.as_deref() {
-                            Some("preference") => "preference".to_string(),
-                            _ => "fact".to_string(),
-                        };
-                        Some((content, mem_type))
-                    }).collect()
-                } else if let Ok(plain) = serde_json::from_str::<Vec<String>>(json_str) {
-                    plain.into_iter().map(|s| (s, "fact".to_string())).collect()
-                } else {
-                    vec![]
-                };
+                let items: Vec<(String, String)> =
+                    if let Ok(structured) = serde_json::from_str::<Vec<ExtractedItem>>(json_str) {
+                        structured
+                            .into_iter()
+                            .filter_map(|item| {
+                                let content = item.content?;
+                                let mem_type = match item.memory_type.as_deref() {
+                                    Some("preference") => "preference".to_string(),
+                                    _ => "fact".to_string(),
+                                };
+                                Some((content, mem_type))
+                            })
+                            .collect()
+                    } else if let Ok(plain) = serde_json::from_str::<Vec<String>>(json_str) {
+                        plain.into_iter().map(|s| (s, "fact".to_string())).collect()
+                    } else {
+                        vec![]
+                    };
 
                 // Post-extraction validation: reject assistant-like content
-                let validated: Vec<(String, String)> = items.into_iter().filter(|(content, _)| {
-                    let trimmed = content.trim();
-                    let word_count = trimmed.split_whitespace().count();
+                let validated: Vec<(String, String)> = items
+                    .into_iter()
+                    .filter(|(content, _)| {
+                        let trimmed = content.trim();
+                        let word_count = trimmed.split_whitespace().count();
 
-                    // Reject overly long statements (likely paraphrased responses)
-                    if word_count > 30 { return false; }
+                        // Reject overly long statements (likely paraphrased responses)
+                        if word_count > 30 {
+                            return false;
+                        }
 
-                    // Reject empty or trivial
-                    if word_count < 3 { return false; }
+                        // Reject empty or trivial
+                        if word_count < 3 {
+                            return false;
+                        }
 
-                    // Reject statements starting with common assistant phrases
-                    let lower = trimmed.to_lowercase();
-                    let bad_prefixes = [
-                        "you are", "that's", "great ", "let me", "here's", "i can",
-                        "i will", "i'll", "in python", "in rust", "in javascript",
-                        "the ", "this is", "sure,", "of course", "absolutely",
-                        "certainly", "indeed", "note that", "remember that",
-                        "it's worth", "it is worth", "keep in mind",
-                    ];
-                    if bad_prefixes.iter().any(|p| lower.starts_with(p)) { return false; }
+                        // Reject statements starting with common assistant phrases
+                        let lower = trimmed.to_lowercase();
+                        let bad_prefixes = [
+                            "you are",
+                            "that's",
+                            "great ",
+                            "let me",
+                            "here's",
+                            "i can",
+                            "i will",
+                            "i'll",
+                            "in python",
+                            "in rust",
+                            "in javascript",
+                            "the ",
+                            "this is",
+                            "sure,",
+                            "of course",
+                            "absolutely",
+                            "certainly",
+                            "indeed",
+                            "note that",
+                            "remember that",
+                            "it's worth",
+                            "it is worth",
+                            "keep in mind",
+                        ];
+                        if bad_prefixes.iter().any(|p| lower.starts_with(p)) {
+                            return false;
+                        }
 
-                    // Reject if it contains a question mark (likely a question, not a fact)
-                    if trimmed.contains('?') { return false; }
+                        // Reject if it contains a question mark (likely a question, not a fact)
+                        if trimmed.contains('?') {
+                            return false;
+                        }
 
-                    true
-                }).collect();
+                        true
+                    })
+                    .collect();
 
                 // Generate embeddings and check dedup OUTSIDE the lock
                 let mut new_memories: Vec<(String, String, String, Vec<u8>)> = Vec::new();
@@ -351,7 +422,12 @@ pub async fn extract_and_store_memories(
                 let mut judge_calls_used: usize = 0;
                 for (content, memory_type) in validated {
                     let embedding = if let Ok(emb) = client
-                        .generate_embedding_with_options("memory_pipeline", &embedding_model, &content, Some("0s"))
+                        .generate_embedding_with_options(
+                            "memory_pipeline",
+                            &embedding_model,
+                            &content,
+                            Some("0s"),
+                        )
                         .await
                     {
                         emb
@@ -421,8 +497,7 @@ pub async fn extract_and_store_memories(
                                         )
                                     })
                                     .filter(|(_, _, s)| {
-                                        *s >= CONTRADICTION_BAND_MIN
-                                            && *s < CONTRADICTION_BAND_MAX
+                                        *s >= CONTRADICTION_BAND_MIN && *s < CONTRADICTION_BAND_MAX
                                     })
                                     .fold(None, |acc, (id, c, s)| match acc {
                                         Some((_, _, best)) if best >= s => acc,
@@ -431,13 +506,9 @@ pub async fn extract_and_store_memories(
 
                                 if let Some((old_id, old_content, _)) = candidate {
                                     judge_calls_used += 1;
-                                    if let Some(verdict) = judge_supersedes(
-                                        &client,
-                                        &model,
-                                        &old_content,
-                                        &content,
-                                    )
-                                    .await
+                                    if let Some(verdict) =
+                                        judge_supersedes(&client, &model, &old_content, &content)
+                                            .await
                                     {
                                         superseded_old = Some((old_id, verdict));
                                     }
@@ -518,7 +589,14 @@ pub async fn extract_and_store_memories(
 
                         if should_regen {
                             // Trigger summary regeneration (best-effort, don't fail extraction)
-                            let _ = auto_regenerate_summary(state, "workspace", Some(workspace_id), &client, &model).await;
+                            let _ = auto_regenerate_summary(
+                                state,
+                                "workspace",
+                                Some(workspace_id),
+                                &client,
+                                &model,
+                            )
+                            .await;
                         }
                     }
                 }
@@ -591,17 +669,21 @@ async fn auto_regenerate_summary(
             let mut stmt = conn.prepare(
                 "SELECT content, memory_type FROM memories WHERE scope = 'global' AND is_active = 1 ORDER BY created_at ASC"
             ).map_err(|e| e.to_string())?;
-            let rows = stmt.query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            }).map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })
+                .map_err(|e| e.to_string())?;
             items = rows.flatten().collect();
         } else if let Some(ws_id) = workspace_id {
             let mut stmt = conn.prepare(
                 "SELECT content, memory_type FROM memories WHERE scope = 'workspace' AND workspace_id = ?1 AND is_active = 1 ORDER BY created_at ASC"
             ).map_err(|e| e.to_string())?;
-            let rows = stmt.query_map(rusqlite::params![ws_id], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            }).map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(rusqlite::params![ws_id], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })
+                .map_err(|e| e.to_string())?;
             items = rows.flatten().collect();
         }
         items
@@ -611,11 +693,13 @@ async fn auto_regenerate_summary(
         return Ok(());
     }
 
-    let facts_text: Vec<String> = memories.iter()
+    let facts_text: Vec<String> = memories
+        .iter()
         .filter(|(_, t)| t == "fact")
         .map(|(c, _)| format!("- {}", c))
         .collect();
-    let prefs_text: Vec<String> = memories.iter()
+    let prefs_text: Vec<String> = memories
+        .iter()
         .filter(|(_, t)| t == "preference")
         .map(|(c, _)| format!("- {}", c))
         .collect();
@@ -890,11 +974,9 @@ mod tests {
 
         // The new memory must remain active and unaffected.
         let new_is_active: i64 = conn
-            .query_row(
-                "SELECT is_active FROM memories WHERE id = 'new'",
-                [],
-                |r| r.get(0),
-            )
+            .query_row("SELECT is_active FROM memories WHERE id = 'new'", [], |r| {
+                r.get(0)
+            })
             .expect("read new");
         assert_eq!(new_is_active, 1);
 

@@ -11,6 +11,16 @@ pub async fn generate_info_summary(
     workspace_id: &str,
     ollama_url: Option<String>,
 ) -> Result<(), String> {
+    generate_info_summary_with_imported(state, session_id, workspace_id, ollama_url, false).await
+}
+
+pub async fn generate_info_summary_with_imported(
+    state: &DbState,
+    session_id: &str,
+    workspace_id: &str,
+    ollama_url: Option<String>,
+    include_imported: bool,
+) -> Result<(), String> {
     generate_summary_with_options(
         state,
         session_id,
@@ -18,6 +28,7 @@ pub async fn generate_info_summary(
         SUMMARY_TYPE_INFO,
         ollama_url,
         false,
+        include_imported,
     )
     .await
 }
@@ -29,6 +40,7 @@ pub async fn generate_summary_with_options(
     summary_type: &str,
     ollama_url: Option<String>,
     force: bool,
+    include_imported: bool,
 ) -> Result<(), String> {
     if !matches!(summary_type, SUMMARY_TYPE_INFO | SUMMARY_TYPE_EXTENSIVE) {
         return Err(format!("Unsupported summary type: {summary_type}"));
@@ -44,7 +56,7 @@ pub async fn generate_summary_with_options(
                 |row| row.get(0),
             )
             .unwrap_or(0);
-        if is_imported != 0 {
+        if is_imported != 0 && !include_imported {
             return Ok(());
         }
     }
@@ -55,12 +67,13 @@ pub async fn generate_summary_with_options(
             "SELECT id, role, content FROM messages WHERE session_id = ?1 ORDER BY created_at ASC"
         ).map_err(|e| e.to_string())?;
 
-        let messages = stmt.query_map(rusqlite::params![session_id], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        })
-        .map_err(|e| e.to_string())?
-        .filter_map(Result::ok)
-        .collect::<Vec<_>>();
+        let messages = stmt
+            .query_map(rusqlite::params![session_id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
         messages
     };
 
@@ -78,12 +91,14 @@ pub async fn generate_summary_with_options(
     // Check if we already have a summary of this type covering this many messages.
     {
         let conn = state.0.get().map_err(|e| e.to_string())?;
-        let existing_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM conversation_summaries
+        let existing_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM conversation_summaries
              WHERE session_id = ?1 AND summary_type = ?2 AND message_range_end >= ?3",
-            rusqlite::params![session_id, summary_type, messages.len() as i32],
-            |row| row.get(0)
-        ).unwrap_or(0);
+                rusqlite::params![session_id, summary_type, messages.len() as i32],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
         if !force && existing_count > 0 {
             return Ok(());
         }

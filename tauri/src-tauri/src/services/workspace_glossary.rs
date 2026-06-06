@@ -13,43 +13,332 @@ use std::sync::OnceLock;
 use tauri::{AppHandle, Runtime};
 
 const GENERIC_TERMS: &[&str] = &[
-    "about", "above", "across", "adjacent", "after", "afterwards", "again", "against", "all",
-    "almost", "alone", "along", "already", "also", "although", "always", "amid", "amidst",
-    "among", "amongst", "amount", "another", "answer", "any", "anyhow", "anyone", "anything",
-    "anyway", "anywhere", "app", "around", "assistant", "back", "base", "based", "became",
-    "because", "become", "becomes", "becoming", "been", "before", "beforehand", "behind", "being",
-    "below", "beneath", "beside", "besides", "between", "beyond", "both", "bottom", "build",
-    "cannot", "change", "chat", "code", "come", "comes", "coming", "complete", "completed",
-    "completing", "concerning", "considering", "content", "context", "could", "data", "debug", "definition",
-    "despite", "details", "does", "doing", "done", "down", "during", "each", "either",
-    "else", "elsewhere", "empty", "enough", "every", "everyone", "everything", "everywhere", "example",
-    "except", "excepting", "excluding", "feature", "file", "files", "first", "five", "fix",
-    "following", "former", "formerly", "found", "four", "from", "front", "full", "function",
-    "further", "gave", "generic", "give", "given", "giving", "goes", "going", "gone",
-    "half", "hardly", "have", "having", "help", "hence", "hereafter", "hereby", "herein",
-    "hereupon", "hers", "herself", "himself", "however", "hundred", "implement", "implementation", "indeed",
-    "inside", "instead", "into", "issue", "items", "itself", "just", "keep", "keeps",
-    "kept", "last", "latter", "latterly", "least", "less", "like", "little", "look",
-    "looking", "looks", "many", "maybe", "meanwhile", "message", "messages", "might", "model",
-    "more", "moreover", "most", "mostly", "much", "must", "myself", "namely", "near",
-    "neither", "never", "nevertheless", "next", "nine", "nobody", "none", "noone", "nor",
-    "note", "notes", "nothing", "nowhere", "often", "once", "only", "onto", "opposite",
-    "other", "others", "otherwise", "ought", "ourselves", "output", "outside", "over", "overall",
-    "parallel", "past", "perhaps", "please", "plus", "possible", "possibly", "probably", "problem",
-    "project", "question", "quite", "rather", "really", "regarding", "response", "result", "round",
-    "same", "seem", "seemed", "seeming", "seems", "seldom", "session", "settings", "several",
-    "shall", "should", "since", "some", "somehow", "someone", "something", "sometime", "sometimes",
-    "somewhere", "still", "such", "summary", "system", "task", "ten", "text", "than",
-    "that", "their", "theirs", "them", "themselves", "then", "thence", "there", "thereafter",
-    "thereby", "therefore", "therein", "thereupon", "these", "they", "thing", "things", "think",
-    "thinks", "third", "this", "those", "though", "three", "through", "throughout", "thru",
-    "thus", "together", "toward", "towards", "twelve", "twenty", "under", "underneath", "unless",
-    "unlike", "until", "update", "upon", "user", "using", "usually", "versus", "very",
-    "view", "was", "were", "what", "whatever", "when", "whence", "whenever", "where",
-    "whereafter", "whereas", "whereby", "wherein", "whereupon", "wherever", "whether", "which", "while",
-    "whither", "who", "whoever", "whole", "whom", "whose", "why", "will", "with",
-    "within", "without", "work", "workspace", "would", "yet", "you", "your", "yours",
-    "yourself", "yourselves",
+    "about",
+    "above",
+    "across",
+    "adjacent",
+    "after",
+    "afterwards",
+    "again",
+    "against",
+    "all",
+    "almost",
+    "alone",
+    "along",
+    "already",
+    "also",
+    "although",
+    "always",
+    "amid",
+    "amidst",
+    "among",
+    "amongst",
+    "amount",
+    "another",
+    "answer",
+    "any",
+    "anyhow",
+    "anyone",
+    "anything",
+    "anyway",
+    "anywhere",
+    "app",
+    "around",
+    "assistant",
+    "back",
+    "base",
+    "based",
+    "became",
+    "because",
+    "become",
+    "becomes",
+    "becoming",
+    "been",
+    "before",
+    "beforehand",
+    "behind",
+    "being",
+    "below",
+    "beneath",
+    "beside",
+    "besides",
+    "between",
+    "beyond",
+    "both",
+    "bottom",
+    "build",
+    "cannot",
+    "change",
+    "chat",
+    "code",
+    "come",
+    "comes",
+    "coming",
+    "complete",
+    "completed",
+    "completing",
+    "concerning",
+    "considering",
+    "content",
+    "context",
+    "could",
+    "data",
+    "debug",
+    "definition",
+    "despite",
+    "details",
+    "does",
+    "doing",
+    "done",
+    "down",
+    "during",
+    "each",
+    "either",
+    "else",
+    "elsewhere",
+    "empty",
+    "enough",
+    "every",
+    "everyone",
+    "everything",
+    "everywhere",
+    "example",
+    "except",
+    "excepting",
+    "excluding",
+    "feature",
+    "file",
+    "files",
+    "first",
+    "five",
+    "fix",
+    "following",
+    "former",
+    "formerly",
+    "found",
+    "four",
+    "from",
+    "front",
+    "full",
+    "function",
+    "further",
+    "gave",
+    "generic",
+    "give",
+    "given",
+    "giving",
+    "goes",
+    "going",
+    "gone",
+    "half",
+    "hardly",
+    "have",
+    "having",
+    "help",
+    "hence",
+    "hereafter",
+    "hereby",
+    "herein",
+    "hereupon",
+    "hers",
+    "herself",
+    "himself",
+    "however",
+    "hundred",
+    "implement",
+    "implementation",
+    "indeed",
+    "inside",
+    "instead",
+    "into",
+    "issue",
+    "items",
+    "itself",
+    "just",
+    "keep",
+    "keeps",
+    "kept",
+    "last",
+    "latter",
+    "latterly",
+    "least",
+    "less",
+    "like",
+    "little",
+    "look",
+    "looking",
+    "looks",
+    "many",
+    "maybe",
+    "meanwhile",
+    "message",
+    "messages",
+    "might",
+    "model",
+    "more",
+    "moreover",
+    "most",
+    "mostly",
+    "much",
+    "must",
+    "myself",
+    "namely",
+    "near",
+    "neither",
+    "never",
+    "nevertheless",
+    "next",
+    "nine",
+    "nobody",
+    "none",
+    "noone",
+    "nor",
+    "note",
+    "notes",
+    "nothing",
+    "nowhere",
+    "often",
+    "once",
+    "only",
+    "onto",
+    "opposite",
+    "other",
+    "others",
+    "otherwise",
+    "ought",
+    "ourselves",
+    "output",
+    "outside",
+    "over",
+    "overall",
+    "parallel",
+    "past",
+    "perhaps",
+    "please",
+    "plus",
+    "possible",
+    "possibly",
+    "probably",
+    "problem",
+    "project",
+    "question",
+    "quite",
+    "rather",
+    "really",
+    "regarding",
+    "response",
+    "result",
+    "round",
+    "same",
+    "seem",
+    "seemed",
+    "seeming",
+    "seems",
+    "seldom",
+    "session",
+    "settings",
+    "several",
+    "shall",
+    "should",
+    "since",
+    "some",
+    "somehow",
+    "someone",
+    "something",
+    "sometime",
+    "sometimes",
+    "somewhere",
+    "still",
+    "such",
+    "summary",
+    "system",
+    "task",
+    "ten",
+    "text",
+    "than",
+    "that",
+    "their",
+    "theirs",
+    "them",
+    "themselves",
+    "then",
+    "thence",
+    "there",
+    "thereafter",
+    "thereby",
+    "therefore",
+    "therein",
+    "thereupon",
+    "these",
+    "they",
+    "thing",
+    "things",
+    "think",
+    "thinks",
+    "third",
+    "this",
+    "those",
+    "though",
+    "three",
+    "through",
+    "throughout",
+    "thru",
+    "thus",
+    "together",
+    "toward",
+    "towards",
+    "twelve",
+    "twenty",
+    "under",
+    "underneath",
+    "unless",
+    "unlike",
+    "until",
+    "update",
+    "upon",
+    "user",
+    "using",
+    "usually",
+    "versus",
+    "very",
+    "view",
+    "was",
+    "were",
+    "what",
+    "whatever",
+    "when",
+    "whence",
+    "whenever",
+    "where",
+    "whereafter",
+    "whereas",
+    "whereby",
+    "wherein",
+    "whereupon",
+    "wherever",
+    "whether",
+    "which",
+    "while",
+    "whither",
+    "who",
+    "whoever",
+    "whole",
+    "whom",
+    "whose",
+    "why",
+    "will",
+    "with",
+    "within",
+    "without",
+    "work",
+    "workspace",
+    "would",
+    "yet",
+    "you",
+    "your",
+    "yours",
+    "yourself",
+    "yourselves",
 ];
 const SHORT_TECH_TERMS: &[&str] = &["api", "css", "html", "http", "json", "sql", "ssh", "url"];
 
@@ -69,9 +358,8 @@ fn code_fence_re() -> &'static Regex {
 }
 
 fn sentence_term_re() -> &'static Regex {
-    SENTENCE_TERM_RE.get_or_init(|| {
-        Regex::new(r"\b[a-z][a-z0-9.+#/_-]{1,}\b").expect("valid sentence regex")
-    })
+    SENTENCE_TERM_RE
+        .get_or_init(|| Regex::new(r"\b[a-z][a-z0-9.+#/_-]{1,}\b").expect("valid sentence regex"))
 }
 
 fn strip_code_blocks(text: &str) -> String {
@@ -81,7 +369,9 @@ fn strip_code_blocks(text: &str) -> String {
 pub fn normalize_term(term: &str) -> Option<String> {
     let normalized = term
         .trim()
-        .trim_matches(|ch: char| !ch.is_alphanumeric() && !matches!(ch, '+' | '#' | '.' | '/' | '-' | ' '))
+        .trim_matches(|ch: char| {
+            !ch.is_alphanumeric() && !matches!(ch, '+' | '#' | '.' | '/' | '-' | ' ')
+        })
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
@@ -408,21 +698,35 @@ pub fn upsert_term(
 }
 
 pub fn delete_term(conn: &Connection, id: &str) -> Result<(), String> {
-    conn.execute("DELETE FROM workspace_glossary_terms WHERE id = ?1", params![id])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM workspace_glossary_terms WHERE id = ?1",
+        params![id],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-fn assistant_message_count_for_workspace(conn: &Connection, workspace_id: &str) -> Result<i64, String> {
+fn assistant_message_count_for_workspace(
+    conn: &Connection,
+    workspace_id: &str,
+    include_imported: bool,
+) -> Result<i64, String> {
+    let imported_clause = if include_imported {
+        ""
+    } else {
+        "AND cs.is_imported = 0"
+    };
     conn.query_row(
-        "SELECT COUNT(*)
+        &format!(
+            "SELECT COUNT(*)
          FROM messages m
          JOIN chat_sessions cs ON cs.id = m.session_id
          WHERE cs.workspace_id = ?1
            AND m.role = 'assistant'
            AND cs.is_incognito = 0
            AND cs.exclude_from_analytics = 0
-           AND cs.is_imported = 0",
+           {imported_clause}"
+        ),
         params![workspace_id],
         |row| row.get(0),
     )
@@ -438,7 +742,10 @@ fn assistant_message_count_for_session(conn: &Connection, session_id: &str) -> R
     .map_err(|e| e.to_string())
 }
 
-fn load_workspace_topic_seed_terms(conn: &Connection, workspace_id: &str) -> Result<Vec<String>, String> {
+fn load_workspace_topic_seed_terms(
+    conn: &Connection,
+    workspace_id: &str,
+) -> Result<Vec<String>, String> {
     let raw = conn
         .query_row(
             "SELECT topic_signature FROM workspaces WHERE id = ?1",
@@ -490,7 +797,11 @@ fn extract_candidate_terms(texts: &[String], max_terms: usize) -> Vec<String> {
             if !looks_like_domain_term(&normalized) {
                 continue;
             }
-            let weight = if normalized.split_whitespace().count() > 1 { 5 } else { 2 };
+            let weight = if normalized.split_whitespace().count() > 1 {
+                5
+            } else {
+                2
+            };
             *scores.entry(normalized).or_default() += weight;
         }
 
@@ -513,10 +824,18 @@ fn extract_candidate_terms(texts: &[String], max_terms: usize) -> Vec<String> {
             .then(b.0.len().cmp(&a.0.len()))
             .then(a.0.cmp(&b.0))
     });
-    ranked.into_iter().take(max_terms).map(|(term, _)| term).collect()
+    ranked
+        .into_iter()
+        .take(max_terms)
+        .map(|(term, _)| term)
+        .collect()
 }
 
-fn fetch_workspace_corpus(conn: &Connection, workspace_id: &str) -> Result<Vec<String>, String> {
+fn fetch_workspace_corpus(
+    conn: &Connection,
+    workspace_id: &str,
+    include_imported: bool,
+) -> Result<Vec<String>, String> {
     let mut texts = Vec::new();
 
     let workspace_meta = conn
@@ -543,10 +862,12 @@ fn fetch_workspace_corpus(conn: &Connection, workspace_id: &str) -> Result<Vec<S
         }
     }
 
-    let sources = [
-        "SELECT title || '\n' || content FROM project_notes WHERE workspace_id = ?1 ORDER BY updated_at DESC LIMIT 40",
-        "SELECT content FROM daily_notes WHERE workspace_id = ?1 ORDER BY updated_at DESC LIMIT 20",
-        "SELECT content FROM memories WHERE workspace_id = ?1 AND scope = 'workspace' ORDER BY updated_at DESC LIMIT 30",
+    let imported_clause = if include_imported {
+        ""
+    } else {
+        "AND cs.is_imported = 0"
+    };
+    let message_sql = format!(
         "SELECT m.content
          FROM messages m
          JOIN chat_sessions cs ON cs.id = m.session_id
@@ -554,9 +875,16 @@ fn fetch_workspace_corpus(conn: &Connection, workspace_id: &str) -> Result<Vec<S
            AND m.role = 'assistant'
            AND cs.is_incognito = 0
            AND cs.exclude_from_analytics = 0
-           AND cs.is_imported = 0
+           {imported_clause}
          ORDER BY m.created_at DESC
-         LIMIT 80",
+         LIMIT 80"
+    );
+
+    let sources = [
+        "SELECT title || '\n' || content FROM project_notes WHERE workspace_id = ?1 ORDER BY updated_at DESC LIMIT 40",
+        "SELECT content FROM daily_notes WHERE workspace_id = ?1 ORDER BY updated_at DESC LIMIT 20",
+        "SELECT content FROM memories WHERE workspace_id = ?1 AND scope = 'workspace' ORDER BY updated_at DESC LIMIT 30",
+        message_sql.as_str(),
     ];
 
     for sql in sources {
@@ -576,7 +904,10 @@ fn fetch_workspace_corpus(conn: &Connection, workspace_id: &str) -> Result<Vec<S
     Ok(texts)
 }
 
-fn known_terms_for_workspace(conn: &Connection, workspace_id: &str) -> Result<HashSet<String>, String> {
+fn known_terms_for_workspace(
+    conn: &Connection,
+    workspace_id: &str,
+) -> Result<HashSet<String>, String> {
     Ok(list_terms(conn, workspace_id, true)?
         .into_iter()
         .map(|item| item.normalized_term)
@@ -673,7 +1004,10 @@ fn save_generated_entries(
             .optional()
             .map_err(|e| e.to_string())?;
 
-        if existing.as_ref().is_some_and(|(_, is_user_edited)| *is_user_edited) {
+        if existing
+            .as_ref()
+            .is_some_and(|(_, is_user_edited)| *is_user_edited)
+        {
             continue;
         }
 
@@ -699,6 +1033,14 @@ pub async fn refresh_workspace_glossary(
     state: &DbState,
     workspace_id: &str,
 ) -> Result<Vec<WorkspaceGlossaryTerm>, String> {
+    refresh_workspace_glossary_with_options(state, workspace_id, false).await
+}
+
+pub async fn refresh_workspace_glossary_with_options(
+    state: &DbState,
+    workspace_id: &str,
+    include_imported: bool,
+) -> Result<Vec<WorkspaceGlossaryTerm>, String> {
     let (workspace_name, corpus, seed_terms, model, ollama_url, assistant_count) = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
         let workspace_name = conn
@@ -708,14 +1050,22 @@ pub async fn refresh_workspace_glossary(
                 |row| row.get::<_, String>(0),
             )
             .map_err(|e| e.to_string())?;
-        let corpus = fetch_workspace_corpus(&conn, workspace_id)?;
+        let corpus = fetch_workspace_corpus(&conn, workspace_id, include_imported)?;
         let known = known_terms_for_workspace(&conn, workspace_id)?;
         let mut seed_terms = extract_candidate_terms(&corpus, 24);
         seed_terms.retain(|term| !known.contains(term));
         let model = get_model_for_job(&conn, "glossary_model");
         let ollama_url = get_ollama_base_url(&conn);
-        let assistant_count = assistant_message_count_for_workspace(&conn, workspace_id)?;
-        (workspace_name, corpus, seed_terms, model, ollama_url, assistant_count)
+        let assistant_count =
+            assistant_message_count_for_workspace(&conn, workspace_id, include_imported)?;
+        (
+            workspace_name,
+            corpus,
+            seed_terms,
+            model,
+            ollama_url,
+            assistant_count,
+        )
     };
 
     let Some(model) = model else {
@@ -726,7 +1076,8 @@ pub async fn refresh_workspace_glossary(
     };
 
     let generated =
-        generate_glossary_entries(&model, &ollama_url, &workspace_name, &seed_terms, &corpus).await?;
+        generate_glossary_entries(&model, &ollama_url, &workspace_name, &seed_terms, &corpus)
+            .await?;
     let now = chrono::Utc::now().to_rfc3339();
     let saved = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
@@ -754,8 +1105,7 @@ pub async fn refresh_due_workspaces(state: &DbState) -> Result<usize, String> {
     // per-tick LLM cost bounded.
     let workspace_ids = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
-        let current_workspace_id =
-            crate::services::model_settings::get_current_workspace_id(&conn);
+        let current_workspace_id = crate::services::model_settings::get_current_workspace_id(&conn);
         let mut stmt = conn
             .prepare(
                 "SELECT w.id
@@ -816,24 +1166,32 @@ pub async fn refresh_due_workspaces(state: &DbState) -> Result<usize, String> {
                  LIMIT 2",
             )
             .map_err(|e| e.to_string())?;
-        let rows = stmt.query_map(params![current_workspace_id.unwrap_or_default()], |row| {
-            row.get::<_, String>(0)
-        })
-        .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![current_workspace_id.unwrap_or_default()], |row| {
+                row.get::<_, String>(0)
+            })
+            .map_err(|e| e.to_string())?;
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(|e| e.to_string())?
     };
 
     let mut refreshed = 0usize;
     for workspace_id in workspace_ids {
-        if refresh_workspace_glossary(state, &workspace_id).await.is_ok() {
+        if refresh_workspace_glossary(state, &workspace_id)
+            .await
+            .is_ok()
+        {
             refreshed += 1;
         }
     }
     Ok(refreshed)
 }
 
-fn session_scan_needed(conn: &Connection, session_id: &str, current_count: i64) -> Result<bool, String> {
+fn session_scan_needed(
+    conn: &Connection,
+    session_id: &str,
+    current_count: i64,
+) -> Result<bool, String> {
     let last_count = conn
         .query_row(
             "SELECT last_scanned_assistant_count FROM session_glossary_scan_state WHERE session_id = ?1",
@@ -901,11 +1259,17 @@ async fn scan_session_for_missing_terms(
         return Ok(0);
     }
 
-    let generated =
-        generate_glossary_entries(model, ollama_url, &workspace_name, &candidates, &message_texts)
-            .await?;
+    let generated = generate_glossary_entries(
+        model,
+        ollama_url,
+        &workspace_name,
+        &candidates,
+        &message_texts,
+    )
+    .await?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    let saved = save_generated_entries(&conn, workspace_id, "ai_scan", Some(session_id), generated)?;
+    let saved =
+        save_generated_entries(&conn, workspace_id, "ai_scan", Some(session_id), generated)?;
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "INSERT INTO session_glossary_scan_state (session_id, last_scanned_assistant_count, updated_at)
@@ -921,44 +1285,76 @@ async fn scan_session_for_missing_terms(
 }
 
 pub async fn scan_recent_sessions_for_missing_terms(state: &DbState) -> Result<usize, String> {
+    scan_sessions_for_missing_terms_with_options(state, None, false).await
+}
+
+pub async fn scan_sessions_for_missing_terms_with_options(
+    state: &DbState,
+    workspace_ids: Option<&[String]>,
+    include_imported: bool,
+) -> Result<usize, String> {
     let (enabled, max_sessions, model, ollama_url, sessions) = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
-        let enabled = crate::commands::settings::get_setting(&conn, "hover_definition_scan_enabled")
-            .map(|value| value == "true")
-            .unwrap_or(true);
+        let enabled =
+            crate::commands::settings::get_setting(&conn, "hover_definition_scan_enabled")
+                .map(|value| value == "true")
+                .unwrap_or(true);
         let max_sessions =
             crate::commands::settings::get_setting(&conn, "hover_definition_scan_max_sessions")
                 .and_then(|value| value.parse::<usize>().ok())
                 .unwrap_or(3);
         let model = get_model_for_job(&conn, "glossary_model");
         let ollama_url = get_ollama_base_url(&conn);
-        let current_workspace_id =
-            crate::services::model_settings::get_current_workspace_id(&conn);
+        let current_workspace_id = crate::services::model_settings::get_current_workspace_id(&conn);
+        let imported_clause = if include_imported {
+            ""
+        } else {
+            "AND cs.is_imported = 0"
+        };
+        let workspace_clause = if workspace_ids.is_some() {
+            "AND cs.workspace_id = ?3"
+        } else {
+            ""
+        };
         // Prefer sessions in the active workspace (or its parent if user is
         // in a sub-workspace) so the scan results are visible where the user
         // actually is.
-        let mut stmt = conn
-            .prepare(
-                "SELECT cs.id, cs.workspace_id
+        let sql = format!(
+            "SELECT cs.id, cs.workspace_id
                  FROM chat_sessions cs
                  WHERE cs.is_incognito = 0
                    AND cs.exclude_from_analytics = 0
-                   AND cs.is_imported = 0
+                   {imported_clause}
+                   {workspace_clause}
                  ORDER BY
                    CASE WHEN cs.workspace_id = ?2 THEN 0
                         WHEN cs.workspace_id = (SELECT parent_workspace_id FROM workspaces WHERE id = ?2) THEN 1
                         ELSE 2 END ASC,
                    cs.updated_at DESC
-                 LIMIT ?1",
-            )
-            .map_err(|e| e.to_string())?;
-        let sessions = stmt
-            .query_map(params![max_sessions as i64, current_workspace_id.unwrap_or_default()], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            })
-            .map_err(|e| e.to_string())?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| e.to_string())?;
+                 LIMIT ?1"
+        );
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let current_workspace_id = current_workspace_id.unwrap_or_default();
+        let mut sessions = Vec::new();
+        if let Some(workspace_ids) = workspace_ids {
+            for workspace_id in workspace_ids {
+                let rows = stmt
+                    .query_map(
+                        params![max_sessions as i64, &current_workspace_id, workspace_id],
+                        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                    )
+                    .map_err(|e| e.to_string())?;
+                sessions.extend(rows.filter_map(Result::ok));
+            }
+        } else {
+            sessions = stmt
+                .query_map(params![max_sessions as i64, &current_workspace_id], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+        }
         (enabled, max_sessions, model, ollama_url, sessions)
     };
 
