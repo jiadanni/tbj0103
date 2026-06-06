@@ -754,11 +754,6 @@ pub async fn refresh_due_workspaces(state: &DbState) -> Result<usize, String> {
     // per-tick LLM cost bounded.
     let workspace_ids = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
-        let interval_minutes =
-            crate::commands::settings::get_setting(&conn, "workspace_glossary_refresh_interval_minutes")
-                .and_then(|value| value.parse::<i64>().ok())
-                .unwrap_or(60);
-        let interval_clause = format!("-{} minutes", interval_minutes);
         let current_workspace_id =
             crate::services::model_settings::get_current_workspace_id(&conn);
         let mut stmt = conn
@@ -769,7 +764,6 @@ pub async fn refresh_due_workspaces(state: &DbState) -> Result<usize, String> {
                  WHERE w.is_hidden = 0
                    AND (
                      s.workspace_id IS NULL
-                     OR datetime(COALESCE(s.last_seeded_at, '1970-01-01T00:00:00Z')) <= datetime('now', ?1)
                      OR COALESCE(s.assistant_message_count_at_seed, 0) < (
                        SELECT COUNT(*)
                        FROM messages m
@@ -780,16 +774,49 @@ pub async fn refresh_due_workspaces(state: &DbState) -> Result<usize, String> {
                          AND cs.exclude_from_analytics = 0
                          AND cs.is_imported = 0
                      )
+                     OR datetime(COALESCE((
+                       SELECT MAX(updated_at) FROM (
+                         SELECT w.updated_at AS updated_at
+                         UNION ALL
+                         SELECT pn.updated_at
+                         FROM project_notes pn
+                         WHERE pn.workspace_id = w.id
+                         UNION ALL
+                         SELECT dn.updated_at
+                         FROM daily_notes dn
+                         WHERE dn.workspace_id = w.id
+                         UNION ALL
+                         SELECT mem.updated_at
+                         FROM memories mem
+                         WHERE mem.workspace_id = w.id AND mem.scope = 'workspace'
+                         UNION ALL
+                         SELECT d.updated_at
+                         FROM documents d
+                         WHERE d.workspace_id = w.id
+                         UNION ALL
+                         SELECT wc.created_at
+                         FROM web_captures wc
+                         WHERE wc.workspace_id = w.id
+                         UNION ALL
+                         SELECT m.created_at
+                         FROM messages m
+                         JOIN chat_sessions cs ON cs.id = m.session_id
+                         WHERE cs.workspace_id = w.id
+                           AND cs.is_incognito = 0
+                           AND cs.exclude_from_analytics = 0
+                           AND cs.is_imported = 0
+                       )
+                     ), '1970-01-01T00:00:00Z')) > datetime(COALESCE(s.updated_at, '1970-01-01T00:00:00Z'))
                    )
                  ORDER BY
-                   CASE WHEN w.id = ?2 THEN 0
-                        WHEN w.id = (SELECT parent_workspace_id FROM workspaces WHERE id = ?2) THEN 1
+                   CASE WHEN w.id = ?1 THEN 0
+                        WHEN w.id = (SELECT parent_workspace_id FROM workspaces WHERE id = ?1) THEN 1
                         ELSE 2 END ASC,
                    datetime(COALESCE(s.last_seeded_at, '1970-01-01T00:00:00Z')) ASC
                  LIMIT 2",
             )
             .map_err(|e| e.to_string())?;
-        let rows = stmt.query_map(params![interval_clause, current_workspace_id.unwrap_or_default()], |row| {
+        let rows = stmt.query_map(params![current_workspace_id.unwrap_or_default()], |row| {
             row.get::<_, String>(0)
         })
         .map_err(|e| e.to_string())?;

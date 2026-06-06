@@ -53,18 +53,24 @@ enum PromptResolution {
     Cancelled,
 }
 /// Counts scheduler ticks consumed by the concept-hierarchy job so we can
-/// gate it to roughly every 5 minutes (5 ticks at the current 60s cadence).
-/// Cheap LLM amortisation guard — the job itself is bounded internally too.
+/// gate it to roughly every 30 minutes. Cheap LLM amortisation guard — the
+/// job itself is bounded internally too.
 static HIERARCHY_TICK: AtomicU32 = AtomicU32::new(0);
-const HIERARCHY_TICK_INTERVAL: u32 = 5;
-/// Same idea for the prompt-bank job — refilling happens at most every 30 min
-/// (30 ticks at the current 60s cadence). Prompts are only generated when a
+const HIERARCHY_TICK_INTERVAL: u32 = 6;
+/// Same idea for the prompt-bank job — refilling happens at most hourly.
+/// Prompts are only generated when a
 /// workspace dips below `REFILL_WATERMARK`, so the on-tick check is a cheap
 /// SQL lookup, but we cap how often we even consider it to avoid streaks.
 static PROMPT_BANK_TICK: AtomicU32 = AtomicU32::new(0);
-const PROMPT_BANK_TICK_INTERVAL: u32 = 30;
+const PROMPT_BANK_TICK_INTERVAL: u32 = 12;
 
-const SCHEDULER_INTERVAL_SECS: i64 = 60;
+const SCHEDULER_INTERVAL_SECS: i64 = 300;
+const SCHEDULER_INTERVAL_MINUTES: u32 = (SCHEDULER_INTERVAL_SECS / 60) as u32;
+const MEMORY_TICK_INTERVAL: u32 = 1;
+const GLOSSARY_TICK_INTERVAL: u32 = 6;
+const HOVER_SCAN_TICK_INTERVAL: u32 = 3;
+const SUMMARIZATION_TICK_INTERVAL: u32 = 2;
+const FLASHCARD_TICK_INTERVAL: u32 = 6;
 
 pub const SCHEDULED_JOB_KEYS: &[&str] = &[
     "memory_extraction",
@@ -379,10 +385,222 @@ fn set_next_tick_at_from_now() {
 }
 
 fn interval_due_label(_next_tick_at: Option<&str>, ticks_remaining: u32) -> String {
+    let minutes = ticks_remaining.saturating_mul(SCHEDULER_INTERVAL_MINUTES);
     if ticks_remaining <= 1 {
         return "due on next scheduler check".to_string();
     }
-    format!("due in about {ticks_remaining} min ({ticks_remaining} checks)")
+    format!("due in about {minutes} min ({ticks_remaining} checks)")
+}
+
+fn every_tick_label(tick_interval: u32) -> String {
+    let minutes = tick_interval.max(1).saturating_mul(SCHEDULER_INTERVAL_MINUTES);
+    format!("checks every {minutes} min when idle and data changed")
+}
+
+fn eligible_count(conn: &rusqlite::Connection, sql: &str) -> bool {
+    conn.query_row(sql, [], |row| row.get::<_, i64>(0))
+        .map(|count| count > 0)
+        .unwrap_or(false)
+}
+
+fn max_source_updated_sql(workspace_id_expr: &str) -> String {
+    format!(
+        "SELECT MAX(updated_at) FROM (
+           SELECT w.updated_at AS updated_at
+           FROM workspaces w
+           WHERE w.id = {workspace_id_expr}
+           UNION ALL
+           SELECT pn.updated_at
+           FROM project_notes pn
+           WHERE pn.workspace_id = {workspace_id_expr}
+           UNION ALL
+           SELECT dn.updated_at
+           FROM daily_notes dn
+           WHERE dn.workspace_id = {workspace_id_expr}
+           UNION ALL
+           SELECT d.updated_at
+           FROM documents d
+           WHERE d.workspace_id = {workspace_id_expr}
+           UNION ALL
+           SELECT wc.created_at
+           FROM web_captures wc
+           WHERE wc.workspace_id = {workspace_id_expr}
+           UNION ALL
+           SELECT m.created_at
+           FROM messages m
+           JOIN chat_sessions cs ON cs.id = m.session_id
+           WHERE cs.workspace_id = {workspace_id_expr}
+             AND cs.is_incognito = 0
+             AND cs.exclude_from_analytics = 0
+             AND cs.is_imported = 0
+         )"
+    )
+}
+
+fn has_auto_work(conn: &rusqlite::Connection, job_key: &str) -> bool {
+    match job_key {
+        "memory_extraction" => {
+            let threshold = crate::commands::settings::get_setting(conn, "memory_extraction_threshold")
+                .and_then(|value| value.parse::<i64>().ok())
+                .unwrap_or(5);
+            eligible_count(
+                conn,
+                &format!(
+                    "SELECT COUNT(*)
+                     FROM chat_sessions cs
+                     WHERE datetime(cs.updated_at) > datetime('now', '-24 hours')
+                       AND cs.is_incognito = 0
+                       AND cs.exclude_from_analytics = 0
+                       AND cs.is_imported = 0
+                       AND (
+                         SELECT COUNT(*) FROM messages m WHERE m.session_id = cs.id
+                       ) >= {threshold}
+                       AND (
+                         SELECT COUNT(*) FROM messages m WHERE m.session_id = cs.id
+                       ) > cs.last_processed_message_count"
+                ),
+            )
+        }
+        "summarization" => {
+            let min_messages = crate::commands::settings::get_setting(conn, "summarization_min_messages")
+                .and_then(|value| value.parse::<i64>().ok())
+                .unwrap_or(1);
+            eligible_count(
+                conn,
+                &format!(
+                    "SELECT COUNT(*)
+                     FROM chat_sessions cs
+                     WHERE datetime(cs.updated_at) > datetime('now', '-24 hours')
+                       AND cs.is_incognito = 0
+                       AND cs.exclude_from_analytics = 0
+                       AND cs.is_imported = 0
+                       AND (
+                         SELECT COUNT(*) FROM messages m WHERE m.session_id = cs.id
+                       ) >= {min_messages}
+                       AND NOT EXISTS (
+                         SELECT 1
+                         FROM conversation_summaries s
+                         WHERE s.session_id = cs.id
+                           AND s.summary_type = 'info'
+                           AND s.message_range_end >= (
+                             SELECT COUNT(*) FROM messages m WHERE m.session_id = cs.id
+                           )
+                       )"
+                ),
+            )
+        }
+        "workspace_glossary" => eligible_count(
+            conn,
+            &format!(
+                "SELECT COUNT(*)
+                 FROM workspaces w
+                 LEFT JOIN workspace_glossary_state s ON s.workspace_id = w.id
+                 WHERE w.is_hidden = 0
+                   AND (
+                     s.workspace_id IS NULL
+                     OR COALESCE(s.assistant_message_count_at_seed, 0) < (
+                       SELECT COUNT(*)
+                       FROM messages m
+                       JOIN chat_sessions cs ON cs.id = m.session_id
+                       WHERE cs.workspace_id = w.id
+                         AND m.role = 'assistant'
+                         AND cs.is_incognito = 0
+                         AND cs.exclude_from_analytics = 0
+                         AND cs.is_imported = 0
+                     )
+                     OR datetime(COALESCE(({}), '1970-01-01T00:00:00Z'))
+                        > datetime(COALESCE(s.updated_at, '1970-01-01T00:00:00Z'))
+                   )",
+                max_source_updated_sql("w.id")
+            ),
+        ),
+        "hover_definition_scan" => eligible_count(
+            conn,
+            "SELECT COUNT(*)
+             FROM chat_sessions cs
+             WHERE cs.is_incognito = 0
+               AND cs.exclude_from_analytics = 0
+               AND cs.is_imported = 0
+               AND (
+                 SELECT COUNT(*)
+                 FROM messages m
+                 WHERE m.session_id = cs.id AND m.role = 'assistant'
+               ) > COALESCE((
+                 SELECT last_scanned_assistant_count
+                 FROM session_glossary_scan_state s
+                 WHERE s.session_id = cs.id
+               ), 0)",
+        ),
+        "flashcard_generation" => {
+            let min_interval = conn
+                .query_row(
+                    "SELECT value FROM settings WHERE key = 'flashcard_topic_min_interval_minutes'",
+                    [],
+                    |r| r.get::<_, String>(0),
+                )
+                .ok()
+                .and_then(|value| value.trim_matches('"').parse::<i64>().ok())
+                .unwrap_or(60);
+            eligible_count(
+                conn,
+                &format!(
+                    "SELECT COUNT(*)
+                     FROM flashcard_topics
+                     WHERE card_count < 8
+                       AND (
+                         last_generated_at IS NULL
+                         OR datetime(last_generated_at) < datetime('now', '-{min_interval} minutes')
+                       )"
+                ),
+            )
+        }
+        "concept_hierarchy" => eligible_count(
+            conn,
+            "SELECT COUNT(*)
+             FROM concept_nodes cn
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM concept_links cl
+                 WHERE cl.source_id = cn.id AND cl.link_type = 'part_of'
+             )
+             AND (
+                 cn.parent_checked_at IS NULL
+                 OR cn.parent_checked_at < (
+                     SELECT MAX(cn2.created_at) FROM concept_nodes cn2
+                     WHERE cn2.workspace_id = cn.workspace_id
+                 )
+             )",
+        ),
+        "workspace_prompt_bank" => eligible_count(
+            conn,
+            "SELECT COUNT(*)
+             FROM workspaces w
+             LEFT JOIN workspace_prompt_bank_jobs j
+               ON j.workspace_id = w.id AND j.status IN ('queued', 'running')
+             WHERE w.is_hidden = 0
+               AND j.id IS NULL
+               AND COALESCE((
+                 SELECT COUNT(*)
+                 FROM workspace_prompt_bank p
+                 WHERE p.workspace_id = w.id
+                   AND p.dismissed_at IS NULL
+               ), 0) < 15",
+        ),
+        _ => true,
+    }
+}
+
+async fn has_auto_work_for_job(app: &AppHandle, job_key: &str) -> bool {
+    let db = app.state::<DbState>();
+    let pool = db.0.clone();
+    let job_key = job_key.to_string();
+    tokio::task::spawn_blocking(move || -> bool {
+        let Ok(conn) = pool.get() else {
+            return false;
+        };
+        has_auto_work(&conn, &job_key)
+    })
+    .await
+    .unwrap_or(false)
 }
 
 async fn lookup_manual_job_model(app: &AppHandle, job_key: &str) -> Option<String> {
@@ -599,14 +817,24 @@ async fn lookup_job_model(app: &AppHandle, job_key: &str) -> Option<String> {
 
 pub fn start_scheduler(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(60));
+        let mut interval = tokio::time::interval(Duration::from_secs(SCHEDULER_INTERVAL_SECS as u64));
         let mut git_sync_tick: u32 = 0;
+        let mut memory_tick: u32 = 0;
+        let mut glossary_tick: u32 = 0;
+        let mut hover_scan_tick: u32 = 0;
+        let mut summarization_tick: u32 = 0;
+        let mut flashcard_tick: u32 = 0;
         set_next_tick_at_from_now();
 
         loop {
             interval.tick().await;
             set_next_tick_at_from_now();
             git_sync_tick += 1;
+            memory_tick += 1;
+            glossary_tick += 1;
+            hover_scan_tick += 1;
+            summarization_tick += 1;
+            flashcard_tick += 1;
 
             // Guard: skip this tick if the previous one is still running
             if SCHEDULER_RUNNING
@@ -688,9 +916,12 @@ pub fn start_scheduler(app: AppHandle) {
             // If user is NOT chatting and background inference is enabled, run AI tasks
             if !is_streaming && !is_active_chatting && background_inference_enabled {
                 // 1. Process memory extraction
-                let mem_default = lookup_job_model(&app, "memory_extraction_model").await;
-                let (mem_run, mem_model) = gate_job(&app, "memory_extraction", mem_default).await;
-                if mem_run {
+                if memory_tick.is_multiple_of(MEMORY_TICK_INTERVAL)
+                    && has_auto_work_for_job(&app, "memory_extraction").await
+                {
+                    let mem_default = lookup_job_model(&app, "memory_extraction_model").await;
+                    let (mem_run, mem_model) = gate_job(&app, "memory_extraction", mem_default).await;
+                    if mem_run {
                     let _permit = acquire_job_permit_with_queue(
                         &app,
                         "memory_extraction",
@@ -713,11 +944,22 @@ pub fn start_scheduler(app: AppHandle) {
                         mem_model,
                     );
                     unregister_running("memory_extraction");
+                    }
                 }
 
-                let glossary_default = lookup_job_model(&app, "glossary_model").await;
-                let (g_run, glossary_model) = gate_job(&app, "workspace_glossary", glossary_default.clone()).await;
-                if g_run {
+                let glossary_default = if glossary_tick.is_multiple_of(GLOSSARY_TICK_INTERVAL)
+                    || hover_scan_tick.is_multiple_of(HOVER_SCAN_TICK_INTERVAL)
+                {
+                    lookup_job_model(&app, "glossary_model").await
+                } else {
+                    None
+                };
+                if glossary_tick.is_multiple_of(GLOSSARY_TICK_INTERVAL)
+                    && has_auto_work_for_job(&app, "workspace_glossary").await
+                {
+                    let (g_run, glossary_model) =
+                        gate_job(&app, "workspace_glossary", glossary_default.clone()).await;
+                    if g_run {
                     let _permit = acquire_job_permit_with_queue(
                         &app,
                         "workspace_glossary",
@@ -746,10 +988,15 @@ pub fn start_scheduler(app: AppHandle) {
                         glossary_model,
                     );
                     unregister_running("workspace_glossary");
+                    }
                 }
 
-                let (scan_run, scan_model) = gate_job(&app, "hover_definition_scan", glossary_default).await;
-                if scan_run {
+                if hover_scan_tick.is_multiple_of(HOVER_SCAN_TICK_INTERVAL)
+                    && has_auto_work_for_job(&app, "hover_definition_scan").await
+                {
+                    let (scan_run, scan_model) =
+                        gate_job(&app, "hover_definition_scan", glossary_default).await;
+                    if scan_run {
                     let _permit = acquire_job_permit_with_queue(
                         &app,
                         "hover_definition_scan",
@@ -778,10 +1025,15 @@ pub fn start_scheduler(app: AppHandle) {
                         scan_model,
                     );
                     unregister_running("hover_definition_scan");
+                    }
                 }
 
                 // 2. Process summarization — only sessions with recent activity
-                let (summ_recency_minutes, summ_max_sessions) = {
+                let sessions: Vec<(String, String)> = if summarization_tick
+                    .is_multiple_of(SUMMARIZATION_TICK_INTERVAL)
+                    && has_auto_work_for_job(&app, "summarization").await
+                {
+                    let (summ_recency_minutes, summ_max_sessions) = {
                     let pool = db.0.clone();
                     tokio::task::spawn_blocking(move || -> (u32, u32) {
                         let Ok(conn) = pool.get() else { return (5, 5); };
@@ -796,7 +1048,6 @@ pub fn start_scheduler(app: AppHandle) {
                     .await
                     .unwrap_or((5, 5))
                 };
-                let sessions: Vec<(String, String)> = {
                     let pool = db.0.clone();
                     tokio::task::spawn_blocking(move || -> Vec<(String, String)> {
                         let Ok(conn) = pool.get() else { return Vec::new(); };
@@ -823,6 +1074,8 @@ pub fn start_scheduler(app: AppHandle) {
                     })
                     .await
                     .unwrap_or_default()
+                } else {
+                    Vec::new()
                 };
 
                 if !sessions.is_empty() {
@@ -867,9 +1120,12 @@ pub fn start_scheduler(app: AppHandle) {
                 }
 
                 // 4. Flashcard topic sync + automatic card generation
-                let fc_default = lookup_job_model(&app, "flashcard_model").await;
-                let (fc_run, fc_model) = gate_job(&app, "flashcard_generation", fc_default).await;
-                if fc_run {
+                if flashcard_tick.is_multiple_of(FLASHCARD_TICK_INTERVAL)
+                    && has_auto_work_for_job(&app, "flashcard_generation").await
+                {
+                    let fc_default = lookup_job_model(&app, "flashcard_model").await;
+                    let (fc_run, fc_model) = gate_job(&app, "flashcard_generation", fc_default).await;
+                    if fc_run {
                     let _permit = acquire_job_permit_with_queue(
                         &app,
                         "flashcard_generation",
@@ -892,13 +1148,16 @@ pub fn start_scheduler(app: AppHandle) {
                         fc_model,
                     );
                     unregister_running("flashcard_generation");
+                    }
                 }
 
                 // 5. Concept hierarchy — LLM-assisted parent detection.
                 //    Gated to every Nth tick so we don't spend ~20 LLM calls
                 //    every minute. The job itself caps work per call.
                 let hierarchy_tick = HIERARCHY_TICK.fetch_add(1, Ordering::Relaxed) + 1;
-                if hierarchy_tick.is_multiple_of(HIERARCHY_TICK_INTERVAL) {
+                if hierarchy_tick.is_multiple_of(HIERARCHY_TICK_INTERVAL)
+                    && has_auto_work_for_job(&app, "concept_hierarchy").await
+                {
                     let ch_default = lookup_job_model(&app, "concept_hierarchy_model").await;
                     let (ch_run, ch_model) = gate_job(&app, "concept_hierarchy", ch_default).await;
                     if ch_run {
@@ -937,7 +1196,9 @@ pub fn start_scheduler(app: AppHandle) {
 
                 let prompt_bank_tick = PROMPT_BANK_TICK.fetch_add(1, Ordering::Relaxed) + 1;
                 let pb_default = lookup_job_model(&app, "topic_signature_model").await;
-                let (pb_run, prompt_bank_model) = if prompt_bank_tick.is_multiple_of(PROMPT_BANK_TICK_INTERVAL) {
+                let (pb_run, prompt_bank_model) = if prompt_bank_tick.is_multiple_of(PROMPT_BANK_TICK_INTERVAL)
+                    && has_auto_work_for_job(&app, "workspace_prompt_bank").await
+                {
                     gate_job(&app, "workspace_prompt_bank", pb_default).await
                 } else {
                     (false, None)
@@ -982,7 +1243,7 @@ pub fn start_scheduler(app: AppHandle) {
                     let mins: u32 = crate::commands::settings::get_setting(&conn, "git_sync_interval_minutes")
                         .and_then(|v| v.parse().ok())
                         .unwrap_or(5);
-                    (mins * 2).max(1) // 2 ticks per minute (30s interval)
+                    mins.div_ceil(SCHEDULER_INTERVAL_MINUTES).max(1)
                 })
                 .await
                 .unwrap_or(10)
@@ -1131,6 +1392,10 @@ fn add_minutes_to_rfc3339(base: Option<&str>, minutes: u32) -> Option<String> {
         .map(|date| (date.with_timezone(&chrono::Utc) + chrono::Duration::minutes(minutes as i64)).to_rfc3339())
 }
 
+fn add_scheduler_ticks_to_rfc3339(base: Option<&str>, ticks: u32) -> Option<String> {
+    add_minutes_to_rfc3339(base, ticks.saturating_mul(SCHEDULER_INTERVAL_MINUTES))
+}
+
 pub fn list_scheduled_statuses(conn: &rusqlite::Connection) -> Result<Vec<ScheduledBackgroundJobStatus>, String> {
     let active_jobs = ACTIVE_JOBS
         .lock()
@@ -1158,13 +1423,18 @@ pub fn list_scheduled_statuses(conn: &rusqlite::Connection) -> Result<Vec<Schedu
             let heavy_model = get_heavy_model(conn, job_key);
             let active = active_jobs.get(*job_key);
             let is_manual_queued = queued_jobs.iter().any(|queued| queued == job_key);
+            let has_work = background_enabled && has_auto_work(conn, job_key);
             let mut state = if background_enabled {
-                "scheduled".to_string()
+                if has_work { "scheduled" } else { "no_eligible_work" }.to_string()
             } else {
                 "disabled".to_string()
             };
             let mut due_label = if background_enabled {
-                "checks every minute when idle".to_string()
+                if has_work {
+                    every_tick_label(1)
+                } else {
+                    "waiting for new messages or sources".to_string()
+                }
             } else {
                 "background inference disabled".to_string()
             };
@@ -1176,21 +1446,36 @@ pub fn list_scheduled_statuses(conn: &rusqlite::Connection) -> Result<Vec<Schedu
             } else if is_manual_queued {
                 state = "queued".to_string();
                 due_label = "queued to run next".to_string();
-            } else if background_enabled {
+            } else if background_enabled && has_work {
                 match *job_key {
+                    "memory_extraction" => {
+                        due_label = every_tick_label(MEMORY_TICK_INTERVAL);
+                    }
+                    "workspace_glossary" => {
+                        due_label = every_tick_label(GLOSSARY_TICK_INTERVAL);
+                    }
+                    "hover_definition_scan" => {
+                        due_label = every_tick_label(HOVER_SCAN_TICK_INTERVAL);
+                    }
+                    "summarization" => {
+                        due_label = every_tick_label(SUMMARIZATION_TICK_INTERVAL);
+                    }
+                    "flashcard_generation" => {
+                        due_label = every_tick_label(FLASHCARD_TICK_INTERVAL);
+                    }
                     "concept_hierarchy" => {
                         let elapsed = HIERARCHY_TICK.load(Ordering::Relaxed) % HIERARCHY_TICK_INTERVAL;
                         let remaining = if elapsed == 0 { HIERARCHY_TICK_INTERVAL } else { HIERARCHY_TICK_INTERVAL - elapsed };
                         state = if remaining <= 1 { "due_now" } else { "scheduled" }.to_string();
                         due_label = interval_due_label(next_check_at.as_deref(), remaining);
-                        next_due_at = add_minutes_to_rfc3339(next_check_at.as_deref(), remaining.saturating_sub(1));
+                        next_due_at = add_scheduler_ticks_to_rfc3339(next_check_at.as_deref(), remaining.saturating_sub(1));
                     }
                     "workspace_prompt_bank" => {
                         let elapsed = PROMPT_BANK_TICK.load(Ordering::Relaxed) % PROMPT_BANK_TICK_INTERVAL;
                         let remaining = if elapsed == 0 { PROMPT_BANK_TICK_INTERVAL } else { PROMPT_BANK_TICK_INTERVAL - elapsed };
                         state = if remaining <= 1 { "due_now" } else { "scheduled" }.to_string();
                         due_label = interval_due_label(next_check_at.as_deref(), remaining);
-                        next_due_at = add_minutes_to_rfc3339(next_check_at.as_deref(), remaining.saturating_sub(1));
+                        next_due_at = add_scheduler_ticks_to_rfc3339(next_check_at.as_deref(), remaining.saturating_sub(1));
                     }
                     _ => {}
                 }
