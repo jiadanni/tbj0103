@@ -8,7 +8,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
 import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Sparkles, Columns2, ChevronLeft, ChevronRight, BarChart2, Library, History, Search, Paperclip, Send, FileEdit, ArrowUpDown, UserCircle, SlidersHorizontal, RotateCcw, Loader2, X } from "lucide-react";
-import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat, type CoreSettings, type AiSettings, type AdvancedSettings, type KnowledgeResetOptions, type KnowledgeResetResult, type ScheduledJobSetting, type ScheduledJobStatus, type BackgroundJobRunMode } from "../lib/api";
+import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat, type CoreSettings, type AiSettings, type AdvancedSettings, type KnowledgeResetOptions, type KnowledgeResetResult, type ScheduledJobSetting, type ScheduledJobStatus, type BackgroundJobRunMode, type BackgroundProcessingScope } from "../lib/api";
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
 import { groupModelsByFamily } from "../lib/modelFamilyGrouping";
@@ -32,6 +32,7 @@ import { PRIMARY_NAV_ITEMS } from "../components/navigationItems";
 import { SectionNavTopTabs } from "../components/chrome/SectionNavTopTabs";
 import { SectionNavDropdownSelect } from "../components/chrome/SectionNavDropdownSelect";
 import { SinglePaneWorkspaceSidebar } from "../components/chrome/SinglePaneWorkspaceSidebar";
+import { WorkspaceNavDropdownSelect } from "../components/chrome/WorkspaceNavDropdownSelect";
 import { useAiModelSync } from "../hooks/useAiModelSync";
 import { useNavigationHistory } from "../hooks/useNavigationHistory";
 import { usePrefsWindowMode } from "../lib/prefsWindowMode";
@@ -1052,10 +1053,13 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
               </div>
 
               {workspaceNavigation === "top-dropdown" ? (
-                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] text-[0.65em] text-[var(--text-primary)] font-medium">
-                  <span>{activeWorkspaceName}</span>
-                  <ChevronDown size={8} className="text-[var(--text-muted)]" />
-                </div>
+                <WorkspaceNavDropdownSelect
+                  density="compact"
+                  label="Workspace"
+                  value=""
+                  options={[]}
+                  displayLabel={activeWorkspaceName}
+                />
               ) : workspaceNavigation === "top-tabs" ? (
                 <div className="flex gap-1 items-end relative -bottom-[1px] h-full" data-no-drag>
                   {parentWorkspaces.map((ws, index) => {
@@ -1589,9 +1593,17 @@ function DataControlsPreferences() {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [running, setRunning] = useState(false);
+  const [processingRunning, setProcessingRunning] = useState(false);
+  const [processingScope, setProcessingScope] = useState<BackgroundProcessingScope>("current_workspace");
+  const [selectedWorkspaceIds, setSelectedWorkspaceIds] = useState<string[]>([]);
+  const [selectedProcessingJobs, setSelectedProcessingJobs] = useState<string[]>(
+    SCHEDULED_JOBS_CATALOG.map((job) => job.job_key),
+  );
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [successDialog, setSuccessDialog] = useState<{ title: string; description: string } | null>(null);
+  const workspaces = useWorkspaceStore((state) => state.workspaces).filter((workspace) => !workspace.is_hidden);
+  const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
 
   const optionGroups: Array<{
     title: string;
@@ -1675,8 +1687,51 @@ function DataControlsPreferences() {
     }
   }
 
+  async function queueBackgroundProcessing() {
+    setProcessingRunning(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const taskTypes = selectedProcessingJobs.length > 0
+        ? selectedProcessingJobs
+        : SCHEDULED_JOBS_CATALOG.map((job) => job.job_key);
+      const workspaceIds = processingScope === "selected_workspaces"
+        ? selectedWorkspaceIds
+        : processingScope === "current_workspace" && activeWorkspaceId
+          ? [activeWorkspaceId]
+          : [];
+      await api.backgroundJobs.queueProcessingNow({
+        scope: processingScope,
+        workspace_ids: workspaceIds,
+        task_types: taskTypes,
+        include_imported: true,
+      });
+      setSuccess("Background processing queued. Progress will appear in the status bar.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setProcessingRunning(false);
+    }
+  }
+
+  function toggleProcessingJob(jobKey: string, checked: boolean) {
+    setSelectedProcessingJobs((current) => checked
+      ? Array.from(new Set([...current, jobKey]))
+      : current.filter((key) => key !== jobKey));
+  }
+
+  function toggleProcessingWorkspace(workspaceId: string, checked: boolean) {
+    setSelectedWorkspaceIds((current) => checked
+      ? Array.from(new Set([...current, workspaceId]))
+      : current.filter((id) => id !== workspaceId));
+  }
+
   const busy = loadingPreview || running;
   const totalRows = totalKnowledgeResetRows(preview);
+  const processingDisabled = processingRunning
+    || (processingScope === "current_workspace" && !activeWorkspaceId)
+    || (processingScope === "selected_workspaces" && selectedWorkspaceIds.length === 0)
+    || selectedProcessingJobs.length === 0;
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain px-5 py-4">
@@ -1694,6 +1749,93 @@ function DataControlsPreferences() {
               {success}
             </div>
           )}
+
+          <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-4 py-4">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <h3 className="text-base font-semibold text-[var(--text-primary)]">Run Background Processing Now</h3>
+                  <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">
+                    Catch up imported chats and source material once without changing automatic scheduling.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { void queueBackgroundProcessing(); }}
+                  disabled={processingDisabled}
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[var(--accent-color)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {processingRunning ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+                  Run Now
+                </button>
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
+                <div className="space-y-2">
+                  <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Scope</div>
+                  <div className="space-y-1.5">
+                    {[
+                      { value: "current_workspace", label: "Current workspace" },
+                      { value: "selected_workspaces", label: "Selected workspaces" },
+                      { value: "all_workspaces", label: "All workspaces" },
+                    ].map((option) => (
+                      <label key={option.value} className="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-secondary)]">
+                        <input
+                          type="radio"
+                          name="background-processing-scope"
+                          checked={processingScope === option.value}
+                          onChange={() => setProcessingScope(option.value as BackgroundProcessingScope)}
+                          className="h-4 w-4 accent-[var(--accent-color)]"
+                        />
+                        <span>{option.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {processingScope === "selected_workspaces" && (
+                    <div className="space-y-2">
+                      <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Workspaces</div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {workspaces.map((workspace) => (
+                          <label key={workspace.id} className="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-secondary)]">
+                            <input
+                              type="checkbox"
+                              checked={selectedWorkspaceIds.includes(workspace.id)}
+                              onChange={(event) => toggleProcessingWorkspace(workspace.id, event.target.checked)}
+                              className="h-4 w-4 accent-[var(--accent-color)]"
+                            />
+                            <span className="truncate">{workspace.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Jobs</div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {SCHEDULED_JOBS_CATALOG.map((job) => (
+                        <label key={job.job_key} className="flex cursor-pointer items-start gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedProcessingJobs.includes(job.job_key)}
+                            onChange={(event) => toggleProcessingJob(job.job_key, event.target.checked)}
+                            className="mt-0.5 h-4 w-4 accent-[var(--accent-color)]"
+                          />
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-medium text-[var(--text-primary)]">{job.label}</span>
+                            <span className="block text-xs leading-5 text-[var(--text-muted)]">{job.description}</span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
 
           <div className="rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-4">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

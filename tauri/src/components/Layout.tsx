@@ -59,6 +59,7 @@ import StatusBar from "./StatusBar";
 import { SectionNavTopTabs } from "./chrome/SectionNavTopTabs";
 import { SectionNavDropdownSelect } from "./chrome/SectionNavDropdownSelect";
 import { SinglePaneWorkspaceSidebar as SinglePaneWorkspaceSidebarChrome } from "./chrome/SinglePaneWorkspaceSidebar";
+import { WorkspaceNavDropdownSelect } from "./chrome/WorkspaceNavDropdownSelect";
 import { useNavigationHistory } from "../hooks/useNavigationHistory";
 
 // Lazy-load heavy views that import large dependencies (d3, CodeMirror, etc.)
@@ -692,14 +693,13 @@ function SingleTitlebarWorkspaceDropdown({
     : workspaceOptions[0]?.value ?? "";
 
   return (
-    <CompactMenuSelect
+    <WorkspaceNavDropdownSelect
+      density="comfortable"
       label="Workspace"
       value={selectedWorkspaceId}
       options={workspaceOptions}
       groups={workspaceGroups}
       onChange={onChange}
-      widthClassName="min-w-0 w-full max-w-[280px] sm:w-[240px]"
-      buttonClassName="h-8 bg-[var(--bg-primary)]"
     />
   );
 }
