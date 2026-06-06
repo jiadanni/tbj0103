@@ -252,8 +252,8 @@ export default function GlobalMemoryView() {
                     <textarea
                       value={summaryDraft}
                       onChange={(e) => setSummaryDraft(e.target.value)}
-                      rows={4}
-                      className="w-full resize-none rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                      rows={8}
+                      className="min-h-[12rem] w-full resize-y rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-3 text-sm leading-relaxed text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
                     />
                     <div className="flex justify-end gap-2">
                       <button
