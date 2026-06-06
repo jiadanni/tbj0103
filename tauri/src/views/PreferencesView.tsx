@@ -28,6 +28,8 @@ import { CompactMenuSelect } from "../components/CompactMenuSelect";
 import { Tooltip } from "../components/Tooltip";
 import { MOD_KEY, isLinux, isMac } from "../lib/platform";
 import type { PreferencesSection } from "../components/navigationItems";
+import { PRIMARY_NAV_ITEMS } from "../components/navigationItems";
+import { SectionNavTopTabs } from "../components/chrome/SectionNavTopTabs";
 import { useAiModelSync } from "../hooks/useAiModelSync";
 import { useNavigationHistory } from "../hooks/useNavigationHistory";
 import { usePrefsWindowMode } from "../lib/prefsWindowMode";
@@ -1173,11 +1175,16 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
           )}
 
           {!showLeftSidebar && sectionNavigation === "top-tabs" && (
-            <div className="h-8 flex items-center gap-2 px-3 bg-[var(--bg-sidebar)] border-b border-[var(--border-color)] shrink-0">
-              <span className="text-[0.65em] font-semibold text-[var(--accent-color)] border-b border-[var(--accent-color)] px-1 py-0.5">Chat</span>
-              <span className="text-[0.65em] font-semibold text-[var(--text-muted)] px-1 py-0.5">Notes</span>
-              <span className="text-[0.65em] font-semibold text-[var(--text-muted)] px-1 py-0.5">Knowledge</span>
-            </div>
+            <SectionNavTopTabs
+              items={PRIMARY_NAV_ITEMS.map((item) => ({
+                id: item.path,
+                label: item.label,
+                icon: item.icon,
+              }))}
+              activeId="/chat"
+              onSelect={() => {}}
+              density="compact"
+            />
           )}
 
           {/* Section dropdown on its own row (when not combined into the titlebar) */}

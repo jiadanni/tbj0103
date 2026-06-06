@@ -56,6 +56,7 @@ import { useArtifactStore } from "../stores/artifactStore";
 import { useChatStore } from "../stores/chatStore";
 import { CompactMenuSelect } from "./CompactMenuSelect";
 import StatusBar from "./StatusBar";
+import { SectionNavTopTabs } from "./chrome/SectionNavTopTabs";
 import { useNavigationHistory } from "../hooks/useNavigationHistory";
 
 // Lazy-load heavy views that import large dependencies (d3, CodeMirror, etc.)
@@ -1907,42 +1908,29 @@ function TopTabsNavigation() {
     }
   }, [contextMenu]);
 
-  const renderItem = (
-    item: NavigationItem,
-    Icon: LucideIcon,
-  ) => (
-    <button
-      key={item.path}
-      onClick={() => {
-        goTo(item.path);
-        setContextMenu(null);
-      }}
-      onContextMenu={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        setContextMenu({ item, x: event.clientX, y: event.clientY });
-      }}
-      className={`relative mt-1 flex h-[34px] items-center gap-1.5 self-end rounded-t-xl border border-b-0 px-3.5 text-sm font-medium whitespace-nowrap transition-all select-none ${
-        activeSegment === item.path
-          ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-[0_-10px_25px_-20px_rgba(15,23,42,0.55)]"
-          : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-      }`}
-    >
-      {activeSegment === item.path && (
-        <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
-      )}
-      <Icon size={18} />
-      {item.label}
-    </button>
-  );
+  const tabItems = navItems.map((item) => ({
+    id: item.path,
+    label: item.label,
+    icon: item.icon,
+  }));
 
   return (
     <div className="relative">
-      <div className="flex items-center h-10 border-b border-[var(--border-color)] bg-[var(--bg-secondary)] px-2 shrink-0 overflow-x-auto select-none">
-        <div className="flex items-center shrink-0">
-          {navItems.map((item) => renderItem(item, item.icon))}
-        </div>
-      </div>
+      <SectionNavTopTabs
+        items={tabItems}
+        activeId={activeSegment}
+        onSelect={(path) => {
+          goTo(path);
+          setContextMenu(null);
+        }}
+        onContextMenu={(id, x, y) => {
+          const item = navItems.find((nav) => nav.path === id);
+          if (item) {
+            setContextMenu({ item, x, y });
+          }
+        }}
+        density="comfortable"
+      />
 
       {contextMenu && (
         <div
