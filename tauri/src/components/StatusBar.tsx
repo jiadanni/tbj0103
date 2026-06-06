@@ -4,6 +4,7 @@ import {
   api,
   type PerformanceStats,
   type BackgroundTaskPromptEvent,
+  type ScheduledJobStatus,
 } from "../lib/api";
 import { useChatStore } from "../stores/chatStore";
 import { useSettingsStore } from "../stores/settingsStore";
@@ -363,6 +364,95 @@ function JobPromptPill({
   );
 }
 
+function scheduledStateLabel(state: string): string {
+  switch (state) {
+    case "running": return "Running";
+    case "queued": return "Queued";
+    case "due_now": return "Due now";
+    case "disabled": return "Disabled";
+    case "waiting_for_idle": return "Waiting";
+    case "no_eligible_work": return "No work";
+    default: return "Scheduled";
+  }
+}
+
+function ScheduledJobsPopover({
+  anchorRect,
+  jobs,
+  loading,
+  onClose,
+}: {
+  anchorRect: DOMRect;
+  jobs: ScheduledJobStatus[];
+  loading: boolean;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") { onClose(); }
+    }
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-scheduled-jobs-popover]") || target?.closest("[data-scheduled-jobs-trigger]")) {
+        return;
+      }
+      onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("mousedown", handlePointerDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, [onClose]);
+
+  const width = 360;
+  const left = Math.max(8, Math.min(anchorRect.left, window.innerWidth - width - 8));
+  const bottom = window.innerHeight - anchorRect.top + 6;
+
+  return createPortal(
+    <div
+      data-scheduled-jobs-popover
+      className="fixed z-[9999] rounded-md border border-[var(--border-color)] bg-[var(--bg-sidebar)] p-2 shadow-xl"
+      style={{ left, bottom, width }}
+      role="dialog"
+      aria-label="Scheduled jobs"
+    >
+      <div className="mb-1 flex items-center justify-between">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Scheduled Jobs</div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close scheduled jobs"
+          className="h-5 w-5 rounded-sm text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+        >
+          ×
+        </button>
+      </div>
+      {loading && <div className="py-4 text-xs text-[var(--text-muted)]">Loading…</div>}
+      {!loading && jobs.length === 0 && (
+        <div className="py-4 text-xs text-[var(--text-muted)]">No scheduled jobs found.</div>
+      )}
+      {!loading && jobs.length > 0 && (
+        <div className="max-h-80 overflow-y-auto divide-y divide-[var(--border-color)]/60">
+          {jobs.map((job) => (
+            <div key={job.job_key} className="flex items-start justify-between gap-3 py-2">
+              <div className="min-w-0">
+                <div className="truncate text-xs font-medium text-[var(--text-primary)]">{job.label}</div>
+                <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">{job.due_label}</div>
+              </div>
+              <span className="shrink-0 rounded-full border border-[var(--border-color)] px-2 py-0.5 text-[10px] text-[var(--text-secondary)]">
+                {scheduledStateLabel(job.state)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>,
+    document.body,
+  );
+}
+
 /** Zoom slider — binds to the global font-size setting (11–22 px). */
 function ZoomSlider() {
   const fontSize = useSettingsStore((s) => s.fontSize);
@@ -425,6 +515,9 @@ export default function StatusBar() {
   const [pendingPrompts, setPendingPrompts] = useState<
     Map<string, { heavyModel?: string; smallModel?: string; mode: "confirm_only" | "dual_model" }>
   >(new Map());
+  const [scheduledPopoverRect, setScheduledPopoverRect] = useState<DOMRect | null>(null);
+  const [scheduledJobs, setScheduledJobs] = useState<ScheduledJobStatus[]>([]);
+  const [scheduledJobsLoading, setScheduledJobsLoading] = useState(false);
   const promptTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -625,6 +718,19 @@ export default function StatusBar() {
     void api.backgroundJobs.cancel(taskType).catch(() => undefined);
   }, []);
 
+  const toggleScheduledJobsPopover = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    if (scheduledPopoverRect) {
+      setScheduledPopoverRect(null);
+      return;
+    }
+    setScheduledPopoverRect(event.currentTarget.getBoundingClientRect());
+    setScheduledJobsLoading(true);
+    api.backgroundJobs.getScheduledJobStatuses()
+      .then(setScheduledJobs)
+      .catch(() => setScheduledJobs([]))
+      .finally(() => setScheduledJobsLoading(false));
+  }, [scheduledPopoverRect]);
+
   // [P2] Build a screen-reader announcement string for background jobs only —
   // the continuously-updating metrics are not announced.
   const runningTypes = [...(isAiStreaming ? ["ai_generating"] : []), ...runningJobs.map(([t]) => t)];
@@ -657,7 +763,17 @@ export default function StatusBar() {
       </span>
 
       {/* Left — pending confirmations, active background jobs, AI streaming */}
-      <div className="flex min-w-0 items-center gap-4 overflow-x-auto overflow-y-hidden" aria-hidden="true">
+      <div className="flex min-w-0 items-center gap-4 overflow-x-auto overflow-y-hidden">
+        <button
+          type="button"
+          data-scheduled-jobs-trigger
+          onClick={toggleScheduledJobsPopover}
+          className="flex shrink-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          aria-label="Show scheduled jobs"
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-[var(--text-muted)]" aria-hidden="true" />
+          Jobs
+        </button>
         {promptList.map(([type, meta]) => (
           <JobPromptPill
             key={`prompt-${type}`}
@@ -686,6 +802,14 @@ export default function StatusBar() {
           />
         ))}
       </div>
+      {scheduledPopoverRect && (
+        <ScheduledJobsPopover
+          anchorRect={scheduledPopoverRect}
+          jobs={scheduledJobs}
+          loading={scheduledJobsLoading}
+          onClose={() => setScheduledPopoverRect(null)}
+        />
+      )}
 
       {/* Right — performance meters (aria-hidden; screen readers get no value from constant churn) */}
       <div className="flex items-center gap-4 shrink-0" aria-hidden="true">

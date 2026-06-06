@@ -5,6 +5,7 @@ import type {
   BackgroundTaskEvent,
   BackgroundTaskPromptEvent,
   PerformanceStats,
+  ScheduledJobStatus,
 } from "@/lib/api";
 import { useChatStore } from "@/stores/chatStore";
 import { useBackgroundJobsStore } from "@/stores/backgroundJobs";
@@ -21,11 +22,12 @@ const { listWorkspaces, getPromptBankStatus } = vi.hoisted(() => ({
   listWorkspaces: vi.fn(),
   getPromptBankStatus: vi.fn(),
 }));
-const { confirmBackgroundJob, dismissBackgroundJob, cancelBackgroundJob } =
+const { confirmBackgroundJob, dismissBackgroundJob, cancelBackgroundJob, getScheduledJobStatuses } =
   vi.hoisted(() => ({
     confirmBackgroundJob: vi.fn(),
     dismissBackgroundJob: vi.fn(),
     cancelBackgroundJob: vi.fn(),
+    getScheduledJobStatuses: vi.fn(),
   }));
 
 vi.mock("@/lib/api", () => ({
@@ -47,6 +49,7 @@ vi.mock("@/lib/api", () => ({
       confirm: confirmBackgroundJob,
       dismiss: dismissBackgroundJob,
       cancel: cancelBackgroundJob,
+      getScheduledJobStatuses,
     },
   },
 }));
@@ -108,6 +111,8 @@ describe("StatusBar", () => {
     dismissBackgroundJob.mockResolvedValue(true);
     cancelBackgroundJob.mockReset();
     cancelBackgroundJob.mockResolvedValue(true);
+    getScheduledJobStatuses.mockReset();
+    getScheduledJobStatuses.mockResolvedValue([]);
     listWorkspaces.mockReset();
     listWorkspaces.mockResolvedValue([]);
     getPromptBankStatus.mockReset();
@@ -190,6 +195,31 @@ describe("StatusBar", () => {
     expect(screen.getByText("Glossary Refresh")).toBeInTheDocument();
     expect(screen.getByText("Queued")).toBeInTheDocument();
     expect(screen.queryByLabelText("Stop Glossary Refresh")).not.toBeInTheDocument();
+  });
+
+  it("shows a read-only scheduled jobs popover", async () => {
+    const statuses: ScheduledJobStatus[] = [
+      {
+        job_key: "memory_extraction",
+        label: "Memory Extraction",
+        enabled: true,
+        state: "scheduled",
+        run_mode: "auto",
+        due_label: "checks every minute when idle",
+      },
+    ];
+    getScheduledJobStatuses.mockResolvedValue(statuses);
+
+    render(<StatusBar />);
+
+    act(() => {
+      screen.getByRole("button", { name: "Show scheduled jobs" }).click();
+    });
+
+    expect(await screen.findByRole("dialog", { name: "Scheduled jobs" })).toBeInTheDocument();
+    expect(screen.getByText("Memory Extraction")).toBeInTheDocument();
+    expect(screen.getByText("checks every minute when idle")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /run next/i })).not.toBeInTheDocument();
   });
 
   it("shows a play-button prompt when a job requests confirmation and confirms on click", async () => {

@@ -571,6 +571,19 @@ export interface ScheduledTaskSettings {
   confirm_timeout_seconds: number;
 }
 
+export interface ScheduledJobStatus {
+  job_key: string;
+  label: string;
+  enabled: boolean;
+  state: 'disabled' | 'running' | 'queued' | 'due_now' | 'waiting_for_idle' | 'no_eligible_work' | 'scheduled' | string;
+  run_mode: BackgroundJobRunMode | string;
+  small_model?: string | null;
+  heavy_model?: string | null;
+  next_check_at?: string | null;
+  next_due_at?: string | null;
+  due_label: string;
+}
+
 export interface WorkspaceGlossaryTerm {
   id: string;
   workspace_id: string;
@@ -2061,6 +2074,10 @@ export const api = {
       invoke<boolean>("cancel_background_job", { taskType }),
     getScheduledTaskSettings: () =>
       invoke<ScheduledTaskSettings>("get_scheduled_task_settings"),
+    getScheduledJobStatuses: () =>
+      invoke<ScheduledJobStatus[]>("get_scheduled_job_statuses"),
+    queueNow: (taskType: string) =>
+      invoke<void>("queue_background_job_now", { taskType }),
     setScheduledTaskSetting: (key: string, value: string) =>
       invoke<void>("set_scheduled_task_setting", { key, value }),
     setCurrentWorkspaceId: (workspaceId: string | null) =>

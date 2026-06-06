@@ -8,7 +8,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
 import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Sparkles, Columns2, ChevronLeft, ChevronRight, BarChart2, Library, History, Search, Paperclip, Send, FileEdit, ArrowUpDown, UserCircle, SlidersHorizontal, RotateCcw, Loader2, X } from "lucide-react";
-import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat, type CoreSettings, type AiSettings, type AdvancedSettings, type KnowledgeResetOptions, type KnowledgeResetResult, type ScheduledJobSetting, type BackgroundJobRunMode } from "../lib/api";
+import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat, type CoreSettings, type AiSettings, type AdvancedSettings, type KnowledgeResetOptions, type KnowledgeResetResult, type ScheduledJobSetting, type ScheduledJobStatus, type BackgroundJobRunMode } from "../lib/api";
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
 import { groupModelsByFamily } from "../lib/modelFamilyGrouping";
@@ -1952,6 +1952,34 @@ const RUN_MODE_OPTIONS: { value: BackgroundJobRunMode; label: string; descriptio
   { value: "dual_model", label: "Ask for heavy, fallback small", description: "Run small on timeout; heavy on confirm" },
 ];
 
+function scheduledStateMeta(state?: string): { label: string; className: string } {
+  switch (state) {
+    case "running":
+      return { label: "Running", className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" };
+    case "queued":
+      return { label: "Queued", className: "border-sky-500/30 bg-sky-500/10 text-sky-300" };
+    case "due_now":
+      return { label: "Due now", className: "border-amber-500/30 bg-amber-500/10 text-amber-300" };
+    case "disabled":
+      return { label: "Disabled", className: "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-muted)]" };
+    case "no_eligible_work":
+      return { label: "No work", className: "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-muted)]" };
+    case "waiting_for_idle":
+      return { label: "Waiting", className: "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)]" };
+    default:
+      return { label: "Scheduled", className: "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)]" };
+  }
+}
+
+function ScheduledJobStatePill({ state }: { state?: string }) {
+  const meta = scheduledStateMeta(state);
+  return (
+    <span className={`inline-flex h-5 items-center rounded-full border px-2 text-[10px] font-medium ${meta.className}`}>
+      {meta.label}
+    </span>
+  );
+}
+
 function ScheduledTasksCard({
   ollamaModels,
   aiModels,
@@ -1968,16 +1996,32 @@ function ScheduledTasksCard({
   systemGuidance: ReturnType<typeof inferHardwareModelGuidance> | null;
 }) {
   const [scheduled, setScheduled] = useState<Record<string, ScheduledJobSetting>>({});
+  const [statuses, setStatuses] = useState<Record<string, ScheduledJobStatus>>({});
   const [timeoutSeconds, setTimeoutSec] = useState<number>(20);
   const [loading, setLoading] = useState<boolean>(true);
+  const [queueingJob, setQueueingJob] = useState<string | null>(null);
+
+  const loadScheduledStatus = () => {
+    return api.backgroundJobs.getScheduledJobStatuses().then((items) => {
+      const byKey: Record<string, ScheduledJobStatus> = {};
+      for (const item of items) { byKey[item.job_key] = item; }
+      setStatuses(byKey);
+    }).catch(() => undefined);
+  };
 
   useEffect(() => {
     let cancelled = false;
-    api.backgroundJobs.getScheduledTaskSettings().then((s) => {
+    Promise.all([
+      api.backgroundJobs.getScheduledTaskSettings(),
+      api.backgroundJobs.getScheduledJobStatuses().catch(() => [] as ScheduledJobStatus[]),
+    ]).then(([s, statusItems]) => {
       if (cancelled) { return; }
       const byKey: Record<string, ScheduledJobSetting> = {};
       for (const j of s.jobs) { byKey[j.job_key] = j; }
+      const statusByKey: Record<string, ScheduledJobStatus> = {};
+      for (const item of statusItems) { statusByKey[item.job_key] = item; }
       setScheduled(byKey);
+      setStatuses(statusByKey);
       setTimeoutSec(s.confirm_timeout_seconds);
       setLoading(false);
     }).catch(() => {
@@ -2025,6 +2069,16 @@ function ScheduledTasksCard({
     void api.backgroundJobs.setScheduledTaskSetting(`${jobKey}_heavy_model`, modelId);
   };
 
+  const queueJobNow = async (jobKey: string) => {
+    setQueueingJob(jobKey);
+    try {
+      await api.backgroundJobs.queueNow(jobKey);
+      await loadScheduledStatus();
+    } finally {
+      setQueueingJob((current) => current === jobKey ? null : current);
+    }
+  };
+
   const updateTimeout = (value: number) => {
     const clamped = Math.max(5, Math.min(120, value || 20));
     setTimeoutSec(clamped);
@@ -2063,9 +2117,10 @@ function ScheduledTasksCard({
         )}
 
         {!loading && (
-          <div className="divide-y divide-[var(--border-color)]/60">
+          <div className="space-y-2">
             {SCHEDULED_JOBS_CATALOG.map((job) => {
               const entry = scheduled[job.job_key];
+              const status = statuses[job.job_key];
               const runMode = (entry?.run_mode ?? "auto") as BackgroundJobRunMode;
               const heavyModel = entry?.heavy_model ?? "";
               const smallModel = (dbSettings[job.model_setting] as string) ?? "";
@@ -2093,48 +2148,72 @@ function ScheduledTasksCard({
               return (
                 <div
                   key={job.job_key}
-                  className="grid grid-cols-[minmax(0,1fr)_140px_minmax(0,1fr)_minmax(0,1fr)] items-center gap-3 py-1.5"
+                  className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2"
                 >
-                  <div className="min-w-0">
-                    <div className="text-xs font-medium text-[var(--text-primary)]">{job.label}</div>
-                    <div className="text-[10px] text-[var(--text-muted)]/80">
-                      {job.tokens} · {job.note}
-                    </div>
-                  </div>
-
-                  <CompactMenuSelect
-                    label="Run mode"
-                    value={runMode}
-                    options={modeOptions}
-                    onChange={(value) => updateRunMode(job.job_key, value as BackgroundJobRunMode)}
-                  />
-
-                  <div>
-                    <CompactMenuSelect
-                      label="Small model"
-                      value={smallModel}
-                      options={smallModelOptions}
-                      onChange={(value) => set(job.model_setting, value as never)}
-                    />
-                    {smallSelected && (smallParamsLabel || smallFitMeta.label) && (
-                      <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[10px] text-[var(--text-muted)]">
-                        {smallParamsLabel && <span>{smallParamsLabel}</span>}
-                        {smallParamsLabel && smallFitMeta.label && <span>·</span>}
-                        {smallFitMeta.label && <span className={`font-medium ${smallFitMeta.textClassName}`}>{smallFitMeta.label}</span>}
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-[220px] flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="text-xs font-medium text-[var(--text-primary)]">{job.label}</div>
+                        <ScheduledJobStatePill state={status?.state} />
                       </div>
-                    )}
+                      <div className="mt-0.5 text-[11px] text-[var(--text-secondary)]">{job.description}</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-[var(--text-muted)]">
+                        <span>{job.tokens}</span>
+                        <span>{job.note}</span>
+                        <span>{status?.due_label ?? "checks every minute when idle"}</span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => void queueJobNow(job.job_key)}
+                      disabled={queueingJob === job.job_key || status?.state === "running" || status?.state === "queued"}
+                      className="h-7 shrink-0 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {queueingJob === job.job_key ? "Queueing…" : status?.state === "queued" ? "Queued" : "Run next"}
+                    </button>
                   </div>
 
-                  <div>
-                    <CompactMenuSelect
-                      label="Heavy model"
-                      value={heavyModel}
-                      options={heavyModelOptions}
-                      onChange={(value) => updateHeavyModel(job.job_key, value)}
-                    />
-                    {heavyParamsLabel && (
-                      <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">{heavyParamsLabel}</div>
-                    )}
+                  <div className="mt-2 grid gap-2 md:grid-cols-3">
+                    <div>
+                      <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Run mode</div>
+                      <CompactMenuSelect
+                        label="Run mode"
+                        value={runMode}
+                        options={modeOptions}
+                        onChange={(value) => updateRunMode(job.job_key, value as BackgroundJobRunMode)}
+                      />
+                    </div>
+
+                    <div>
+                      <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Small model</div>
+                      <CompactMenuSelect
+                        label="Small model"
+                        value={smallModel}
+                        options={smallModelOptions}
+                        onChange={(value) => set(job.model_setting, value as never)}
+                      />
+                      {smallSelected && (smallParamsLabel || smallFitMeta.label) && (
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[10px] text-[var(--text-muted)]">
+                          {smallParamsLabel && <span>{smallParamsLabel}</span>}
+                          {smallParamsLabel && smallFitMeta.label && <span>·</span>}
+                          {smallFitMeta.label && <span className={`font-medium ${smallFitMeta.textClassName}`}>{smallFitMeta.label}</span>}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Heavy model</div>
+                      <CompactMenuSelect
+                        label="Heavy model"
+                        value={heavyModel}
+                        options={heavyModelOptions}
+                        onChange={(value) => updateHeavyModel(job.job_key, value)}
+                      />
+                      {heavyParamsLabel && (
+                        <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">{heavyParamsLabel}</div>
+                      )}
+                    </div>
                   </div>
                 </div>
               );

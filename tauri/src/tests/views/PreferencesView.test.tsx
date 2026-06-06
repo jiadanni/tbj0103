@@ -209,6 +209,19 @@ vi.mock("@/lib/api", () => ({
       getScheduledTaskSettings: vi.fn(() =>
         Promise.resolve({ jobs: [], confirm_timeout_seconds: 20 }),
       ),
+      getScheduledJobStatuses: vi.fn(() =>
+        Promise.resolve([
+          {
+            job_key: "memory_extraction",
+            label: "Memory Extraction",
+            enabled: true,
+            state: "scheduled",
+            run_mode: "auto",
+            due_label: "checks every minute when idle",
+          },
+        ]),
+      ),
+      queueNow: vi.fn(() => Promise.resolve()),
       setScheduledTaskSetting: vi.fn(() => Promise.resolve()),
     },
   },
@@ -510,8 +523,9 @@ describe("PreferencesView", () => {
 
     fireEvent.click(screen.getByText("Scheduled Tasks"));
 
-    expect(await screen.findByText("Confirmation timeout")).toBeInTheDocument();
+    expect(await screen.findByText("Play-button confirmation timeout")).toBeInTheDocument();
     expect(screen.getByText("Memory Extraction")).toBeInTheDocument();
-    expect(screen.getAllByText("Heavy (opt-in)").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("checks every minute when idle").length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: /run next/i }).length).toBeGreaterThan(0);
   });
 });

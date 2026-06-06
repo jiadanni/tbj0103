@@ -1,7 +1,7 @@
 use crate::db::DbState;
 use crate::services::background_scheduler;
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{AppHandle, State};
 
 #[tauri::command]
 pub async fn confirm_background_job(task_type: String) -> Result<bool, String> {
@@ -16,6 +16,11 @@ pub async fn dismiss_background_job(task_type: String) -> Result<bool, String> {
 #[tauri::command]
 pub async fn cancel_background_job(task_type: String) -> Result<bool, String> {
     Ok(background_scheduler::request_cancel(&task_type))
+}
+
+#[tauri::command]
+pub async fn queue_background_job_now(app: AppHandle, task_type: String) -> Result<(), String> {
+    background_scheduler::queue_manual_job(app, task_type)
 }
 
 /// All settings used by the Scheduled Tasks preferences section. Fetched in a
@@ -34,16 +39,6 @@ pub struct ScheduledJobSetting {
     pub heavy_model: String,
 }
 
-const SCHEDULED_JOB_KEYS: &[&str] = &[
-    "memory_extraction",
-    "workspace_glossary",
-    "hover_definition_scan",
-    "summarization",
-    "flashcard_generation",
-    "concept_hierarchy",
-    "workspace_prompt_bank",
-];
-
 #[tauri::command]
 pub async fn get_scheduled_task_settings(
     state: State<'_, DbState>,
@@ -51,7 +46,7 @@ pub async fn get_scheduled_task_settings(
     let pool = state.0.clone();
     tokio::task::spawn_blocking(move || -> Result<ScheduledTaskSettings, String> {
         let conn = pool.get().map_err(|e| e.to_string())?;
-        let jobs = SCHEDULED_JOB_KEYS
+        let jobs = background_scheduler::SCHEDULED_JOB_KEYS
             .iter()
             .map(|key| {
                 let run_mode = crate::services::model_settings::get_string_setting(
@@ -77,6 +72,19 @@ pub async fn get_scheduled_task_settings(
             jobs,
             confirm_timeout_seconds,
         })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn get_scheduled_job_statuses(
+    state: State<'_, DbState>,
+) -> Result<Vec<background_scheduler::ScheduledBackgroundJobStatus>, String> {
+    let pool = state.0.clone();
+    tokio::task::spawn_blocking(move || -> Result<Vec<background_scheduler::ScheduledBackgroundJobStatus>, String> {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        background_scheduler::list_scheduled_statuses(&conn)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -137,4 +145,3 @@ pub async fn list_active_background_jobs(
     .await
     .map_err(|e| e.to_string())?
 }
-

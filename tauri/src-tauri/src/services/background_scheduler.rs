@@ -4,7 +4,7 @@ use crate::services::model_settings::{
 };
 use crate::services::{git_sync, memory_pipeline, summarization_service, workspace_glossary};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
@@ -28,6 +28,10 @@ static CANCEL_FLAGS: LazyLock<Mutex<HashMap<String, bool>>> = LazyLock::new(|| M
 /// SQLite.
 static ACTIVE_JOBS: LazyLock<Mutex<HashMap<String, ActiveBackgroundJob>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+static MANUAL_QUEUE: LazyLock<Mutex<VecDeque<String>>> =
+    LazyLock::new(|| Mutex::new(VecDeque::new()));
+static MANUAL_DRAIN_RUNNING: AtomicBool = AtomicBool::new(false);
+static NEXT_TICK_AT: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 
 /// Single-permit semaphore serializing every background job — scheduler ticks
 /// and manually-triggered IPCs (e.g. `start_workspace_prompt_bank_job`) all
@@ -59,6 +63,32 @@ const HIERARCHY_TICK_INTERVAL: u32 = 5;
 /// SQL lookup, but we cap how often we even consider it to avoid streaks.
 static PROMPT_BANK_TICK: AtomicU32 = AtomicU32::new(0);
 const PROMPT_BANK_TICK_INTERVAL: u32 = 30;
+
+const SCHEDULER_INTERVAL_SECS: i64 = 60;
+
+pub const SCHEDULED_JOB_KEYS: &[&str] = &[
+    "memory_extraction",
+    "workspace_glossary",
+    "hover_definition_scan",
+    "summarization",
+    "flashcard_generation",
+    "concept_hierarchy",
+    "workspace_prompt_bank",
+];
+
+fn job_label(task_type: &str) -> &'static str {
+    match task_type {
+        "memory_extraction" => "Memory Extraction",
+        "summarization" => "Summarization",
+        "flashcard_generation" => "Flashcard Generation",
+        "workspace_glossary" => "Workspace Glossary",
+        "hover_definition_scan" => "Hover Definitions",
+        "concept_hierarchy" => "Topic Hierarchy",
+        "workspace_prompt_bank" => "Starter Prompts / Topic Signatures",
+        "git_sync" => "Git Sync",
+        _ => "Background Job",
+    }
+}
 
 /// Mirror of the TypeScript `BackgroundTaskEvent` interface in api.ts.
 #[derive(Debug, Clone, Serialize)]
@@ -337,6 +367,204 @@ fn emit_task_with_workspace(
     );
 }
 
+fn current_next_tick_at() -> Option<String> {
+    NEXT_TICK_AT.lock().ok().and_then(|value| value.clone())
+}
+
+fn set_next_tick_at_from_now() {
+    let next = chrono::Utc::now() + chrono::Duration::seconds(SCHEDULER_INTERVAL_SECS);
+    if let Ok(mut value) = NEXT_TICK_AT.lock() {
+        *value = Some(next.to_rfc3339());
+    }
+}
+
+fn interval_due_label(_next_tick_at: Option<&str>, ticks_remaining: u32) -> String {
+    if ticks_remaining <= 1 {
+        return "due on next scheduler check".to_string();
+    }
+    format!("due in about {ticks_remaining} min ({ticks_remaining} checks)")
+}
+
+async fn lookup_manual_job_model(app: &AppHandle, job_key: &str) -> Option<String> {
+    let db = app.state::<DbState>();
+    let pool = db.0.clone();
+    let job_key_owned = job_key.to_string();
+    tokio::task::spawn_blocking(move || -> Option<String> {
+        let conn = pool.get().ok()?;
+        let mode = get_run_mode(&conn, &job_key_owned);
+        let default_model = get_model_for_job(&conn, &format!("{}_model", job_key_owned))
+            .or_else(|| get_model_for_job(&conn, &job_key_owned));
+        match mode {
+            RunMode::Auto => default_model,
+            RunMode::ConfirmOnly | RunMode::DualModel => {
+                get_heavy_model(&conn, &job_key_owned).or(default_model)
+            }
+        }
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+async fn lookup_ollama_url(app: &AppHandle) -> Option<String> {
+    let db = app.state::<DbState>();
+    let pool = db.0.clone();
+    tokio::task::spawn_blocking(move || -> Option<String> {
+        let conn = pool.get().ok()?;
+        conn.query_row(
+            "SELECT value FROM settings WHERE key = 'ollama_base_url'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .map(|v| v.trim_matches('"').to_string())
+        .ok()
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+async fn run_manual_job(app: &AppHandle, task_type: &str, _model: Option<String>) -> Result<(), String> {
+    let db = app.state::<DbState>();
+    let ollama_url = lookup_ollama_url(app).await;
+    match task_type {
+        "memory_extraction" => memory_pipeline::process_auto_memory_extraction(&db, ollama_url).await,
+        "workspace_glossary" => workspace_glossary::refresh_due_workspaces(&db).await.map(|_| ()),
+        "hover_definition_scan" => workspace_glossary::scan_recent_sessions_for_missing_terms(&db).await.map(|_| ()),
+        "summarization" => {
+            let sessions: Vec<(String, String)> = {
+                let pool = db.0.clone();
+                tokio::task::spawn_blocking(move || -> Vec<(String, String)> {
+                    let Ok(conn) = pool.get() else { return Vec::new(); };
+                    let idle = crate::commands::settings::get_setting(&conn, "memory_extraction_idle_minutes")
+                        .and_then(|v| v.parse::<u32>().ok())
+                        .unwrap_or(5);
+                    let max = crate::commands::settings::get_setting(&conn, "summarization_max_sessions")
+                        .and_then(|v| v.parse::<u32>().ok())
+                        .unwrap_or(5);
+                    let sql = format!(
+                        "SELECT cs.id, cs.workspace_id FROM chat_sessions cs
+                         WHERE datetime(cs.updated_at) > datetime('now', '-{} minutes')
+                           AND cs.is_incognito = 0
+                           AND cs.exclude_from_analytics = 0
+                           AND cs.is_imported = 0
+                         ORDER BY cs.updated_at DESC
+                         LIMIT {}",
+                        idle, max
+                    );
+                    let Ok(mut stmt) = conn.prepare(&sql) else { return Vec::new(); };
+                    stmt.query_map([], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    })
+                    .map(|rows| rows.filter_map(Result::ok).collect::<Vec<_>>())
+                    .unwrap_or_default()
+                })
+                .await
+                .unwrap_or_default()
+            };
+            let mut any_failed = false;
+            for (session_id, workspace_id) in sessions {
+                if summarization_service::generate_info_summary(
+                    &db,
+                    &session_id,
+                    &workspace_id,
+                    ollama_url.clone(),
+                )
+                .await
+                .is_err()
+                {
+                    any_failed = true;
+                }
+            }
+            if any_failed { Err("Summarization failed".to_string()) } else { Ok(()) }
+        }
+        "flashcard_generation" => {
+            crate::services::flashcard_topic_service::tick(&db, ollama_url).await
+        }
+        "concept_hierarchy" => {
+            crate::services::concept_hierarchy_service::tick(&db, ollama_url).await.map(|_| ())
+        }
+        "workspace_prompt_bank" => crate::services::prompt_bank::tick(&db).await.map(|_| ()),
+        other => Err(format!("Unknown background job: {other}")),
+    }
+    .map_err(|error| {
+        if error.trim().is_empty() {
+            format!("{} failed", job_label(task_type))
+        } else {
+            error
+        }
+    })
+}
+
+async fn drain_manual_queue(app: AppHandle) {
+    if MANUAL_DRAIN_RUNNING
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return;
+    }
+
+    loop {
+        let Some(task_type) = MANUAL_QUEUE.lock().ok().and_then(|mut queue| queue.pop_front()) else {
+            MANUAL_DRAIN_RUNNING.store(false, Ordering::SeqCst);
+            return;
+        };
+        let model = lookup_manual_job_model(&app, &task_type).await;
+        let _permit = acquire_job_permit().await;
+        emit_task(
+            &app,
+            &task_type,
+            "started",
+            &format!("Running {}…", job_label(&task_type)),
+            model.clone(),
+        );
+        register_running(&task_type);
+        let result = if is_cancelled(&task_type) {
+            Err("cancelled".to_string())
+        } else {
+            run_manual_job(&app, &task_type, model.clone()).await
+        };
+        let cancelled = is_cancelled(&task_type);
+        let message = if cancelled {
+            format!("{} cancelled", job_label(&task_type))
+        } else if result.is_ok() {
+            format!("{} done", job_label(&task_type))
+        } else {
+            format!("{} failed", job_label(&task_type))
+        };
+        emit_task(
+            &app,
+            &task_type,
+            if cancelled || result.is_err() { "failed" } else { "completed" },
+            &message,
+            model,
+        );
+        unregister_running(&task_type);
+    }
+}
+
+pub fn queue_manual_job(app: AppHandle, task_type: String) -> Result<(), String> {
+    if !SCHEDULED_JOB_KEYS.contains(&task_type.as_str()) {
+        return Err(format!("Unknown scheduled job: {task_type}"));
+    }
+    {
+        let mut queue = MANUAL_QUEUE.lock().map_err(|e| e.to_string())?;
+        if queue.iter().any(|queued| queued == &task_type) {
+            return Ok(());
+        }
+        queue.push_back(task_type.clone());
+    }
+    emit_task(
+        &app,
+        &task_type,
+        "queued",
+        &format!("Queued {} to run next…", job_label(&task_type)),
+        None,
+    );
+    tauri::async_runtime::spawn(drain_manual_queue(app));
+    Ok(())
+}
+
 async fn acquire_job_permit_with_queue(
     app: &AppHandle,
     task_type: &str,
@@ -373,9 +601,11 @@ pub fn start_scheduler(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(60));
         let mut git_sync_tick: u32 = 0;
+        set_next_tick_at_from_now();
 
         loop {
             interval.tick().await;
+            set_next_tick_at_from_now();
             git_sync_tick += 1;
 
             // Guard: skip this tick if the previous one is still running
@@ -866,6 +1096,120 @@ pub struct ActiveBackgroundJob {
     pub model: Option<String>,
     pub started_at: Option<String>,
     pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub struct ScheduledBackgroundJobStatus {
+    pub job_key: String,
+    pub label: String,
+    pub enabled: bool,
+    pub state: String,
+    pub run_mode: String,
+    pub small_model: Option<String>,
+    pub heavy_model: Option<String>,
+    pub next_check_at: Option<String>,
+    pub next_due_at: Option<String>,
+    pub due_label: String,
+}
+
+fn model_setting_for_job(job_key: &str) -> &'static str {
+    match job_key {
+        "memory_extraction" => "memory_extraction_model",
+        "summarization" => "summarization_model",
+        "flashcard_generation" => "flashcard_model",
+        "workspace_glossary" | "hover_definition_scan" => "glossary_model",
+        "concept_hierarchy" => "concept_hierarchy_model",
+        "workspace_prompt_bank" => "topic_signature_model",
+        _ => "",
+    }
+}
+
+fn add_minutes_to_rfc3339(base: Option<&str>, minutes: u32) -> Option<String> {
+    let base = base?;
+    chrono::DateTime::parse_from_rfc3339(base)
+        .ok()
+        .map(|date| (date.with_timezone(&chrono::Utc) + chrono::Duration::minutes(minutes as i64)).to_rfc3339())
+}
+
+pub fn list_scheduled_statuses(conn: &rusqlite::Connection) -> Result<Vec<ScheduledBackgroundJobStatus>, String> {
+    let active_jobs = ACTIVE_JOBS
+        .lock()
+        .map(|map| map.clone())
+        .unwrap_or_default();
+    let queued_jobs = MANUAL_QUEUE
+        .lock()
+        .map(|queue| queue.iter().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    let background_enabled = crate::commands::settings::get_setting(conn, "background_inference_enabled")
+        .map(|value| value == "true")
+        .unwrap_or(true);
+    let next_check_at = current_next_tick_at();
+
+    Ok(SCHEDULED_JOB_KEYS
+        .iter()
+        .map(|job_key| {
+            let model_setting = model_setting_for_job(job_key);
+            let run_mode = get_run_mode(conn, job_key).as_str().to_string();
+            let small_model = if model_setting.is_empty() {
+                None
+            } else {
+                get_model_for_job(conn, model_setting)
+            };
+            let heavy_model = get_heavy_model(conn, job_key);
+            let active = active_jobs.get(*job_key);
+            let is_manual_queued = queued_jobs.iter().any(|queued| queued == job_key);
+            let mut state = if background_enabled {
+                "scheduled".to_string()
+            } else {
+                "disabled".to_string()
+            };
+            let mut due_label = if background_enabled {
+                "checks every minute when idle".to_string()
+            } else {
+                "background inference disabled".to_string()
+            };
+            let mut next_due_at = None;
+
+            if let Some(job) = active {
+                state = if job.status == "queued" { "queued" } else { "running" }.to_string();
+                due_label = if job.status == "queued" { "queued to run" } else { "running now" }.to_string();
+            } else if is_manual_queued {
+                state = "queued".to_string();
+                due_label = "queued to run next".to_string();
+            } else if background_enabled {
+                match *job_key {
+                    "concept_hierarchy" => {
+                        let elapsed = HIERARCHY_TICK.load(Ordering::Relaxed) % HIERARCHY_TICK_INTERVAL;
+                        let remaining = if elapsed == 0 { HIERARCHY_TICK_INTERVAL } else { HIERARCHY_TICK_INTERVAL - elapsed };
+                        state = if remaining <= 1 { "due_now" } else { "scheduled" }.to_string();
+                        due_label = interval_due_label(next_check_at.as_deref(), remaining);
+                        next_due_at = add_minutes_to_rfc3339(next_check_at.as_deref(), remaining.saturating_sub(1));
+                    }
+                    "workspace_prompt_bank" => {
+                        let elapsed = PROMPT_BANK_TICK.load(Ordering::Relaxed) % PROMPT_BANK_TICK_INTERVAL;
+                        let remaining = if elapsed == 0 { PROMPT_BANK_TICK_INTERVAL } else { PROMPT_BANK_TICK_INTERVAL - elapsed };
+                        state = if remaining <= 1 { "due_now" } else { "scheduled" }.to_string();
+                        due_label = interval_due_label(next_check_at.as_deref(), remaining);
+                        next_due_at = add_minutes_to_rfc3339(next_check_at.as_deref(), remaining.saturating_sub(1));
+                    }
+                    _ => {}
+                }
+            }
+
+            ScheduledBackgroundJobStatus {
+                job_key: (*job_key).to_string(),
+                label: job_label(job_key).to_string(),
+                enabled: background_enabled,
+                state,
+                run_mode,
+                small_model,
+                heavy_model,
+                next_check_at: next_check_at.clone(),
+                next_due_at,
+                due_label,
+            }
+        })
+        .collect())
 }
 
 pub fn list_active(conn: &rusqlite::Connection) -> Result<Vec<ActiveBackgroundJob>, String> {
