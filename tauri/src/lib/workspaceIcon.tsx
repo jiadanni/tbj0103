@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import * as Lucide from "lucide-react";
 import { Folder, type LucideIcon } from "lucide-react";
+import { resolveWorkspaceIconName } from "./workspaceIconRules";
 
 function pascal(name: string): string {
   return name
@@ -21,10 +22,12 @@ function resolveIcon(name?: string | null): LucideIcon {
 
 export function WorkspaceIcon({
   name,
+  label,
   className,
 }: {
   name?: string | null;
+  label?: string | null;
   className?: string;
 }) {
-  return createElement(resolveIcon(name), { className, "aria-hidden": true });
+  return createElement(resolveIcon(resolveWorkspaceIconName(name, label)), { className, "aria-hidden": true });
 }

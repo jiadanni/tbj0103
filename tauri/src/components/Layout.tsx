@@ -4,7 +4,35 @@ import { message } from "@tauri-apps/plugin-dialog";
 import {
   
 } from "react-resizable-panels";
-import { Plus, Settings as SettingsIcon, Pencil, Trash2, ExternalLink, Columns2, ChevronDown, History as HistoryIcon, ArrowUpDown, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  BookOpen,
+  Code,
+  Columns2,
+  Container,
+  Database,
+  ExternalLink,
+  Folder,
+  GitBranch,
+  HeartPulse,
+  History as HistoryIcon,
+  Music,
+  Palette,
+  Pencil,
+  Plug,
+  Plus,
+  Rocket,
+  Settings as SettingsIcon,
+  ShieldCheck,
+  Sparkles,
+  Terminal,
+  Trash2,
+  User,
+  WandSparkles,
+  ArrowUpDown,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Sidebar from "./Sidebar";
 import CommandPalette from "./CommandPalette";
@@ -20,6 +48,7 @@ import ConfirmDialog from "./ConfirmDialog";
 import PromptDialog from "./PromptDialog";
 import { api } from "../lib/api";
 import { WorkspaceIcon } from "../lib/workspaceIcon";
+import { inferWorkspaceIconName } from "../lib/workspaceIconRules";
 import { isMac, isLinux, isWindows } from "../lib/platform";
 import SplitPaneLayout from "./SplitPaneLayout";
 import RouteSkeleton from "./RouteSkeleton";
@@ -46,6 +75,24 @@ import type { ChatSession } from "../stores/chatStore";
 type WorkspaceDialogState =
   | { kind: "last-workspace" }
   | { kind: "delete"; workspace: Workspace };
+
+const WORKSPACE_ICON_OPTIONS: { name: string; label: string; Icon: LucideIcon }[] = [
+  { name: "folder", label: "Folder", Icon: Folder },
+  { name: "code", label: "Code", Icon: Code },
+  { name: "palette", label: "Design", Icon: Palette },
+  { name: "heart-pulse", label: "Health", Icon: HeartPulse },
+  { name: "book-open", label: "Study", Icon: BookOpen },
+  { name: "sparkles", label: "AI", Icon: Sparkles },
+  { name: "music", label: "Music", Icon: Music },
+  { name: "plug", label: "Integrate", Icon: Plug },
+  { name: "user", label: "Person", Icon: User },
+  { name: "terminal", label: "Terminal", Icon: Terminal },
+  { name: "git-branch", label: "Git", Icon: GitBranch },
+  { name: "database", label: "Database", Icon: Database },
+  { name: "shield-check", label: "Security", Icon: ShieldCheck },
+  { name: "container", label: "Container", Icon: Container },
+  { name: "rocket", label: "Productivity", Icon: Rocket },
+];
 
 function getWorkspaceOptionLabel(workspace: Workspace, workspaces: Workspace[]) {
   if (!workspace.parent_workspace_id) {
@@ -291,7 +338,7 @@ function WorkspaceNavigationTabs({
             {(dragOverWorkspaceId === workspace.id || activeWorkspaceId === workspace.id) && (
               <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
             )}
-            <WorkspaceIcon name={workspace.icon} className="h-3.5 w-3.5 opacity-70" />
+            <WorkspaceIcon name={workspace.icon} label={workspace.name} className="h-3.5 w-3.5 opacity-70" />
             {workspace.name}
           </button>
         ))}
@@ -468,7 +515,7 @@ function SubWorkspaceTabBar({
             {activeWorkspaceId === workspace.id && (
               <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
             )}
-            <WorkspaceIcon name={workspace.icon} className="h-3.5 w-3.5 opacity-70" />
+            <WorkspaceIcon name={workspace.icon} label={workspace.name} className="h-3.5 w-3.5 opacity-70" />
             {workspace.name}
           </button>
         ))}
@@ -1378,6 +1425,17 @@ function WorkspaceTabBar({
     setDialogState({ kind: "delete", workspace });
   }
 
+  async function updateWorkspaceIcon(workspace: Workspace, icon: string) {
+    setContextMenu(null);
+    setWorkspaces(workspaces.map((item) => item.id === workspace.id ? { ...item, icon } : item));
+    try {
+      await api.workspace.updateIcon(workspace.id, icon);
+    } catch {
+      const current = await api.workspace.list();
+      setWorkspaces(current);
+    }
+  }
+
   useEffect(() => {
     if (!contextMenu) {return;}
 
@@ -1615,6 +1673,47 @@ function WorkspaceTabBar({
           >
             <Pencil size={11} /> Rename {contextMenu.workspace.parent_workspace_id ? "sub-workspace" : "workspace"}
           </button>
+          <div className="my-1 border-t border-[var(--border-color)]" />
+          <div className="px-3 py-1.5">
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Icon</span>
+              <button
+                type="button"
+                onClick={() => {
+                  void updateWorkspaceIcon(contextMenu.workspace, inferWorkspaceIconName(contextMenu.workspace.name));
+                }}
+                title="Auto-pick icon"
+                aria-label="Auto-pick workspace icon"
+                className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              >
+                <WandSparkles size={12} />
+              </button>
+            </div>
+            <div className="grid grid-cols-5 gap-1">
+              {WORKSPACE_ICON_OPTIONS.map(({ name, label, Icon }) => {
+                const isSelected = contextMenu.workspace.icon === name;
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => {
+                      void updateWorkspaceIcon(contextMenu.workspace, name);
+                    }}
+                    title={label}
+                    aria-label={`Set workspace icon to ${label}`}
+                    aria-pressed={isSelected}
+                    className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
+                      isSelected
+                        ? "bg-[rgba(var(--accent-color-rgb),0.18)] text-[var(--accent-color)]"
+                        : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                    }`}
+                  >
+                    <Icon size={13} />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <button
             onClick={() => {
               navigate("/preferences", { state: { settingsTab: "workspaces" } });
