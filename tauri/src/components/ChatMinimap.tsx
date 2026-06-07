@@ -338,14 +338,14 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
         }}
       >
         {positioned.map((b, i) => {
-          const topPx = b.topFrac * trackClientH - BAR_HEIGHT_PX / 2;
           return (
             <div
               key={b.id}
+              data-testid="chat-minimap-marker"
               className={`absolute left-1/2 -translate-x-1/2 transition-opacity duration-75 ${hoveredIdx === i ? "opacity-100" : "opacity-70"}`}
               style={{
                 width: "60%",
-                top: topPx,
+                top: `calc(${b.topFrac * 100}% - ${BAR_HEIGHT_PX / 2}px)`,
                 height: BAR_HEIGHT_PX,
                 borderRadius: 1,
                 backgroundColor: b.role === "user"

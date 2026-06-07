@@ -75,6 +75,24 @@ describe("ChatMinimap", () => {
     expect(screen.getByTestId("chat-minimap")).toHaveStyle({ right: "2px" });
   });
 
+  it("positions every marker before ResizeObserver reports track height", () => {
+    const scrollContainer = createScrollContainer(320, 320);
+
+    render(
+      <ChatMinimap
+        messages={messages}
+        virtuosoRef={{ current: { scrollToIndex: vi.fn() } as unknown as VirtuosoHandle }}
+        scrollContainer={scrollContainer}
+        streamingContent=""
+        isStreaming={false}
+      />
+    );
+
+    const markerTops = screen.getAllByTestId("chat-minimap-marker").map((marker) => marker.style.top);
+    expect(markerTops).toHaveLength(3);
+    expect(new Set(markerTops).size).toBe(3);
+  });
+
   it("falls back to the default inset when no scrollbar gutter is available", () => {
     const scrollContainer = createScrollContainer(320, 320);
 
