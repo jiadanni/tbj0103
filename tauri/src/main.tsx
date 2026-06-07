@@ -7,6 +7,7 @@ import { isLinux } from "./lib/platform";
 import { api } from "./lib/api";
 import { normalizeTheme } from "./lib/theme";
 import { installNativeContextMenuSuppressor } from "./lib/nativeContextMenu";
+import { installLinuxWheelSmoother } from "./lib/linuxWheelSmoother";
 import "./styles/globals.css";
 import "katex/dist/katex.min.css";
 
@@ -36,6 +37,7 @@ const queryClient = new QueryClient({
 
 installConsoleTimestamps();
 installNativeContextMenuSuppressor();
+installLinuxWheelSmoother();
 
 // Forward console.warn/error to persistent backend log store (batched)
 enableBatchLogForwarding(

@@ -159,8 +159,30 @@ fn apply_saved_main_window_state(
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+fn apply_linux_webkit_env() {
+    // WebKitGTK ships with conservative defaults that cause jerky scrolling on
+    // Linux: compositing isn't forced for every layer, and DMA-BUF rendering is
+    // disabled on some distros. Forcing them on produces smoother frame pacing
+    // and lets accelerated scroll surfaces actually composite.
+    //
+    // Respect any value the user has already set in the environment.
+    for (key, value) in [
+        ("WEBKIT_FORCE_COMPOSITING_MODE", "1"),
+        ("WEBKIT_DISABLE_DMABUF_RENDERER", "0"),
+        ("WEBKIT_DISABLE_COMPOSITING_MODE", "0"),
+    ] {
+        if std::env::var_os(key).is_none() {
+            std::env::set_var(key, value);
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    apply_linux_webkit_env();
+
     // Register a panic hook that flushes buffered logs before the process exits,
     // ensuring the crash cause is captured in the SQLite log table.
     std::panic::set_hook(Box::new(|info| {

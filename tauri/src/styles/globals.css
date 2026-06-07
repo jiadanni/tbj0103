@@ -160,6 +160,15 @@ body {
   will-change: transform;
 }
 
+/* Paint-isolate each message bubble. Without this, WebKitGTK invalidates
+   layout/paint across the whole virtualized list when a new bubble enters
+   the viewport, which manifests as scroll hitches on long chats. `contain`
+   (layout + paint, no `content-visibility`) bounds invalidation without
+   forcing skipped layout, so visible content paints normally. */
+:root[data-platform="linux"] [data-msg-id] {
+  contain: layout paint;
+}
+
 /* =====================================================
    Scrollbars (macOS-like thin scrollbars)
    ===================================================== */
