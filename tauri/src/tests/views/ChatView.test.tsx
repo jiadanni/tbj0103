@@ -9,7 +9,7 @@ import { api } from "@/lib/api";
 import ChatView from "@/views/ChatView";
 import { __resetWorkspacePromptsDedup } from "@/views/chatViewDedup";
 import { resolveModelDisplayName } from "@/lib/modelDisplayName";
-import type { ChatSession } from "@/stores/chatStore";
+import type { ChatSession, Message } from "@/stores/chatStore";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 
@@ -172,6 +172,9 @@ vi.mock("@/lib/api", () => ({
     summary: {
       generate: vi.fn(() => Promise.resolve(undefined)),
       list: vi.fn(() => Promise.resolve([])),
+    },
+    memory: {
+      listActive: vi.fn(() => Promise.resolve([])),
     },
     topicSignature: {
       get: vi.fn(() => Promise.resolve(null)),
@@ -775,6 +778,87 @@ describe("ChatView", () => {
 
     await waitFor(() => {
       expect(api.summary.generate).toHaveBeenCalledWith("session-1", "ws-1", "info", true);
+    });
+  });
+
+  it("regenerates follow-ups after editing a user message", async () => {
+    mockActiveChatId = "session-1";
+    const existingMessages: Message[] = [
+      {
+        id: "user-original",
+        session_id: "session-1",
+        role: "user",
+        content: "Original prompt",
+        created_at: "",
+      },
+      {
+        id: "assistant-original",
+        session_id: "session-1",
+        role: "assistant",
+        content: "Original answer",
+        model_name: "test-model",
+        created_at: "",
+      },
+    ];
+    useChatStore.setState({
+      activeChatId: "session-1",
+      messages: { "session-1": existingMessages },
+    });
+    (api.chat.addMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_workspaceId: string, sessionId: string, role: "user" | "assistant", content: string, modelName?: string) => ({
+        id: `${role}-edited`,
+        session_id: sessionId,
+        role,
+        content,
+        model_name: modelName,
+        created_at: "",
+      }),
+    );
+    (api.listenStream as ReturnType<typeof vi.fn>).mockImplementation(async (_sessionId: string, onChunk: (...args: unknown[]) => void) => {
+      onChunk("Edited answer", false);
+      onChunk("", true, 18, 900, 75);
+      return () => {};
+    });
+    (api.ollama.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    (api.ollama.generateFollowUps as ReturnType<typeof vi.fn>).mockResolvedValue(["Fresh follow-up"]);
+
+    await renderChatView();
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("icon-pencil").length).toBeGreaterThan(0);
+    });
+    const editButton = screen
+      .getAllByTestId("icon-pencil")
+      .find((icon) => icon.closest("[data-msg-id='user-original']"))
+      ?.closest("button");
+    expect(editButton).toBeTruthy();
+    fireEvent.click(editButton as HTMLButtonElement);
+    const editor = screen.getByDisplayValue("Original prompt");
+    fireEvent.change(editor, { target: { value: "Updated prompt" } });
+    fireEvent.keyDown(editor, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(api.chat.addMessage).toHaveBeenCalledWith(
+        "ws-1",
+        "session-1",
+        "assistant",
+        "Edited answer",
+        "test-model",
+        18,
+        900,
+      );
+    });
+
+    await waitFor(() => {
+      expect(api.ollama.generateFollowUps).toHaveBeenCalledWith(
+        "test-model",
+        [
+          { role: "user", content: "Updated prompt" },
+          { role: "assistant", content: "Edited answer" },
+        ],
+        "",
+        undefined,
+      );
     });
   });
 
