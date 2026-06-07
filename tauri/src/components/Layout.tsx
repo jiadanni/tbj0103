@@ -43,7 +43,6 @@ import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { Tooltip } from "./Tooltip";
 import AppHeaderMenu from "./AppHeaderMenu";
-import ArtifactPanel from "./ArtifactPanel";
 import ConfirmDialog from "./ConfirmDialog";
 import PromptDialog from "./PromptDialog";
 import { api } from "../lib/api";
@@ -52,7 +51,6 @@ import { inferWorkspaceIconName } from "../lib/workspaceIconRules";
 import { isMac, isLinux, isWindows } from "../lib/platform";
 import SplitPaneLayout from "./SplitPaneLayout";
 import RouteSkeleton from "./RouteSkeleton";
-import { useArtifactStore } from "../stores/artifactStore";
 import { useChatStore } from "../stores/chatStore";
 import { CompactMenuSelect } from "./CompactMenuSelect";
 import StatusBar from "./StatusBar";
@@ -2032,8 +2030,6 @@ export default function Layout() {
   const combineSectionDropdown = useWorkspaceStore((state) => state.combineSectionDropdown);
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
   const setDemo = useWorkspaceStore((state) => state.setDemo);
-  const loadArtifact = useArtifactStore((state) => state.loadArtifact);
-  const setArtifactPanelOpen = useArtifactStore((state) => state.setPanelOpen);
   const showStatusBar = useSettingsStore((state) => state.showStatusBar);
   const splitUnsupportedRoute = ["/preferences"].some((path) => location.pathname.startsWith(path));
   const showSplitPaneLayout = splitMode && !splitUnsupportedRoute;
@@ -2098,20 +2094,6 @@ export default function Layout() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  useEffect(() => {
-    function handleOpenArtifact(event: Event) {
-      const detail = (event as CustomEvent<{ artifactId?: string }>).detail;
-      const artifactId = detail?.artifactId;
-      if (!artifactId) {return;}
-      void loadArtifact(artifactId).then(() => {
-        setArtifactPanelOpen(true);
-      });
-    }
-
-    window.addEventListener("aetherium:open-artifact", handleOpenArtifact as EventListener);
-    return () => window.removeEventListener("aetherium:open-artifact", handleOpenArtifact as EventListener);
-  }, [loadArtifact, setArtifactPanelOpen]);
-
   return (
     <div className="relative flex flex-col h-screen overflow-hidden bg-[var(--bg-primary)] text-[var(--text-primary)]">
       {commandPaletteOpen && (
@@ -2163,7 +2145,6 @@ export default function Layout() {
         )}
       </div>
       {showStatusBar && <StatusBar />}
-      <ArtifactPanel />
     </div>
   );
 }

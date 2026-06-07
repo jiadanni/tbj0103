@@ -9,7 +9,6 @@ import { open } from "@tauri-apps/plugin-shell";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import { api, type AiModel, type OllamaModel, type SearchResult, type QuickSearchResult, type ThoughtItem, type AppSettings, type Memory, type TopicSignature, type ConversationSummary } from "../lib/api";
 import { useChatStore, findUnusedSession } from "../stores/chatStore";
-import { useArtifactStore } from "../stores/artifactStore";
 import { useWorkspaceStore, type Folder, type Workspace } from "../stores/workspaceStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { ChatSession, Message } from "../stores/chatStore";
@@ -2747,30 +2746,24 @@ export default function ChatView() {
               onClick={async () => {
                 if (!effectiveWorkspaceId) { return; }
                 try {
-                  await useArtifactStore.getState().createArtifact({
-                    workspace_id: effectiveWorkspaceId,
-                    session_id: activeChatId,
-                    title: `New ${lang || "Code"} Snippet`,
-                    artifact_type: "code",
-                    language: lang,
-                    content,
-                    description: "Extracted from chat session",
-                  });
+                  const title = `${lang || "Code"} snippet — ${new Date().toLocaleString()}`;
+                  const body = "```" + (lang || "") + "\n" + content + "\n```";
+                  await api.note.create(effectiveWorkspaceId, title, body, null, false);
                 } catch (e) {
-                  console.error("Failed to save artifact:", e);
+                  console.error("Failed to save snippet as note:", e);
                 }
               }}
               className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-xs px-2 py-1 rounded shadow-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300"
             >
               <FileText size={12} />
-              Save as Artifact
+              Save as Snippet
             </button>
           </div>
         );
       }
       return <code className={className} {...props}>{children}</code>;
     }
-  }), [activeChatId, effectiveWorkspaceId, handleLinkClick]);
+  }), [effectiveWorkspaceId, handleLinkClick]);
 
   const [comparePrompt, setComparePrompt] = useState("");
   const [compareResponseA, setCompareResponseA] = useState("");

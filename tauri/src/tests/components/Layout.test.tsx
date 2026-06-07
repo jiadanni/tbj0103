@@ -38,10 +38,6 @@ vi.mock("@/components/CommandPalette", () => ({
   default: () => null,
 }));
 
-vi.mock("@/components/ArtifactPanel", () => ({
-  default: () => null,
-}));
-
 vi.mock("@/components/WindowControls", () => ({
   __esModule: true,
   default: () => null,
