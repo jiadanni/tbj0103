@@ -6,8 +6,6 @@ interface ChatMinimapProps {
   messages: Message[];
   virtuosoRef: React.RefObject<VirtuosoHandle | null>;
   scrollContainer: HTMLDivElement | null;
-  // Retained for prop-contract compatibility with ChatView; intentionally
-  // unused — the minimap renders one pill per user prompt only.
   streamingContent?: string;
   isStreaming?: boolean;
 }
@@ -22,6 +20,7 @@ const PREVIEW_HOVER_RADIUS_PX = 30;
 
 interface MinimapBlock {
   msgIdx: number;
+  role: Message["role"];
   preview: string;
   id: string;
 }
@@ -41,6 +40,8 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
   messages,
   virtuosoRef,
   scrollContainer,
+  streamingContent = "",
+  isStreaming = false,
 }) => {
   const trackRef = useRef<HTMLDivElement>(null);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
@@ -57,23 +58,31 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
   const [layoutTick, setLayoutTick] = useState(0);
   const dragging = useRef(false);
 
-  // One block per user prompt. Assistant, system, and streaming entries are
-  // intentionally skipped — the assistant reply for each turn is always
-  // immediately below its prompt in the scroller.
+  // One block per rendered chat message, plus the active streaming reply. A
+  // single prompt/reply can still be long enough to need navigation.
   const blocks = useMemo<MinimapBlock[]>(() => {
     const result: MinimapBlock[] = [];
     for (let i = 0; i < messages.length; i++) {
       const m = messages[i];
-      if (m.role !== "user") { continue; }
       const firstLine = m.content.split("\n").find((l) => l.trim().length > 0) ?? "";
       result.push({
         msgIdx: i,
+        role: m.role,
         preview: firstLine.length > 60 ? firstLine.slice(0, 60) + "…" : firstLine,
         id: m.id,
       });
     }
+    if (isStreaming && streamingContent.trim().length > 0) {
+      const firstLine = streamingContent.split("\n").find((l) => l.trim().length > 0) ?? "";
+      result.push({
+        msgIdx: messages.length,
+        role: "assistant",
+        preview: firstLine.length > 60 ? firstLine.slice(0, 60) + "…" : firstLine,
+        id: "__streaming__",
+      });
+    }
     return result;
-  }, [messages]);
+  }, [messages, isStreaming, streamingContent]);
 
   const rightOffset = useMemo(() => getMinimapRightOffset(scrollContainer), [scrollContainer]);
 
@@ -90,12 +99,12 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
   // doesn't need to tear down on every messages change.
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
-  const userMsgIdsRef = useRef<Set<string>>(new Set());
-  userMsgIdsRef.current = useMemo(() => {
+  const blockIdsRef = useRef<Set<string>>(new Set());
+  blockIdsRef.current = useMemo(() => {
     const s = new Set<string>();
-    for (const m of messages) { if (m.role === "user") { s.add(m.id); } }
+    for (const b of blocks) { s.add(b.id); }
     return s;
-  }, [messages]);
+  }, [blocks]);
 
   // ResizeObserver-only: fires when the scroller's content size actually
   // changes (new item mounts, image loads). Does no work during pure scroll —
@@ -109,7 +118,7 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
       rafId = 0;
       if (disposed) { return; }
       const cache = offsetCacheRef.current;
-      const wantedIds = userMsgIdsRef.current;
+      const wantedIds = blockIdsRef.current;
       const msgs = messagesRef.current;
       const sh = scrollContainer.scrollHeight;
       const heightDelta = Math.abs(sh - layoutHeightRef.current);
@@ -128,7 +137,7 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
           const idx = Number(idxAttr);
           if (!Number.isFinite(idx) || idx < 0 || idx >= msgs.length) { return; }
           const m = msgs[idx];
-          if (!m || m.role !== "user") { return; }
+          if (!m) { return; }
           if (!cache.has(m.id)) {
             cache.set(m.id, { top: n.offsetTop });
             added++;
@@ -168,13 +177,13 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
     };
   }, [scrollContainer]);
 
-  // When the number of user messages changes (new prompt sent / session loaded),
+  // When the number of minimap blocks changes (new prompt/reply/session loaded),
   // schedule a single harvest. Does not depend on `messages` identity, so
   // streaming token updates do not retrigger it.
-  const userMsgCount = userMsgIdsRef.current.size;
+  const blockCount = blockIdsRef.current.size;
   useEffect(() => {
     schedulerRef.current?.();
-  }, [userMsgCount]);
+  }, [blockCount]);
 
   // Evict cache entries for messages that have been removed (e.g. session switch).
   useEffect(() => {
@@ -339,7 +348,9 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
                 top: topPx,
                 height: BAR_HEIGHT_PX,
                 borderRadius: 1,
-                backgroundColor: "var(--accent-color, #6366f1)",
+                backgroundColor: b.role === "user"
+                  ? "var(--accent-color, #6366f1)"
+                  : "var(--text-secondary, #94a3b8)",
               }}
             />
           );
@@ -358,10 +369,12 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
               height: 6,
               borderRadius: "50%",
               marginRight: 6,
-              backgroundColor: "var(--accent-color, #6366f1)",
+              backgroundColor: positioned[hoveredIdx].role === "user"
+                ? "var(--accent-color, #6366f1)"
+                : "var(--text-secondary, #94a3b8)",
             }}
           />
-          {positioned[hoveredIdx].preview || "User prompt"}
+          {positioned[hoveredIdx].preview || (positioned[hoveredIdx].role === "user" ? "User prompt" : "Assistant reply")}
         </div>
       )}
     </div>

@@ -43,6 +43,22 @@ function createScrollContainer(offsetWidth: number, clientWidth: number) {
 }
 
 describe("ChatMinimap", () => {
+  it("renders for a single prompt and assistant reply", () => {
+    const scrollContainer = createScrollContainer(320, 320);
+
+    render(
+      <ChatMinimap
+        messages={messages.slice(0, 2)}
+        virtuosoRef={{ current: { scrollToIndex: vi.fn() } as unknown as VirtuosoHandle }}
+        scrollContainer={scrollContainer}
+        streamingContent=""
+        isStreaming={false}
+      />
+    );
+
+    expect(screen.getByTestId("chat-minimap")).toBeInTheDocument();
+  });
+
   it("uses a scrollbar-aware right offset when the scroller has a gutter", () => {
     const scrollContainer = createScrollContainer(320, 314);
 
