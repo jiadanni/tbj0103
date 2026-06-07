@@ -8,19 +8,23 @@ Legend: [x] Complete · [/] Partial · [ ] Not started
 
 ## 🔄 Core UX & Navigation
 - [x] **Topic Management**: Full topic editing in WorkspaceSettingsView—view auto-detected topics, add custom topics, remove/blacklist topics to prevent regeneration.
+- [x] **Quick Search tray icon behavior**: Left-click opens search; right-click opens the menu.
 - [ ] **Project Scratchpad**: A persistent per-project markdown canvas/note for manual dumping of context that remains visible or easily accessible during chat.
 - [/] **Unified 'Source' model**: Migrated Documents and Web Captures to a single `sources` table. (Backend complete; specialized views still being phased out).
 - [ ] **Onboarding tooltips**: First-run tour highlighting the sidebar, model selection, and workspace switcher.
 - [ ] **Progress Indicators**: Real progress bars (not just boolean spinners) for embedding, large document imports, and graph rebuilds.
 - [ ] **Configurable keyboard shortcuts**: UI to remap Quick Search and Command Palette triggers.
 - [ ] **Bulk operations**: Expand multi-select session handling beyond the current "Move Sessions" dialog.
+- [ ] **Chat title hover tooltips**: Chat titles truncate too aggressively in narrow sidebars; add title/tooltips so the full name is available on hover.
 
 ## 📈 Observability & System Health
 
 - [ ] **Quick Search Performance**: Optimize debounce for users with >500 notes; currently too aggressive.
 - [ ] **SQL Connection Pool**: Investigate increasing pool size (currently 10) to prevent "Database Busy" during intense background work (topic analysis + indexing).
+- [ ] **Status bar CPU detail**: Add multi-core CPU visibility so the status bar can distinguish one saturated core from whole-system load.
 
 ## 🚀 AI & RAG Enhancements
+- [x] **Model fit fallback guidance**: Avoid misleading "fits/doesn't fit" guidance for model names like `gemma4` that do not expose a parsable parameter size.
 - [/] **Adaptive Context Window**: Show an indicator of current chat token count vs. estimated window limits.
 - [/] **Auto-summarization**: Generate 1-sentence summaries for documents/web captures on upload (DB field exists; automation pending).
 - [/] **Recursive Semantic Search**: Pull in outbound `[[wiki-links]]` for highly relevant RAG results to expand discovery.
@@ -34,6 +38,7 @@ Legend: [x] Complete · [/] Partial · [ ] Not started
 - [ ] **H4 — Memoize attachment processing**: Wrap `splitAttachmentIntoExcerpts`, `buildAttachmentContext`, and `buildWorkspaceDomainContext` (defined near the top of `ChatView.tsx`) in `useMemo` keyed on attachment identity. Instrument with `performance.mark` first to confirm cost. Only escalate to a Web Worker if a specific attachment size demonstrably blocks the main thread.
 - [ ] **M7 — Stabilize ChatView effect deps**: Audit the `useEffect` that loads chat messages for the active session in `ChatView.tsx` (the one that depends on `activeChatId` plus several store-returned action wrappers). Stabilize unstable function references in its dependency array per the Effect Safety guidance in AGENTS.md.
 - [ ] **M8 — Pagination defaults on folder/artifact list**: Add default `limit` parameters to `folder.list` and `artifact.list` — frontend wrappers in `src/lib/api.ts`, Rust commands in `src-tauri/src/commands/`, and the call sites in `ChatView.tsx`.
+- [ ] **M9 — Chat autoscroll jank**: Scrolling to the bottom can briefly hang or feel jerky after new messages; profile the message list/minimap/scroll follow path before changing behavior.
 
 ## ⚡ Backend Performance — Phase 2
 - [x] **B1 — Dashboard recent_activity per-branch LIMIT**: Rewrite the `UNION ALL` in `get_dashboard_summary` (`src-tauri/src/commands/dashboard.rs`) so each branch has its own `ORDER BY updated_at DESC LIMIT 6` before the outer combine. Added supporting composite indices `idx_project_notes_workspace_updated`, `idx_concept_nodes_workspace_updated`, `idx_sources_workspace_updated` in `schema.sql`. `chat_sessions` is already covered by `idx_chat_sessions_active`. Indices on `source_chunks(source_id)` and `messages(session_id)` were already present.
@@ -47,11 +52,15 @@ Legend: [x] Complete · [/] Partial · [ ] Not started
 - [ ] **Surgical FTS Triggers**: Optimize SQLite triggers to only update specific FTS rows on change, rather than full session re-indexing.
 - [ ] **SQL Migrations**: Transition from monolithic `schema.sql` to a directory of versioned, incremental migration files.
 - [ ] **Robust Stream Handling**: Refactor backend streaming to use stateful UTF-8 decoding to handle split multi-byte characters and JSON fragments reliably.
+- [ ] **Wrap each migration in a transaction**: Each `vN_*` block in `src-tauri/src/db/mod.rs` runs `conn.execute_batch(...)` directly. DML batches are implicitly transactional in SQLite, but multi-statement DDL is murkier — v71's `ALTER TABLE … RENAME` succeeded while downstream cleanup left a dangling `quick_search_chat_sessions_au` trigger, blocking startup until v73 was added to repair it. Audit whether `BEGIN; … INSERT INTO _migrations …; COMMIT;` around each block would make a half-failed migration self-rollback. Verify SQLite DDL-in-transaction semantics first (some DDL implicitly commits in other engines; SQLite is more forgiving but the edge cases need confirmation).
+- [ ] **Prevent duplicate migration version numbers**: Two pairs of migrations share a number (`v26_thought_session_id` / `v26_sources_unification`; `v27_switch_workspace_to_chat` / `v27_sources_folder_tokens`) from parallel branches both grabbing the next free index. Harmless today because dispatch keys on the full name string, but it's a signal there's no "reserve a number" gate. Options: (a) switch to timestamp-prefixed names (`20260315120000_add_x`) so collisions are impossible, or (b) extend `tauri/scripts/lint-migrations.mjs` to fail when two entries in `ALL_MIGRATION_NAMES` share a numeric prefix.
+- [ ] **Split `db/mod.rs` into per-migration files**: `db/mod.rs` is at 2700 lines with 75 migrations; each new one means scrolling past everything that came before and merge conflicts on `ALL_MIGRATION_NAMES` get more likely as devs work in parallel. Move each migration into its own file under `src-tauri/src/db/migrations/vN_*.rs`, with `mod.rs` reduced to a registry that lists them in order. Not urgent — defer until the file size actively bites during work.
 
 ## 🛡️ Security & Privacy
 - [x] **Database Encryption**: SQLCipher integration with PIN-tied DEK wrapping (Argon2id KEK, AES-256-GCM, sidecar key-wrap file). Enable/disable stages a pending action that runs at next launch via a pre-DB unlock view. Default off. See `services/db_encryption.rs`, `commands/boot.rs`, `views/BootUnlockView.tsx`.
 - [ ] **Biometric DEK in OS keychain**: macOS Keychain with `biometryCurrentSet` and Windows Hello via `KeyCredentialManager` to skip PIN typing on unlock. Linux remains PIN-only (no consistent biometric-gated secret store). Land alongside any unlock-flow polish.
 - [ ] **PIN Recovery flow**: Implement a "Mnemonic/Recovery Key" fallback or a secure "Reset App Data" flow on the PIN screen. With DB encryption enabled, losing the PIN means losing the data — recovery becomes load-bearing.
+- [ ] **Private object-level sync (long-term stretch)**: Replace raw app-data / SQLite-file Git sync with encrypted object-level sync. Keep SQLite as the local source of truth, but sync row-level records or append-only events for notes, chat sessions, messages, memories, settings, and sidecar files through a small private relay or encrypted object store. Avoid syncing `aetherium.db` directly; design conflict handling around stable IDs, `updated_at`, tombstones, device IDs, and per-entity merge rules.
 - [ ] **Secure JSON Extraction**: Replace substring-based extraction with a state machine to handle Markdown-wrapped AI responses more reliably.
 
 ## 📅 Data Lifecycle & Integrations
@@ -72,8 +81,3 @@ Legend: [x] Complete · [/] Partial · [ ] Not started
 - [ ] **Focus Drift**: Command Palette/Search Box closing sometimes scrolls the main window to the top on macOS.
 - [ ] **Navigation Stalling**: Occasional view update failure when clicking a search result despite URL changes.
 - [ ] **FTS Multi-word Tags**: Improved quoting needed for complex topic filters (Partially fixed).
-no fit guidance for gemma 4 ✓
-cpu status bar multicore
-chat titles truncated unecessarily and missing a tooltip on hover
-left click on icon to open search, right for menu ✓
-scrolling chat to bottom hangs breifly jerky
