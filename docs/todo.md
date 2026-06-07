@@ -75,6 +75,37 @@ Legend: [x] Complete · [/] Partial · [ ] Not started
 ---
 
 
+## 🧹 Dead Schema & Zombie Features (Audit 2026-06-07)
+
+Empty-table audit of the live DB (`aetherium.db`) revealed tables with no rows in production. Categorized by code-path status (`grep -rEi "INSERT INTO <table>" src-tauri/src`).
+
+**Dead schema (zero reads, zero writes — drop candidates):**
+- [ ] **Remove `learning_paths` table**: 0 inserts, 0 selects in Rust backend. Migration shipped, feature never wired or already removed. Confirm no frontend TS references before dropping.
+- [ ] **Remove `path_milestones` table**: 0 inserts, 0 selects. Same status as `learning_paths` — likely paired feature.
+
+**Zombie reads (selects with no inserts — silent empty results in UI):**
+- [ ] **`citations` table read but never written**: 0 inserts, 2 selects. Citation pipeline missing producer; consumers return empty arrays silently.
+- [ ] **`audio_transcriptions` table read but never written**: 0 inserts, 2 selects. Same pattern.
+
+**Broken producers (insert sites exist but zero rows in prod — likely runtime bugs):**
+- [ ] **RAG ingestion not landing rows**: `sources` (12 insert sites) and `source_chunks` (8 insert sites) are empty despite being core to RAG. Trace ingestion: IPC handler → service → SQLite write. Verify command is in `generate_handler![…]` and that the UI upload path actually invokes it.
+- [ ] **`artifacts` empty but heavily read**: 2 insert sites, 14 select sites. Strong signal that consumers expect data the producer never delivers.
+- [ ] **`artifact_embeddings` empty**: 1 insert site, depends on `artifacts` producer above.
+- [ ] **`document_chunks` empty**: 1 insert site, 3 selects. Likely tied to broken `sources` ingestion.
+- [ ] **`uploaded_documents` empty**: 1 insert site, 3 selects. Verify upload IPC fires end-to-end.
+- [ ] **`web_captures` empty**: 1 insert site, 5 selects. Web-capture save path needs runtime trace.
+- [ ] **`concept_mentions` empty**: 5 insert sites, 10 selects. Knowledge graph extraction is not running on chat/notes.
+- [ ] **`concept_change_proposals` empty**: 4 insert sites, 7 selects. Concept-edit proposal flow not firing.
+- [ ] **`graph_statistics` empty**: 3 insert sites, 5 selects. Graph stats job not running or not persisting.
+- [ ] **`flashcard_topics` empty**: 1 insert, 12 selects. Flashcard topic creation broken; UI almost certainly reads empty arrays.
+- [ ] **Quiz subsystem dark**: `quizzes` (1 insert, 3 selects), `quiz_questions` (1 insert, 2 selects), `quiz_answers` (1 insert, 5 selects). Quiz generation pipeline never produces output.
+- [ ] **`calendar_alarms` empty**: 1 insert, 4 selects. Calendar alarm creation path not exercised.
+- [ ] **`note_templates` empty**: 1 insert, 6 selects. Template creation UI may be missing or unwired.
+
+**Repro recipe per row:** trigger the feature in the UI, open DevTools, watch for the corresponding `invoke` call and the matching `[ipc]` log line. If `invoke` rejects with "Command not found" → step 3 of the Tauri Command Registration checklist was skipped. If it resolves but no row lands → the handler is silently swallowing an error; instrument and re-run.
+
+---
+
 ## 🐞 Known Issues
 - [ ] **macOS PIN Lock Loop**: PIN screen re-appearing immediately if Touch ID is partially configured.
 - [ ] **Flex Overflow**: Long file names can still break sidebar width in specific split-pane configurations.
