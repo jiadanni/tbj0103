@@ -264,12 +264,12 @@ export default function Sidebar({
                   ? `flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${
                       isPreferencesActive
                         ? activeNavClassName
-                        : "border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm hover:border-[var(--accent-color)]"
+                        : inactiveNavClassName
                     }`
                   : `flex flex-1 items-center gap-2 rounded-xl px-2.5 py-2 text-sm font-medium transition-colors ${
                       isPreferencesActive
                         ? activeNavClassName
-                        : "border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm hover:border-[var(--accent-color)]"
+                        : inactiveNavClassName
                     }`
               }
             >
