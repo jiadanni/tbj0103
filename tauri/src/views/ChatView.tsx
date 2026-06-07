@@ -2774,6 +2774,7 @@ export default function ChatView() {
   }, []);
 
   const markdownComponents = useMemo(() => ({
+    pre: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
     a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
       <a
         {...props}
@@ -4016,6 +4017,11 @@ export default function ChatView() {
     });
   }
 
+  function invalidateFollowUps() {
+    followUpsGenRef.current += 1;
+    setFollowUps([]);
+  }
+
   async function sendMessage() {
     const modelForSend = composerMode === "family"
       ? (activeFamilyDefaultModelId ?? selectedModel)
@@ -4704,6 +4710,7 @@ export default function ChatView() {
     setIsStreaming(true);
     setStreamingSession(activeChatId);
     setLastUserMessage(editContent.trim());
+    invalidateFollowUps();
 
     const optimisticUserMsg: Message = {
       id: window.crypto.randomUUID(),
@@ -4733,6 +4740,7 @@ export default function ChatView() {
             .then((persisted) => {
               updateMessage(sid, persisted);
               void refreshSessionMetadataAfterAssistant(sid, selectedModel, editContent.trim());
+              triggerFollowUps(sid);
             })
             .catch(() => { });
           if (tokensUsed && tokensUsed > 0) {
@@ -4795,6 +4803,7 @@ export default function ChatView() {
 
     const trimmedMessages = activeMessages.slice(0, idx);
     setMessages(activeChatId, trimmedMessages);
+    invalidateFollowUps();
 
     setIsStreaming(true);
     setStreamingSession(activeChatId);
@@ -4811,6 +4820,7 @@ export default function ChatView() {
             .then((persisted) => {
               updateMessage(sid, persisted);
               void refreshSessionMetadataAfterAssistant(sid, modelId);
+              triggerFollowUps(sid);
               setMessageVariations((prev) => {
                 const existing: Message[] = prev.get(msgId) ?? [];
                 const updated = [...existing, persisted];
@@ -4863,6 +4873,7 @@ export default function ChatView() {
 
     const deletedIds = activeMessages.slice(idx).map((m) => m.id);
     setMessages(activeChatId, activeMessages.slice(0, idx));
+    invalidateFollowUps();
     setMessageVariations((prev) => {
       const next = new Map(prev);
       deletedIds.forEach((id) => next.delete(id));
