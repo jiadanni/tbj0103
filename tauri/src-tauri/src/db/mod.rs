@@ -86,6 +86,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v70_project_notes_pinning",
     "v71_conversation_summary_types",
     "v72_make_memories_workspace_nullable",
+    "v73_repair_quick_search_chat_sessions_au",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -2103,6 +2104,26 @@ fn run_migrations(conn: &Connection) -> Result<()> {
              DROP TABLE memories_old;
              PRAGMA foreign_keys=ON;
              INSERT INTO _migrations(name) VALUES('v72_make_memories_workspace_nullable');",
+        )?;
+    }
+
+    // v73: repair `quick_search_chat_sessions_au` for databases where v71's
+    // ALTER TABLE ... RENAME caused SQLite to rewrite the trigger body to
+    // reference `conversation_summaries_old`. After v71 dropped that table the
+    // trigger dangles, and any subsequent UPDATE on chat_sessions panics with
+    // "no such table: main.conversation_summaries_old". Drop it here — the
+    // schema.sql apply that runs right after migrations recreates the trigger
+    // with the correct `conversation_summaries` reference.
+    let applied_v73: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v73_repair_quick_search_chat_sessions_au'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v73 == 0 {
+        conn.execute_batch(
+            "DROP TRIGGER IF EXISTS quick_search_chat_sessions_au;
+             INSERT INTO _migrations(name) VALUES('v73_repair_quick_search_chat_sessions_au');",
         )?;
     }
 
