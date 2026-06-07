@@ -138,6 +138,8 @@ export default function ImportSettingsSection() {
   const [lmStudioSelectedFolders, setLmStudioSelectedProjects] = useState<Set<string>>(new Set());
   const [lmStudioScanning, setLmStudioScanning] = useState(false);
   const [lmStudioScanErrors, setLmStudioScanErrors] = useState(0);
+  const [lmStudioMergeExisting, setLmStudioMergeExisting] = useState(false);
+  const [lmStudioCloneEdited, setLmStudioCloneEdited] = useState(false);
   const [importingGemini, setImportingGemini] = useState(false);
   const [geminiFilePath, setGeminiFilePath] = useState<string | null>(null);
   const [geminiPreviews, setGeminiPreviews] = useState<ImportConversation[]>([]);
@@ -150,6 +152,8 @@ export default function ImportSettingsSection() {
   const [claudeIncludeConversations, setClaudeIncludeConversations] = useState(true);
   const [claudeIncludeProjects, setClaudeIncludeProjects] = useState(true);
   const [claudeIncludeMemories, setClaudeIncludeMemories] = useState(true);
+  const [claudeMergeExisting, setClaudeMergeExisting] = useState(false);
+  const [claudeCloneEdited, setClaudeCloneEdited] = useState(false);
   const [claudeFolderPath, setClaudeFolderPath] = useState<string | null>(null);
   const [claudeDetectedFormat, setClaudeDetectedFormat] = useState<"legacy" | "v2" | null>(null);
   const [claudeFilesFound, setClaudeFilesFound] = useState<{ conversations: boolean; projects: boolean; memories: boolean } | null>(null);
@@ -295,8 +299,10 @@ export default function ImportSettingsSection() {
         resolvedName !== defaultName ? resolvedName : undefined,
         selectedConversationIds,
         selectedFolderIds.length > 0 ? selectedFolderIds : undefined,
+        lmStudioMergeExisting,
+        lmStudioMergeExisting && lmStudioCloneEdited,
       );
-      if (result.imported < 1 && result.skipped > 0) {
+      if (result.imported < 1 && result.appended_sessions < 1 && result.skipped > 0) {
         await message(`All ${result.skipped} conversation${result.skipped === 1 ? "" : "s"} already imported — nothing new to add.`, {
           title: "LM Studio import",
           kind: "info",
@@ -304,7 +310,7 @@ export default function ImportSettingsSection() {
         resetLmStudioPreview();
         return;
       }
-      if (result.imported < 1) {
+      if (result.imported < 1 && result.appended_sessions < 1) {
         throw new Error("LM Studio import completed without importing any conversations.");
       }
 
@@ -326,6 +332,14 @@ export default function ImportSettingsSection() {
         `${result.imported} conversation${result.imported === 1 ? "" : "s"} imported.`,
         `${result.folders_created} project${result.folders_created === 1 ? "" : "s"} created.`,
       ];
+      if (result.appended_sessions > 0) {
+        lines.push(
+          `${result.appended_messages} new message${result.appended_messages === 1 ? "" : "s"} added to ${result.appended_sessions} existing chat${result.appended_sessions === 1 ? "" : "s"}.`,
+        );
+      }
+      if (result.cloned > 0) {
+        lines.push(`${result.cloned} edited chat${result.cloned === 1 ? "" : "s"} cloned as new copies.`);
+      }
       if (result.skipped > 0) {
         lines.push(`${result.skipped} duplicate${result.skipped === 1 ? "" : "s"} skipped.`);
       }
@@ -893,6 +907,8 @@ export default function ImportSettingsSection() {
         selectedConversationIds: conversationIdsToImport.size > 0 ? [...conversationIdsToImport] : undefined,
         selectedProjectIds: [...claudeSelectedFolders],
         chatProjectOverrides: Object.keys(chatProjectOverrides).length > 0 ? chatProjectOverrides : undefined,
+        mergeExisting: claudeMergeExisting,
+        cloneEdited: claudeMergeExisting && claudeCloneEdited,
       });
 
       const finalFreshWs = await api.workspace.list();
@@ -916,6 +932,17 @@ export default function ImportSettingsSection() {
       const lines: string[] = [];
       if (result.imported > 0) {
         lines.push(`${result.imported} conversation${result.imported === 1 ? "" : "s"} imported.`);
+      }
+      if (result.appended_sessions > 0) {
+        lines.push(
+          `${result.appended_messages} new message${result.appended_messages === 1 ? "" : "s"} added to ${result.appended_sessions} existing chat${result.appended_sessions === 1 ? "" : "s"}.`,
+        );
+      }
+      if (result.cloned > 0) {
+        lines.push(`${result.cloned} edited chat${result.cloned === 1 ? "" : "s"} cloned as new copies.`);
+      }
+      if (result.skipped > 0) {
+        lines.push(`${result.skipped} duplicate${result.skipped === 1 ? "" : "s"} skipped.`);
       }
       if (result.memories_imported > 0) {
         lines.push(`${result.memories_imported} memor${result.memories_imported === 1 ? "y" : "ies"} imported.`);
@@ -1184,6 +1211,32 @@ export default function ImportSettingsSection() {
                     {lmStudioScanErrors} file{lmStudioScanErrors === 1 ? "" : "s"} could not be previewed and will be skipped unless fixed.
                   </p>
                 )}
+
+                <div className="flex flex-col gap-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2">
+                  <label className="flex items-center gap-2 text-[11px] text-[var(--text-secondary)]">
+                    <input
+                      type="checkbox"
+                      checked={lmStudioMergeExisting}
+                      onChange={(e) => setLmStudioMergeExisting(e.target.checked)}
+                      className="accent-[var(--accent-color)]"
+                    />
+                    <span>
+                      Merge re-imports — append new messages to existing chats instead of skipping duplicates.
+                    </span>
+                  </label>
+                  <label className={`flex items-center gap-2 pl-5 text-[11px] ${lmStudioMergeExisting ? "text-[var(--text-secondary)]" : "text-[var(--text-muted)] opacity-60"}`}>
+                    <input
+                      type="checkbox"
+                      checked={lmStudioCloneEdited}
+                      onChange={(e) => setLmStudioCloneEdited(e.target.checked)}
+                      disabled={!lmStudioMergeExisting}
+                      className="accent-[var(--accent-color)]"
+                    />
+                    <span>
+                      For chats edited locally, import the source as a new copy (preserves your edits).
+                    </span>
+                  </label>
+                </div>
 
                 <div className="flex items-center justify-end gap-2">
                   <button
@@ -1900,7 +1953,33 @@ export default function ImportSettingsSection() {
 
             {/* ── Action row ───────────────────────────────────── */}
             {(claudeProjects.length > 0 || claudeOrphans.length > 0) && (
-              <div className="mt-4 flex items-center justify-end gap-2">
+              <div className="mt-4 flex flex-col gap-2">
+                <div className="flex flex-col gap-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2">
+                  <label className="flex items-center gap-2 text-[11px] text-[var(--text-secondary)]">
+                    <input
+                      type="checkbox"
+                      checked={claudeMergeExisting}
+                      onChange={(e) => setClaudeMergeExisting(e.target.checked)}
+                      className="accent-[var(--accent-color)]"
+                    />
+                    <span>
+                      Merge re-imports — append new messages to existing chats instead of skipping duplicates.
+                    </span>
+                  </label>
+                  <label className={`flex items-center gap-2 pl-5 text-[11px] ${claudeMergeExisting ? "text-[var(--text-secondary)]" : "text-[var(--text-muted)] opacity-60"}`}>
+                    <input
+                      type="checkbox"
+                      checked={claudeCloneEdited}
+                      onChange={(e) => setClaudeCloneEdited(e.target.checked)}
+                      disabled={!claudeMergeExisting}
+                      className="accent-[var(--accent-color)]"
+                    />
+                    <span>
+                      For chats edited locally, import the source as a new copy (preserves your edits).
+                    </span>
+                  </label>
+                </div>
+                <div className="flex items-center justify-end gap-2">
                 <button
                   onClick={() => {
                     setClaudeFolderPath(null);
@@ -1938,6 +2017,7 @@ export default function ImportSettingsSection() {
                   {importingClaude ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
                   {importingClaude ? "Importing..." : "Import"}
                 </button>
+                </div>
               </div>
             )}
           </div>

@@ -70,6 +70,9 @@ Legend: [x] Complete · [/] Partial · [ ] Not started
 - [ ] **Entity ownership logic**: Formalize rules for whether linked Notes/Docs move with a project or stay at the workspace root.
 
 
+## 🔁 Sync & Multi-Device
+- [ ] **Optional Postgres sync server (`aetherium-sync`)**: New standalone Rust crate at `sync-server/` (outside `tauri/`) providing real-time multi-device sync. SQLite remains local source of truth; sync is opt-in. Architecture: `axum` + `sqlx` + Postgres 16, WebSocket push driven by Postgres `LISTEN`/`NOTIFY`. Single-user, bearer-token auth. Phased: **(A)** push/pull HTTP with last-write-wins on `updated_at`, manual "sync now" button; **(B)** real-time WebSocket push via `pg_notify` trigger on a `sync_log` table, sub-second propagation; **(C)** per-field LWW using a `field_updated_at JSONB` column so concurrent edits to different fields of the same row stop overwriting; **(D, optional)** Automerge CRDT for `notes.content` only. Preconditions: add `updated_at` columns + bump triggers to `chat_messages`, `document_chunks`, `learning_cards`, `web_captures`, `concept_links` in `tauri/src-tauri/src/schema.sql` (UUID PKs already in place across all syncable tables, so no ID remapping needed). Migration ladder uses `sqlx migrate` with reversible up/down scripts as the explicit Postgres-migration learning exercise. Full design in `~/.claude/plans/i-know-the-app-peppy-kurzweil.md`. Hosting (Tailscale/home vs Fly.io/VPS) deferred until Phase B.
+
 ## 🎮 Demo Mode
 - [ ] **"Try Demo" entry**: Allow jumping into demo mode from onboarding without requiring a PIN.
 - [ ] **Scripted AI Mock**: Use a local mock service for AI responses to allow demo functionality without model downloads.

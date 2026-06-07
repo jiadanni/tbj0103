@@ -826,6 +826,109 @@ pub fn import_chat_data(
     Ok(session_id)
 }
 
+/// Outcome of comparing an incoming `ChatFileData` against an existing chat session.
+///
+/// Used by re-import flows that want to merge new tail messages into a chat
+/// that's already been imported, instead of either skipping or duplicating it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReconcileOutcome {
+    /// Existing session has the same (role, content) sequence as the source.
+    Identical,
+    /// Existing session is a strict prefix of the source; `new` rows were appended.
+    Appended { new: usize },
+    /// Existing session diverges from the source within the overlap (user-edited).
+    Edited,
+}
+
+/// Compare an incoming parsed chat against an existing session.
+///
+/// Matching is by `(role, content)` in `created_at` order. Whitespace is preserved
+/// (no normalization) — exporters round-trip content verbatim.
+///
+/// * `Identical`: existing row count == source filtered count and all overlap matches.
+/// * `Appended { new }`: existing rows are a strict prefix; appends source's tail
+///   preserving its original timestamps, ids generated locally. Bumps
+///   `chat_sessions.updated_at` to the source's `updated_at`.
+/// * `Edited`: returns without modifying anything.
+pub fn reconcile_chat_data(
+    conn: &Connection,
+    data: &ChatFileData,
+    existing_session_id: &str,
+) -> Result<ReconcileOutcome, String> {
+    // Source-side filtered message list (matches the filter used by import_chat_data).
+    let source: Vec<&ChatFileMessage> = data
+        .messages
+        .iter()
+        .filter(|m| {
+            let role = m.role.trim().to_lowercase();
+            matches!(role.as_str(), "user" | "assistant" | "system")
+        })
+        .collect();
+
+    // Existing rows for this session, ordered.
+    let mut stmt = conn
+        .prepare(
+            "SELECT role, content FROM messages \
+             WHERE session_id = ?1 \
+             ORDER BY created_at ASC, id ASC",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows: Vec<(String, String)> = stmt
+        .query_map(rusqlite::params![existing_session_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    let overlap = rows.len().min(source.len());
+    for (i, existing) in rows.iter().take(overlap).enumerate() {
+        let src = source[i];
+        let src_role = src.role.trim().to_lowercase();
+        if existing.0 != src_role || existing.1 != src.content {
+            return Ok(ReconcileOutcome::Edited);
+        }
+    }
+
+    if rows.len() > source.len() {
+        // User has continued the chat past the source — nothing to add, treat
+        // as identical for "no work to do" purposes.
+        return Ok(ReconcileOutcome::Identical);
+    }
+    if rows.len() == source.len() {
+        return Ok(ReconcileOutcome::Identical);
+    }
+
+    // Append the new tail.
+    let new_count = source.len() - rows.len();
+    for src in source.iter().skip(rows.len()) {
+        let role = src.role.trim().to_lowercase();
+        conn.execute(
+            "INSERT INTO messages \
+                 (id, session_id, role, content, model_name, tokens_used, duration_ms, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                uuid::Uuid::new_v4().to_string(),
+                existing_session_id,
+                role,
+                src.content,
+                src.model,
+                src.tokens_used,
+                src.duration_ms,
+                src.timestamp
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    conn.execute(
+        "UPDATE chat_sessions SET updated_at = ?1 WHERE id = ?2",
+        rusqlite::params![data.updated_at, existing_session_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(ReconcileOutcome::Appended { new: new_count })
+}
+
 /// Re-encrypt (or decrypt) every chat file under `chats_dir` (walks recursively).
 /// Called when the user enables/disables encryption or changes the passphrase.
 /// Returns the number of files re-written.

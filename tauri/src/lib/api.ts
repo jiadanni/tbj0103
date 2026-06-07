@@ -1227,10 +1227,20 @@ export const api = {
         errors: number;
         error_messages: string[];
       }>("preview_lmstudio_folder", { folderPath }),
-    importLmStudioFolder: (folderPath: string, workspaceName?: string, selectedIds?: string[], selectedFolderIds?: string[]) =>
+    importLmStudioFolder: (
+      folderPath: string,
+      workspaceName?: string,
+      selectedIds?: string[],
+      selectedFolderIds?: string[],
+      mergeExisting?: boolean,
+      cloneEdited?: boolean,
+    ) =>
       invoke<{
         imported: number;
         skipped: number;
+        appended_sessions: number;
+        appended_messages: number;
+        cloned: number;
         workspace_id: string;
         workspace_name: string;
         folders_created: number;
@@ -1241,6 +1251,8 @@ export const api = {
         workspaceName: workspaceName ?? null,
         selectedIds: selectedIds ?? null,
         selectedFolderIds: selectedFolderIds ?? null,
+        mergeExisting: mergeExisting ?? null,
+        cloneEdited: cloneEdited ?? null,
       }),
     importMultipleFolders: (folderPaths: string[]) =>
       invoke<{
@@ -1375,9 +1387,15 @@ export const api = {
       selectedConversationIds?: string[];
       selectedProjectIds?: string[];
       chatProjectOverrides?: Record<string, string>;
+      mergeExisting?: boolean;
+      cloneEdited?: boolean;
     }) =>
       invoke<{
         imported: number;
+        skipped: number;
+        appended_sessions: number;
+        appended_messages: number;
+        cloned: number;
         memories_imported: number;
         errors: number;
         error_messages: string[];
@@ -1389,6 +1407,8 @@ export const api = {
         selectedConversationIds: args.selectedConversationIds ?? null,
         selectedProjectIds: args.selectedProjectIds ?? null,
         chatProjectOverrides: args.chatProjectOverrides ?? null,
+        mergeExisting: args.mergeExisting ?? null,
+        cloneEdited: args.cloneEdited ?? null,
       }),
   },
 

@@ -137,6 +137,9 @@ vi.mock("@/lib/api", () => ({
       importLmStudioFolder: vi.fn(() => Promise.resolve({
         imported: 1,
         skipped: 0,
+        appended_sessions: 0,
+        appended_messages: 0,
+        cloned: 0,
         workspace_id: "workspace-1",
         workspace_name: "LM Imports",
         folders_created: 1,
@@ -238,6 +241,8 @@ describe("ImportSettingsSection", () => {
         undefined,
         ["project-b-chat"],
         ["Project B"],
+        false,
+        false,
       );
     });
 

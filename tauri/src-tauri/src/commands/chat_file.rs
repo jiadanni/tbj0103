@@ -521,15 +521,24 @@ pub fn preview_lmstudio_folder(folder_path: String) -> Result<serde_json::Value,
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn import_lmstudio_folder(
     folder_path: String,
     workspace_name: Option<String>,
     selected_ids: Option<Vec<String>>,
     selected_folder_ids: Option<Vec<String>>,
+    // Re-import behavior. When `merge_existing` is true, duplicates are reconciled
+    // (new tail messages appended). When false (default), duplicates are skipped.
+    // `clone_edited` only matters when merging: if the existing chat has been edited
+    // locally, import the source as a fresh session with a new UUID instead of skipping.
+    merge_existing: Option<bool>,
+    clone_edited: Option<bool>,
     chats_dir_state: State<ChatsDirState>,
     crypto: State<ChatCryptoState>,
     db_state: State<DbState>,
 ) -> Result<serde_json::Value, String> {
+    let merge_existing = merge_existing.unwrap_or(false);
+    let clone_edited = clone_edited.unwrap_or(false);
     let conn = db_state.0.get().map_err(|e| e.to_string())?;
     let folder = validate_user_path(&folder_path, true)?;
     if !folder.is_dir() {
@@ -578,6 +587,9 @@ pub fn import_lmstudio_folder(
     let mut session_ids = Vec::new();
     let mut errors = Vec::new();
     let mut skipped = 0usize;
+    let mut appended_messages = 0usize;
+    let mut appended_sessions = 0usize;
+    let mut cloned = 0usize;
     let mut matched_selection = 0usize;
 
     for conv in &conversations {
@@ -634,16 +646,42 @@ pub fn import_lmstudio_folder(
                         folder_id
                     };
 
-                    // Skip duplicate: same title + created_at in same workspace/folder
-                    let duplicate: bool = conn.query_row(
-                        "SELECT 1 FROM chat_sessions WHERE workspace_id = ?1 AND folder_id = ?2 AND title = ?3 AND created_at = ?4 AND is_imported = 1 LIMIT 1",
+                    // Find existing imported chat with same title + created_at in same workspace/folder.
+                    let existing_session_id: Option<String> = conn.query_row(
+                        "SELECT id FROM chat_sessions WHERE workspace_id = ?1 AND folder_id = ?2 AND title = ?3 AND created_at = ?4 AND is_imported = 1 LIMIT 1",
                         rusqlite::params![workspace_id, folder_id, data.title, data.created_at],
-                        |_| Ok(true),
-                    ).unwrap_or(false);
+                        |row| row.get::<_, String>(0),
+                    ).ok();
 
-                    if duplicate {
-                        skipped += 1;
-                        continue;
+                    if let Some(existing) = existing_session_id {
+                        if !merge_existing {
+                            skipped += 1;
+                            continue;
+                        }
+                        match chat_file_store::reconcile_chat_data(&conn, &data, &existing) {
+                            Ok(chat_file_store::ReconcileOutcome::Identical) => {
+                                skipped += 1;
+                                continue;
+                            }
+                            Ok(chat_file_store::ReconcileOutcome::Appended { new }) => {
+                                appended_messages += new;
+                                appended_sessions += 1;
+                                session_ids.push(existing);
+                                continue;
+                            }
+                            Ok(chat_file_store::ReconcileOutcome::Edited) => {
+                                if !clone_edited {
+                                    skipped += 1;
+                                    continue;
+                                }
+                                // Fall through to import as a fresh session (new uuid).
+                                cloned += 1;
+                            }
+                            Err(e) => {
+                                errors.push(format!("{}: reconcile failed: {e}", conv.path.display()));
+                                continue;
+                            }
+                        }
                     }
 
                     match chat_file_store::import_chat_data(&conn, &data, &workspace_id, &folder_id)
@@ -700,6 +738,9 @@ pub fn import_lmstudio_folder(
     Ok(serde_json::json!({
         "imported": session_ids.len(),
         "skipped": skipped,
+        "appended_sessions": appended_sessions,
+        "appended_messages": appended_messages,
+        "cloned": cloned,
         "workspace_id": workspace_id.unwrap_or_default(),
         "workspace_name": workspace_name,
         "folders_created": folder_map.len(),
@@ -1691,11 +1732,17 @@ pub fn import_claude_files(
     // chat_uuid → claude project_uuid. Routes an otherwise-orphan chat into
     // the folder mapped to that project (must also appear in folder_mappings).
     chat_project_overrides: Option<std::collections::HashMap<String, String>>,
+    // Re-import behavior — see `import_lmstudio_folder` for the semantics.
+    merge_existing: Option<bool>,
+    clone_edited: Option<bool>,
     chats_dir_state: State<ChatsDirState>,
     crypto: State<ChatCryptoState>,
     db_state: State<DbState>,
 ) -> Result<serde_json::Value, String> {
     use chat_file_store::claude_v2;
+
+    let merge_existing = merge_existing.unwrap_or(false);
+    let clone_edited = clone_edited.unwrap_or(false);
 
     let conn = db_state.0.get().map_err(|e| e.to_string())?;
     let folder = validate_user_path(&folder_path, true)?;
@@ -1708,6 +1755,10 @@ pub fn import_claude_files(
 
     let mut session_ids = Vec::new();
     let mut errors = Vec::new();
+    let mut skipped = 0usize;
+    let mut appended_sessions = 0usize;
+    let mut appended_messages = 0usize;
+    let mut cloned = 0usize;
 
     let overrides = chat_project_overrides.unwrap_or_default();
 
@@ -1739,15 +1790,46 @@ pub fn import_claude_files(
                 )
                 .map_err(|e| format!("Folder {} not found: {e}", folder_id))?;
 
-            let exists: bool = conn
+            // Dedup by (workspace, folder, title, created_at) on imported sessions.
+            // (The historical `WHERE id = data.id` check was a no-op because
+            // `import_chat_data` always generates a fresh chat_sessions.id.)
+            let existing_session_id: Option<String> = conn
                 .query_row(
-                    "SELECT 1 FROM chat_sessions WHERE id = ?1",
-                    rusqlite::params![data.id],
-                    |_| Ok(true),
+                    "SELECT id FROM chat_sessions WHERE workspace_id = ?1 AND folder_id = ?2 AND title = ?3 AND created_at = ?4 AND is_imported = 1 LIMIT 1",
+                    rusqlite::params![workspace_id, folder_id, data.title, data.created_at],
+                    |row| row.get::<_, String>(0),
                 )
-                .unwrap_or(false);
-            if exists {
-                return Ok(());
+                .ok();
+
+            if let Some(existing) = existing_session_id {
+                if !merge_existing {
+                    skipped += 1;
+                    return Ok(());
+                }
+                match chat_file_store::reconcile_chat_data(&conn, data, &existing) {
+                    Ok(chat_file_store::ReconcileOutcome::Identical) => {
+                        skipped += 1;
+                        return Ok(());
+                    }
+                    Ok(chat_file_store::ReconcileOutcome::Appended { new }) => {
+                        appended_messages += new;
+                        appended_sessions += 1;
+                        session_ids.push(existing);
+                        return Ok(());
+                    }
+                    Ok(chat_file_store::ReconcileOutcome::Edited) => {
+                        if !clone_edited {
+                            skipped += 1;
+                            return Ok(());
+                        }
+                        cloned += 1;
+                        // Fall through to import as a fresh session (new uuid).
+                    }
+                    Err(e) => {
+                        errors.push(format!("{}: reconcile failed: {e}", data.title));
+                        return Ok(());
+                    }
+                }
             }
 
             match chat_file_store::import_chat_data(&conn, data, &workspace_id, &folder_id) {
@@ -1870,6 +1952,10 @@ pub fn import_claude_files(
 
     Ok(serde_json::json!({
         "imported": session_ids.len(),
+        "skipped": skipped,
+        "appended_sessions": appended_sessions,
+        "appended_messages": appended_messages,
+        "cloned": cloned,
         "memories_imported": memories_imported,
         "errors": errors.len(),
         "error_messages": errors.iter().take(10).cloned().collect::<Vec<_>>(),
