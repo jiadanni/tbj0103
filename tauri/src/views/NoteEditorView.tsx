@@ -1,5 +1,5 @@
 /**
- * NoteEditorView — Google Keep-style unified library for notes and sources.
+ * NoteEditorView — unified library for notes and sources.
  *
  * Top: centered "Take a note…" composer that expands on focus.
  * Body: masonry of fixed-width cards (notes + sources) using CSS columns.
@@ -8,8 +8,7 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   Plus, Trash2, Tag, Pin, FileText, Save, Sparkles, Loader,
-  Upload, Globe, Cpu, X, ExternalLink, File, Image as ImageIcon,
-  Type, Palette, Bell, UserPlus, MoreVertical, Undo2, Redo2, Search,
+  Upload, Globe, Cpu, X, ExternalLink, File, Search,
 } from "lucide-react";
 import { confirm, message } from "@tauri-apps/plugin-dialog";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -45,7 +44,7 @@ function formatTokens(n?: number | null): string {
   return `${n} tokens`;
 }
 
-// ── Composer (Google Keep "Take a note" bar) ────────────────────────────
+// ── Composer ────────────────────────────────────────────────────────────
 
 interface ComposerProps {
   onCreate: (fields: { title: string; content: string; tags: string[]; isPinned: boolean }) => Promise<void>;
@@ -134,18 +133,6 @@ function Composer({ onCreate, onUpload, onWebCapture, disabled }: ComposerProps)
               </div>
             )}
             <div className="flex items-center gap-1 px-2 py-1 border-t border-[var(--border-color)]">
-              <Tooltip content="Formatting">
-                <button className="p-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)]"><Type size={13} /></button>
-              </Tooltip>
-              <Tooltip content="Background">
-                <button className="p-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)]"><Palette size={13} /></button>
-              </Tooltip>
-              <Tooltip content="Reminder">
-                <button className="p-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)]"><Bell size={13} /></button>
-              </Tooltip>
-              <Tooltip content="Collaborator">
-                <button className="p-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)]"><UserPlus size={13} /></button>
-              </Tooltip>
               <Tooltip content="Upload document">
                 <button onClick={onUpload} disabled={disabled} className="p-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] disabled:opacity-40">
                   <Upload size={13} />
@@ -163,11 +150,6 @@ function Composer({ onCreate, onUpload, onWebCapture, disabled }: ComposerProps)
                 placeholder="Add tag…"
                 className="ml-1 px-2 py-1 text-[11px] bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none w-28"
               />
-              <Tooltip content="More">
-                <button className="p-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)]"><MoreVertical size={13} /></button>
-              </Tooltip>
-              <Tooltip content="Undo"><button className="p-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)]"><Undo2 size={13} /></button></Tooltip>
-              <Tooltip content="Redo"><button className="p-1.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)]"><Redo2 size={13} /></button></Tooltip>
               <button
                 onClick={close}
                 className="ml-auto px-3 py-1 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] rounded"
@@ -206,7 +188,6 @@ function Composer({ onCreate, onUpload, onWebCapture, disabled }: ComposerProps)
                   <Globe size={14} />
                 </span>
               </Tooltip>
-              <ImageIcon size={14} className="opacity-40" />
             </span>
           </button>
         )}
