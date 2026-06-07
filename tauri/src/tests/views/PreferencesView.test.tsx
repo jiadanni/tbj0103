@@ -72,6 +72,10 @@ const settingsStoreState = {
   scrollToTopOnSend: false,
   chatMessageStyle: "bubble" as const,
   expandChatToWindowWidth: false,
+  codeBlockContainerStyle: "rounded" as const,
+  codeBlockColorPalette: "balanced" as const,
+  codeBlockKeywordColor: "preset" as const,
+
   switchWorkspaceSection: "",
   hideNativeMenu: false,
   preferredModel: "",
@@ -107,6 +111,10 @@ const settingsStoreState = {
   setScrollToTopOnSend: vi.fn(),
   setChatMessageStyle: vi.fn(),
   setExpandChatToWindowWidth: vi.fn(),
+  setCodeBlockContainerStyle: vi.fn(),
+  setCodeBlockColorPalette: vi.fn(),
+  setCodeBlockKeywordColor: vi.fn(),
+
   incrementModelRefreshCounter: vi.fn(),
   setTheme: vi.fn(),
   setAccentColor: vi.fn(),

@@ -1,5 +1,13 @@
 import { create } from "zustand";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
+import {
+  normalizeCodeBlockColorPalette,
+  normalizeCodeBlockContainerStyle,
+  normalizeCodeBlockKeywordColor,
+  type CodeBlockColorPalette,
+  type CodeBlockContainerStyle,
+  type CodeBlockKeywordColor,
+} from "../lib/codeBlockHighlight";
 import { normalizeTheme, type Theme } from "../lib/theme";
 
 function createDebouncedLocalStorage(delayMs: number): StateStorage {
@@ -33,6 +41,7 @@ export type DualModelExecutionMode = "serial" | "parallel";
 export type SettingsNavigationLayout = "top-tabs" | "side-tabs";
 export type ChatMessageStyle = "bubble" | "flat" | "minimal";
 export type ComposerMode = "normal" | "family";
+export type { CodeBlockColorPalette, CodeBlockContainerStyle, CodeBlockKeywordColor };
 
 interface AppSettings {
   preferredModel: string;
@@ -74,6 +83,9 @@ interface AppSettings {
   scrollToTopOnSend: boolean;
   chatMessageStyle: ChatMessageStyle;
   expandChatToWindowWidth: boolean;
+  codeBlockContainerStyle: CodeBlockContainerStyle;
+  codeBlockColorPalette: CodeBlockColorPalette;
+  codeBlockKeywordColor: CodeBlockKeywordColor;
   switchWorkspaceSection: string;
   hideNativeMenu: boolean;
   showUnmanagedModels: boolean;
@@ -133,6 +145,9 @@ interface SettingsStore extends AppSettings {
   setScrollToTopOnSend: (v: boolean) => void;
   setChatMessageStyle: (v: ChatMessageStyle) => void;
   setExpandChatToWindowWidth: (v: boolean) => void;
+  setCodeBlockContainerStyle: (v: CodeBlockContainerStyle) => void;
+  setCodeBlockColorPalette: (v: CodeBlockColorPalette) => void;
+  setCodeBlockKeywordColor: (v: CodeBlockKeywordColor) => void;
   setSwitchWorkspaceSection: (v: string) => void;
   setHideNativeMenu: (v: boolean) => void;
   setShowUnmanagedModels: (v: boolean) => void;
@@ -198,6 +213,9 @@ export const useSettingsStore = create<SettingsStore>()(
       scrollToTopOnSend: false,
       chatMessageStyle: "bubble",
       expandChatToWindowWidth: false,
+      codeBlockContainerStyle: "rounded",
+      codeBlockColorPalette: "balanced",
+      codeBlockKeywordColor: "preset",
       switchWorkspaceSection: "",
       hideNativeMenu: false,
       showUnmanagedModels: true,
@@ -254,6 +272,9 @@ export const useSettingsStore = create<SettingsStore>()(
       setScrollToTopOnSend: (scrollToTopOnSend) => set({ scrollToTopOnSend }),
       setChatMessageStyle: (chatMessageStyle) => set({ chatMessageStyle }),
       setExpandChatToWindowWidth: (expandChatToWindowWidth) => set({ expandChatToWindowWidth }),
+      setCodeBlockContainerStyle: (codeBlockContainerStyle) => set({ codeBlockContainerStyle: normalizeCodeBlockContainerStyle(codeBlockContainerStyle) }),
+      setCodeBlockColorPalette: (codeBlockColorPalette) => set({ codeBlockColorPalette: normalizeCodeBlockColorPalette(codeBlockColorPalette) }),
+      setCodeBlockKeywordColor: (codeBlockKeywordColor) => set({ codeBlockKeywordColor: normalizeCodeBlockKeywordColor(codeBlockKeywordColor) }),
       setSwitchWorkspaceSection: (switchWorkspaceSection) => set({ switchWorkspaceSection }),
       setHideNativeMenu: (hideNativeMenu) => set({ hideNativeMenu }),
       setShowUnmanagedModels: (showUnmanagedModels) => set({ showUnmanagedModels }),
@@ -315,6 +336,9 @@ export const useSettingsStore = create<SettingsStore>()(
           ...currentState,
           ...state,
           theme: normalizeTheme(state.theme ?? currentState.theme),
+          codeBlockContainerStyle: normalizeCodeBlockContainerStyle(state.codeBlockContainerStyle ?? currentState.codeBlockContainerStyle),
+          codeBlockColorPalette: normalizeCodeBlockColorPalette(state.codeBlockColorPalette ?? currentState.codeBlockColorPalette),
+          codeBlockKeywordColor: normalizeCodeBlockKeywordColor(state.codeBlockKeywordColor ?? currentState.codeBlockKeywordColor),
           // Always reset to 0 on startup — it's a transient counter.
           modelRefreshCounter: 0,
         };

@@ -90,6 +90,8 @@ vi.mock("lucide-react", () => ({
   RotateCcw: () => <div data-testid="icon-rotate-ccw" />,
   ExternalLink: () => <div data-testid="icon-external-link" />,
   Copy: () => <div data-testid="icon-copy" />,
+  Download: () => <div data-testid="icon-download" />,
+  Code2: () => <div data-testid="icon-code-2" />,
   BarChart2: () => <div data-testid="icon-bar-chart-2" />,
   Info: () => <div data-testid="icon-info" />,
 }));
@@ -104,6 +106,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 
 vi.mock("@tauri-apps/plugin-fs", () => ({
   readTextFile: vi.fn(),
+  writeTextFile: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/plugin-shell", () => ({

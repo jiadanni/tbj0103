@@ -25,6 +25,9 @@ const SETTINGS_INITIAL = {
   confirmMoveToTrash: true,
   userChatLabel: "You",
   assistantChatLabel: "Assistant",
+  codeBlockContainerStyle: "rounded" as const,
+  codeBlockColorPalette: "balanced" as const,
+  codeBlockKeywordColor: "preset" as const,
 };
 
 beforeEach(() => {
@@ -78,6 +81,19 @@ describe("default values", () => {
 
   it("assistantChatLabel defaults to 'Assistant'", () => {
     expect(useSettingsStore.getState().assistantChatLabel).toBe("Assistant");
+  });
+
+
+  it("codeBlockContainerStyle defaults to rounded", () => {
+    expect(useSettingsStore.getState().codeBlockContainerStyle).toBe("rounded");
+  });
+
+  it("codeBlockColorPalette defaults to balanced", () => {
+    expect(useSettingsStore.getState().codeBlockColorPalette).toBe("balanced");
+  });
+
+  it("codeBlockKeywordColor defaults to preset", () => {
+    expect(useSettingsStore.getState().codeBlockKeywordColor).toBe("preset");
   });
 });
 
@@ -169,6 +185,22 @@ describe("setters", () => {
   it("setAssistantChatLabel updates assistantChatLabel", () => {
     useSettingsStore.getState().setAssistantChatLabel("Bot");
     expect(useSettingsStore.getState().assistantChatLabel).toBe("Bot");
+  });
+
+
+  it("setCodeBlockContainerStyle updates codeBlockContainerStyle", () => {
+    useSettingsStore.getState().setCodeBlockContainerStyle("utilityHeader");
+    expect(useSettingsStore.getState().codeBlockContainerStyle).toBe("utilityHeader");
+  });
+
+  it("setCodeBlockColorPalette updates codeBlockColorPalette", () => {
+    useSettingsStore.getState().setCodeBlockColorPalette("warm");
+    expect(useSettingsStore.getState().codeBlockColorPalette).toBe("warm");
+  });
+
+  it("setCodeBlockKeywordColor updates codeBlockKeywordColor", () => {
+    useSettingsStore.getState().setCodeBlockKeywordColor("violet");
+    expect(useSettingsStore.getState().codeBlockKeywordColor).toBe("violet");
   });
 });
 

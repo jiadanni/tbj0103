@@ -2,11 +2,11 @@ import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { WaterfallSuggestions } from "../components/WaterfallSuggestions";
 import React, { useEffect, useLayoutEffect, useRef, useState, memo, useCallback, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, Paperclip, Image, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder as FolderIcon, FolderOpen, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink, Copy, BarChart2, Info } from "lucide-react";
+import { Send, Plus, Trash2, ChevronDown, ChevronRight, ArrowLeft, ArrowUpCircle, Pencil, Check, Search, Pin, PinOff, MessageSquare, SplitSquareHorizontal, RefreshCw, BookOpen, Paperclip, Image, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Folder as FolderIcon, FolderOpen, FolderPlus, Ghost, Shield, Save, MoreHorizontal, MoveRight, ExternalLink, Copy, BarChart2, Info, Download, Code2 } from "lucide-react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
-import { readTextFile } from "@tauri-apps/plugin-fs";
+import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { api, type AiModel, type OllamaModel, type SearchResult, type QuickSearchResult, type ThoughtItem, type AppSettings, type Memory, type TopicSignature, type ConversationSummary } from "../lib/api";
 import { useChatStore, findUnusedSession } from "../stores/chatStore";
 import { useWorkspaceStore, type Folder, type Workspace } from "../stores/workspaceStore";
@@ -30,6 +30,14 @@ import {
 import { resolveModelDisplayName } from "../lib/modelDisplayName";
 import { groupModelsByFamily } from "../lib/modelFamilyGrouping";
 import { resolveChatTitle } from "../lib/chatTitles";
+import {
+  getCodeBlockColorPaletteColors,
+  getCodeBlockKeywordColorValue,
+  tokenizeCode,
+  type CodeBlockColorPalette,
+  type CodeBlockContainerStyle,
+  type CodeBlockKeywordColor,
+} from "../lib/codeBlockHighlight";
 import { useTextSelectionToolbar } from "../hooks/useTextSelectionToolbar";
 import { SelectionToolbar } from "../components/SelectionToolbar";
 import { ContextWindowBar } from "../components/ContextWindowBar";
@@ -2234,17 +2242,45 @@ function StreamingBubble({
   );
 }
 
-function CodeBlockActions({
+function codeSnippetFilename(lang: string) {
+  const extensionByLanguage: Record<string, string> = {
+    bash: "sh",
+    c: "c",
+    cpp: "cpp",
+    css: "css",
+    go: "go",
+    html: "html",
+    java: "java",
+    javascript: "js",
+    json: "json",
+    python: "py",
+    rust: "rs",
+    sql: "sql",
+    typescript: "ts",
+  };
+  const extension = extensionByLanguage[lang.toLowerCase()] ?? "txt";
+  return `snippet.${extension}`;
+}
+
+function CodeBlockRenderer({
   content,
   lang,
-  workspaceId,
+  containerStyle,
+  colorPalette,
+  keywordColor,
 }: {
   content: string;
   lang: string;
-  workspaceId: string | null;
+  containerStyle: CodeBlockContainerStyle;
+  colorPalette: CodeBlockColorPalette;
+  keywordColor: CodeBlockKeywordColor;
 }) {
   const [copied, setCopied] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [downloaded, setDownloaded] = useState(false);
+  const highlightedTokens = useMemo(() => tokenizeCode(content, lang), [content, lang]);
+  const paletteColors = getCodeBlockColorPaletteColors(colorPalette);
+  const keywordColorValue = getCodeBlockKeywordColorValue(keywordColor, colorPalette);
+  const languageLabel = lang || "text";
 
   const handleCopy = async () => {
     try {
@@ -2256,37 +2292,116 @@ function CodeBlockActions({
     }
   };
 
-  const handleSave = async () => {
-    if (!workspaceId) { return; }
+  const handleDownload = async () => {
     try {
-      const title = `${lang || "Code"} snippet — ${new Date().toLocaleString()}`;
-      const body = "```" + (lang || "") + "\n" + content + "\n```";
-      await api.note.create(workspaceId, title, body, null, false);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 1500);
+      const destination = await saveDialog({
+        defaultPath: codeSnippetFilename(lang),
+        filters: [{ name: "Code", extensions: [codeSnippetFilename(lang).split(".").pop() || "txt"] }],
+      });
+      if (!destination) { return; }
+      await writeTextFile(destination, content);
+      setDownloaded(true);
+      setTimeout(() => setDownloaded(false), 1500);
     } catch (e) {
-      console.error("Failed to save snippet as note:", e);
+      console.error("Failed to download snippet:", e);
     }
   };
 
+  const codeContent = (
+    <code style={{ color: paletteColors.plain }}>
+      {highlightedTokens.map((token, index) => (
+        token.kind === "keyword"
+          ? <span key={index} style={{ color: keywordColorValue, fontWeight: 600 }}>{token.text}</span>
+          : token.kind === "plain"
+            ? <React.Fragment key={index}>{token.text}</React.Fragment>
+            : <span key={index} style={{ color: paletteColors[token.kind] }}>{token.text}</span>
+      ))}
+    </code>
+  );
+
+  const copyIconButton = (
+    <Tooltip content={copied ? "Copied" : "Copy"}>
+      <button
+        type="button"
+        onClick={handleCopy}
+        className="inline-flex h-7 w-7 items-center justify-center rounded-full text-white/85 transition-colors hover:bg-white/10 hover:text-white"
+        aria-label={copied ? "Copied" : "Copy code"}
+      >
+        {copied ? <Check size={14} /> : <Copy size={14} />}
+      </button>
+    </Tooltip>
+  );
+
+  const downloadIconButton = (
+    <Tooltip content={downloaded ? "Downloaded" : "Download"}>
+      <button
+        type="button"
+        onClick={handleDownload}
+        className="inline-flex h-7 w-7 items-center justify-center rounded-full text-white/85 transition-colors hover:bg-white/10 hover:text-white"
+        aria-label={downloaded ? "Downloaded" : "Download code"}
+      >
+        {downloaded ? <Check size={14} /> : <Download size={14} />}
+      </button>
+    </Tooltip>
+  );
+
+  if (containerStyle === "utilityHeader") {
+    return (
+      <div className="my-3 max-w-full overflow-hidden rounded-lg bg-[#1f1f1f] text-white shadow-sm">
+        <div className="flex items-center justify-between bg-[#303134] px-4 py-2 text-xs text-white/80">
+          <span className="font-medium lowercase">{languageLabel}</span>
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={handleCopy} className="inline-flex items-center gap-1 text-white/80 transition-colors hover:text-white">
+              {copied ? <Check size={13} /> : <Copy size={13} />}
+              <span>{copied ? "Copied" : "Copy"}</span>
+            </button>
+            <button type="button" onClick={handleDownload} className="inline-flex items-center gap-1 text-white/80 transition-colors hover:text-white">
+              {downloaded ? <Check size={13} /> : <Download size={13} />}
+              <span>{downloaded ? "Downloaded" : "Download"}</span>
+            </button>
+          </div>
+        </div>
+        <pre className="m-0 !w-full !max-w-full !rounded-none !bg-transparent overflow-x-auto px-4 py-4 text-[0.92em] leading-6">
+          {codeContent}
+        </pre>
+      </div>
+    );
+  }
+
+  if (containerStyle === "compactHeader") {
+    return (
+      <div className="my-3 max-w-full overflow-hidden rounded-2xl bg-[#1f1f1f] text-white shadow-sm">
+        <div className="flex items-center justify-between px-4 py-3 text-xs font-medium text-white/90">
+          <span className="inline-flex items-center gap-2">
+            <Code2 size={13} />
+            <span>{languageLabel}</span>
+          </span>
+          {copyIconButton}
+        </div>
+        <pre className="m-0 !w-full !max-w-full !rounded-none !bg-transparent overflow-x-auto px-4 pb-4 text-[0.85em] leading-6">
+          {codeContent}
+        </pre>
+      </div>
+    );
+  }
+
+  const roomy = containerStyle === "roundedExpanded";
   return (
-    <div className="flex gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-      <Tooltip content={copied ? "Copied" : "Copy"}>
-        <button
-          onClick={handleCopy}
-          className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
-        >
-          {copied ? <Check size={11} /> : <Copy size={11} />}
-        </button>
-      </Tooltip>
-      <Tooltip content={saved ? "Saved" : "Save as snippet"}>
-        <button
-          onClick={handleSave}
-          className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
-        >
-          {saved ? <Check size={11} /> : <FileText size={11} />}
-        </button>
-      </Tooltip>
+    <div className={`my-3 overflow-hidden bg-[#1f1f1f] text-white shadow-sm ${
+      roomy
+        ? "w-full min-h-[340px] rounded-[30px]"
+        : "w-fit max-w-full rounded-[22px]"
+    }`}>
+      <div className={`flex items-center justify-between ${roomy ? "px-7 py-6" : "px-5 py-2.5"} text-sm font-semibold text-white`}>
+        <span>{languageLabel}</span>
+        <div className="flex items-center gap-2">
+          {downloadIconButton}
+          {copyIconButton}
+        </div>
+      </div>
+      <pre className={`m-0 !w-full !max-w-full !rounded-none !bg-transparent overflow-x-auto ${roomy ? "px-7 pb-9 text-[0.95em] leading-8" : "px-5 pb-5 text-[0.88em] leading-6"}`}>
+        {codeContent}
+      </pre>
     </div>
   );
 }
@@ -2352,6 +2467,9 @@ export default function ChatView() {
   const scrollToTopOnSend = useSettingsStore((s) => s.scrollToTopOnSend);
   const chatMessageStyle = useSettingsStore((s) => s.chatMessageStyle);
   const expandChatToWindowWidth = useSettingsStore((s) => s.expandChatToWindowWidth);
+  const codeBlockContainerStyle = useSettingsStore((s) => s.codeBlockContainerStyle);
+  const codeBlockColorPalette = useSettingsStore((s) => s.codeBlockColorPalette);
+  const codeBlockKeywordColor = useSettingsStore((s) => s.codeBlockKeywordColor);
   const showComposerWorkspaceSuggestions = useSettingsStore((s) => s.showComposerWorkspaceSuggestions);
   const showComposerChatFollowUps = useSettingsStore((s) => s.showComposerChatFollowUps);
   const sidebarWidth = useSettingsStore((state) => state.sidebarWidth);
@@ -2796,17 +2914,18 @@ export default function ChatView() {
 
       if (!inline) {
         return (
-          <div className="group w-fit max-w-full">
-            <pre className={`${className} p-4 rounded-lg overflow-x-auto bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 w-full`}>
-              <code {...props}>{children}</code>
-            </pre>
-            <CodeBlockActions content={content} lang={lang} workspaceId={effectiveWorkspaceId} />
-          </div>
+          <CodeBlockRenderer
+            content={content}
+            lang={lang}
+            containerStyle={codeBlockContainerStyle}
+            colorPalette={codeBlockColorPalette}
+            keywordColor={codeBlockKeywordColor}
+          />
         );
       }
       return <code className={className} {...props}>{children}</code>;
     }
-  }), [effectiveWorkspaceId, handleLinkClick]);
+  }), [codeBlockColorPalette, codeBlockContainerStyle, codeBlockKeywordColor, handleLinkClick]);
 
   const [comparePrompt, setComparePrompt] = useState("");
   const [compareResponseA, setCompareResponseA] = useState("");

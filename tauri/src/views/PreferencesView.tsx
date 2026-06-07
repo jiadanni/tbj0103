@@ -7,14 +7,22 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
-import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Sparkles, Columns2, ChevronLeft, ChevronRight, Search, Paperclip, Send, ArrowUpDown, UserCircle, SlidersHorizontal, RotateCcw, Loader2, X, History as HistoryIcon } from "lucide-react";
+import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Sparkles, Columns2, ChevronLeft, ChevronRight, Search, Paperclip, Send, ArrowUpDown, UserCircle, SlidersHorizontal, RotateCcw, Loader2, X, Copy, Download, Code2, History as HistoryIcon } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat, type CoreSettings, type AiSettings, type AdvancedSettings, type KnowledgeResetOptions, type KnowledgeResetResult, type ScheduledJobSetting, type ScheduledJobStatus, type BackgroundJobRunMode, type BackgroundProcessingScope } from "../lib/api";
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
 import { groupModelsByFamily } from "../lib/modelFamilyGrouping";
 import { applyHeadroom, classifyModelFit, formatBytes, formatParams, inferHardwareModelGuidance, parseModelParamsB, type ModelFit } from "../lib/modelSizing";
+import {
+  CODE_BLOCK_CONTAINER_STYLES,
+  CODE_BLOCK_COLOR_PALETTES,
+  CODE_BLOCK_KEYWORD_COLORS,
+  getCodeBlockColorPaletteColors,
+  getCodeBlockKeywordColorValue,
+  tokenizeCode,
+} from "../lib/codeBlockHighlight";
 import { ACCENT_COLORS, THEMES, THEME_DEFAULT_ACCENTS, normalizeTheme } from "../lib/theme";
-import { useSettingsStore, type ChatMessageStyle } from "../stores/settingsStore";
+import { useSettingsStore, type ChatMessageStyle, type CodeBlockColorPalette, type CodeBlockContainerStyle, type CodeBlockKeywordColor } from "../stores/settingsStore";
 import { type NavigationPresentation, useWorkspaceStore } from "../stores/workspaceStore";
 // Heavy tab-specific subviews are lazy-loaded so opening the standalone
 // preferences window doesn't have to parse/initialize them up-front.
@@ -88,8 +96,8 @@ const PREVIEW_ASSISTANT_MESSAGE: Message = {
   id: "preview-assistant",
   session_id: "preview",
   role: "assistant",
-  content: "The speed of light in a vacuum is approximately 299,792,458 meters per second.",
-  model_name: "gemma2-9b",
+  content: "Here is a small C helper to try:\n\n```c\n// Return length of a string\nint get_len(char* s) {\n    int i = 0;\n    while (s[i] != '\\0') {\n        i++;\n    }\n    return i;\n}\n```",
+  model_name: "local-7b",
   tokens_used: 120,
   duration_ms: 2500,
   created_at: "2026-01-01T00:00:01Z",
@@ -901,6 +909,87 @@ function AboutYouPreferencesPanel({
 
 // ──────────────────────────────────────────────────────────────────────────────
 
+function PreviewCodeBlock({
+  content,
+  lang,
+  containerStyle,
+  colorPalette,
+  keywordColor,
+}: {
+  content: string;
+  lang: string;
+  containerStyle: CodeBlockContainerStyle;
+  colorPalette: CodeBlockColorPalette;
+  keywordColor: CodeBlockKeywordColor;
+}) {
+  const paletteColors = getCodeBlockColorPaletteColors(colorPalette);
+  const keywordColorValue = getCodeBlockKeywordColorValue(keywordColor, colorPalette);
+  const tokens = tokenizeCode(content, lang);
+  const codeContent = (
+    <code style={{ color: paletteColors.plain }}>
+      {tokens.map((token, index) => (
+        token.kind === "keyword"
+          ? <span key={index} style={{ color: keywordColorValue, fontWeight: 600 }}>{token.text}</span>
+          : token.kind === "plain"
+            ? <React.Fragment key={index}>{token.text}</React.Fragment>
+            : <span key={index} style={{ color: paletteColors[token.kind] }}>{token.text}</span>
+      ))}
+    </code>
+  );
+  const languageLabel = lang || "text";
+
+  if (containerStyle === "utilityHeader") {
+    return (
+      <div className="my-2 max-w-full overflow-hidden rounded-lg bg-[#1f1f1f] text-white shadow-sm">
+        <div className="flex items-center justify-between bg-[#303134] px-3 py-1.5 text-[0.68em] text-white/80">
+          <span className="font-medium lowercase">{languageLabel}</span>
+          <div className="flex items-center gap-3">
+            <span className="inline-flex items-center gap-1"><Copy size={9} />Copy</span>
+            <span className="inline-flex items-center gap-1"><Download size={9} />Download</span>
+          </div>
+        </div>
+        <pre className="m-0 max-h-[155px] overflow-auto px-3 py-2 text-[0.66em] leading-5">
+          {codeContent}
+        </pre>
+      </div>
+    );
+  }
+
+  if (containerStyle === "compactHeader") {
+    return (
+      <div className="my-2 max-w-full overflow-hidden rounded-2xl bg-[#1f1f1f] text-white shadow-sm">
+        <div className="flex items-center justify-between px-3 py-2 text-[0.68em] font-medium text-white/90">
+          <span className="inline-flex items-center gap-1.5"><Code2 size={9} />{languageLabel}</span>
+          <Copy size={10} />
+        </div>
+        <pre className="m-0 max-h-[150px] overflow-auto px-3 pb-3 text-[0.64em] leading-5">
+          {codeContent}
+        </pre>
+      </div>
+    );
+  }
+
+  const roomy = containerStyle === "roundedExpanded";
+  return (
+    <div className={`my-2 overflow-hidden bg-[#1f1f1f] text-white shadow-sm ${
+      roomy
+        ? "w-full min-h-[215px] rounded-[24px]"
+        : "w-fit max-w-full rounded-[18px]"
+    }`}>
+      <div className={`flex items-center justify-between ${roomy ? "px-4 py-4" : "px-3 py-2.5"} text-[0.72em] font-semibold`}>
+        <span>{languageLabel}</span>
+        <div className="flex items-center gap-2">
+          <Download size={11} />
+          <Copy size={11} />
+        </div>
+      </div>
+      <pre className={`m-0 max-h-[175px] overflow-auto ${roomy ? "px-4 pb-6 text-[0.68em] leading-6" : "px-3 pb-3 text-[0.62em] leading-5"}`}>
+        {codeContent}
+      </pre>
+    </div>
+  );
+}
+
 function LiveAppPreview({ dbSettings, overrides = {} }: {
   dbSettings: AppSettings;
   overrides?: {
@@ -913,6 +1002,9 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
     workspaceSortOrder?: string | null;
     chatMessageStyle?: ChatMessageStyle | null;
     composerMode?: string | null;
+    codeBlockContainerStyle?: CodeBlockContainerStyle | null;
+    codeBlockColorPalette?: CodeBlockColorPalette | null;
+    codeBlockKeywordColor?: CodeBlockKeywordColor | null;
   };
 }) {
   const dbWorkspaceNavigation = useWorkspaceStore((s) => s.workspaceNavigation);
@@ -924,6 +1016,9 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
   const dbWorkspaceSortOrder = useWorkspaceStore((s) => s.workspaceSortOrder);
   const dbChatMessageStyle = useSettingsStore((s) => s.chatMessageStyle);
   const dbComposerMode = useSettingsStore((s) => s.composerMode);
+  const dbCodeBlockContainerStyle = useSettingsStore((s) => s.codeBlockContainerStyle);
+  const dbCodeBlockColorPalette = useSettingsStore((s) => s.codeBlockColorPalette);
+  const dbCodeBlockKeywordColor = useSettingsStore((s) => s.codeBlockKeywordColor);
 
   const workspaceNavigation = overrides.workspaceNavigation !== undefined && overrides.workspaceNavigation !== null ? overrides.workspaceNavigation : dbWorkspaceNavigation;
   const sectionNavigation = overrides.sectionNavigation !== undefined && overrides.sectionNavigation !== null ? overrides.sectionNavigation : dbSectionNavigation;
@@ -939,6 +1034,9 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
   const showComposerChatFollowUps = useSettingsStore((s) => s.showComposerChatFollowUps);
   const chatMessageStyle = overrides.chatMessageStyle !== undefined && overrides.chatMessageStyle !== null ? overrides.chatMessageStyle : dbChatMessageStyle;
   const composerMode = overrides.composerMode !== undefined && overrides.composerMode !== null ? overrides.composerMode : dbComposerMode;
+  const codeBlockContainerStyle = overrides.codeBlockContainerStyle !== undefined && overrides.codeBlockContainerStyle !== null ? overrides.codeBlockContainerStyle : dbCodeBlockContainerStyle;
+  const codeBlockColorPalette = overrides.codeBlockColorPalette !== undefined && overrides.codeBlockColorPalette !== null ? overrides.codeBlockColorPalette : dbCodeBlockColorPalette;
+  const codeBlockKeywordColor = overrides.codeBlockKeywordColor !== undefined && overrides.codeBlockKeywordColor !== null ? overrides.codeBlockKeywordColor : dbCodeBlockKeywordColor;
   const [singleWindowMode] = usePrefsWindowMode();
 
   const showLeftSidebar = workspaceNavigation === "sidebar";
@@ -978,6 +1076,25 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
   }, [workspaceSortOrder]);
 
   const activeWorkspaceName = parentWorkspaces[0]?.name || "General";
+  const previewMarkdownComponents = useMemo(() => ({
+    pre: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+    code: ({ inline, className, children }: { inline?: boolean; className?: string; children?: React.ReactNode }) => {
+      if (inline) {
+        return <code>{children}</code>;
+      }
+      const match = /language-(\w+)/.exec(className || "");
+      const lang = match ? match[1] : "";
+      return (
+        <PreviewCodeBlock
+          content={String(children).replace(/\n$/, "")}
+          lang={lang}
+          containerStyle={codeBlockContainerStyle}
+          colorPalette={codeBlockColorPalette}
+          keywordColor={codeBlockKeywordColor}
+        />
+      );
+    },
+  }), [codeBlockColorPalette, codeBlockContainerStyle, codeBlockKeywordColor]);
 
   return (
     <div className="flex flex-col items-center justify-center w-full h-full">
@@ -1351,7 +1468,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                     sources={undefined}
                     isSourcesExpanded={false}
                     contextSources={null}
-                    markdownComponents={PREVIEW_MARKDOWN_COMPONENTS}
+                    markdownComponents={previewMarkdownComponents}
                     onCopy={NOOP}
                     onStartEdit={NOOP}
                     onSubmitEdit={NOOP}
@@ -2399,6 +2516,12 @@ export default function PreferencesView() {
   const setChatMessageStyle = useSettingsStore((state) => state.setChatMessageStyle);
   const expandChatToWindowWidth = useSettingsStore((state) => state.expandChatToWindowWidth);
   const setExpandChatToWindowWidth = useSettingsStore((state) => state.setExpandChatToWindowWidth);
+  const codeBlockContainerStyle = useSettingsStore((state) => state.codeBlockContainerStyle);
+  const setCodeBlockContainerStyle = useSettingsStore((state) => state.setCodeBlockContainerStyle);
+  const codeBlockColorPalette = useSettingsStore((state) => state.codeBlockColorPalette);
+  const setCodeBlockColorPalette = useSettingsStore((state) => state.setCodeBlockColorPalette);
+  const codeBlockKeywordColor = useSettingsStore((state) => state.codeBlockKeywordColor);
+  const setCodeBlockKeywordColor = useSettingsStore((state) => state.setCodeBlockKeywordColor);
   const [singleWindowMode, toggleSingleWindowMode] = usePrefsWindowMode();
   const switchWorkspaceSection = useSettingsStore((state) => state.switchWorkspaceSection);
   const showComposerWorkspaceSuggestions = useSettingsStore((state) => state.showComposerWorkspaceSuggestions);
@@ -2456,6 +2579,9 @@ export default function PreferencesView() {
     workspaceSortOrder?: string | null;
     chatMessageStyle?: ChatMessageStyle | null;
     composerMode?: string | null;
+    codeBlockContainerStyle?: CodeBlockContainerStyle | null;
+    codeBlockColorPalette?: CodeBlockColorPalette | null;
+    codeBlockKeywordColor?: CodeBlockKeywordColor | null;
   }>({});
 
   const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([]);
@@ -5104,6 +5230,107 @@ export default function PreferencesView() {
                       </div>
 
                       <div className="space-y-2 pt-1">
+                        <div>
+                          <label className="text-xs text-[var(--text-secondary)] mb-2 block font-medium">Code Block Container</label>
+                          <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+                            {CODE_BLOCK_CONTAINER_STYLES.map(({ id, label, description }) => (
+                              <button
+                                key={id}
+                                type="button"
+                                onClick={() => setCodeBlockContainerStyle(id)}
+                                onMouseEnter={() => setHoverOverrides((o) => ({ ...o, codeBlockContainerStyle: id }))}
+                                onMouseLeave={() => setHoverOverrides((o) => ({ ...o, codeBlockContainerStyle: null }))}
+                                className={`rounded-lg border p-2 text-left transition-colors ${
+                                  codeBlockContainerStyle === id
+                                    ? "border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-[var(--text-primary)]"
+                                    : "border-[var(--border-color)] bg-[var(--bg-elevated)]/50 text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+                                }`}
+                              >
+                                <div className={`mb-2 rounded-md bg-[#1f1f1f] p-1.5 ${
+                                  id === "roundedExpanded" ? "h-14 w-full" : id === "rounded" ? "h-10 w-4/5" : "h-11 w-full"
+                                }`}>
+                                  <div className={`${id === "utilityHeader" ? "h-2 rounded-sm bg-white/15" : "mb-1 flex items-center justify-between"}`}>
+                                    {id !== "utilityHeader" && (
+                                      <>
+                                        <span className="h-1.5 w-8 rounded-sm bg-white/40" />
+                                        <span className="h-1.5 w-4 rounded-sm bg-white/25" />
+                                      </>
+                                    )}
+                                  </div>
+                                  <div className={`mt-1 space-y-1 ${id === "roundedExpanded" ? "pt-1" : ""}`}>
+                                    <span className="block h-1 w-16 rounded-sm bg-violet-300/70" />
+                                    <span className="block h-1 w-12 rounded-sm bg-emerald-300/70" />
+                                    <span className="block h-1 w-20 rounded-sm bg-white/25" />
+                                    {id === "roundedExpanded" && <span className="block h-1 w-14 rounded-sm bg-white/20" />}
+                                  </div>
+                                </div>
+                                <div className="text-xs font-medium">{label}</div>
+                                <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">{description}</div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-xs text-[var(--text-secondary)] mb-2 block font-medium">Syntax Color Preset</label>
+                          <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+                            {CODE_BLOCK_COLOR_PALETTES.map(({ id, label, colors }) => (
+                              <button
+                                key={id}
+                                type="button"
+                                onClick={() => setCodeBlockColorPalette(id)}
+                                onMouseEnter={() => setHoverOverrides((o) => ({ ...o, codeBlockColorPalette: id }))}
+                                onMouseLeave={() => setHoverOverrides((o) => ({ ...o, codeBlockColorPalette: null }))}
+                                className={`rounded-lg border p-2 text-left transition-colors ${
+                                  codeBlockColorPalette === id
+                                    ? "border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-[var(--text-primary)]"
+                                    : "border-[var(--border-color)] bg-[var(--bg-elevated)]/50 text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+                                }`}
+                              >
+                                <div className="mb-2 flex h-8 items-center gap-1 rounded-md bg-[#1f1f1f] px-2">
+                                  {(["keyword", "function", "string", "number", "comment"] as const).map((kind) => (
+                                    <span
+                                      key={kind}
+                                      className="h-2 flex-1 rounded-full"
+                                      style={{ backgroundColor: colors[kind] }}
+                                    />
+                                  ))}
+                                </div>
+                                <div className="text-xs font-medium">{label}</div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-xs text-[var(--text-secondary)] mb-2 block font-medium">Keyword Color Override</label>
+                          <div className="flex flex-wrap gap-2">
+                            {CODE_BLOCK_KEYWORD_COLORS.map(({ id, label, value }) => {
+                              const swatchColor = value ?? getCodeBlockColorPaletteColors(codeBlockColorPalette).keyword;
+                              return (
+                                <Tooltip key={id} content={label}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setCodeBlockKeywordColor(id)}
+                                    onMouseEnter={() => setHoverOverrides((o) => ({ ...o, codeBlockKeywordColor: id }))}
+                                    onMouseLeave={() => setHoverOverrides((o) => ({ ...o, codeBlockKeywordColor: null }))}
+                                    aria-label={`Use ${label} keyword color`}
+                                    className={`relative h-7 w-7 rounded-full border-2 border-white transition-all ${
+                                      codeBlockKeywordColor === id
+                                        ? "scale-110 shadow-sm ring-2 ring-white ring-offset-2 ring-offset-[var(--bg-elevated)]"
+                                        : "opacity-80 hover:scale-105 hover:opacity-100"
+                                    }`}
+                                    style={{ backgroundColor: swatchColor }}
+                                  >
+                                    {id === "preset" && <span className="absolute inset-[5px] rounded-full border border-white/70" />}
+                                    <span className="sr-only">{label}</span>
+                                  </button>
+                                </Tooltip>
+                              );
+                            })}
+                          </div>
+                        </div>
+
                         <div className="flex items-start gap-3 py-0.5">
                           <Toggle on={expandChatToWindowWidth} onToggle={() => setExpandChatToWindowWidth(!expandChatToWindowWidth)} />
                           <div>
