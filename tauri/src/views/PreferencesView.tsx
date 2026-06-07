@@ -2062,6 +2062,23 @@ const SCHEDULED_JOBS_CATALOG: {
   { job_key: "concept_hierarchy", model_setting: "concept_hierarchy_model", label: "Topic Hierarchy", description: "LLM-assisted concept parent linking", tokens: "~200–800 tokens input", note: "2k context OK" },
 ];
 
+function formatPendingTokens(
+  status: ScheduledJobStatus | undefined,
+  fallback: string,
+): string {
+  const tokens = status?.pending_input_tokens;
+  const count = status?.pending_work_count;
+  if (tokens == null || tokens <= 0) { return fallback; }
+  const tokenStr = tokens >= 1000
+    ? `~${(tokens / 1000).toFixed(tokens >= 10_000 ? 0 : 1)}k`
+    : `~${tokens}`;
+  if (count != null && count > 0) {
+    const noun = count === 1 ? "item" : "items";
+    return `${tokenStr} tokens pending · ${count} ${noun}`;
+  }
+  return `${tokenStr} tokens pending`;
+}
+
 const RUN_MODE_OPTIONS: { value: BackgroundJobRunMode; label: string; description: string }[] = [
   { value: "auto", label: "Auto", description: "Run on schedule with the small model" },
   { value: "confirm_only", label: "Ask first", description: "Only run when the play-button is clicked; skip on timeout" },
@@ -2274,7 +2291,7 @@ function ScheduledTasksCard({
                       </div>
                       <div className="mt-0.5 text-[11px] text-[var(--text-secondary)]">{job.description}</div>
                       <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-[var(--text-muted)]">
-                        <span>{job.tokens}</span>
+                        <span>{formatPendingTokens(status, job.tokens)}</span>
                         <span>{job.note}</span>
                         <span>{status?.due_label ?? "checks every minute when idle"}</span>
                       </div>

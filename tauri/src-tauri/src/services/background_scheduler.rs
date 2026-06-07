@@ -1845,6 +1845,196 @@ pub struct ScheduledBackgroundJobStatus {
     pub next_check_at: Option<String>,
     pub next_due_at: Option<String>,
     pub due_label: String,
+    /// Estimated input tokens (chars/4) for the next run, computed from the
+    /// pending eligible work in the current workspace. `None` when no work is
+    /// pending or the estimate can't be computed (e.g. no active workspace).
+    pub pending_input_tokens: Option<i64>,
+    /// Number of eligible work items in the current workspace that the next
+    /// run would consume.
+    pub pending_work_count: Option<i64>,
+}
+
+/// Approximate token count from character count. Matches the 4-char/token
+/// heuristic the frontend uses elsewhere (see WorkspaceMemoryPanel,
+/// KnowledgeGraphView). Pure estimate — no tokenizer involved.
+fn chars_to_tokens(chars: i64) -> i64 {
+    if chars <= 0 { 0 } else { (chars + 3) / 4 }
+}
+
+/// Compute (pending_work_count, pending_input_tokens) for `job_key` scoped to
+/// `workspace_id`. Returns `(None, None)` when no workspace is active or the
+/// job has no per-workspace notion of input.
+fn pending_workload_for_job(
+    conn: &rusqlite::Connection,
+    job_key: &str,
+    workspace_id: Option<&str>,
+) -> (Option<i64>, Option<i64>) {
+    let Some(ws) = workspace_id else {
+        return (None, None);
+    };
+    let row: Option<(i64, i64)> = match job_key {
+        "memory_extraction" => {
+            let threshold =
+                crate::commands::settings::get_setting(conn, "memory_extraction_threshold")
+                    .and_then(|value| value.parse::<i64>().ok())
+                    .unwrap_or(5);
+            conn.query_row(
+                &format!(
+                    "SELECT COUNT(DISTINCT cs.id),
+                            COALESCE(SUM(LENGTH(m.content)), 0)
+                     FROM chat_sessions cs
+                     JOIN messages m ON m.session_id = cs.id
+                     WHERE cs.workspace_id = ?1
+                       AND datetime(cs.updated_at) > datetime('now', '-24 hours')
+                       AND cs.is_incognito = 0
+                       AND cs.exclude_from_analytics = 0
+                       AND cs.is_imported = 0
+                       AND cs.id IN (
+                         SELECT cs2.id FROM chat_sessions cs2
+                         WHERE cs2.workspace_id = ?1
+                           AND (SELECT COUNT(*) FROM messages mm WHERE mm.session_id = cs2.id) >= {threshold}
+                           AND (SELECT COUNT(*) FROM messages mm WHERE mm.session_id = cs2.id) > cs2.last_processed_message_count
+                       )"
+                ),
+                rusqlite::params![ws],
+                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
+            )
+            .ok()
+        }
+        "summarization" => {
+            let min_messages =
+                crate::commands::settings::get_setting(conn, "summarization_min_messages")
+                    .and_then(|value| value.parse::<i64>().ok())
+                    .unwrap_or(1);
+            conn.query_row(
+                &format!(
+                    "SELECT COUNT(DISTINCT cs.id),
+                            COALESCE(SUM(LENGTH(m.content)), 0)
+                     FROM chat_sessions cs
+                     JOIN messages m ON m.session_id = cs.id
+                     WHERE cs.workspace_id = ?1
+                       AND datetime(cs.updated_at) > datetime('now', '-24 hours')
+                       AND cs.is_incognito = 0
+                       AND cs.exclude_from_analytics = 0
+                       AND cs.is_imported = 0
+                       AND (SELECT COUNT(*) FROM messages mm WHERE mm.session_id = cs.id) >= {min_messages}
+                       AND NOT EXISTS (
+                         SELECT 1 FROM conversation_summaries s
+                         WHERE s.session_id = cs.id
+                           AND s.summary_type = 'info'
+                           AND s.message_range_end >= (
+                             SELECT COUNT(*) FROM messages mm WHERE mm.session_id = cs.id
+                           )
+                       )"
+                ),
+                rusqlite::params![ws],
+                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
+            )
+            .ok()
+        }
+        "workspace_glossary" => conn
+            .query_row(
+                "SELECT 1, COALESCE(SUM(LENGTH(m.content)), 0)
+                 FROM messages m
+                 JOIN chat_sessions cs ON cs.id = m.session_id
+                 WHERE cs.workspace_id = ?1
+                   AND m.role = 'assistant'
+                   AND cs.is_incognito = 0
+                   AND cs.exclude_from_analytics = 0
+                   AND cs.is_imported = 0",
+                rusqlite::params![ws],
+                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
+            )
+            .ok(),
+        "hover_definition_scan" => conn
+            .query_row(
+                "SELECT COUNT(DISTINCT cs.id),
+                        COALESCE(SUM(LENGTH(m.content)), 0)
+                 FROM chat_sessions cs
+                 JOIN messages m ON m.session_id = cs.id AND m.role = 'assistant'
+                 WHERE cs.workspace_id = ?1
+                   AND cs.is_incognito = 0
+                   AND cs.exclude_from_analytics = 0
+                   AND cs.is_imported = 0
+                   AND (
+                     SELECT COUNT(*) FROM messages mm
+                     WHERE mm.session_id = cs.id AND mm.role = 'assistant'
+                   ) > COALESCE((
+                     SELECT last_scanned_assistant_count
+                     FROM session_glossary_scan_state s WHERE s.session_id = cs.id
+                   ), 0)",
+                rusqlite::params![ws],
+                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
+            )
+            .ok(),
+        "flashcard_generation" => {
+            let min_interval = conn
+                .query_row(
+                    "SELECT value FROM settings WHERE key = 'flashcard_topic_min_interval_minutes'",
+                    [],
+                    |r| r.get::<_, String>(0),
+                )
+                .ok()
+                .and_then(|value| value.trim_matches('"').parse::<i64>().ok())
+                .unwrap_or(60);
+            conn.query_row(
+                &format!(
+                    "SELECT COUNT(*), COALESCE(SUM(LENGTH(topic)), 0)
+                     FROM flashcard_topics
+                     WHERE workspace_id = ?1
+                       AND card_count < 8
+                       AND (
+                         last_generated_at IS NULL
+                         OR datetime(last_generated_at) < datetime('now', '-{min_interval} minutes')
+                       )"
+                ),
+                rusqlite::params![ws],
+                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
+            )
+            .ok()
+        }
+        "concept_hierarchy" => conn
+            .query_row(
+                "SELECT COUNT(*),
+                        COALESCE(SUM(LENGTH(name) + LENGTH(concept_description)), 0)
+                 FROM concept_nodes cn
+                 WHERE cn.workspace_id = ?1
+                   AND NOT EXISTS (
+                     SELECT 1 FROM concept_links cl
+                     WHERE cl.source_id = cn.id AND cl.link_type = 'part_of'
+                   )
+                   AND (
+                     cn.parent_checked_at IS NULL
+                     OR cn.parent_checked_at < (
+                       SELECT MAX(cn2.created_at) FROM concept_nodes cn2
+                       WHERE cn2.workspace_id = cn.workspace_id
+                     )
+                   )",
+                rusqlite::params![ws],
+                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
+            )
+            .ok(),
+        "workspace_prompt_bank" => conn
+            .query_row(
+                "SELECT 1, COALESCE(SUM(LENGTH(m.content)), 0)
+                 FROM messages m
+                 JOIN chat_sessions cs ON cs.id = m.session_id
+                 WHERE cs.workspace_id = ?1
+                   AND cs.is_incognito = 0
+                   AND cs.exclude_from_analytics = 0
+                   AND cs.is_imported = 0",
+                rusqlite::params![ws],
+                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
+            )
+            .ok(),
+        _ => None,
+    };
+    match row {
+        Some((count, chars)) if count > 0 && chars > 0 => {
+            (Some(count), Some(chars_to_tokens(chars)))
+        }
+        _ => (None, None),
+    }
 }
 
 fn model_setting_for_job(job_key: &str) -> &'static str {
@@ -1886,6 +2076,7 @@ pub fn list_scheduled_statuses(
             .map(|value| value == "true")
             .unwrap_or(true);
     let next_check_at = current_next_tick_at();
+    let current_workspace = crate::services::model_settings::get_current_workspace_id(conn);
 
     Ok(SCHEDULED_JOB_KEYS
         .iter()
@@ -1999,6 +2190,9 @@ pub fn list_scheduled_statuses(
                 }
             }
 
+            let (pending_work_count, pending_input_tokens) =
+                pending_workload_for_job(conn, job_key, current_workspace.as_deref());
+
             ScheduledBackgroundJobStatus {
                 job_key: (*job_key).to_string(),
                 label: job_label(job_key).to_string(),
@@ -2010,6 +2204,8 @@ pub fn list_scheduled_statuses(
                 next_check_at: next_check_at.clone(),
                 next_due_at,
                 due_label,
+                pending_input_tokens,
+                pending_work_count,
             }
         })
         .collect())

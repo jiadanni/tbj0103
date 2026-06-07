@@ -582,6 +582,8 @@ export interface ScheduledJobStatus {
   next_check_at?: string | null;
   next_due_at?: string | null;
   due_label: string;
+  pending_input_tokens?: number | null;
+  pending_work_count?: number | null;
 }
 
 export type BackgroundProcessingScope = "current_workspace" | "selected_workspaces" | "all_workspaces";
