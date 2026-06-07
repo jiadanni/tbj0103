@@ -2736,7 +2736,7 @@ export default function ChatView() {
       const lang = match ? match[1] : "";
       const content = String(children).replace(/\n$/, "");
 
-      if (!inline && content.split("\n").length >= 5) {
+      if (!inline) {
         return (
           <div className="group relative w-fit max-w-full">
             <pre className={`${className} p-4 rounded-lg overflow-x-auto bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 w-full`}>
