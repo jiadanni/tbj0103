@@ -2234,6 +2234,63 @@ function StreamingBubble({
   );
 }
 
+function CodeBlockActions({
+  content,
+  lang,
+  workspaceId,
+}: {
+  content: string;
+  lang: string;
+  workspaceId: string | null;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (e) {
+      console.error("Failed to copy snippet:", e);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!workspaceId) { return; }
+    try {
+      const title = `${lang || "Code"} snippet — ${new Date().toLocaleString()}`;
+      const body = "```" + (lang || "") + "\n" + content + "\n```";
+      await api.note.create(workspaceId, title, body, null, false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    } catch (e) {
+      console.error("Failed to save snippet as note:", e);
+    }
+  };
+
+  return (
+    <div className="flex gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <Tooltip content={copied ? "Copied" : "Copy"}>
+        <button
+          onClick={handleCopy}
+          className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+        >
+          {copied ? <Check size={11} /> : <Copy size={11} />}
+        </button>
+      </Tooltip>
+      <Tooltip content={saved ? "Saved" : "Save as snippet"}>
+        <button
+          onClick={handleSave}
+          className="p-1 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+        >
+          {saved ? <Check size={11} /> : <FileText size={11} />}
+        </button>
+      </Tooltip>
+    </div>
+  );
+}
+
 export default function ChatView() {
   chatViewDiag("ChatView render");
   const navigate = useNavigate();
@@ -2738,26 +2795,11 @@ export default function ChatView() {
 
       if (!inline) {
         return (
-          <div className="group relative w-fit max-w-full">
+          <div className="group w-fit max-w-full">
             <pre className={`${className} p-4 rounded-lg overflow-x-auto bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 w-full`}>
               <code {...props}>{children}</code>
             </pre>
-            <button
-              onClick={async () => {
-                if (!effectiveWorkspaceId) { return; }
-                try {
-                  const title = `${lang || "Code"} snippet — ${new Date().toLocaleString()}`;
-                  const body = "```" + (lang || "") + "\n" + content + "\n```";
-                  await api.note.create(effectiveWorkspaceId, title, body, null, false);
-                } catch (e) {
-                  console.error("Failed to save snippet as note:", e);
-                }
-              }}
-              className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-xs px-2 py-1 rounded shadow-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300"
-            >
-              <FileText size={12} />
-              Save as Snippet
-            </button>
+            <CodeBlockActions content={content} lang={lang} workspaceId={effectiveWorkspaceId} />
           </div>
         );
       }
