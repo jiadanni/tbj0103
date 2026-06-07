@@ -5515,6 +5515,7 @@ export default function ChatView() {
                         followOutput={isCurrentlyStreaming ? "smooth" : false}
                         alignToBottom={true}
                         className="w-full min-w-0 overflow-x-hidden py-4"
+                        increaseViewportBy={{ top: 1200, bottom: 1200 }}
                         computeItemKey={(_, msg) => msg.id}
                         itemContent={(i, msg) => {
                           const isEditingThis = editingMessageId === msg.id;
