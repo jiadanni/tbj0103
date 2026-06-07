@@ -61,7 +61,19 @@ else
   echo "  tsc not found – run: cd tauri && npm install"
 fi
 
-# ── 4. Cargo Clippy ──────────────────────────────────────────────────────────
+# ── 4. Migration freeze check ────────────────────────────────────────────────
+info "Running migration freeze check..."
+if [ -n "$NODE_BIN" ]; then
+  if "$NODE_BIN/node" "$TAURI/scripts/lint-migrations.mjs"; then
+    pass "Migrations"
+  else
+    fail "Migrations"
+  fi
+else
+  echo "  node not found – run: cd tauri && npm install"
+fi
+
+# ── 5. Cargo Clippy ──────────────────────────────────────────────────────────
 info "Running Cargo Clippy..."
 CARGO="${CARGO_BIN:-$HOME/.cargo/bin/cargo}"
 if [ -x "$CARGO" ]; then

@@ -85,6 +85,9 @@
   "lint-staged": {
     "src/**/*.{ts,tsx}": [
       "eslint --max-warnings 0"
+    ],
+    "src-tauri/src/db/mod.rs": [
+      "node scripts/lint-migrations.mjs --"
     ]
   }
 }
