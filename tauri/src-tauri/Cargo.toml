@@ -98,6 +98,10 @@ opt-level = 3
 [profile.dev]
 opt-level = 0
 
+[[bin]]
+name = "snapshot-db"
+path = "src/bin/snapshot_db.rs"
+
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }
 tempfile = "3.27.0"

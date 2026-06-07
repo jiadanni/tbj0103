@@ -1,0 +1,57 @@
+# Migration upgrade test — dormant.
+#
+# This workflow exists to catch the class of bug where a new migration
+# breaks when applied to a real user's database that's already been
+# through prior migrations. It does that by running the current
+# migration chain against every .sqlite snapshot checked into
+# tauri/src-tauri/tests/snapshots/.
+#
+# Status: dormant. No real snapshots exist yet, and the `cargo test`
+# target it would invoke (`migration_upgrade`) is not implemented.
+# Both will be added once we have a real pre-upgrade .sqlite to test
+# against. See tauri/src-tauri/tests/snapshots/README.md.
+#
+# Why dormant via workflow_dispatch only:
+#   - `on: push` and `on: pull_request` would run this on every commit
+#     and PR, costing GitHub Actions minutes for a job that currently
+#     does nothing useful.
+#   - `workflow_dispatch` means it only runs when a human clicks
+#     "Run workflow" in the GitHub Actions UI. Zero cost otherwise.
+#
+# To activate later, add the auto-triggers back:
+#   on:
+#     push:
+#       branches: [develop]
+#     pull_request:
+#       branches: [develop]
+#     workflow_dispatch:
+
+name: Migration upgrade test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tauri/src-tauri
+
+      - name: Run migration upgrade test
+        working-directory: tauri/src-tauri
+        run: |
+          if [ -z "$(ls -A tests/snapshots/*.sqlite 2>/dev/null)" ]; then
+            echo "No snapshots in tests/snapshots/ — nothing to verify."
+            echo "Drop pre-upgrade .sqlite files in that directory to enable this job."
+            exit 0
+          fi
+          cargo test --test migration_upgrade -- --nocapture

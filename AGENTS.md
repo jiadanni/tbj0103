@@ -170,6 +170,7 @@ When adding navigation chrome (workspace switcher, section nav, command bars), d
 ### Backend (Rust / Tauri)
 
 - **SQLite is the single source of truth.** The schema lives in `src-tauri/src/schema.sql`. All migrations are additive `CREATE TABLE IF NOT EXISTS` statements; never drop or alter existing columns.
+- **Migrations are frozen once shipped.** Once a `vN_*` block in `src-tauri/src/db/mod.rs` lands on `develop`, its body must not change — some users' databases have already run it, and editing it diverges fresh installs from upgrades. Repair past mistakes by adding a new `vN+1_*` migration that fixes forward. A pre-commit linter (`tauri/scripts/lint-migrations.mjs`, also run by `./lint.sh`) enforces this by diffing each migration block against `origin/develop`.
 - Tauri commands go in `src-tauri/src/commands/`, one file per domain (note, chat, search, etc.). Register new commands in `src-tauri/src/lib.rs` inside the `.invoke_handler(tauri::generate_handler![...])` call.
 - Services (`src-tauri/src/services/`) contain business logic that commands delegate to. Commands should be thin — validate input, acquire the DB lock, call a service, return the result.
 - Use `rusqlite` through the app’s `r2d2_sqlite` connection pool (`DbState`). Acquire a connection with `state.0.get().map_err(|e| e.to_string())?`.

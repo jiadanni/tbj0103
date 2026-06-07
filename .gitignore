@@ -51,6 +51,8 @@ iOSInjectionProject/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+# …except sanitized migration upgrade snapshots — they're test fixtures.
+!tauri/src-tauri/tests/snapshots/*.sqlite
 
 # Temporary files
 *.swp
