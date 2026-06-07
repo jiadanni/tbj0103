@@ -7,7 +7,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
-import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Sparkles, Columns2, ChevronLeft, ChevronRight, Search, Paperclip, Send, ArrowUpDown, UserCircle, SlidersHorizontal, RotateCcw, Loader2, X } from "lucide-react";
+import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Sparkles, Columns2, ChevronLeft, ChevronRight, Search, Paperclip, Send, ArrowUpDown, UserCircle, SlidersHorizontal, RotateCcw, Loader2, X, History as HistoryIcon } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat, type CoreSettings, type AiSettings, type AdvancedSettings, type KnowledgeResetOptions, type KnowledgeResetResult, type ScheduledJobSetting, type ScheduledJobStatus, type BackgroundJobRunMode, type BackgroundProcessingScope } from "../lib/api";
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
@@ -1026,11 +1026,6 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
             )}
 
             <div className="flex items-center gap-2 max-w-[60%] truncate h-full">
-              <div className="flex items-center gap-1 opacity-70">
-                <ChevronLeft size={12} className="text-[var(--text-secondary)]" />
-                <ChevronRight size={12} className="text-[var(--text-muted)]" />
-              </div>
-
               {workspaceNavigation === "top-dropdown" ? (
                 <WorkspaceNavDropdownSelect
                   density="compact"
@@ -1088,18 +1083,36 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
               )}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               {singleWindowMode && (
                 <Tooltip content="Single Window Mode Active" position="bottom">
-                  <div className="text-[var(--accent-color)] flex items-center shrink-0">
+                  <div className="text-[var(--accent-color)] flex items-center shrink-0 mr-1">
                     <Pin size={10} className="rotate-45" />
                   </div>
                 </Tooltip>
               )}
-              <div className="w-5 h-5 rounded flex items-center justify-center text-[var(--text-secondary)]">
-                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+              {/* BackForwardNavigation — mirrors Layout.tsx (ChevronLeft/Right in
+                  bordered 8x8 buttons, on the right of the titlebar). */}
+              <div className="h-5 w-5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] flex items-center justify-center text-[var(--text-secondary)]">
+                <ChevronLeft size={10} />
               </div>
-              <div className="w-5 h-5 rounded flex items-center justify-center text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] border border-[var(--border-color)]">
+              <div className="h-5 w-5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] flex items-center justify-center text-[var(--text-secondary)]">
+                <ChevronRight size={10} />
+              </div>
+              {/* TitlebarSortMenu */}
+              <div className="h-5 w-5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] flex items-center justify-center text-[var(--text-secondary)]">
+                <ArrowUpDown size={10} />
+              </div>
+              {/* TitlebarHistoryMenu */}
+              <div className="h-5 w-5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] flex items-center justify-center text-[var(--text-secondary)]">
+                <HistoryIcon size={10} />
+              </div>
+              {/* Preferences */}
+              <div className="h-5 w-5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] flex items-center justify-center text-[var(--text-secondary)]">
+                <SettingsIcon size={10} />
+              </div>
+              {/* Split toggle */}
+              <div className="h-5 w-5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] flex items-center justify-center text-[var(--text-secondary)]">
                 <Columns2 size={10} />
               </div>
               {!isMac && (
@@ -1418,14 +1431,19 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
 
           {showStatusBar && (
             <div className="h-5 px-2 border-t border-[var(--border-color)] bg-[var(--bg-sidebar)] flex items-center justify-between text-[0.55em] text-[var(--text-muted)] shrink-0 select-none">
-              <div className="flex items-center gap-1">
-                <span>CPU: 20%</span>
-                <span>•</span>
-                <span>RAM: 22.0 GB / 31.3 GB</span>
-              </div>
+              {/* Left: Jobs (mirrors real StatusBar.tsx — running jobs, AI streaming) */}
               <div className="flex items-center gap-1">
                 <span className={`h-1.5 w-1.5 rounded-full ${dbSettings.background_inference_enabled ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`} />
                 <span>Jobs: {dbSettings.background_inference_enabled ? "Running Summaries" : "Idle (Paused)"}</span>
+              </div>
+              {/* Right: perf meters (Zoom · CPU · RAM) with vertical dividers,
+                  matching StatusBar.tsx's right-aligned cluster. */}
+              <div className="flex items-center gap-2">
+                <span className="tabular-nums">100%</span>
+                <span className="h-2 w-px bg-[var(--border-color)]" />
+                <span>CPU: 20%</span>
+                <span className="h-2 w-px bg-[var(--border-color)]" />
+                <span>RAM: 22.0 / 31.3 GB</span>
               </div>
             </div>
           )}
