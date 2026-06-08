@@ -273,6 +273,9 @@ fn extract_first_json_container(input: &str, open: char, close: char) -> Option<
     None
 }
 
+// deprecated path: only used by `analyze_workspace_chunked`'s nested-JSON
+// parser; remove together with that command once the refresh coordinator is
+// the only entry point.
 fn repair_truncated_json_object(input: &str) -> Option<String> {
     let mut in_string = false;
     let mut escaped = false;
@@ -585,6 +588,10 @@ pub async fn analyze_workspace(
     state: State<'_, DbState>,
     req: AnalyzeWorkspaceRequest,
 ) -> Result<AnalysisResult, String> {
+    // deprecated: superseded by `refresh_workspace_knowledge` (the
+    // background-job coordinator). Kept callable while the new flow soaks;
+    // remove together with `analyze_workspace_chunked` once the UI no longer
+    // exposes a one-shot LLM hierarchy path.
     // Legacy thunk: single chunk with budget=22_000
     analyze_workspace_chunked_impl(&app, &state.0, req, Some(22_000)).await
 }
@@ -595,6 +602,11 @@ pub async fn analyze_workspace_chunked(
     state: State<'_, DbState>,
     req: AnalyzeWorkspaceRequest,
 ) -> Result<AnalysisResult, String> {
+    // deprecated: superseded by `refresh_workspace_knowledge` (the
+    // background-job coordinator). The JSON-salvage repair in
+    // `analyze_chunk` exists to keep this path working on small models that
+    // can't emit schema-strict nested JSON; remove that salvage code together
+    // with this command in the follow-up cleanup.
     // Adaptive budget
     analyze_workspace_chunked_impl(&app, &state.0, req, None).await
 }
@@ -816,6 +828,11 @@ fn preload_name_to_id(conn: &rusqlite::Connection, workspace_id: &str) -> HashMa
 /// for a workspace. Used to seed the extraction prompt with existing
 /// chapters/sections so the LLM reuses canonical names instead of
 /// generating near-duplicates.
+///
+/// deprecated path: no longer wired into `analyze_chunk`; kept available for
+/// the refresh coordinator or any follow-up that needs it. Remove with the
+/// rest of the chunked-analysis cleanup if it remains unused.
+#[allow(dead_code)]
 fn load_existing_names(
     conn: &rusqlite::Connection,
     workspace_id: &str,
@@ -864,31 +881,15 @@ async fn analyze_chunk(
         (format!("Content:\n{chunk_text}\n\n"), String::new())
     };
 
-    let existing_clause = {
-        let conn = pool.get().map_err(|e| e.to_string())?;
-        let chapters = load_existing_names(&conn, workspace_id, "chapter").unwrap_or_default();
-        let sections = load_existing_names(&conn, workspace_id, "section").unwrap_or_default();
-        if chapters.is_empty() && sections.is_empty() {
-            String::new()
-        } else {
-            let mut s = String::from("\n\nExisting chapters and sections in this workspace (REUSE the exact name when the new content fits — do not invent a near-duplicate):\n");
-            if !chapters.is_empty() {
-                s.push_str("Chapters: ");
-                s.push_str(&chapters.join(", "));
-                s.push('\n');
-            }
-            if !sections.is_empty() {
-                s.push_str("Sections: ");
-                s.push_str(&sections.join(", "));
-                s.push('\n');
-            }
-            s
-        }
-    };
+    // deprecated path: the existing-chapters/sections clause used to be
+    // appended to the prompt as a band-aid for the giant nested-JSON call
+    // producing near-duplicates. The refresh coordinator does not need it,
+    // and the legacy `analyze_workspace_chunked` is on its way out — keep the
+    // call simple. `load_existing_names` remains available as a helper.
 
     let prompt = format!(
         "You are a knowledge graph assistant helping a learner build a personal knowledge base. \
-Analyze the content below and extract SPECIFIC, NAMED concepts — not generic categories.{focus}{survey}{existing}\n\n\
+Analyze the content below and extract SPECIFIC, NAMED concepts — not generic categories.{focus}{survey}\n\n\
 {content_section}\
 Respond with ONLY raw JSON:\n\
 {{\"chapters\":[{{\"name\":\"...\",\"description\":\"...\",\"sections\":[{{\"name\":\"...\",\"description\":\"...\",\"concepts\":[{{\"name\":\"...\",\"description\":\"one clear sentence\",\"type\":\"definition\"}}]}}]}}],\"relationships\":[{{\"source\":\"exact concept name\",\"target\":\"exact concept name\",\"type\":\"prerequisite\",\"description\":\"why\"}}]}}\n\n\
@@ -900,14 +901,12 @@ Rules:\n\
 - Every concept MUST be specific and named: use proper nouns, library names, theorem names, algorithm names, named techniques, or domain-specific terms\n\
 - NEVER use vague concepts like \"Key Ideas\", \"Best Practices\", \"Common Patterns\", \"Important Concepts\", \"Overview\", \"Summary\"\n\
 - Prefer concrete terms over abstractions: \"Binary Search Tree\" not \"Data Structure\", \"React Hooks\" not \"Framework Feature\"\n\
-- If an existing chapter or section above already covers the new content, REUSE its exact name verbatim — do NOT create a language- or library-qualified variant (e.g. if \"CSV Handling\" exists, do NOT create \"Python CSV Handling\")\n\
 - Chapter names must be self-contained noun phrases — no trailing \"and ...\", no truncations, no ellipses\n\
 - When two candidate names cover the same subject, choose the broader one (drop language prefixes at chapter level)\n\
 - Each description should define the concept in one clear sentence, not just restate the name\n\
 - No markdown, only raw JSON",
         focus = focus_clause,
         survey = survey_clause,
-        existing = existing_clause,
         content_section = content_section,
     );
 
@@ -919,14 +918,17 @@ Rules:\n\
     let raw = client.send_message("ai_knowledge", model, messages).await?;
 
     let trimmed = raw.trim();
-    let json_str = match extract_first_json_object(trimmed) {
-        Some(s) => s,
-        None => {
-            return Err(format!(
-                "AI response did not contain valid JSON. Raw: {}",
-                &raw[..raw.len().min(300)]
-            ))
-        }
+    let (json_str, extracted_cleanly) = match extract_first_json_object(trimmed) {
+        Some(s) => (s, true),
+        None => match trimmed.find('{') {
+            Some(start) => (&trimmed[start..], false),
+            None => {
+                return Err(format!(
+                    "AI response did not contain valid JSON. Raw: {}",
+                    &raw[..raw.len().min(300)]
+                ))
+            }
+        },
     };
 
     let parse_via_value = |s: &str| -> Result<AiHierarchicalOutput, String> {
@@ -937,7 +939,13 @@ Rules:\n\
         })
     };
 
-    let output: AiHierarchicalOutput = match parse_via_value(json_str) {
+    let initial_parse = if extracted_cleanly {
+        parse_via_value(json_str)
+    } else {
+        Err("JSON object was not balanced; attempting repair".to_string())
+    };
+
+    let output: AiHierarchicalOutput = match initial_parse {
         Ok(parsed) => parsed,
         Err(parse_error) => {
             let repaired = repair_truncated_json_object(json_str).ok_or_else(|| {

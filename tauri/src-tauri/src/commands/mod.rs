@@ -42,3 +42,4 @@ pub mod web_ai;
 pub mod web_capture;
 pub mod workspace;
 pub mod workspace_glossary;
+pub mod workspace_refresh;

@@ -12,6 +12,7 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import { writeFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import {
   Brain,
+  Check,
   ChevronDown,
   Clock3,
   Download,
@@ -20,6 +21,7 @@ import {
   Minimize2,
   Network,
   Plus,
+  RefreshCw,
   Search,
   Sparkles,
   Target,
@@ -29,14 +31,17 @@ import {
 import RoadmapGraph, { type RoadmapGraphHandle } from "../components/RoadmapGraph";
 import {
   api,
+  REFRESH_WORKSPACE_TASK_TYPES,
   type AiModel,
   type AnalysisResult,
+  type BackgroundTaskEvent,
   type ChangeProposal,
   type ConceptLink,
   type ConceptNode,
   type DashboardSummary,
   type DescendantAnalysisProgress,
   type LearningCard,
+  type RefreshWorkspaceTaskType,
   type WorkspaceAnalysisProgress,
 } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
@@ -233,6 +238,23 @@ export default function KnowledgeGraphView({
   const [workspaceAnalyzable, setWorkspaceAnalyzable] = useState<WorkspaceAnalyzableStatus | null>(null);
   const [descendantProgress, setDescendantProgress] = useState<DescendantAnalysisProgress | null>(null);
   const [chunkProgress, setChunkProgress] = useState<WorkspaceAnalysisProgress | null>(null);
+
+  // --- Background-job refresh coordinator state ---
+  // Per-task status snapshot driven by `background-task` events. Used by the
+  // sync-mode progress modal and the async-mode passive refetch.
+  type RefreshJobState = "idle" | "queued" | "running" | "completed" | "failed" | "cancelled";
+  const [refreshJobStatus, setRefreshJobStatus] = useState<Record<RefreshWorkspaceTaskType, RefreshJobState>>(
+    () => Object.fromEntries(
+      REFRESH_WORKSPACE_TASK_TYPES.map((t) => [t, "idle" as RefreshJobState]),
+    ) as Record<RefreshWorkspaceTaskType, RefreshJobState>,
+  );
+  const [refreshMode, setRefreshMode] = useState<"async" | "sync">("async");
+  const [refreshModeMenuOpen, setRefreshModeMenuOpen] = useState(false);
+  const [refreshProgressOpen, setRefreshProgressOpen] = useState(false);
+  // Tracks task types currently being watched as a result of the user
+  // clicking refresh. Events for jobs NOT in this set still update the
+  // status map, but they don't drive the post-completion refetch.
+  const activeRefreshSetRef = useRef<Set<RefreshWorkspaceTaskType>>(new Set());
 
   const [conceptSearch, setConceptSearch] = useState("");
   const [selectedConcept, setSelectedConcept] = useState<ConceptNode | null>(null);
@@ -493,6 +515,104 @@ export default function KnowledgeGraphView({
     };
   }, [nodes, links]);
 
+  // Listen to background-task events for the seven refresh jobs and trigger
+  // a graph/summary/proposals refetch every time a watched job completes.
+  // This is what makes the view fill in incrementally after an async refresh.
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    let cancelled = false;
+    (async () => {
+      const handle = await api.listenBackgroundTask((event: BackgroundTaskEvent) => {
+        const taskType = event.task_type as RefreshWorkspaceTaskType;
+        if (!REFRESH_WORKSPACE_TASK_TYPES.includes(taskType)) { return; }
+        // Drop cross-workspace noise (e.g., when the active workspace
+        // changes mid-refresh, or a scheduler tick fires for another ws).
+        if (event.workspace_id && activeWorkspaceId && event.workspace_id !== activeWorkspaceId) {
+          return;
+        }
+        const next: RefreshJobState = (() => {
+          switch (event.status) {
+            case "queued": return "queued";
+            case "started":
+            case "processing": return "running";
+            case "completed": return "completed";
+            case "failed": return "failed";
+            case "cancelled": return "cancelled";
+            default: return "idle";
+          }
+        })();
+        setRefreshJobStatus((prev) => prev[taskType] === next ? prev : { ...prev, [taskType]: next });
+        // Only async-mode refetch fires on individual completion. Sync mode
+        // refetches once at the end inside handleRefresh.
+        if (event.status === "completed" && activeRefreshSetRef.current.has(taskType)) {
+          void loadGraph();
+          void loadSummary();
+          void loadProposals();
+        }
+      });
+      if (cancelled) { handle(); return; }
+      unlisten = handle;
+    })().catch(() => {});
+    return () => {
+      cancelled = true;
+      if (unlisten) { unlisten(); }
+    };
+  }, [activeWorkspaceId, loadGraph, loadSummary, loadProposals]);
+
+  // Drive the sync-mode progress modal: open it when at least one watched
+  // job is non-terminal, close it once all watched jobs settle.
+  useEffect(() => {
+    if (refreshMode !== "sync") { return; }
+    const watched = Array.from(activeRefreshSetRef.current);
+    if (watched.length === 0) { return; }
+    const anyRunning = watched.some((t) => {
+      const state = refreshJobStatus[t];
+      return state === "queued" || state === "running";
+    });
+    if (!anyRunning) {
+      // All settled — clear the active set so subsequent unrelated events
+      // (scheduler ticks) don't keep the modal open.
+      activeRefreshSetRef.current = new Set();
+    }
+  }, [refreshJobStatus, refreshMode]);
+
+  async function handleRefresh(mode: "async" | "sync" = refreshMode) {
+    if (!activeWorkspaceId || isAnalyzing) { return; }
+    setIsAnalyzing(true);
+    setAnalyzeError("");
+    setAnalyzeResult(null);
+    setRefreshMode(mode);
+
+    // Reset per-task state for the seven coordinator jobs and mark them
+    // active so async-mode event callbacks know to refetch.
+    activeRefreshSetRef.current = new Set(REFRESH_WORKSPACE_TASK_TYPES);
+    setRefreshJobStatus(
+      Object.fromEntries(
+        REFRESH_WORKSPACE_TASK_TYPES.map((t) => [t, "queued" as RefreshJobState]),
+      ) as Record<RefreshWorkspaceTaskType, RefreshJobState>,
+    );
+    if (mode === "sync") {
+      setRefreshProgressOpen(true);
+    }
+
+    try {
+      const result = await api.knowledge.refreshWorkspace(activeWorkspaceId, mode);
+      if (result.failed_to_enqueue.length > 0) {
+        const failed = result.failed_to_enqueue.map((f) => `${f.task_type}: ${f.error}`).join("; ");
+        setAnalyzeError(`Some jobs could not be queued — ${failed}`);
+      }
+      // In sync mode the backend returned only after all jobs reached a
+      // terminal status; do one final refetch to pull everything they wrote.
+      // In async mode the per-event listener handles incremental refetches,
+      // but we still kick one immediately so already-completed jobs show.
+      await Promise.all([loadGraph(), loadSummary(), loadProposals()]);
+    } catch (error: unknown) {
+      setAnalyzeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }
+
   async function handleAnalyze() {
     const demoWithoutModels = isDemoMode && availableModels.length === 0;
     if (!activeWorkspaceId || isAnalyzing || (!selectedModel && !demoWithoutModels)) { return; }
@@ -744,6 +864,35 @@ export default function KnowledgeGraphView({
     : isDemoWithoutModels ? "Simulate Analysis"
     : includeDescendants ? "Analyze All Sub-Workspaces"
     : "Analyze Workspace";
+
+  // --- Refresh-coordinator button labels (used by the toolbar split button
+  // that drives the seven background jobs, distinct from the sidebar's
+  // legacy single-shot Analyze button). ---
+  const REFRESH_JOB_LABELS: Record<RefreshWorkspaceTaskType, string> = {
+    memory_extraction: "Memory extraction",
+    workspace_glossary: "Workspace glossary",
+    hover_definition_scan: "Hover definitions",
+    summarization: "Conversation summaries",
+    flashcard_generation: "Flashcards",
+    concept_hierarchy: "Topic hierarchy",
+    workspace_prompt_bank: "Starter prompts",
+  };
+  const refreshWatchedTasks = REFRESH_WORKSPACE_TASK_TYPES;
+  const refreshCompletedCount = refreshWatchedTasks.filter(
+    (t) => refreshJobStatus[t] === "completed",
+  ).length;
+  const refreshFailedCount = refreshWatchedTasks.filter(
+    (t) => refreshJobStatus[t] === "failed" || refreshJobStatus[t] === "cancelled",
+  ).length;
+  const refreshRunningCount = refreshWatchedTasks.filter(
+    (t) => refreshJobStatus[t] === "queued" || refreshJobStatus[t] === "running",
+  ).length;
+  const refreshButtonLabel = isAnalyzing
+    ? `Refreshing (${refreshCompletedCount + refreshFailedCount}/${refreshWatchedTasks.length})…`
+    : "Refresh Knowledge Map";
+  const refreshButtonTooltip = `Runs these background jobs for this workspace: ${refreshWatchedTasks
+    .map((t) => REFRESH_JOB_LABELS[t])
+    .join(", ")}. The map updates as each job completes.`;
   const analyzeHelpText = isDemoWithoutModels
     ? "Demo data is preloaded. No local models are installed on this machine, so AI actions use simulated demo output."
     : insufficientData
@@ -1095,38 +1244,81 @@ export default function KnowledgeGraphView({
 
               <div className="flex flex-col items-end gap-2">
                 <div className="flex flex-wrap items-end gap-2 xl:justify-end">
-                  <div className="inline-flex overflow-visible rounded-xl shadow-sm">
+                  <div className="relative inline-flex overflow-visible rounded-xl shadow-sm">
                     <button
                       type="button"
-                      onClick={() => { void handleAnalyze(); }}
-                      disabled={isAnalyzing || !canRunAiActions || insufficientData}
-                      title={insufficientData ? analyzeHelpText : analyzeTokenTooltip}
+                      onClick={() => { void handleRefresh("async"); }}
+                      disabled={isAnalyzing || !activeWorkspaceId}
+                      title={refreshButtonTooltip}
                       className="inline-flex items-center gap-2 rounded-l-xl border border-r-0 border-[rgba(var(--accent-color-rgb),0.35)] bg-[var(--accent-color)] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[var(--accent-color)]/90 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {isAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                      {analyzeButtonLabel}
+                      {isAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                      {refreshButtonLabel}
                     </button>
-                    <CompactMenuSelect
-                      label="Analysis Model"
-                      value={selectedModel}
-                      options={modelSelectOptions}
-                      groups={groupedModelOptions.groups}
-                      onChange={selectAnalysisModel}
-                      widthClassName="w-9"
-                      buttonClassName="h-full min-h-[34px] w-9 justify-center rounded-l-none rounded-r-xl border border-l border-[rgba(var(--accent-color-rgb),0.35)] !bg-[var(--accent-color)] px-0 !text-white shadow-none hover:!bg-[var(--accent-color)]/90 [&_svg]:!text-white"
-                      menuWidth={240}
-                      hideSelectedLabel
-                    />
+                    <button
+                      type="button"
+                      aria-label="Refresh mode"
+                      onClick={() => setRefreshModeMenuOpen((open) => !open)}
+                      disabled={isAnalyzing}
+                      className="inline-flex h-full min-h-[34px] w-9 items-center justify-center rounded-l-none rounded-r-xl border border-l border-[rgba(var(--accent-color-rgb),0.35)] bg-[var(--accent-color)] text-white hover:bg-[var(--accent-color)]/90 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <ChevronDown size={14} />
+                    </button>
+                    {refreshModeMenuOpen && (
+                      <>
+                        {/* Click-outside backdrop */}
+                        <button
+                          type="button"
+                          aria-hidden
+                          tabIndex={-1}
+                          className="fixed inset-0 z-40 cursor-default bg-transparent"
+                          onClick={() => setRefreshModeMenuOpen(false)}
+                        />
+                        <div
+                          role="menu"
+                          className="absolute right-0 top-full z-50 mt-1 w-60 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-lg"
+                        >
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setRefreshModeMenuOpen(false);
+                              void handleRefresh("async");
+                            }}
+                            className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-primary)]"
+                          >
+                            <span className="font-medium">Refresh in background</span>
+                            <span className="text-xs text-[var(--text-muted)]">Jobs run asynchronously. The map fills in as each finishes.</span>
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setRefreshModeMenuOpen(false);
+                              void handleRefresh("sync");
+                            }}
+                            className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-primary)]"
+                          >
+                            <span className="font-medium">Refresh and wait</span>
+                            <span className="text-xs text-[var(--text-muted)]">Shows a progress modal and dismisses when every job finishes.</span>
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
                 {analyzeError && (
                   <p className="max-w-xs text-right text-xs text-red-400">{analyzeError}</p>
                 )}
-                {!analyzeError && analyzeResult && (
-                  <p className="max-w-xs text-right text-xs text-[var(--text-muted)]">{analyzeResultSummary}</p>
+                {!analyzeError && refreshFailedCount > 0 && !isAnalyzing && (
+                  <p className="max-w-xs text-right text-xs text-amber-400">
+                    {refreshFailedCount} job{refreshFailedCount === 1 ? "" : "s"} did not finish — open the inference jobs panel for details.
+                  </p>
                 )}
-                {insufficientData && (
-                  <p className="max-w-xs text-right text-xs text-[var(--text-muted)]">{analyzeHelpText}</p>
+                {!analyzeError && refreshCompletedCount > 0 && !isAnalyzing && refreshFailedCount === 0 && (
+                  <p className="max-w-xs text-right text-xs text-[var(--text-muted)]">
+                    Refreshed {refreshCompletedCount}/{refreshWatchedTasks.length} jobs.
+                  </p>
                 )}
               </div>
             </div>
@@ -1242,12 +1434,13 @@ export default function KnowledgeGraphView({
                         </div>
                       </div>
                       <button
-                        onClick={handleAnalyze}
-                        disabled={isAnalyzing || !canRunAiActions}
+                        onClick={() => { void handleRefresh("async"); }}
+                        disabled={isAnalyzing || !activeWorkspaceId}
+                        title={refreshButtonTooltip}
                         className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent-color)] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                       >
-                        {isAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                        {analyzeButtonLabel}
+                        {isAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                        {refreshButtonLabel}
                       </button>
                     </div>
                   ) : (
@@ -1511,6 +1704,86 @@ export default function KnowledgeGraphView({
                 Create
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {refreshProgressOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="refresh-progress-title"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-5 shadow-xl">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {isAnalyzing ? (
+                  <Loader2 size={16} className="animate-spin text-[var(--accent-color)]" />
+                ) : (
+                  <Check size={16} className="text-[var(--accent-color)]" />
+                )}
+                <h2 id="refresh-progress-title" className="text-base font-semibold text-[var(--text-primary)]">
+                  Refreshing knowledge map
+                </h2>
+              </div>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => setRefreshProgressOpen(false)}
+                className="rounded-lg p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <p className="mb-3 text-xs text-[var(--text-secondary)]">
+              {isAnalyzing
+                ? `Running ${refreshRunningCount} of ${refreshWatchedTasks.length} jobs. Completed ${refreshCompletedCount}.`
+                : refreshFailedCount > 0
+                  ? `${refreshCompletedCount} of ${refreshWatchedTasks.length} jobs finished. ${refreshFailedCount} did not complete.`
+                  : `All ${refreshWatchedTasks.length} jobs finished.`}
+            </p>
+            <ul className="space-y-1.5">
+              {refreshWatchedTasks.map((taskType) => {
+                const state = refreshJobStatus[taskType];
+                const pillStyles: Record<RefreshJobState, string> = {
+                  idle: "bg-[var(--bg-primary)] text-[var(--text-muted)]",
+                  queued: "bg-[var(--bg-primary)] text-[var(--text-secondary)]",
+                  running: "bg-[var(--accent-color)]/15 text-[var(--accent-color)]",
+                  completed: "bg-emerald-500/15 text-emerald-400",
+                  failed: "bg-red-500/15 text-red-400",
+                  cancelled: "bg-amber-500/15 text-amber-400",
+                };
+                return (
+                  <li
+                    key={taskType}
+                    className="flex items-center justify-between rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/40 px-3 py-2"
+                  >
+                    <span className="text-sm text-[var(--text-primary)]">
+                      {REFRESH_JOB_LABELS[taskType]}
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${pillStyles[state]}`}
+                    >
+                      {state === "running" && <Loader2 size={9} className="animate-spin" />}
+                      {state === "completed" && <Check size={9} />}
+                      {state}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            {!isAnalyzing && (
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setRefreshProgressOpen(false)}
+                  className="rounded-xl bg-[var(--accent-color)] px-4 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
+                >
+                  Done
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

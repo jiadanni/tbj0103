@@ -10,9 +10,28 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
-use tokio::sync::{oneshot, OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{broadcast, oneshot, OwnedSemaphorePermit, Semaphore};
 
 static SCHEDULER_RUNNING: AtomicBool = AtomicBool::new(false);
+
+/// In-process broadcast bus for background-task events. Sibling to the
+/// `app.emit("background-task", …)` IPC fire — anything in the Rust process
+/// that wants to observe scheduler progress (e.g., the workspace-refresh
+/// coordinator running in sync mode) subscribes here instead of trying to
+/// re-listen to its own outbound IPC events.
+static EVENT_BUS: LazyLock<broadcast::Sender<BackgroundTaskEvent>> = LazyLock::new(|| {
+    let (tx, _rx) = broadcast::channel::<BackgroundTaskEvent>(128);
+    tx
+});
+
+/// Subscribe to background-task events broadcast in-process. The returned
+/// receiver yields every event emitted via `emit_task` / `emit_task_with_workspace`
+/// from the moment of subscription. Missed messages while the receiver is
+/// behind become `RecvError::Lagged`; callers should treat that as a soft
+/// signal to re-check their pending set.
+pub fn subscribe_task_events() -> broadcast::Receiver<BackgroundTaskEvent> {
+    EVENT_BUS.subscribe()
+}
 
 /// Pending confirmation channels keyed by task_type. When a job is gated by
 /// `confirm_only` or `dual_model`, the scheduler installs a oneshot sender
@@ -370,16 +389,18 @@ fn emit_task_with_workspace(
             resolved
         }
     };
-    let _ = app.emit(
-        "background-task",
-        BackgroundTaskEvent {
-            task_type: task_type.to_string(),
-            status: status.to_string(),
-            message: message.to_string(),
-            model,
-            workspace_id: resolved_workspace_id,
-        },
-    );
+    let event = BackgroundTaskEvent {
+        task_type: task_type.to_string(),
+        status: status.to_string(),
+        message: message.to_string(),
+        model,
+        workspace_id: resolved_workspace_id,
+    };
+    // Mirror to the in-process broadcast bus first so subscribers (e.g., the
+    // workspace-refresh coordinator) cannot race with the IPC emit. Receive
+    // errors here mean no listeners — that is fine.
+    let _ = EVENT_BUS.send(event.clone());
+    let _ = app.emit("background-task", event);
 }
 
 fn current_next_tick_at() -> Option<String> {

@@ -522,6 +522,9 @@ pub fn run() {
             commands::ai_knowledge::analyze_workspace_chunked,
             commands::ai_knowledge::analyze_descendants,
             commands::ai_knowledge::dedup_workspace_concepts,
+            // Workspace knowledge refresh coordinator (replaces analyze_workspace_chunked
+            // for the user-visible "refresh" button)
+            commands::workspace_refresh::refresh_workspace_knowledge,
             // Memory commands
             commands::memory::create_memory,
             commands::memory::list_memories,

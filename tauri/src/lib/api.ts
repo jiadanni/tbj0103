@@ -911,6 +911,33 @@ export interface AnalysisResult {
   failed_chunks?: number;
 }
 
+/** Per-job enqueue failure surfaced by `refresh_workspace_knowledge`. */
+export interface RefreshWorkspaceEnqueueFailure {
+  task_type: string;
+  error: string;
+}
+
+/** Result of the background-job coordinator: which jobs were enqueued and
+ *  which (rarely) failed to enqueue. Individual job success/failure surfaces
+ *  through the `background-task` event stream. */
+export interface RefreshWorkspaceResult {
+  enqueued: string[];
+  failed_to_enqueue: RefreshWorkspaceEnqueueFailure[];
+}
+
+/** Background jobs the workspace-refresh coordinator drives. Mirrors
+ *  `REFRESH_TASK_TYPES` in `src-tauri/src/commands/workspace_refresh.rs`. */
+export const REFRESH_WORKSPACE_TASK_TYPES = [
+  "memory_extraction",
+  "workspace_glossary",
+  "hover_definition_scan",
+  "summarization",
+  "flashcard_generation",
+  "concept_hierarchy",
+  "workspace_prompt_bank",
+] as const;
+export type RefreshWorkspaceTaskType = (typeof REFRESH_WORKSPACE_TASK_TYPES)[number];
+
 export interface DedupReport {
   merged_chapters: number;
   merged_sections: number;
@@ -2010,6 +2037,17 @@ export const api = {
           focus_topic: opts?.focusTopic,
           survey_context: opts?.surveyContext,
         },
+      }),
+    /** Fan-out the seven persisted background jobs that produce the same
+     *  concept / hierarchy / summary shapes the legacy single-shot
+     *  `analyze_workspace_chunked` used to emit in one JSON blob. The UI
+     *  picks `mode: "async"` by default and listens to the `background-task`
+     *  event stream to refetch the graph as each job completes;
+     *  `mode: "sync"` blocks until every enqueued job reaches a terminal
+     *  status (used by the "Refresh and wait" progress modal). */
+    refreshWorkspace: (workspaceId: string, mode: "async" | "sync" = "async") =>
+      invoke<RefreshWorkspaceResult>("refresh_workspace_knowledge", {
+        req: { workspace_id: workspaceId, mode },
       }),
     checkWorkspaceAnalyzable: (workspaceId: string) =>
       invoke<{ ready: boolean; item_count: number; char_count: number }>("check_workspace_analyzable", {
