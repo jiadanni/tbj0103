@@ -1174,7 +1174,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                         className={`relative text-[0.65em] px-2 py-0.5 rounded-t-md border border-b-0 select-none whitespace-nowrap cursor-pointer transition-all ${
                           isActive
                             ? "font-semibold text-[var(--text-primary)] bg-[var(--bg-primary)] border-[var(--border-color)]"
-                            : "text-[var(--text-muted)] bg-[var(--bg-sidebar)]/50 border-transparent hover:bg-[var(--bg-hover)]/40"
+                            : "text-[var(--text-muted)] bg-[var(--bg-sidebar)]/50 border-transparent"
                         }`}
                       >
                         {isActive && (
@@ -1184,7 +1184,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                       </div>
                     );
                   })}
-                  <button className="h-5 w-5 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] rounded flex items-center justify-center mb-0.5">
+                  <button className="h-5 w-5 text-[var(--text-secondary)] rounded flex items-center justify-center mb-0.5">
                     <Plus size={10} />
                   </button>
                 </div>
@@ -1247,9 +1247,9 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
               </div>
               {!isMac && (
                 <div className="flex items-center gap-2 ml-1 text-[var(--text-secondary)] select-none">
-                  <span className="w-3 h-3 flex items-center justify-center hover:bg-[var(--bg-hover)] cursor-pointer text-[0.7em]">—</span>
-                  <span className="w-3 h-3 flex items-center justify-center hover:bg-[var(--bg-hover)] cursor-pointer text-[0.7em]">☐</span>
-                  <span className="w-3 h-3 flex items-center justify-center hover:bg-red-500 hover:text-white cursor-pointer text-[0.7em]">✕</span>
+                  <span className="w-3 h-3 flex items-center justify-center cursor-pointer text-[0.7em]">—</span>
+                  <span className="w-3 h-3 flex items-center justify-center cursor-pointer text-[0.7em]">☐</span>
+                  <span className="w-3 h-3 flex items-center justify-center cursor-pointer text-[0.7em]">✕</span>
                 </div>
               )}
             </div>
@@ -1260,7 +1260,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
             <div className="h-7 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]/90 px-3 flex items-center justify-between shrink-0 select-none">
               <div className="flex items-center gap-1.5 h-full">
                 {/* Pinned overview indicator */}
-                <div className="flex h-[22px] w-5 items-center justify-center self-end rounded-t border border-b-0 border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] cursor-pointer">
+                <div className="flex h-[22px] w-5 items-center justify-center self-end rounded-t border border-b-0 border-transparent text-[var(--text-secondary)] cursor-pointer">
                   <svg width="4" height="4" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
                 </div>
                 {activeWorkspaceChildren.map((child, index) => {
@@ -1271,7 +1271,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                       className={`relative flex h-[22px] items-center self-end rounded-t border border-b-0 px-2 text-[0.6em] font-medium whitespace-nowrap cursor-pointer transition-all select-none ${
                         isActive
                           ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)] font-semibold"
-                          : "border-transparent text-[var(--text-secondary)] opacity-60 hover:opacity-100 hover:bg-[var(--bg-hover)]"
+                          : "border-transparent text-[var(--text-secondary)] opacity-60"
                       }`}
                     >
                       {isActive && (
@@ -1281,7 +1281,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                     </div>
                   );
                 })}
-                <button className="h-4 w-4 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] rounded flex items-center justify-center mb-0.5">
+                <button className="h-4 w-4 text-[var(--text-muted)] rounded flex items-center justify-center mb-0.5">
                   <Plus size={8} />
                 </button>
               </div>
@@ -1296,7 +1296,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                 <span>{activeWorkspaceChildren[0]?.name ?? "Overview"}</span>
                 <ChevronDown size={8} className="text-[var(--text-muted)]" />
               </div>
-              <button className="h-4 w-4 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] rounded flex items-center justify-center">
+              <button className="h-4 w-4 text-[var(--text-muted)] rounded flex items-center justify-center">
                 <Plus size={8} />
               </button>
             </div>
@@ -1369,7 +1369,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                   }))}
                 />
                 <div className="flex flex-col items-center gap-1 w-full px-1 pt-1.5 border-t border-[var(--border-color)]/60">
-                  <div className="text-[var(--text-secondary)] text-[0.5em] flex items-center justify-center gap-0.5 hover:bg-[var(--bg-hover)] w-full py-0.5 rounded cursor-pointer scale-[0.85]">
+                  <div className="text-[var(--text-secondary)] text-[0.5em] flex items-center justify-center gap-0.5 w-full py-0.5 rounded cursor-pointer scale-[0.85]">
                     <ChevronLeft size={8} />
                     <span>Collapse</span>
                   </div>
@@ -1403,7 +1403,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                     className={`px-1.5 py-1 rounded text-[0.6em] truncate leading-tight select-none cursor-pointer ${
                       s.active
                         ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)] font-semibold border-l-2 border-[var(--accent-color)]"
-                        : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/30"
+                        : "text-[var(--text-secondary)]"
                     }`}
                   >
                     {s.title}
@@ -1432,7 +1432,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
               <div className="h-6.5 px-3 bg-[var(--bg-elevated)]/25 border-b border-[var(--border-color)]/30 flex items-center gap-2 shrink-0 overflow-x-hidden text-[0.55em] select-none">
                 <span className="font-bold text-[var(--text-muted)] text-[0.5em] uppercase tracking-wider shrink-0">RELATED</span>
                 {PREVIEW_RELATED_LINKS.map((lnk) => (
-                  <span key={lnk} className="px-1.5 py-0.5 rounded-full bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--accent-color)] cursor-pointer whitespace-nowrap">
+                  <span key={lnk} className="px-1.5 py-0.5 rounded-full bg-[var(--bg-elevated)] text-[var(--text-secondary)] cursor-pointer whitespace-nowrap">
                     {lnk}
                   </span>
                 ))}
@@ -1546,9 +1546,9 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
 
                 <div className="flex items-center gap-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1">
                   <div className="flex items-center gap-1 text-[var(--text-muted)] px-1 scale-90">
-                    <Paperclip size={10} className="hover:text-[var(--text-secondary)] cursor-pointer" />
-                    <Search size={10} className="hover:text-[var(--text-secondary)] cursor-pointer" />
-                    <Pencil size={10} className="hover:text-[var(--text-secondary)] cursor-pointer" />
+                    <Paperclip size={10} className="cursor-pointer" />
+                    <Search size={10} className="cursor-pointer" />
+                    <Pencil size={10} className="cursor-pointer" />
                   </div>
                   <div className="flex-1 text-[0.7em] text-[var(--text-muted)] font-normal truncate">
                     Continue this thread...
