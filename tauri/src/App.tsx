@@ -325,7 +325,7 @@ export default function App() {
         const [workspaces, core, ai, advanced] = await Promise.all([
           api.workspace.list(),
           api.settings.getCore(),
-          api.settings.getAi(),
+          api.settings.getInference(),
           api.settings.getAdvanced(),
         ]);
         if (cancelled) {return;}
@@ -419,7 +419,7 @@ export default function App() {
       try {
         const [core, ai, advanced] = await Promise.all([
           api.settings.getCore(),
-          api.settings.getAi(),
+          api.settings.getInference(),
           api.settings.getAdvanced(),
         ]);
         const store = useSettingsStore.getState();

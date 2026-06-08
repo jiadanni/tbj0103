@@ -5,7 +5,7 @@ import type {
   BackgroundTaskEvent,
   BackgroundTaskPromptEvent,
   PerformanceStats,
-  ScheduledJobStatus,
+  InferenceJobStatus,
 } from "@/lib/api";
 import { useChatStore } from "@/stores/chatStore";
 import { useBackgroundJobsStore } from "@/stores/backgroundJobs";
@@ -22,12 +22,12 @@ const { listWorkspaces, getPromptBankStatus } = vi.hoisted(() => ({
   listWorkspaces: vi.fn(),
   getPromptBankStatus: vi.fn(),
 }));
-const { confirmBackgroundJob, dismissBackgroundJob, cancelBackgroundJob, getScheduledJobStatuses } =
+const { confirmBackgroundJob, dismissBackgroundJob, cancelBackgroundJob, getInferenceJobStatuses } =
   vi.hoisted(() => ({
     confirmBackgroundJob: vi.fn(),
     dismissBackgroundJob: vi.fn(),
     cancelBackgroundJob: vi.fn(),
-    getScheduledJobStatuses: vi.fn(),
+    getInferenceJobStatuses: vi.fn(),
   }));
 
 vi.mock("@/lib/api", () => ({
@@ -49,7 +49,7 @@ vi.mock("@/lib/api", () => ({
       confirm: confirmBackgroundJob,
       dismiss: dismissBackgroundJob,
       cancel: cancelBackgroundJob,
-      getScheduledJobStatuses,
+      getInferenceJobStatuses,
     },
   },
 }));
@@ -111,8 +111,8 @@ describe("StatusBar", () => {
     dismissBackgroundJob.mockResolvedValue(true);
     cancelBackgroundJob.mockReset();
     cancelBackgroundJob.mockResolvedValue(true);
-    getScheduledJobStatuses.mockReset();
-    getScheduledJobStatuses.mockResolvedValue([]);
+    getInferenceJobStatuses.mockReset();
+    getInferenceJobStatuses.mockResolvedValue([]);
     listWorkspaces.mockReset();
     listWorkspaces.mockResolvedValue([]);
     getPromptBankStatus.mockReset();
@@ -199,7 +199,7 @@ describe("StatusBar", () => {
   });
 
   it("shows a read-only scheduled jobs popover", async () => {
-    const statuses: ScheduledJobStatus[] = [
+    const statuses: InferenceJobStatus[] = [
       {
         job_key: "memory_extraction",
         label: "Memory Extraction",
@@ -209,7 +209,7 @@ describe("StatusBar", () => {
         due_label: "checks every minute when idle",
       },
     ];
-    getScheduledJobStatuses.mockResolvedValue(statuses);
+    getInferenceJobStatuses.mockResolvedValue(statuses);
 
     render(<StatusBar />);
 

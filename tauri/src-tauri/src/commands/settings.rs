@@ -1143,7 +1143,7 @@ pub struct CoreSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AiSettings {
+pub struct InferenceSettings {
     pub preferred_model: String,
     pub background_model: String,
     pub summarization_model: String,
@@ -1290,15 +1290,15 @@ pub async fn get_core_settings(state: State<'_, DbState>) -> Result<CoreSettings
 }
 
 #[tauri::command]
-pub async fn get_ai_settings(state: State<'_, DbState>) -> Result<AiSettings, String> {
+pub async fn get_inference_settings(state: State<'_, DbState>) -> Result<InferenceSettings, String> {
     let pool = state.0.clone();
-    tokio::task::spawn_blocking(move || -> Result<AiSettings, String> {
+    tokio::task::spawn_blocking(move || -> Result<InferenceSettings, String> {
         let conn = pool.get().map_err(|e| e.to_string())?;
         let map = load_all_settings(&conn)?;
         let def = Settings::default();
         let lookup = |key: &str| map.get(key).cloned();
 
-        Ok(AiSettings {
+        Ok(InferenceSettings {
             preferred_model: lookup("preferred_model")
                 .and_then(|v| serde_json::from_str(&v).ok())
                 .unwrap_or(def.preferred_model),

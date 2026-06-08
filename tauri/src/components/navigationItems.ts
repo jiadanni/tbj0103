@@ -21,4 +21,4 @@ export const PRIMARY_NAV_ITEMS: NavigationItem[] = [
   { path: "/history", icon: History, label: "History" },
 ];
 export type ChatSubView = "chat" | "compare" | "sessions";
-export type PreferencesSection = "app" | "navigation" | "appearance" | "chat" | "learning" | "about-you" | "ai" | "scheduled-tasks" | "webai" | "security" | "workspaces" | "data" | "backup" | "import" | "mcp" | "sync" | "memory" | "logs";
+export type PreferencesSection = "app" | "navigation" | "appearance" | "chat" | "learning" | "about-you" | "inference" | "inference-jobs" | "webai" | "security" | "workspaces" | "data" | "backup" | "import" | "mcp" | "sync" | "memory" | "logs";

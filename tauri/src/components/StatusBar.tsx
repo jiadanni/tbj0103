@@ -4,7 +4,7 @@ import {
   api,
   type PerformanceStats,
   type BackgroundTaskPromptEvent,
-  type ScheduledJobStatus,
+  type InferenceJobStatus,
 } from "../lib/api";
 import { useChatStore } from "../stores/chatStore";
 import { useSettingsStore } from "../stores/settingsStore";
@@ -390,7 +390,7 @@ function ScheduledJobsPopover({
   onClose,
 }: {
   anchorRect: DOMRect;
-  jobs: ScheduledJobStatus[];
+  jobs: InferenceJobStatus[];
   loading: boolean;
   onClose: () => void;
 }) {
@@ -523,7 +523,7 @@ export default function StatusBar() {
     Map<string, { heavyModel?: string; smallModel?: string; mode: "confirm_only" | "dual_model" }>
   >(new Map());
   const [scheduledPopoverRect, setScheduledPopoverRect] = useState<DOMRect | null>(null);
-  const [scheduledJobs, setScheduledJobs] = useState<ScheduledJobStatus[]>([]);
+  const [scheduledJobs, setScheduledJobs] = useState<InferenceJobStatus[]>([]);
   const [scheduledJobsLoading, setScheduledJobsLoading] = useState(false);
   const promptTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -732,7 +732,7 @@ export default function StatusBar() {
     }
     setScheduledPopoverRect(event.currentTarget.getBoundingClientRect());
     setScheduledJobsLoading(true);
-    api.backgroundJobs.getScheduledJobStatuses()
+    api.backgroundJobs.getInferenceJobStatuses()
       .then(setScheduledJobs)
       .catch(() => setScheduledJobs([]))
       .finally(() => setScheduledJobsLoading(false));

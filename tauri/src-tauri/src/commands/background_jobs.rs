@@ -42,28 +42,28 @@ pub async fn queue_background_processing_now(
     background_scheduler::queue_manual_processing(app, req)
 }
 
-/// All settings used by the Scheduled Tasks preferences section. Fetched in a
+/// All settings used by the Inference Jobs preferences section. Fetched in a
 /// single IPC round-trip so the UI can render without dozens of generic
 /// get_setting calls.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ScheduledTaskSettings {
-    pub jobs: Vec<ScheduledJobSetting>,
+pub struct InferenceJobSettings {
+    pub jobs: Vec<InferenceJobSetting>,
     pub confirm_timeout_seconds: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ScheduledJobSetting {
+pub struct InferenceJobSetting {
     pub job_key: String,
     pub run_mode: String, // "auto" | "confirm_only" | "dual_model"
     pub heavy_model: String,
 }
 
 #[tauri::command]
-pub async fn get_scheduled_task_settings(
+pub async fn get_inference_job_settings(
     state: State<'_, DbState>,
-) -> Result<ScheduledTaskSettings, String> {
+) -> Result<InferenceJobSettings, String> {
     let pool = state.0.clone();
-    tokio::task::spawn_blocking(move || -> Result<ScheduledTaskSettings, String> {
+    tokio::task::spawn_blocking(move || -> Result<InferenceJobSettings, String> {
         let conn = pool.get().map_err(|e| e.to_string())?;
         let jobs = background_scheduler::SCHEDULED_JOB_KEYS
             .iter()
@@ -78,7 +78,7 @@ pub async fn get_scheduled_task_settings(
                     &format!("{}_heavy_model", key),
                 )
                 .unwrap_or_default();
-                ScheduledJobSetting {
+                InferenceJobSetting {
                     job_key: (*key).to_string(),
                     run_mode,
                     heavy_model,
@@ -87,7 +87,7 @@ pub async fn get_scheduled_task_settings(
             .collect();
         let confirm_timeout_seconds =
             crate::services::model_settings::get_confirm_timeout_seconds(&conn);
-        Ok(ScheduledTaskSettings {
+        Ok(InferenceJobSettings {
             jobs,
             confirm_timeout_seconds,
         })
@@ -97,12 +97,12 @@ pub async fn get_scheduled_task_settings(
 }
 
 #[tauri::command]
-pub async fn get_scheduled_job_statuses(
+pub async fn get_inference_job_statuses(
     state: State<'_, DbState>,
-) -> Result<Vec<background_scheduler::ScheduledBackgroundJobStatus>, String> {
+) -> Result<Vec<background_scheduler::InferenceJobStatus>, String> {
     let pool = state.0.clone();
     tokio::task::spawn_blocking(
-        move || -> Result<Vec<background_scheduler::ScheduledBackgroundJobStatus>, String> {
+        move || -> Result<Vec<background_scheduler::InferenceJobStatus>, String> {
             let conn = pool.get().map_err(|e| e.to_string())?;
             background_scheduler::list_scheduled_statuses(&conn)
         },
@@ -135,7 +135,7 @@ pub async fn set_current_workspace_id(
 }
 
 #[tauri::command]
-pub async fn set_scheduled_task_setting(
+pub async fn set_inference_job_setting(
     state: State<'_, DbState>,
     key: String,
     value: String,

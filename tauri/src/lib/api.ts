@@ -561,18 +561,18 @@ export interface BackgroundTaskPromptEvent {
 
 export type BackgroundJobRunMode = 'auto' | 'confirm_only' | 'dual_model';
 
-export interface ScheduledJobSetting {
+export interface InferenceJobSetting {
   job_key: string;
   run_mode: BackgroundJobRunMode | string;
   heavy_model: string;
 }
 
-export interface ScheduledTaskSettings {
-  jobs: ScheduledJobSetting[];
+export interface InferenceJobSettings {
+  jobs: InferenceJobSetting[];
   confirm_timeout_seconds: number;
 }
 
-export interface ScheduledJobStatus {
+export interface InferenceJobStatus {
   job_key: string;
   label: string;
   enabled: boolean;
@@ -710,7 +710,7 @@ export interface AppSettings {
 }
 
 // Narrow slices of AppSettings returned by the split `get_core_settings`,
-// `get_ai_settings`, and `get_advanced_settings` commands. Each mirrors the
+// `get_inference_settings`, and `get_advanced_settings` commands. Each mirrors the
 // corresponding Rust struct exactly. The fat `get_settings`/AppSettings pair
 // stays for now; callers should migrate to these slices to shrink the
 // per-fetch IPC payload.
@@ -734,7 +734,7 @@ export interface CoreSettings {
   prompt_instructions: string;
 }
 
-export interface AiSettings {
+export interface InferenceSettings {
   preferred_model: string;
   background_model: string;
   summarization_model: string;
@@ -1929,7 +1929,7 @@ export const api = {
   settings: {
     get: () => timed("settings.get", () => invoke<AppSettings>("get_settings")),
     getCore: () => invoke<CoreSettings>("get_core_settings"),
-    getAi: () => invoke<AiSettings>("get_ai_settings"),
+    getInference: () => invoke<InferenceSettings>("get_inference_settings"),
     getAdvanced: () => invoke<AdvancedSettings>("get_advanced_settings"),
     update: (settings: AppSettings) => invoke<void>("update_settings", { settings }),
     updateOne: (key: string, value: unknown) => invoke<void>("update_setting", { key, value }),
@@ -2137,16 +2137,16 @@ export const api = {
       invoke<boolean>("dismiss_background_job", { taskType }),
     cancel: (taskType: string) =>
       invoke<boolean>("cancel_background_job", { taskType }),
-    getScheduledTaskSettings: () =>
-      invoke<ScheduledTaskSettings>("get_scheduled_task_settings"),
-    getScheduledJobStatuses: () =>
-      invoke<ScheduledJobStatus[]>("get_scheduled_job_statuses"),
+    getInferenceJobSettings: () =>
+      invoke<InferenceJobSettings>("get_inference_job_settings"),
+    getInferenceJobStatuses: () =>
+      invoke<InferenceJobStatus[]>("get_inference_job_statuses"),
     queueNow: (taskType: string) =>
       invoke<void>("queue_background_job_now", { taskType }),
     queueProcessingNow: (req: QueueBackgroundProcessingRequest) =>
       invoke<void>("queue_background_processing_now", { req }),
-    setScheduledTaskSetting: (key: string, value: string) =>
-      invoke<void>("set_scheduled_task_setting", { key, value }),
+    setInferenceJobSetting: (key: string, value: string) =>
+      invoke<void>("set_inference_job_setting", { key, value }),
     setCurrentWorkspaceId: (workspaceId: string | null) =>
       invoke<void>("set_current_workspace_id", { workspaceId }),
   },

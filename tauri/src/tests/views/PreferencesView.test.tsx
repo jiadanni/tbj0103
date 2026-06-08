@@ -8,7 +8,7 @@ import PreferencesView from "@/views/PreferencesView";
 const apiMocks = vi.hoisted(() => ({
   settingsGet: vi.fn(),
   settingsGetCore: vi.fn(),
-  settingsGetAi: vi.fn(),
+  settingsGetInference: vi.fn(),
   settingsGetAdvanced: vi.fn(),
   settingsUpdate: vi.fn(() => Promise.resolve(undefined)),
   aiModelList: vi.fn(),
@@ -188,7 +188,7 @@ vi.mock("@/lib/api", () => ({
     settings: {
       get: apiMocks.settingsGet,
       getCore: apiMocks.settingsGetCore,
-      getAi: apiMocks.settingsGetAi,
+      getInference: apiMocks.settingsGetInference,
       getAdvanced: apiMocks.settingsGetAdvanced,
       update: apiMocks.settingsUpdate,
     },
@@ -234,10 +234,10 @@ vi.mock("@/lib/api", () => ({
       confirm: vi.fn(() => Promise.resolve(true)),
       dismiss: vi.fn(() => Promise.resolve(true)),
       cancel: vi.fn(() => Promise.resolve(true)),
-      getScheduledTaskSettings: vi.fn(() =>
+      getInferenceJobSettings: vi.fn(() =>
         Promise.resolve({ jobs: [], confirm_timeout_seconds: 20 }),
       ),
-      getScheduledJobStatuses: vi.fn(() =>
+      getInferenceJobStatuses: vi.fn(() =>
         Promise.resolve([
           {
             job_key: "memory_extraction",
@@ -251,7 +251,7 @@ vi.mock("@/lib/api", () => ({
       ),
       queueNow: vi.fn(() => Promise.resolve()),
       queueProcessingNow: apiMocks.queueBackgroundProcessingNow,
-      setScheduledTaskSetting: vi.fn(() => Promise.resolve()),
+      setInferenceJobSetting: vi.fn(() => Promise.resolve()),
     },
   },
 }));
@@ -280,7 +280,7 @@ vi.mock("@/views/ImportSettingsSection", () => ({ default: () => <div>Import Set
 describe("PreferencesView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    window.localStorage.setItem("preferencesActiveTab", "ai");
+    window.localStorage.setItem("preferencesActiveTab", "inference");
 
     const fullSettings = {
       theme: "system",
@@ -355,7 +355,7 @@ describe("PreferencesView", () => {
       inject_about_you_into_chat: true,
       prompt_instructions: fullSettings.prompt_instructions,
     });
-    apiMocks.settingsGetAi.mockResolvedValue({
+    apiMocks.settingsGetInference.mockResolvedValue({
       preferred_model: fullSettings.preferred_model,
       background_model: fullSettings.background_model,
       summarization_model: "",

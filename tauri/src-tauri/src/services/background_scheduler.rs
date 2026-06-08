@@ -1835,7 +1835,7 @@ pub struct ActiveBackgroundJob {
 }
 
 #[derive(Debug, Clone, Serialize, serde::Deserialize)]
-pub struct ScheduledBackgroundJobStatus {
+pub struct InferenceJobStatus {
     pub job_key: String,
     pub label: String,
     pub enabled: bool,
@@ -2064,7 +2064,7 @@ fn add_scheduler_ticks_to_rfc3339(base: Option<&str>, ticks: u32) -> Option<Stri
 
 pub fn list_scheduled_statuses(
     conn: &rusqlite::Connection,
-) -> Result<Vec<ScheduledBackgroundJobStatus>, String> {
+) -> Result<Vec<InferenceJobStatus>, String> {
     let active_jobs = ACTIVE_JOBS
         .lock()
         .map(|map| map.clone())
@@ -2195,7 +2195,7 @@ pub fn list_scheduled_statuses(
             let (pending_work_count, pending_input_tokens) =
                 pending_workload_for_job(conn, job_key, current_workspace.as_deref());
 
-            ScheduledBackgroundJobStatus {
+            InferenceJobStatus {
                 job_key: (*job_key).to_string(),
                 label: job_label(job_key).to_string(),
                 enabled: background_enabled,
