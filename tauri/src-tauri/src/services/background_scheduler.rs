@@ -98,6 +98,7 @@ fn job_label(task_type: &str) -> &'static str {
         "hover_definition_scan" => "Hover Definitions",
         "concept_hierarchy" => "Topic Hierarchy",
         "workspace_prompt_bank" => "Starter Prompts / Topic Signatures",
+        "workspace_analysis" => "Workspace Analysis",
         "manual_data_processing" => "Background Processing",
         "git_sync" => "Git Sync",
         _ => "Background Job",
@@ -2045,6 +2046,7 @@ fn model_setting_for_job(job_key: &str) -> &'static str {
         "workspace_glossary" | "hover_definition_scan" => "glossary_model",
         "concept_hierarchy" => "concept_hierarchy_model",
         "workspace_prompt_bank" => "topic_signature_model",
+        "workspace_analysis" => "workspace_analysis_model",
         _ => "",
     }
 }

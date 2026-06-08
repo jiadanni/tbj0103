@@ -32,6 +32,7 @@ interface CompactMenuSelectProps {
   widthClassName?: string;
   buttonClassName?: string;
   menuClassName?: string;
+  hideSelectedLabel?: boolean;
 }
 
 const defaultButtonClassName = "flex h-8 w-full items-center justify-between gap-3 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)] shadow-sm outline-none transition-colors hover:border-[var(--accent-color)] focus-visible:border-[var(--accent-color)]";
@@ -46,6 +47,7 @@ export function CompactMenuSelect({
   widthClassName = "w-full",
   buttonClassName = "",
   menuClassName = "",
+  hideSelectedLabel = false,
 }: CompactMenuSelectProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -221,7 +223,7 @@ export function CompactMenuSelect({
         onClick={() => setOpen((current) => !current)}
         className={`${defaultButtonClassName} ${buttonClassName}`.trim()}
       >
-        <span className="truncate">{selectedOption.label}</span>
+        {!hideSelectedLabel && <span className="truncate">{selectedOption.label}</span>}
         <ChevronDown size={14} className={`shrink-0 text-[var(--text-muted)] transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 

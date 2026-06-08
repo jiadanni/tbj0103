@@ -318,6 +318,7 @@ function mergeSplitSettings(
     topic_signature_model: ai.topic_signature_model,
     goal_suggestion_model: ai.goal_suggestion_model,
     concept_hierarchy_model: ai.concept_hierarchy_model,
+    workspace_analysis_model: ai.workspace_analysis_model,
     embedding_model: ai.embedding_model,
     draft_model: ai.draft_model,
     compare_model_a: ai.compare_model_a,
@@ -2189,6 +2190,7 @@ const SCHEDULED_JOBS_CATALOG: {
   description: string;
   tokens: string;
   note: string;
+  manual?: boolean;
 }[] = [
   { job_key: "memory_extraction", model_setting: "memory_extraction_model", label: "Memory Extraction", description: "Extract durable facts from finished chats", tokens: "~200–1,000 tokens input", note: "2k context OK" },
   { job_key: "summarization", model_setting: "summarization_model", label: "Summarization", description: "Roll up long chat sessions", tokens: "~500–5,000 tokens input", note: "≥4k context recommended" },
@@ -2197,6 +2199,7 @@ const SCHEDULED_JOBS_CATALOG: {
   { job_key: "hover_definition_scan", model_setting: "glossary_model", label: "Hover Definitions", description: "Find undefined terms in recent chats", tokens: "~400–1,500 tokens input", note: "2k context OK" },
   { job_key: "workspace_prompt_bank", model_setting: "topic_signature_model", label: "Starter Prompts / Topic Signatures", description: "Refresh per-workspace prompt suggestions", tokens: "~1,000–3,000 tokens input", note: "≥4k context recommended" },
   { job_key: "concept_hierarchy", model_setting: "concept_hierarchy_model", label: "Topic Hierarchy", description: "LLM-assisted concept parent linking", tokens: "~200–800 tokens input", note: "2k context OK" },
+  { job_key: "workspace_analysis", model_setting: "workspace_analysis_model", label: "Workspace Analysis", description: "Global default for manual roadmap extraction", tokens: "~1,000–10,000 tokens input", note: "larger context recommended", manual: true },
 ];
 
 function formatPendingTokens(
@@ -2321,6 +2324,23 @@ function ScheduledTasksCard({
     ],
     [eligibleModels, modelLabels, aiModels],
   );
+  const manualModelOptions = useMemo(
+    () => {
+      const topModel = [...eligibleModels].sort((a, b) => a.priority - b.priority)[0];
+      const topModelLabel = topModel
+        ? resolveModelDisplayName(topModel.model_id, modelLabels, aiModels)
+        : "top enabled model";
+
+      return [
+        { value: "", label: `Default - ${topModelLabel}` },
+        ...eligibleModels.map((m) => ({
+        value: m.model_id,
+        label: resolveModelDisplayName(m.model_id, modelLabels, aiModels),
+        })),
+      ];
+    },
+    [eligibleModels, modelLabels, aiModels],
+  );
   const modeOptions = RUN_MODE_OPTIONS.map((o) => ({ value: o.value, label: o.label }));
 
   const updateRunMode = (jobKey: string, mode: BackgroundJobRunMode) => {
@@ -2394,6 +2414,7 @@ function ScheduledTasksCard({
               const runMode = (entry?.run_mode ?? "auto") as BackgroundJobRunMode;
               const heavyModel = entry?.heavy_model ?? "";
               const smallModel = (dbSettings[job.model_setting] as string) ?? "";
+              const isManualTask = job.manual === true;
 
               const smallSelected = smallModel ? eligibleModels.find((m) => m.model_id === smallModel) : null;
               const smallOllamaMeta = smallSelected ? ollamaModels.find((om) => om.name === smallSelected.model_id) : null;
@@ -2424,43 +2445,55 @@ function ScheduledTasksCard({
                     <div className="min-w-[220px] flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <div className="text-xs font-medium text-[var(--text-primary)]">{job.label}</div>
-                        <ScheduledJobStatePill state={status?.state} />
+                        {isManualTask ? (
+                          <span className="rounded-full border border-[var(--border-color)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                            Manual
+                          </span>
+                        ) : (
+                          <ScheduledJobStatePill state={status?.state} />
+                        )}
                       </div>
                       <div className="mt-0.5 text-[11px] text-[var(--text-secondary)]">{job.description}</div>
                       <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-[var(--text-muted)]">
                         <span>{formatPendingTokens(status, job.tokens)}</span>
                         <span>{job.note}</span>
-                        <span>{status?.due_label ?? "checks every minute when idle"}</span>
+                        <span>{isManualTask ? "global setting; uses the top enabled model unless overridden" : status?.due_label ?? "checks every minute when idle"}</span>
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => void queueJobNow(job.job_key)}
-                      disabled={queueingJob === job.job_key || status?.state === "running" || status?.state === "queued"}
-                      className="h-7 shrink-0 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {queueingJob === job.job_key ? "Queueing…" : status?.state === "queued" ? "Queued" : "Run next"}
-                    </button>
+                    {!isManualTask && (
+                      <button
+                        type="button"
+                        onClick={() => void queueJobNow(job.job_key)}
+                        disabled={queueingJob === job.job_key || status?.state === "running" || status?.state === "queued"}
+                        className="h-7 shrink-0 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {queueingJob === job.job_key ? "Queueing…" : status?.state === "queued" ? "Queued" : "Run next"}
+                      </button>
+                    )}
                   </div>
 
-                  <div className="mt-2 grid gap-2 md:grid-cols-3">
-                    <div>
-                      <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Run mode</div>
-                      <CompactMenuSelect
-                        label="Run mode"
-                        value={runMode}
-                        options={modeOptions}
-                        onChange={(value) => updateRunMode(job.job_key, value as BackgroundJobRunMode)}
-                      />
-                    </div>
+                  <div className={`mt-2 grid gap-2 ${isManualTask ? "md:grid-cols-1" : "md:grid-cols-3"}`}>
+                    {!isManualTask && (
+                      <div>
+                        <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Run mode</div>
+                        <CompactMenuSelect
+                          label="Run mode"
+                          value={runMode}
+                          options={modeOptions}
+                          onChange={(value) => updateRunMode(job.job_key, value as BackgroundJobRunMode)}
+                        />
+                      </div>
+                    )}
 
                     <div>
-                      <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Small model</div>
+                      <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">
+                        {isManualTask ? "Model" : "Small model"}
+                      </div>
                       <CompactMenuSelect
-                        label="Small model"
+                        label={isManualTask ? "Model" : "Small model"}
                         value={smallModel}
-                        options={smallModelOptions}
+                        options={isManualTask ? manualModelOptions : smallModelOptions}
                         onChange={(value) => set(job.model_setting, value as never)}
                       />
                       {smallSelected && (smallParamsLabel || smallFitMeta.label) && (
@@ -2472,18 +2505,20 @@ function ScheduledTasksCard({
                       )}
                     </div>
 
-                    <div>
-                      <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Heavy model</div>
-                      <CompactMenuSelect
-                        label="Heavy model"
-                        value={heavyModel}
-                        options={heavyModelOptions}
-                        onChange={(value) => updateHeavyModel(job.job_key, value)}
-                      />
-                      {heavyParamsLabel && (
-                        <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">{heavyParamsLabel}</div>
-                      )}
-                    </div>
+                    {!isManualTask && (
+                      <div>
+                        <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Heavy model</div>
+                        <CompactMenuSelect
+                          label="Heavy model"
+                          value={heavyModel}
+                          options={heavyModelOptions}
+                          onChange={(value) => updateHeavyModel(job.job_key, value)}
+                        />
+                        {heavyParamsLabel && (
+                          <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">{heavyParamsLabel}</div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -3016,6 +3051,7 @@ export default function PreferencesView() {
     settingsStore.setTopicSignatureModel(settings.topic_signature_model);
     settingsStore.setGoalSuggestionModel(settings.goal_suggestion_model);
     settingsStore.setConceptHierarchyModel(settings.concept_hierarchy_model);
+    settingsStore.setWorkspaceAnalysisModel(settings.workspace_analysis_model);
     settingsStore.setQuickSearchWorkspaceScope(settings.quick_search_workspace_scope);
     settingsStore.setQuickSearchTypeFilters(settings.quick_search_type_filters);
     settingsStore.setOllamaUrl(settings.ollama_base_url);

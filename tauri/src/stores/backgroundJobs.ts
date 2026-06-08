@@ -32,7 +32,7 @@ export const useBackgroundJobsStore = create<BackgroundJobsState>((set, get) => 
   },
 
   applyEvent: (event) => {
-    const { task_type, status, model, workspace_id } = event;
+    const { task_type, status, message, model, workspace_id } = event;
     if (status === "queued" || status === "started" || status === "processing") {
       const needsHydrate = task_type === "workspace_prompt_bank" && !workspace_id;
       set((state) => {
@@ -41,6 +41,7 @@ export const useBackgroundJobsStore = create<BackgroundJobsState>((set, get) => 
         nextJobs.set(task_type, {
           task_type,
           workspace_id: workspace_id ?? existing?.workspace_id,
+          message: message || existing?.message,
           model: model ?? existing?.model,
           started_at: existing?.started_at,
           status: status === "queued" ? "queued" : "running",

@@ -53,6 +53,7 @@ interface AppSettings {
   topicSignatureModel: string;
   goalSuggestionModel: string;
   conceptHierarchyModel: string;
+  workspaceAnalysisModel: string;
   quickSearchWorkspaceScope: string;
   quickSearchTypeFilters: string[];
   ollamaUrl: string;
@@ -116,6 +117,7 @@ interface SettingsStore extends AppSettings {
   setTopicSignatureModel: (m: string) => void;
   setGoalSuggestionModel: (m: string) => void;
   setConceptHierarchyModel: (m: string) => void;
+  setWorkspaceAnalysisModel: (m: string) => void;
   setQuickSearchWorkspaceScope: (scope: string) => void;
   setQuickSearchTypeFilters: (filters: string[]) => void;
   setOllamaUrl: (url: string) => void;
@@ -183,6 +185,7 @@ export const useSettingsStore = create<SettingsStore>()(
       topicSignatureModel: "",
       goalSuggestionModel: "",
       conceptHierarchyModel: "",
+      workspaceAnalysisModel: "",
       quickSearchWorkspaceScope: "__all__",
       quickSearchTypeFilters: ["conversation", "message", "artifact", "memory", "summary"],
       ollamaUrl: "http://localhost:11434",
@@ -243,6 +246,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setTopicSignatureModel: (topicSignatureModel) => set({ topicSignatureModel }),
       setGoalSuggestionModel: (goalSuggestionModel) => set({ goalSuggestionModel }),
       setConceptHierarchyModel: (conceptHierarchyModel) => set({ conceptHierarchyModel }),
+      setWorkspaceAnalysisModel: (workspaceAnalysisModel) => set({ workspaceAnalysisModel }),
       setQuickSearchWorkspaceScope: (quickSearchWorkspaceScope) => set({ quickSearchWorkspaceScope }),
       setQuickSearchTypeFilters: (quickSearchTypeFilters) => set({ quickSearchTypeFilters }),
       setOllamaUrl: (ollamaUrl) => set({ ollamaUrl }),

@@ -16,6 +16,7 @@ pub struct Settings {
     pub topic_signature_model: String,
     pub goal_suggestion_model: String,
     pub concept_hierarchy_model: String,
+    pub workspace_analysis_model: String,
     pub quick_search_models: Vec<String>,
     pub quick_search_shortcut: String,
     pub quick_search_workspace_scope: String,
@@ -94,6 +95,7 @@ impl Default for Settings {
             topic_signature_model: "".to_string(),
             goal_suggestion_model: "".to_string(),
             concept_hierarchy_model: "".to_string(),
+            workspace_analysis_model: "".to_string(),
             quick_search_models: Vec::new(),
             quick_search_shortcut: "CmdOrCtrl+Shift+K".to_string(),
             quick_search_workspace_scope: "__all__".to_string(),
@@ -336,6 +338,9 @@ pub async fn get_settings(app: AppHandle, state: State<'_, DbState>) -> Result<S
         concept_hierarchy_model: get_setting(&conn, "concept_hierarchy_model")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.concept_hierarchy_model),
+        workspace_analysis_model: get_setting(&conn, "workspace_analysis_model")
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or(def.workspace_analysis_model),
         quick_search_models: get_setting(&conn, "quick_search_models")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.quick_search_models),
@@ -622,6 +627,11 @@ pub fn update_settings(
         &conn,
         "concept_hierarchy_model",
         &serde_json::to_string(&settings.concept_hierarchy_model).unwrap(),
+    )?;
+    set_setting(
+        &conn,
+        "workspace_analysis_model",
+        &serde_json::to_string(&settings.workspace_analysis_model).unwrap(),
     )?;
     set_setting(
         &conn,
@@ -989,6 +999,7 @@ fn encode_known_setting(key: &str, value: &serde_json::Value) -> Result<String, 
         | "topic_signature_model"
         | "goal_suggestion_model"
         | "concept_hierarchy_model"
+        | "workspace_analysis_model"
         | "draft_model"
         | "compare_model_a"
         | "compare_model_b"
@@ -1142,6 +1153,7 @@ pub struct AiSettings {
     pub topic_signature_model: String,
     pub goal_suggestion_model: String,
     pub concept_hierarchy_model: String,
+    pub workspace_analysis_model: String,
     pub embedding_model: String,
     pub draft_model: String,
     pub compare_model_a: String,
@@ -1314,6 +1326,9 @@ pub async fn get_ai_settings(state: State<'_, DbState>) -> Result<AiSettings, St
             concept_hierarchy_model: lookup("concept_hierarchy_model")
                 .and_then(|v| serde_json::from_str(&v).ok())
                 .unwrap_or(def.concept_hierarchy_model),
+            workspace_analysis_model: lookup("workspace_analysis_model")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.workspace_analysis_model),
             embedding_model: lookup("embedding_model")
                 .and_then(|v| serde_json::from_str(&v).ok())
                 .unwrap_or(def.embedding_model),
@@ -1543,6 +1558,7 @@ mod tests {
         ("topic_signature_model", "llama3"),
         ("goal_suggestion_model", "llama3"),
         ("concept_hierarchy_model", "llama3"),
+        ("workspace_analysis_model", "llama3"),
         ("draft_model", "llama3"),
         ("compare_model_a", "llama3"),
         ("compare_model_b", "llama3"),

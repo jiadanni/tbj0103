@@ -195,7 +195,7 @@ export default function KnowledgeGraphView({
   const navigate = useNavigate();
   const { activeWorkspaceId } = useScopedWorkspace();
   const includeDescendants = useBubbleUpFlag();
-  const { preferredModel, ollamaUrl } = useSettingsStore();
+  const { workspaceAnalysisModel, ollamaUrl } = useSettingsStore();
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
 
   const [nodes, setNodes] = useState<ConceptNode[]>([]);
@@ -223,7 +223,9 @@ export default function KnowledgeGraphView({
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
   const [focusTopic, setFocusTopic] = useState("");
-  const [selectedModel, setSelectedModel] = useState(preferredModel || "");
+  const defaultAnalysisModel = workspaceAnalysisModel || "";
+  const [selectedModel, setSelectedModel] = useState(defaultAnalysisModel);
+  const [workspaceModelOverrides, setWorkspaceModelOverrides] = useState<Record<string, string>>({});
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState("");
@@ -286,9 +288,6 @@ export default function KnowledgeGraphView({
         if (enabled.length > 0) {
           const ids = enabled.map((model) => model.model_id);
           setAvailableModels(ids);
-          if (!ids.includes(selectedModel)) {
-            setSelectedModel(ids[0]);
-          }
           return;
         }
         return api.ollama.listModels(ollamaUrl);
@@ -298,13 +297,28 @@ export default function KnowledgeGraphView({
         if (Array.isArray(models)) {
           const names = (models as { name: string }[]).map((model) => model.name);
           setAvailableModels(names);
-          if (!names.includes(selectedModel)) {
-            setSelectedModel(names[0] || "");
-          }
         }
       })
       .catch(() => {});
-  }, [ollamaUrl, selectedModel]);
+  }, [ollamaUrl]);
+
+  useEffect(() => {
+    const workspaceOverride = activeWorkspaceId ? workspaceModelOverrides[activeWorkspaceId] : "";
+    const preferredForWorkspace = workspaceOverride || defaultAnalysisModel;
+    const nextModel = preferredForWorkspace && availableModels.includes(preferredForWorkspace)
+      ? preferredForWorkspace
+      : availableModels[0] || "";
+    setSelectedModel((current) => current === nextModel ? current : nextModel);
+  }, [activeWorkspaceId, availableModels, defaultAnalysisModel, workspaceModelOverrides]);
+
+  const selectAnalysisModel = useCallback((model: string) => {
+    setSelectedModel(model);
+    if (!activeWorkspaceId) { return; }
+    setWorkspaceModelOverrides((prev) => ({
+      ...prev,
+      [activeWorkspaceId]: model,
+    }));
+  }, [activeWorkspaceId]);
 
   const groupedModelOptions = useMemo(() => {
     const rawOptions = availableModels.map((m) => ({
@@ -751,6 +765,9 @@ export default function KnowledgeGraphView({
     : analyzeResult
       ? `+${analyzeResult.chapters_created} chapters, +${analyzeResult.sections_created} sections, +${analyzeResult.concepts_created} concepts, +${analyzeResult.links_created} links added`
       : "";
+  const modelSelectOptions = availableModels.length === 0
+    ? [{ value: "", label: isDemoWithoutModels ? "Demo simulation only" : "No models found" }]
+    : groupedModelOptions.options;
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-[var(--bg-primary)]">
@@ -766,12 +783,9 @@ export default function KnowledgeGraphView({
             <CompactMenuSelect
               label="AI Model"
               value={selectedModel}
-              options={availableModels.length === 0
-                ? [{ value: "", label: isDemoWithoutModels ? "Demo simulation only" : "No models found" }]
-                : groupedModelOptions.options
-              }
+              options={modelSelectOptions}
               groups={groupedModelOptions.groups}
-              onChange={(val) => setSelectedModel(val)}
+              onChange={selectAnalysisModel}
               widthClassName="mb-2 w-full"
             />
 
@@ -1080,17 +1094,29 @@ export default function KnowledgeGraphView({
               </div>
 
               <div className="flex flex-col items-end gap-2">
-                <div className="flex flex-wrap gap-2 xl:justify-end">
-                  <button
-                    type="button"
-                    onClick={() => { void handleAnalyze(); }}
-                    disabled={isAnalyzing || !canRunAiActions || insufficientData}
-                    title={insufficientData ? analyzeHelpText : analyzeTokenTooltip}
-                    className="inline-flex items-center gap-2 rounded-xl border border-[rgba(var(--accent-color-rgb),0.35)] bg-[var(--accent-color)] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[var(--accent-color)]/90 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {isAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                    {analyzeButtonLabel}
-                  </button>
+                <div className="flex flex-wrap items-end gap-2 xl:justify-end">
+                  <div className="inline-flex overflow-visible rounded-xl shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => { void handleAnalyze(); }}
+                      disabled={isAnalyzing || !canRunAiActions || insufficientData}
+                      title={insufficientData ? analyzeHelpText : analyzeTokenTooltip}
+                      className="inline-flex items-center gap-2 rounded-l-xl border border-r-0 border-[rgba(var(--accent-color-rgb),0.35)] bg-[var(--accent-color)] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[var(--accent-color)]/90 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                      {analyzeButtonLabel}
+                    </button>
+                    <CompactMenuSelect
+                      label="Analysis Model"
+                      value={selectedModel}
+                      options={modelSelectOptions}
+                      groups={groupedModelOptions.groups}
+                      onChange={selectAnalysisModel}
+                      widthClassName="w-9"
+                      buttonClassName="h-full min-h-[34px] w-9 justify-center rounded-l-none rounded-r-xl border border-[rgba(var(--accent-color-rgb),0.35)] bg-[var(--accent-color)] px-0 text-white shadow-none hover:bg-[var(--accent-color)]/90 [&_svg]:text-white"
+                      hideSelectedLabel
+                    />
+                  </div>
                 </div>
                 {analyzeError && (
                   <p className="max-w-xs text-right text-xs text-red-400">{analyzeError}</p>

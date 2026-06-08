@@ -233,10 +233,12 @@ function formatTaskName(taskType: string): string {
 
 function JobPill({
   taskType,
+  detail,
   model,
   onStop,
 }: {
   taskType: string;
+  detail?: string;
   model?: string;
   onStop?: () => void;
 }) {
@@ -250,13 +252,18 @@ function JobPill({
       <span className="text-xs text-emerald-400 leading-none font-medium">
         {formatTaskName(taskType)}
       </span>
+      {detail && (
+        <span className="text-[10px] text-[var(--text-muted)] leading-none truncate max-w-[140px]" title={detail}>
+          {detail}
+        </span>
+      )}
       {model && (
         <span className="text-[10px] text-[var(--text-muted)] leading-none truncate max-w-[100px]" title={model}>
           {model}
         </span>
       )}
       {onStop && (
-        <Tooltip content="Stop this background job">
+        <Tooltip content="Stop this task">
           <button
             type="button"
             onClick={onStop}
@@ -731,7 +738,7 @@ export default function StatusBar() {
       .finally(() => setScheduledJobsLoading(false));
   }, [scheduledPopoverRect]);
 
-  // [P2] Build a screen-reader announcement string for background jobs only —
+  // [P2] Build a screen-reader announcement string for active tasks only —
   // the continuously-updating metrics are not announced.
   const runningTypes = [...(isAiStreaming ? ["ai_generating"] : []), ...runningJobs.map(([t]) => t)];
   const queuedTypes = queuedJobs.map(([t]) => t);
@@ -762,7 +769,7 @@ export default function StatusBar() {
         {jobAnnouncement}
       </span>
 
-      {/* Left — pending confirmations, active background jobs, AI streaming */}
+      {/* Left — pending confirmations, active tasks, AI streaming */}
       <div className="flex min-w-0 items-center gap-4 overflow-x-auto overflow-y-hidden">
         <button
           type="button"
@@ -790,6 +797,7 @@ export default function StatusBar() {
           <JobPill
             key={type}
             taskType={type}
+            detail={type === "workspace_analysis" ? meta.message : undefined}
             model={meta.model}
             onStop={() => handleStopJob(type)}
           />

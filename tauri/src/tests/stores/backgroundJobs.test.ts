@@ -58,6 +58,7 @@ describe("backgroundJobsStore", () => {
     expect(jobs.get("summarization")).toEqual({
       task_type: "summarization",
       workspace_id: undefined,
+      message: "Queued for summarization",
       model: "gemma",
       status: "queued",
     });
@@ -75,6 +76,7 @@ describe("backgroundJobsStore", () => {
     expect(jobs.get("summarization")).toEqual({
       task_type: "summarization",
       workspace_id: undefined,
+      message: "Summarization started",
       model: "gemma",
       status: "running",
     });
@@ -91,6 +93,7 @@ describe("backgroundJobsStore", () => {
     expect(jobs.get("summarization")).toEqual({
       task_type: "summarization",
       workspace_id: undefined,
+      message: "Processing summarization",
       model: "gemma", // Preserved from previous
       status: "running",
     });

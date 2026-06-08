@@ -61,6 +61,7 @@ struct ChunkStats {
 pub struct WorkspaceAnalysisProgress {
     pub job_id: String,
     pub workspace_id: String,
+    pub model: String,
     pub chunk_index: usize,
     pub total_chunks: usize,
     pub label: String,
@@ -1818,6 +1819,7 @@ async fn analyze_workspace_chunked_impl(
                 &WorkspaceAnalysisProgress {
                     job_id: job_id.clone(),
                     workspace_id: req.workspace_id.clone(),
+                    model: req.model.clone(),
                     chunk_index: i,
                     total_chunks,
                     label: chunk.label.clone(),
@@ -1842,6 +1844,7 @@ async fn analyze_workspace_chunked_impl(
             &WorkspaceAnalysisProgress {
                 job_id: job_id.clone(),
                 workspace_id: req.workspace_id.clone(),
+                model: req.model.clone(),
                 chunk_index: i,
                 total_chunks,
                 label: chunk.label.clone(),
@@ -1880,6 +1883,7 @@ async fn analyze_workspace_chunked_impl(
                     &WorkspaceAnalysisProgress {
                         job_id: job_id.clone(),
                         workspace_id: req.workspace_id.clone(),
+                        model: req.model.clone(),
                         chunk_index: i,
                         total_chunks,
                         label: chunk.label.clone(),
@@ -1915,6 +1919,7 @@ async fn analyze_workspace_chunked_impl(
                     &WorkspaceAnalysisProgress {
                         job_id: job_id.clone(),
                         workspace_id: req.workspace_id.clone(),
+                        model: req.model.clone(),
                         chunk_index: i,
                         total_chunks,
                         label: chunk.label.clone(),

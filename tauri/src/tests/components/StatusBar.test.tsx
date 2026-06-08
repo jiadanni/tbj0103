@@ -170,12 +170,13 @@ describe("StatusBar", () => {
         task_type: "workspace_analysis",
         status: "started",
         message: "Chunk 1/3",
-        model: "Chunk 1/3",
+        model: "llama3",
       });
     });
 
     expect(screen.getByText("Workspace Analysis")).toBeInTheDocument();
     expect(screen.getByText("Chunk 1/3")).toBeInTheDocument();
+    expect(screen.getByText("llama3")).toBeInTheDocument();
   });
 
   it("renders queued jobs separately from running jobs", async () => {
@@ -368,7 +369,7 @@ describe("StatusBar", () => {
         task_type: "workspace_analysis",
         status: "started",
         message: "Chunk 1/3",
-        model: "Chunk 1/3",
+        model: "llama3",
       });
     });
 
@@ -385,7 +386,7 @@ describe("StatusBar", () => {
         task_type: "workspace_analysis",
         status: "started",
         message: "Batch 1/1 · message…",
-        model: "Batch 1/1 · message…",
+        model: "llama3",
       });
     });
 

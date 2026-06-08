@@ -269,7 +269,7 @@ export default function App() {
             task_type: "workspace_analysis",
             status: "started",
             message: payload.label,
-            model: payload.label,
+            model: payload.model,
             workspace_id: payload.workspace_id,
           });
         } else {

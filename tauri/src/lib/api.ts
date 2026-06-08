@@ -538,6 +538,7 @@ export interface BackgroundTaskEvent {
 export interface ActiveJob {
   task_type: string;
   workspace_id?: string;
+  message?: string;
   model?: string;
   started_at?: string;
   status: string;
@@ -654,6 +655,7 @@ export interface AppSettings {
   topic_signature_model: string;
   goal_suggestion_model: string;
   concept_hierarchy_model: string;
+  workspace_analysis_model: string;
   quick_search_models: string[];
   quick_search_shortcut: string;
   quick_search_workspace_scope: string;
@@ -742,6 +744,7 @@ export interface AiSettings {
   topic_signature_model: string;
   goal_suggestion_model: string;
   concept_hierarchy_model: string;
+  workspace_analysis_model: string;
   embedding_model: string;
   draft_model: string;
   compare_model_a: string;
@@ -917,6 +920,7 @@ export interface DedupReport {
 export interface WorkspaceAnalysisProgress {
   job_id: string;
   workspace_id: string;
+  model: string;
   chunk_index: number;
   total_chunks: number;
   label: string;
