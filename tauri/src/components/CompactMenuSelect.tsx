@@ -33,6 +33,7 @@ interface CompactMenuSelectProps {
   buttonClassName?: string;
   menuClassName?: string;
   hideSelectedLabel?: boolean;
+  menuWidth?: number;
 }
 
 const defaultButtonClassName = "flex h-8 w-full items-center justify-between gap-3 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 text-sm text-[var(--text-primary)] shadow-sm outline-none transition-colors hover:border-[var(--accent-color)] focus-visible:border-[var(--accent-color)]";
@@ -48,6 +49,7 @@ export function CompactMenuSelect({
   buttonClassName = "",
   menuClassName = "",
   hideSelectedLabel = false,
+  menuWidth,
 }: CompactMenuSelectProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -107,12 +109,13 @@ export function CompactMenuSelect({
       const top = openBelow
         ? rect.bottom + menuGap
         : Math.max(margin, rect.top - menuGap - maxHeight);
-      const left = Math.min(Math.max(margin, rect.left), Math.max(margin, viewportWidth - rect.width - margin));
+      const width = menuWidth ?? rect.width;
+      const left = Math.min(Math.max(margin, rect.left), Math.max(margin, viewportWidth - width - margin));
 
       setMenuStyle({
         left,
         top,
-        width: rect.width,
+        width,
         maxHeight,
       });
     }
@@ -124,7 +127,7 @@ export function CompactMenuSelect({
       window.removeEventListener("resize", updateMenuPosition);
       window.removeEventListener("scroll", updateMenuPosition, true);
     };
-  }, [open]);
+  }, [open, menuWidth]);
 
   const menu = open && menuStyle ? (
     <div

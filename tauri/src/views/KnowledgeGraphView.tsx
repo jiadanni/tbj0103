@@ -1113,7 +1113,8 @@ export default function KnowledgeGraphView({
                       groups={groupedModelOptions.groups}
                       onChange={selectAnalysisModel}
                       widthClassName="w-9"
-                      buttonClassName="h-full min-h-[34px] w-9 justify-center rounded-l-none rounded-r-xl border border-[rgba(var(--accent-color-rgb),0.35)] bg-[var(--accent-color)] px-0 text-white shadow-none hover:bg-[var(--accent-color)]/90 [&_svg]:text-white"
+                      buttonClassName="h-full min-h-[34px] w-9 justify-center rounded-l-none rounded-r-xl border border-l border-[rgba(var(--accent-color-rgb),0.35)] bg-[var(--accent-color)] px-0 text-white shadow-none hover:bg-[var(--accent-color)]/90 [&_svg]:text-white"
+                      menuWidth={240}
                       hideSelectedLabel
                     />
                   </div>

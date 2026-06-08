@@ -1,6 +1,6 @@
 /**
  * PreferencesView — integrated preferences hub with focused tabs for app,
- * navigation, appearance, chat, AI, security, backup, and workspace controls.
+ * navigation, appearance, chat, inference, security, backup, and workspace controls.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -8,7 +8,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
 import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Sparkles, Columns2, ChevronLeft, ChevronRight, Search, Paperclip, Send, ArrowUpDown, UserCircle, SlidersHorizontal, RotateCcw, Loader2, X, Copy, Download, Code2, History as HistoryIcon } from "lucide-react";
-import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat, type CoreSettings, type AiSettings, type AdvancedSettings, type KnowledgeResetOptions, type KnowledgeResetResult, type ScheduledJobSetting, type ScheduledJobStatus, type BackgroundJobRunMode, type BackgroundProcessingScope } from "../lib/api";
+import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat, type CoreSettings, type InferenceSettings, type AdvancedSettings, type KnowledgeResetOptions, type KnowledgeResetResult, type InferenceJobSetting, type InferenceJobStatus, type BackgroundJobRunMode, type BackgroundProcessingScope } from "../lib/api";
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
 import { groupModelsByFamily } from "../lib/modelFamilyGrouping";
@@ -122,10 +122,10 @@ const TABS: { id: PreferencesSection; label: string; Icon: React.ElementType }[]
   { id: "appearance", label: "Appearance", Icon: Palette },
   { id: "navigation", label: "Navigation", Icon: LayoutGrid },
   { id: "about-you", label: "About You", Icon: UserCircle },
-  { id: "ai", label: "AI", Icon: Bot },
+  { id: "inference", label: "Inference", Icon: Bot },
   { id: "chat", label: "Chat", Icon: MessageSquare },
   { id: "learning", label: "Learning", Icon: GraduationCap },
-  { id: "scheduled-tasks", label: "Scheduled Tasks", Icon: RefreshCw },
+  { id: "inference-jobs", label: "Inference Jobs", Icon: RefreshCw },
   { id: "memory", label: "Memory", Icon: Brain },
   { id: "mcp", label: "MCP", Icon: Network },
   { id: "webai", label: "Browser Automation", Icon: Globe },
@@ -174,14 +174,14 @@ const TAB_KEYWORDS: Record<string, string[]> = {
   "about-you": [
     "About You", "Profile", "Name", "Pronouns", "Role", "Interests", "Inject into chat",
   ],
-  ai: [
+  inference: [
     "Local inference providers", "Ollama", "Server URL", "Remote Ollama", "Auto-start Ollama",
     "MLX", "llama.cpp", "Embedding model", "Dual-model execution",
     "Activity Monitor", "VRAM headroom", "Memory headroom", "Detected hardware",
     "Models", "Background model", "Draft model", "Compare models",
   ],
-  "scheduled-tasks": [
-    "Scheduled Tasks", "Background Tasks", "Background Jobs", "Run mode",
+  "inference-jobs": [
+    "Inference Jobs", "Background Tasks", "Background Jobs", "Run mode",
     "Auto", "Ask first", "Heavy model", "Small model", "Confirmation timeout",
     "Play button", "Memory Extraction", "Summarization", "Flashcard Generation",
     "Workspace Glossary", "Hover Definitions", "Topic Hierarchy",
@@ -221,6 +221,12 @@ function normalizePreferencesSection(section: string | undefined): PreferencesSe
   if (section === "general") {
     return "app";
   }
+  if (section === "ai") {
+    return "inference";
+  }
+  if (section === "scheduled-tasks") {
+    return "inference-jobs";
+  }
   return TABS.some((tab) => tab.id === section) ? section as PreferencesSection : null;
 }
 
@@ -229,7 +235,7 @@ const SPLIT_LAYOUT_TABS: PreferencesSection[] = [
   "app",
   "navigation",
   "appearance",
-  "ai",
+  "inference",
   "chat",
   "learning",
   "about-you",
@@ -297,7 +303,7 @@ function normalizeAppSettingsTheme(settings: AppSettings): AppSettings {
 // small IPC payloads instead of serializing a single 70-field blob.
 function mergeSplitSettings(
   core: CoreSettings,
-  ai: AiSettings,
+  inference: InferenceSettings,
   advanced: AdvancedSettings,
 ): AppSettings {
   return {
@@ -318,36 +324,36 @@ function mergeSplitSettings(
     about_you: core.about_you,
     inject_about_you_into_chat: core.inject_about_you_into_chat,
     prompt_instructions: core.prompt_instructions,
-    // ai
-    preferred_model: ai.preferred_model,
-    background_model: ai.background_model,
-    summarization_model: ai.summarization_model,
-    memory_extraction_model: ai.memory_extraction_model,
-    flashcard_model: ai.flashcard_model,
-    glossary_model: ai.glossary_model,
-    topic_signature_model: ai.topic_signature_model,
-    goal_suggestion_model: ai.goal_suggestion_model,
-    concept_hierarchy_model: ai.concept_hierarchy_model,
-    workspace_analysis_model: ai.workspace_analysis_model,
-    embedding_model: ai.embedding_model,
-    draft_model: ai.draft_model,
-    compare_model_a: ai.compare_model_a,
-    compare_model_b: ai.compare_model_b,
-    ollama_base_url: ai.ollama_base_url,
-    ollama_remote_enabled: ai.ollama_remote_enabled,
-    auto_start_ollama: ai.auto_start_ollama,
-    mlx_base_url: ai.mlx_base_url,
-    llamacpp_model_paths: ai.llamacpp_model_paths,
-    dual_model_enabled: ai.dual_model_enabled,
-    dual_model_execution_mode: ai.dual_model_execution_mode,
-    chat_json_storage: ai.chat_json_storage,
-    chat_encryption_enabled: ai.chat_encryption_enabled,
-    show_gen_info: ai.show_gen_info,
-    show_gen_info_token_count: ai.show_gen_info_token_count,
-    show_gen_info_duration: ai.show_gen_info_duration,
-    show_gen_info_speed: ai.show_gen_info_speed,
-    show_gen_info_model: ai.show_gen_info_model,
-    background_inference_enabled: ai.background_inference_enabled,
+    // inference
+    preferred_model: inference.preferred_model,
+    background_model: inference.background_model,
+    summarization_model: inference.summarization_model,
+    memory_extraction_model: inference.memory_extraction_model,
+    flashcard_model: inference.flashcard_model,
+    glossary_model: inference.glossary_model,
+    topic_signature_model: inference.topic_signature_model,
+    goal_suggestion_model: inference.goal_suggestion_model,
+    concept_hierarchy_model: inference.concept_hierarchy_model,
+    workspace_analysis_model: inference.workspace_analysis_model,
+    embedding_model: inference.embedding_model,
+    draft_model: inference.draft_model,
+    compare_model_a: inference.compare_model_a,
+    compare_model_b: inference.compare_model_b,
+    ollama_base_url: inference.ollama_base_url,
+    ollama_remote_enabled: inference.ollama_remote_enabled,
+    auto_start_ollama: inference.auto_start_ollama,
+    mlx_base_url: inference.mlx_base_url,
+    llamacpp_model_paths: inference.llamacpp_model_paths,
+    dual_model_enabled: inference.dual_model_enabled,
+    dual_model_execution_mode: inference.dual_model_execution_mode,
+    chat_json_storage: inference.chat_json_storage,
+    chat_encryption_enabled: inference.chat_encryption_enabled,
+    show_gen_info: inference.show_gen_info,
+    show_gen_info_token_count: inference.show_gen_info_token_count,
+    show_gen_info_duration: inference.show_gen_info_duration,
+    show_gen_info_speed: inference.show_gen_info_speed,
+    show_gen_info_model: inference.show_gen_info_model,
+    background_inference_enabled: inference.background_inference_enabled,
     // advanced
     quick_search_models: advanced.quick_search_models,
     quick_search_shortcut: advanced.quick_search_shortcut,
@@ -382,12 +388,12 @@ function mergeSplitSettings(
 }
 
 async function fetchSplitSettings(): Promise<AppSettings> {
-  const [core, ai, advanced] = await Promise.all([
+  const [core, inference, advanced] = await Promise.all([
     api.settings.getCore(),
-    api.settings.getAi(),
+    api.settings.getInference(),
     api.settings.getAdvanced(),
   ]);
-  return mergeSplitSettings(core, ai, advanced);
+  return mergeSplitSettings(core, inference, advanced);
 }
 
 function formatSystemName(specs: SystemSpecs): string {
@@ -1731,7 +1737,7 @@ function DataControlsPreferences() {
   const [processingScope, setProcessingScope] = useState<BackgroundProcessingScope>("current_workspace");
   const [selectedWorkspaceIds, setSelectedWorkspaceIds] = useState<string[]>([]);
   const [selectedProcessingJobs, setSelectedProcessingJobs] = useState<string[]>(
-    SCHEDULED_JOBS_CATALOG.map((job) => job.job_key),
+    INFERENCE_JOBS_CATALOG.map((job) => job.job_key),
   );
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -1828,7 +1834,7 @@ function DataControlsPreferences() {
     try {
       const taskTypes = selectedProcessingJobs.length > 0
         ? selectedProcessingJobs
-        : SCHEDULED_JOBS_CATALOG.map((job) => job.job_key);
+        : INFERENCE_JOBS_CATALOG.map((job) => job.job_key);
       const workspaceIds = processingScope === "selected_workspaces"
         ? selectedWorkspaceIds
         : processingScope === "current_workspace" && activeWorkspaceId
@@ -1950,7 +1956,7 @@ function DataControlsPreferences() {
                   <div className="space-y-2">
                     <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Jobs</div>
                     <div className="grid gap-2 sm:grid-cols-2">
-                      {SCHEDULED_JOBS_CATALOG.map((job) => (
+                      {INFERENCE_JOBS_CATALOG.map((job) => (
                         <label key={job.job_key} className="flex cursor-pointer items-start gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
                           <input
                             type="checkbox"
@@ -2216,7 +2222,7 @@ function PreferencesSplitLayout({
  * is the AppSettings key that holds the small (default) model — already wired
  * through Rust's `get_model_for_job`. `tokens`/`note` are sizing hints.
  */
-const SCHEDULED_JOBS_CATALOG: {
+const INFERENCE_JOBS_CATALOG: {
   job_key: string;
   model_setting: keyof AppSettings;
   label: string;
@@ -2236,7 +2242,7 @@ const SCHEDULED_JOBS_CATALOG: {
 ];
 
 function formatPendingTokens(
-  status: ScheduledJobStatus | undefined,
+  status: InferenceJobStatus | undefined,
   fallback: string,
 ): string {
   const tokens = status?.pending_input_tokens;
@@ -2286,7 +2292,7 @@ function ScheduledJobStatePill({ state }: { state?: string }) {
   );
 }
 
-function ScheduledTasksCard({
+function InferenceJobsCard({
   ollamaModels,
   aiModels,
   modelLabels,
@@ -2301,15 +2307,15 @@ function ScheduledTasksCard({
   set: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
   systemGuidance: ReturnType<typeof inferHardwareModelGuidance> | null;
 }) {
-  const [scheduled, setScheduled] = useState<Record<string, ScheduledJobSetting>>({});
-  const [statuses, setStatuses] = useState<Record<string, ScheduledJobStatus>>({});
+  const [scheduled, setScheduled] = useState<Record<string, InferenceJobSetting>>({});
+  const [statuses, setStatuses] = useState<Record<string, InferenceJobStatus>>({});
   const [timeoutSeconds, setTimeoutSec] = useState<number>(20);
   const [loading, setLoading] = useState<boolean>(true);
   const [queueingJob, setQueueingJob] = useState<string | null>(null);
 
   const loadScheduledStatus = () => {
-    return api.backgroundJobs.getScheduledJobStatuses().then((items) => {
-      const byKey: Record<string, ScheduledJobStatus> = {};
+    return api.backgroundJobs.getInferenceJobStatuses().then((items) => {
+      const byKey: Record<string, InferenceJobStatus> = {};
       for (const item of items) { byKey[item.job_key] = item; }
       setStatuses(byKey);
     }).catch(() => undefined);
@@ -2318,13 +2324,13 @@ function ScheduledTasksCard({
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      api.backgroundJobs.getScheduledTaskSettings(),
-      api.backgroundJobs.getScheduledJobStatuses().catch(() => [] as ScheduledJobStatus[]),
+      api.backgroundJobs.getInferenceJobSettings(),
+      api.backgroundJobs.getInferenceJobStatuses().catch(() => [] as InferenceJobStatus[]),
     ]).then(([s, statusItems]) => {
       if (cancelled) { return; }
-      const byKey: Record<string, ScheduledJobSetting> = {};
+      const byKey: Record<string, InferenceJobSetting> = {};
       for (const j of s.jobs) { byKey[j.job_key] = j; }
-      const statusByKey: Record<string, ScheduledJobStatus> = {};
+      const statusByKey: Record<string, InferenceJobStatus> = {};
       for (const item of statusItems) { statusByKey[item.job_key] = item; }
       setScheduled(byKey);
       setStatuses(statusByKey);
@@ -2381,7 +2387,7 @@ function ScheduledTasksCard({
       ...prev,
       [jobKey]: { ...(prev[jobKey] ?? { job_key: jobKey, run_mode: mode, heavy_model: "" }), run_mode: mode },
     }));
-    void api.backgroundJobs.setScheduledTaskSetting(`${jobKey}_run_mode`, mode);
+    void api.backgroundJobs.setInferenceJobSetting(`${jobKey}_run_mode`, mode);
   };
 
   const updateHeavyModel = (jobKey: string, modelId: string) => {
@@ -2389,7 +2395,7 @@ function ScheduledTasksCard({
       ...prev,
       [jobKey]: { ...(prev[jobKey] ?? { job_key: jobKey, run_mode: "auto", heavy_model: modelId }), heavy_model: modelId },
     }));
-    void api.backgroundJobs.setScheduledTaskSetting(`${jobKey}_heavy_model`, modelId);
+    void api.backgroundJobs.setInferenceJobSetting(`${jobKey}_heavy_model`, modelId);
   };
 
   const queueJobNow = async (jobKey: string) => {
@@ -2405,7 +2411,7 @@ function ScheduledTasksCard({
   const updateTimeout = (value: number) => {
     const clamped = Math.max(5, Math.min(120, value || 20));
     setTimeoutSec(clamped);
-    void api.backgroundJobs.setScheduledTaskSetting(
+    void api.backgroundJobs.setInferenceJobSetting(
       "background_confirm_timeout_seconds",
       String(clamped),
     );
@@ -2415,7 +2421,7 @@ function ScheduledTasksCard({
     <section className="space-y-2" data-pref-section>
       <div className="pb-1 border-b border-[var(--border-color)]">
         <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
-          Scheduled Tasks
+          Inference Jobs
         </h3>
       </div>
 
@@ -2441,7 +2447,7 @@ function ScheduledTasksCard({
 
         {!loading && (
           <div className="space-y-2">
-            {SCHEDULED_JOBS_CATALOG.map((job) => {
+            {INFERENCE_JOBS_CATALOG.map((job) => {
               const entry = scheduled[job.job_key];
               const status = statuses[job.job_key];
               const runMode = (entry?.run_mode ?? "auto") as BackgroundJobRunMode;
@@ -3378,10 +3384,10 @@ export default function PreferencesView() {
   const probedTabsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const probed = probedTabsRef.current;
-    const aiTabs = new Set(["ai", "webai", "chat", "learning"]);
-    if (aiTabs.has(activeTab)) {
-      if (!probed.has("ai")) {
-        probed.add("ai");
+    const inferenceTabs = new Set(["inference", "webai", "chat", "learning"]);
+    if (inferenceTabs.has(activeTab)) {
+      if (!probed.has("inference")) {
+        probed.add("inference");
         loadSystemSpecs();
         const url = dbSettingsRef.current?.ollama_base_url ?? "";
         refreshOllamaModels(url, { useCache: true });
@@ -4654,7 +4660,7 @@ export default function PreferencesView() {
                 )}
 
                 {/* ── AI / Ollama ── */}
-                {activeTab === "ai" && (
+                {activeTab === "inference" && (
                   <div className="space-y-8">
                     <div className="flex flex-col gap-8">
                       <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 space-y-3">
@@ -5663,7 +5669,7 @@ export default function PreferencesView() {
                         </div>
                         <button
                           type="button"
-                          onClick={() => setActiveTab("ai")}
+                          onClick={() => setActiveTab("inference")}
                           className="text-xs px-3 py-1.5 rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors whitespace-nowrap"
                         >
                           Configure in AI →
@@ -6386,7 +6392,7 @@ export default function PreferencesView() {
             </PreferencesSplitLayout>
           )}
 
-          {activeTab === "scheduled-tasks" && (
+          {activeTab === "inference-jobs" && (
             <div className="flex-1 min-h-0 overflow-y-auto">
               <div className="max-w-4xl px-5 py-4 space-y-4">
                 {/* Background Jobs */}
@@ -6554,7 +6560,7 @@ export default function PreferencesView() {
                   </div>
                 </section>
 
-                <ScheduledTasksCard
+                <InferenceJobsCard
                   ollamaModels={ollamaModels}
                   aiModels={aiModels}
                   modelLabels={modelLabels}
