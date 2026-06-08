@@ -394,18 +394,23 @@ pub fn persist_batch(entries: &[(String, String, String, String, String)]) {
 }
 
 /// Spawn a background timer that periodically flushes the buffered logger
-/// and prunes logs older than `retention_days` (default 7) once per day.
+/// and optionally prunes logs older than `retention_days` once per day.
 /// Call once during app setup, after `init_pool`.
 pub fn start_flush_timer() {
-    start_flush_timer_with_retention(7);
+    start_flush_timer_with_retention(Some(30));
 }
 
-pub fn start_flush_timer_with_retention(retention_days: u32) {
+pub fn normalize_retention_days(retention_days: Option<u32>) -> Option<u32> {
+    retention_days.map(|days| days.max(1))
+}
+
+pub fn start_flush_timer_with_retention(retention_days: Option<u32>) {
+    let retention_days = normalize_retention_days(retention_days);
     std::thread::spawn(move || {
         // Prune immediately on startup.
-        if let Some(pool) = DB_POOL.get() {
+        if let (Some(days), Some(pool)) = (retention_days, DB_POOL.get()) {
             if let Ok(conn) = pool.get() {
-                prune_old_logs(&conn, retention_days);
+                prune_old_logs(&conn, days);
             }
         }
 
@@ -416,15 +421,25 @@ pub fn start_flush_timer_with_retention(retention_days: u32) {
 
             // Prune once every 24 hours.
             if last_prune.elapsed() >= Duration::from_secs(86_400) {
-                if let Some(pool) = DB_POOL.get() {
+                if let (Some(days), Some(pool)) = (retention_days, DB_POOL.get()) {
                     if let Ok(conn) = pool.get() {
-                        prune_old_logs(&conn, retention_days);
+                        prune_old_logs(&conn, days);
                         last_prune = Instant::now();
                     }
                 }
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn retention_days_can_be_disabled_or_clamped() {
+        assert_eq!(super::normalize_retention_days(None), None);
+        assert_eq!(super::normalize_retention_days(Some(0)), Some(1));
+        assert_eq!(super::normalize_retention_days(Some(30)), Some(30));
+    }
 }
 
 // ---------------------------------------------------------------------------

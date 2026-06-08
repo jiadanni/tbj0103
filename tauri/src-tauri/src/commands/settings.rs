@@ -68,6 +68,8 @@ pub struct Settings {
     pub summarization_max_sessions: u32,
     pub hover_definition_scan_enabled: bool,
     pub hover_definition_scan_max_sessions: u32,
+    pub log_retention_enabled: bool,
+    pub log_retention_days: u32,
     pub workspace_glossary_refresh_interval_minutes: u32,
     pub git_sync_interval_minutes: u32,
     pub menubar_icon_style: String,
@@ -150,6 +152,8 @@ impl Default for Settings {
             summarization_max_sessions: 5,
             hover_definition_scan_enabled: true,
             hover_definition_scan_max_sessions: 3,
+            log_retention_enabled: true,
+            log_retention_days: 30,
             workspace_glossary_refresh_interval_minutes: 60,
             git_sync_interval_minutes: 5,
             menubar_icon_style: "monochrome".to_string(),
@@ -490,6 +494,13 @@ pub async fn get_settings(app: AppHandle, state: State<'_, DbState>) -> Result<S
         hover_definition_scan_max_sessions: get_setting(&conn, "hover_definition_scan_max_sessions")
             .and_then(|v| v.parse().ok())
             .unwrap_or(def.hover_definition_scan_max_sessions),
+        log_retention_enabled: get_setting(&conn, "log_retention_enabled")
+            .map(|v| v == "true")
+            .unwrap_or(def.log_retention_enabled),
+        log_retention_days: get_setting(&conn, "log_retention_days")
+            .and_then(|v| v.parse::<u32>().ok())
+            .map(|days| days.max(1))
+            .unwrap_or(def.log_retention_days),
         workspace_glossary_refresh_interval_minutes: get_setting(&conn, "workspace_glossary_refresh_interval_minutes")
             .and_then(|v| v.parse().ok())
             .unwrap_or(def.workspace_glossary_refresh_interval_minutes),
@@ -853,6 +864,16 @@ pub fn update_settings(
     )?;
     set_setting(
         &conn,
+        "log_retention_enabled",
+        &settings.log_retention_enabled.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "log_retention_days",
+        &settings.log_retention_days.max(1).to_string(),
+    )?;
+    set_setting(
+        &conn,
         "workspace_glossary_refresh_interval_minutes",
         &settings
             .workspace_glossary_refresh_interval_minutes
@@ -1165,6 +1186,8 @@ pub struct AdvancedSettings {
     pub summarization_max_sessions: u32,
     pub hover_definition_scan_enabled: bool,
     pub hover_definition_scan_max_sessions: u32,
+    pub log_retention_enabled: bool,
+    pub log_retention_days: u32,
     pub workspace_glossary_refresh_interval_minutes: u32,
     pub git_sync_interval_minutes: u32,
     pub vram_headroom_gb: f64,
@@ -1466,6 +1489,13 @@ pub async fn get_advanced_settings(
             hover_definition_scan_max_sessions: lookup("hover_definition_scan_max_sessions")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(def.hover_definition_scan_max_sessions),
+            log_retention_enabled: lookup("log_retention_enabled")
+                .map(|v| v == "true")
+                .unwrap_or(def.log_retention_enabled),
+            log_retention_days: lookup("log_retention_days")
+                .and_then(|v| v.parse::<u32>().ok())
+                .map(|days| days.max(1))
+                .unwrap_or(def.log_retention_days),
             workspace_glossary_refresh_interval_minutes: lookup(
                 "workspace_glossary_refresh_interval_minutes",
             )
@@ -1530,6 +1560,13 @@ mod tests {
         ("user_chat_label", "You"),
         ("assistant_chat_label", "Assistant"),
     ];
+
+    #[test]
+    fn log_retention_defaults_to_enabled_thirty_days() {
+        let settings = Settings::default();
+        assert!(settings.log_retention_enabled);
+        assert_eq!(settings.log_retention_days, 30);
+    }
 
     /// Round-trip a JSON-encoded string setting through the same write path
     /// used by update_settings and the same decode shape used by the readers.

@@ -359,6 +359,8 @@ function mergeSplitSettings(
     summarization_max_sessions: advanced.summarization_max_sessions,
     hover_definition_scan_enabled: advanced.hover_definition_scan_enabled,
     hover_definition_scan_max_sessions: advanced.hover_definition_scan_max_sessions,
+    log_retention_enabled: advanced.log_retention_enabled,
+    log_retention_days: advanced.log_retention_days,
     workspace_glossary_refresh_interval_minutes: advanced.workspace_glossary_refresh_interval_minutes,
     git_sync_interval_minutes: advanced.git_sync_interval_minutes,
     vram_headroom_gb: advanced.vram_headroom_gb,
@@ -6430,6 +6432,34 @@ export default function PreferencesView() {
                       value={dbSettings.hover_definition_scan_max_sessions}
                       onChange={(e) => set("hover_definition_scan_max_sessions", Math.max(1, Math.min(20, Number(e.target.value) || 3)))}
                       className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                    />
+                  </div>
+
+                  <div className="pt-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1">Logs</p>
+                  </div>
+                  <div className="flex items-start gap-3 py-0.5">
+                    <Toggle
+                      on={dbSettings.log_retention_enabled}
+                      onToggle={() => set("log_retention_enabled", !dbSettings.log_retention_enabled)}
+                    />
+                    <div>
+                      <p className="text-sm text-[var(--text-secondary)]">Prune old logs</p>
+                      <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                        Automatically remove in-app log entries older than the retention window.
+                      </p>
+                    </div>
+                  </div>
+                  <div className={`flex items-center justify-between py-0.5 ${dbSettings.log_retention_enabled ? "" : "opacity-50"}`}>
+                    <p className="text-sm text-[var(--text-secondary)]">Keep logs for (days)</p>
+                    <input
+                      type="number"
+                      min={1}
+                      max={3650}
+                      disabled={!dbSettings.log_retention_enabled}
+                      value={dbSettings.log_retention_days}
+                      onChange={(e) => set("log_retention_days", Math.max(1, Math.min(3650, Number(e.target.value) || 30)))}
+                      className="w-20 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] disabled:cursor-not-allowed"
                     />
                   </div>
 

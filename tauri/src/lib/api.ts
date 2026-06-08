@@ -693,6 +693,8 @@ export interface AppSettings {
   summarization_max_sessions: number;
   hover_definition_scan_enabled: boolean;
   hover_definition_scan_max_sessions: number;
+  log_retention_enabled: boolean;
+  log_retention_days: number;
   workspace_glossary_refresh_interval_minutes: number;
   git_sync_interval_minutes: number;
   menubar_icon_style: "monochrome" | "white" | "black";
@@ -783,6 +785,8 @@ export interface AdvancedSettings {
   summarization_max_sessions: number;
   hover_definition_scan_enabled: boolean;
   hover_definition_scan_max_sessions: number;
+  log_retention_enabled: boolean;
+  log_retention_days: number;
   workspace_glossary_refresh_interval_minutes: number;
   git_sync_interval_minutes: number;
   vram_headroom_gb: number;

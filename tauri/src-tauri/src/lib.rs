@@ -651,7 +651,7 @@ pub fn complete_db_dependent_setup(
     drop(conn);
 
     crate::logging::init_pool(pool.clone());
-    {
+    let log_retention_days = {
         let log_conn = pool
             .get()
             .map_err(|e| format!("Failed to get DB connection: {e}"))?;
@@ -664,8 +664,33 @@ pub fn complete_db_dependent_setup(
                 crate::logging::set_min_log_level(&level);
             }
         }
-    }
-    crate::logging::start_flush_timer();
+        let retention_enabled = log_conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'log_retention_enabled'",
+                [],
+                |r| r.get::<_, String>(0),
+            )
+            .ok()
+            .map(|value| value == "true")
+            .unwrap_or(true);
+        if retention_enabled {
+            Some(
+                log_conn
+                    .query_row(
+                        "SELECT value FROM settings WHERE key = 'log_retention_days'",
+                        [],
+                        |r| r.get::<_, String>(0),
+                    )
+                    .ok()
+                    .and_then(|value| value.parse::<u32>().ok())
+                    .map(|days| days.max(1))
+                    .unwrap_or(30),
+            )
+        } else {
+            None
+        }
+    };
+    crate::logging::start_flush_timer_with_retention(log_retention_days);
 
     app.manage(db::DbState(pool));
     app.manage(commands::chat_file::ChatsDirState(chats_dir));

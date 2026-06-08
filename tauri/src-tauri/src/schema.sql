@@ -598,6 +598,8 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('summarization_max_sessions', '5'),
     ('hover_definition_scan_enabled', 'true'),
     ('hover_definition_scan_max_sessions', '3'),
+    ('log_retention_enabled', 'true'),
+    ('log_retention_days', '30'),
     ('workspace_glossary_refresh_interval_minutes', '60'),
     ('git_sync_interval_minutes', '5'),
     ('user_chat_label', '"You"'),
