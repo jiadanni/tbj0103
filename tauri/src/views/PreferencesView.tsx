@@ -92,15 +92,25 @@ const PREVIEW_USER_MESSAGE: Message = {
   content: "What is the speed of light?",
   created_at: "2026-01-01T00:00:00Z",
 };
+const PREVIEW_ASSISTANT_MESSAGE_INTRO: Message = {
+  id: "preview-assistant-intro",
+  session_id: "preview",
+  role: "assistant",
+  content: "Light in a vacuum travels at a constant ~299,792 km/s — fast enough to circle the Earth about 7.5 times in a single second. In denser media like glass or water it slows down, and that change in speed is what bends a beam at the boundary (refraction).",
+  model_name: "local-7b",
+  tokens_used: 64,
+  duration_ms: 1400,
+  created_at: "2026-01-01T00:00:01Z",
+};
 const PREVIEW_ASSISTANT_MESSAGE: Message = {
   id: "preview-assistant",
   session_id: "preview",
   role: "assistant",
-  content: "Here is a small C helper to try:\n\n```c\n// Return length of a string\nint get_len(char* s) {\n    int i = 0;\n    while (s[i] != '\\0') {\n        i++;\n    }\n    return i;\n}\n```",
+  content: "If you want to play with it, here's a tiny helper that converts a distance to its light-travel time:\n\n```python\nC_MPS = 299_792_458  # speed of light in vacuum, m/s\n\ndef light_travel_seconds(distance_m: float) -> float:\n    return distance_m / C_MPS\n```",
   model_name: "local-7b",
   tokens_used: 120,
   duration_ms: 2500,
-  created_at: "2026-01-01T00:00:01Z",
+  created_at: "2026-01-01T00:00:02Z",
 };
 
 const MIN_FONT_SIZE = 11;
@@ -1382,7 +1392,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                   <Pencil size={8} />
                 </div>
               </div>
-              <div className="flex items-center gap-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)]/60 px-1 py-0.5 text-[0.6em] text-[var(--text-muted)]">
+              <div className="flex items-center gap-1 rounded bg-[var(--bg-elevated)] px-1 py-0.5 text-[0.6em] text-[var(--text-muted)]">
                 <Search size={8} className="shrink-0" />
                 <span className="truncate">Search...</span>
               </div>
@@ -1422,7 +1432,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
               <div className="h-6.5 px-3 bg-[var(--bg-elevated)]/25 border-b border-[var(--border-color)]/30 flex items-center gap-2 shrink-0 overflow-x-hidden text-[0.55em] select-none">
                 <span className="font-bold text-[var(--text-muted)] text-[0.5em] uppercase tracking-wider shrink-0">RELATED</span>
                 {PREVIEW_RELATED_LINKS.map((lnk) => (
-                  <span key={lnk} className="px-1.5 py-0.5 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-color)]/40 text-[var(--text-secondary)] hover:text-[var(--accent-color)] cursor-pointer whitespace-nowrap">
+                  <span key={lnk} className="px-1.5 py-0.5 rounded-full bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--accent-color)] cursor-pointer whitespace-nowrap">
                     {lnk}
                   </span>
                 ))}
@@ -1432,6 +1442,29 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                 <div className="text-[0.8em]">
                   <ChatMessageBubble
                     msg={PREVIEW_USER_MESSAGE}
+                    isLastMessage={false}
+                    isStreaming={false}
+                    chatMessageStyle={chatMessageStyle}
+                    expandChatToWindowWidth={false}
+                    showGenInfo={false}
+                    isEditing={false}
+                    editValue=""
+                    isCopied={false}
+                    isThoughtExpanded={false}
+                    sources={undefined}
+                    isSourcesExpanded={false}
+                    contextSources={null}
+                    markdownComponents={PREVIEW_MARKDOWN_COMPONENTS}
+                    onCopy={NOOP}
+                    onStartEdit={NOOP}
+                    onSubmitEdit={NOOP}
+                    onSetEditContent={NOOP}
+                    onCancelEdit={NOOP}
+                    onToggleThought={NOOP}
+                    onToggleSources={NOOP}
+                  />
+                  <ChatMessageBubble
+                    msg={PREVIEW_ASSISTANT_MESSAGE_INTRO}
                     isLastMessage={false}
                     isStreaming={false}
                     chatMessageStyle={chatMessageStyle}
@@ -1487,16 +1520,16 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                 <div className="flex items-center justify-between gap-1 overflow-x-hidden">
                   <div className="flex gap-1 overflow-x-hidden relative items-center py-0.5 select-none">
                     {showComposerWorkspaceSuggestions && (
-                      <span className="text-[0.55em] px-2 py-0.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] whitespace-nowrap truncate max-w-[120px]">
+                      <span className="text-[0.55em] px-2 py-0.5 rounded-full bg-[var(--bg-elevated)] text-[var(--text-secondary)] whitespace-nowrap truncate max-w-[120px]">
                         {PREVIEW_COMPOSER_SUGGESTION}
                       </span>
                     )}
                     {showComposerChatFollowUps && (
                       <>
-                        <span className="text-[0.55em] px-2 py-0.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] whitespace-nowrap truncate max-w-[120px]">
+                        <span className="text-[0.55em] px-2 py-0.5 rounded-full bg-[var(--bg-elevated)] text-[var(--text-secondary)] whitespace-nowrap truncate max-w-[120px]">
                           {PREVIEW_COMPOSER_FOLLOWUPS[0]}
                         </span>
-                        <span className="text-[0.55em] px-2 py-0.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] whitespace-nowrap flex items-center gap-0.5 truncate max-w-[120px]">
+                        <span className="text-[0.55em] px-2 py-0.5 rounded-full bg-[var(--bg-elevated)] text-[var(--text-secondary)] flex items-center gap-0.5 whitespace-nowrap truncate max-w-[120px]">
                           {PREVIEW_COMPOSER_FOLLOWUPS[1]} <ChevronDown size={8} />
                         </span>
                       </>

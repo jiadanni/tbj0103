@@ -39,6 +39,7 @@ const SIZES = {
     iconSize: 18,
     activeStripInset: "inset-x-3",
     activeShadow: "shadow-[0_-10px_25px_-20px_rgba(15,23,42,0.55)]",
+    activeBorder: "border-[var(--border-color)]",
   },
   compact: {
     container: "h-8 px-3 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]",
@@ -46,6 +47,7 @@ const SIZES = {
     iconSize: 10,
     activeStripInset: "inset-x-1",
     activeShadow: "",
+    activeBorder: "border-transparent",
   },
 } as const;
 
@@ -80,7 +82,7 @@ export function SectionNavTopTabs({
               }
               className={`relative flex items-center self-end border border-b-0 font-medium whitespace-nowrap transition-all select-none ${sizes.tab} ${
                 isActive
-                  ? `border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)] ${sizes.activeShadow}`
+                  ? `${sizes.activeBorder} bg-[var(--bg-primary)] text-[var(--text-primary)] ${sizes.activeShadow}`
                   : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
               }`}
             >
