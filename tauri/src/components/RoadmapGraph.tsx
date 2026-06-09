@@ -357,16 +357,21 @@ function RoadmapGraphInner(
 
             const sourceNode = nodes.find((n) => n.id === d.data.id) ?? null;
 
-            // Section expansion affordance: show `+N` when collapsed with hidden
-            // children, or `−` when this section is currently expanded.
+            // Section expansion affordance: pill hanging off the bottom of the
+            // section box, showing chevron-down + count when collapsed, or
+            // chevron-up when expanded. Sized large enough to be obvious on
+            // first paint.
             const isExpanded = isSection && expandedSections.has(d.data.id);
             const hiddenCount = d.data.hiddenChildCount ?? 0;
             const showBadge = isSection && (hiddenCount > 0 || isExpanded);
-            const badgeLabel = isExpanded ? "−" : `+${hiddenCount}`;
-            const badgeWidth = isExpanded ? 18 : 8 + String(hiddenCount).length * 7;
-            const badgeHeight = 16;
-            const badgeX = dim.width - badgeWidth - 6;
-            const badgeY = (dim.height - badgeHeight) / 2;
+            const badgeText = isExpanded ? "Hide" : `Show ${hiddenCount}`;
+            const badgeHeight = 22;
+            const badgeWidth = Math.max(64, badgeText.length * 7 + 22);
+            const badgeX = (dim.width - badgeWidth) / 2;
+            const badgeY = dim.height - badgeHeight / 2;
+            const chevronD = isExpanded
+              ? "M -4 2 L 0 -2 L 4 2"
+              : "M -4 -2 L 0 2 L 4 -2";
 
             return (
               <g
@@ -415,25 +420,45 @@ function RoadmapGraphInner(
                     style={{ cursor: "pointer" }}
                   >
                     <rect
+                      x={badgeX - 1}
+                      y={badgeY - 1}
+                      width={badgeWidth + 2}
+                      height={badgeHeight + 2}
+                      rx={badgeHeight / 2 + 1}
+                      fill="var(--bg-primary)"
+                      stroke="var(--accent-color)"
+                      strokeWidth={1}
+                      opacity={0.6}
+                    />
+                    <rect
                       x={badgeX}
                       y={badgeY}
                       width={badgeWidth}
                       height={badgeHeight}
-                      rx={8}
+                      rx={badgeHeight / 2}
                       fill="var(--accent-color)"
-                      fillOpacity={0.85}
                     />
+                    <g transform={`translate(${badgeX + 12},${badgeY + badgeHeight / 2})`}>
+                      <path
+                        d={chevronD}
+                        fill="none"
+                        stroke="#ffffff"
+                        strokeWidth={1.8}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </g>
                     <text
-                      x={badgeX + badgeWidth / 2}
+                      x={badgeX + badgeWidth / 2 + 6}
                       y={badgeY + badgeHeight / 2 + 0.5}
                       textAnchor="middle"
                       dominantBaseline="middle"
-                      fontSize={10}
+                      fontSize={11}
                       fontWeight={700}
                       fill="#ffffff"
                       style={{ pointerEvents: "none", userSelect: "none" }}
                     >
-                      {badgeLabel}
+                      {badgeText}
                     </text>
                   </g>
                 )}
