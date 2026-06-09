@@ -2485,23 +2485,6 @@ const INFERENCE_JOBS_CATALOG: {
   { job_key: "workspace_analysis", model_setting: "workspace_analysis_model", label: "Workspace Analysis", description: "Global default for manual roadmap extraction", tokens: "~1,000–10,000 tokens input", note: "larger context recommended", manual: true },
 ];
 
-function formatPendingTokens(
-  status: InferenceJobStatus | undefined,
-  fallback: string,
-): string {
-  const tokens = status?.pending_input_tokens;
-  const count = status?.pending_work_count;
-  if (tokens == null || tokens <= 0) { return fallback; }
-  const tokenStr = tokens >= 1000
-    ? `~${(tokens / 1000).toFixed(tokens >= 10_000 ? 0 : 1)}k`
-    : `~${tokens}`;
-  if (count != null && count > 0) {
-    const noun = count === 1 ? "item" : "items";
-    return `${tokenStr} tokens pending · ${count} ${noun}`;
-  }
-  return `${tokenStr} tokens pending`;
-}
-
 const RUN_MODE_OPTIONS: { value: BackgroundJobRunMode; label: string; description: string }[] = [
   { value: "auto", label: "Auto", description: "Run on schedule with the small model" },
   { value: "confirm_only", label: "Ask first", description: "Only run when the play-button is clicked; skip on timeout" },
@@ -2677,9 +2660,9 @@ function InferenceJobsCard({
   };
 
   return (
-    <section className="space-y-2" data-pref-section>
+    <section className="space-y-2 max-w-[1400px] mx-auto" data-pref-section>
       <div className="pb-1 border-b border-[var(--border-color)]">
-        <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+        <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
           Inference Jobs
         </h3>
       </div>
@@ -2717,19 +2700,23 @@ function InferenceJobsCard({
         {!loading && (
           <div className="space-y-4 md:space-y-0">
             {/* Table Header (hidden on mobile) */}
-            <div className="hidden md:grid md:grid-cols-[2fr_1fr_1.5fr_1.5fr_auto] gap-4 px-3 pb-2 border-b border-[var(--border-color)]">
-              <div className="text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Job</div>
-              <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">
+            <div className="hidden md:grid md:grid-cols-[minmax(320px,3.5fr)_minmax(96px,0.7fr)_minmax(120px,1fr)_minmax(120px,1fr)_minmax(140px,1.2fr)_auto] gap-3 px-3 pb-2 border-b border-[var(--border-color)]">
+              <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Job</div>
+              <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">
                 Run Mode
                 <Tooltip content="Auto: runs in background. Ask first: prompts you to confirm before running."><Info size={12} /></Tooltip>
               </div>
-              <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">
+              <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">
                 Small Model
                 <Tooltip content="Fast model used for automatic background processing."><Info size={12} /></Tooltip>
               </div>
-              <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">
+              <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">
                 Heavy Model
                 <Tooltip content="Optional larger model used only when you manually confirm a run."><Info size={12} /></Tooltip>
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">
+                Progress
+                <Tooltip content="Pending work right now. Average runtime and tokens processed coming soon."><Info size={12} /></Tooltip>
               </div>
               <div className="w-[88px]"></div>
             </div>
@@ -2790,11 +2777,11 @@ function InferenceJobsCard({
                         </button>
                       </div>
                     )}
-                    <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1.5fr_1.5fr_auto] gap-4 md:gap-4 items-start md:items-center">
+                    <div className="grid grid-cols-1 md:grid-cols-[minmax(320px,3.5fr)_minmax(96px,0.7fr)_minmax(120px,1fr)_minmax(120px,1fr)_minmax(140px,1.2fr)_auto] gap-3 md:gap-3 items-start md:items-center">
                       {/* Column 1: Job Info */}
                       <div className="flex flex-col min-w-0 md:pr-4">
                         <div className="flex flex-wrap items-center gap-2">
-                          <div className="text-xs font-medium text-[var(--text-primary)]">{job.label}</div>
+                          <div className="text-sm font-semibold text-[var(--text-primary)]">{job.label}</div>
                           {isManualTask ? (
                             <span className="rounded-full border border-[var(--border-color)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
                               Manual
@@ -2803,11 +2790,11 @@ function InferenceJobsCard({
                             <ScheduledJobStatePill state={status?.state} />
                           )}
                         </div>
-                        <div className="mt-0.5 text-[11px] text-[var(--text-secondary)]">{job.description}</div>
-                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-[var(--text-muted)]">
-                          <span>{formatPendingTokens(status, job.tokens)}</span>
-                          <span>{job.note}</span>
-                          <span>{isManualTask ? "global setting; uses the top enabled model unless overridden" : status?.due_label ?? "checks every minute when idle"}</span>
+                        <div className="mt-0.5 text-sm text-[var(--text-secondary)]">{job.description}</div>
+                        <div className="mt-1 flex items-center gap-x-2 text-[11px] text-[var(--text-secondary)] overflow-hidden whitespace-nowrap text-ellipsis min-w-0">
+                          <span className="shrink-0">{job.note}</span>
+                          <span className="shrink-0 text-[var(--text-muted)]">·</span>
+                          <span className="truncate">{isManualTask ? "global setting; uses the top enabled model unless overridden" : status?.due_label ?? "checks every minute when idle"}</span>
                         </div>
                       </div>
 
@@ -2867,7 +2854,31 @@ function InferenceJobsCard({
                         ) : null}
                       </div>
 
-                      {/* Column 5: Action */}
+                      {/* Column 5: Progress / pending work */}
+                      <div className="flex flex-col gap-0.5 min-w-0">
+                        <div className="md:hidden text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Progress</div>
+                        {(() => {
+                          const pendingTokens = status?.pending_input_tokens ?? 0;
+                          const pendingCount = status?.pending_work_count ?? 0;
+                          if (pendingTokens <= 0 && pendingCount <= 0) {
+                            return <span className="text-[11px] text-[var(--text-muted)]">—</span>;
+                          }
+                          const tokenStr = pendingTokens >= 1000
+                            ? `~${(pendingTokens / 1000).toFixed(pendingTokens >= 10_000 ? 0 : 1)}k`
+                            : pendingTokens > 0 ? `~${pendingTokens}` : "";
+                          const countStr = pendingCount > 0
+                            ? `${pendingCount} ${pendingCount === 1 ? "item" : "items"}`
+                            : "";
+                          return (
+                            <div className="flex flex-col text-[11px] text-[var(--text-secondary)] leading-tight">
+                              {tokenStr && <span>{tokenStr} pending</span>}
+                              {countStr && <span className="text-[var(--text-muted)]">{countStr}</span>}
+                            </div>
+                          );
+                        })()}
+                      </div>
+
+                      {/* Column 6: Action */}
                       <div className="flex justify-end w-full md:w-[88px]">
                         {!isManualTask ? (
                           <button
@@ -2883,7 +2894,10 @@ function InferenceJobsCard({
                     </div>
 
                     {job.cadence && job.cadence.length > 0 && (
-                      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-dashed border-[var(--border-color)] pt-2">
+                      <div className="mt-1 pt-1 flex flex-wrap items-center gap-x-4 gap-y-1 md:pl-3 md:border-l-2 md:border-[var(--border-color)]">
+                        <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">
+                          Timers
+                        </span>
                         {job.cadence.map((field) => {
                           const gateOn = field.gatedBy
                             ? Boolean(dbSettings[field.gatedBy])
@@ -6795,7 +6809,7 @@ export default function PreferencesView() {
 
           {activeTab === "inference-jobs" && (
             <div className="flex-1 min-h-0 overflow-y-auto">
-              <div className="max-w-4xl px-5 py-4 space-y-4">
+              <div className="px-5 py-4 space-y-4">
                 <InferenceJobsCard
                   ollamaModels={ollamaModels}
                   aiModels={aiModels}
