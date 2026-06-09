@@ -173,8 +173,27 @@ const GENERIC_CONCEPTS: &[&str] = &[
     "workflow",
 ];
 
+// Bare tokens that name a tool, language, database engine, or library rather
+// than an idea. Acceptable as type/category metadata, but they are not
+// *concepts* in a learning roadmap. Always lowercase; matched case-insensitively.
+const SURFACE_TOKENS: &[&str] = &[
+    // databases / engines
+    "mysql", "postgres", "postgresql", "sqlite", "sqlite3", "mariadb",
+    "mssql", "oracle", "redis", "mongodb", "cassandra", "duckdb",
+    // build / bundler / runtime tools
+    "esbuild", "webpack", "rollup", "vite", "parcel", "swc", "babel",
+    "npm", "pnpm", "yarn", "bun", "deno",
+    // version control / cli
+    "git", "github", "gitlab", "ssh", "curl", "wget", "grep", "awk", "sed",
+    // generic actors / roles that lose meaning out of context
+    "attacker", "user", "client", "server", "host",
+    // dev-server-ish fragments
+    "development server", "dev server", "production server",
+];
+
 fn is_specific_concept(name: &str) -> bool {
-    let lower = name.trim().to_lowercase();
+    let trimmed = name.trim();
+    let lower = trimmed.to_lowercase();
     if lower.chars().count() < 4 {
         return false;
     }
@@ -222,6 +241,58 @@ fn is_specific_concept(name: &str) -> bool {
             return false;
         }
     }
+
+    // Surface-token rejects: raw fragments that the LLM sometimes promotes to
+    // a "concept" but which are really shell prompts, SQL keywords, HTTP
+    // header names, or bare tool/engine names. These all describe the
+    // *medium* a learner encounters knowledge through, not the knowledge.
+
+    // Shell prompt prefixes: "sqlite> SHOW TABL...", "$ npm run ...".
+    let shell_prompt_starts = [
+        "sqlite>", "psql>", "mysql>", "mongo>",
+        "$ ", "> ", "# ", "PS> ",
+    ];
+    for prefix in &shell_prompt_starts {
+        if trimmed.starts_with(prefix) {
+            return false;
+        }
+    }
+
+    // HTTP header names: Access-Control-*, Cross-Origin-*, X-*, Sec-*.
+    let header_prefixes = [
+        "access-control-",
+        "cross-origin-",
+        "content-security-",
+        "strict-transport-",
+        "sec-fetch-",
+        "x-",
+    ];
+    for prefix in &header_prefixes {
+        if lower.starts_with(prefix) {
+            return false;
+        }
+    }
+
+    // All-caps short tokens are almost always SQL keywords, HTTP verbs, or
+    // acronymic shell output ("SHOW TABLES", "ALTER TABLE", "POST", "GET").
+    // Allow longer all-caps phrases (e.g. proper acronyms in context) by
+    // requiring at least one word with a lowercase letter beyond 4 chars.
+    let is_all_caps_alpha = trimmed.chars().any(|c| c.is_ascii_alphabetic())
+        && trimmed.chars().all(|c| !c.is_ascii_alphabetic() || c.is_ascii_uppercase());
+    if is_all_caps_alpha && trimmed.chars().count() <= 24 {
+        return false;
+    }
+
+    // Bare surface tokens — DB engines, CLI tools, generic actors.
+    if SURFACE_TOKENS.contains(&lower.as_str()) {
+        return false;
+    }
+
+    // Trailing ellipsis = truncated extraction, never useful as a concept name.
+    if trimmed.ends_with("...") || trimmed.ends_with("…") {
+        return false;
+    }
+
     true
 }
 
@@ -901,6 +972,12 @@ Rules:\n\
 - Every concept MUST be specific and named: use proper nouns, library names, theorem names, algorithm names, named techniques, or domain-specific terms\n\
 - NEVER use vague concepts like \"Key Ideas\", \"Best Practices\", \"Common Patterns\", \"Important Concepts\", \"Overview\", \"Summary\"\n\
 - Prefer concrete terms over abstractions: \"Binary Search Tree\" not \"Data Structure\", \"React Hooks\" not \"Framework Feature\"\n\
+- NEVER output surface tokens — these are the medium, not the knowledge:\n\
+  * SQL keywords or shell output: \"SHOW TABLES\", \"SELECT\", \"sqlite> ...\", \"$ npm ...\"\n\
+  * HTTP header names: \"Access-Control-Allow-Origin\", \"X-Forwarded-For\", \"Sec-Fetch-Mode\"\n\
+  * Bare tool, engine, or CLI names: \"mysql\", \"postgresql\", \"esbuild\", \"webpack\", \"npm\", \"git\"\n\
+  * Generic actors or roles: \"attacker\", \"user\", \"client\", \"server\"\n\
+  Instead output the *idea*: \"SQL DDL statements\", \"CORS preflight handshake\", \"JavaScript bundler tooling\", \"Threat actor modelling\"\n\
 - Chapter names must be self-contained noun phrases — no trailing \"and ...\", no truncations, no ellipses\n\
 - When two candidate names cover the same subject, choose the broader one (drop language prefixes at chapter level)\n\
 - Each description should define the concept in one clear sentence, not just restate the name\n\
@@ -1220,7 +1297,7 @@ Rules:\n\
 
         for chapter in &output.chapters {
             let ch_name = chapter.name.trim();
-            if ch_name.is_empty() {
+            if ch_name.is_empty() || !is_specific_concept(ch_name) {
                 continue;
             }
             let ch_desc = chapter.description.as_deref().unwrap_or("");
@@ -1235,7 +1312,7 @@ Rules:\n\
 
             for section in &chapter.sections {
                 let sec_name = section.name.trim();
-                if sec_name.is_empty() {
+                if sec_name.is_empty() || !is_specific_concept(sec_name) {
                     continue;
                 }
                 let sec_desc = section.description.as_deref().unwrap_or("");
