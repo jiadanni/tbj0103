@@ -8,10 +8,11 @@ import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
 import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Sparkles, Columns2, ChevronLeft, ChevronRight, Search, Paperclip, Send, ArrowUpDown, UserCircle, SlidersHorizontal, RotateCcw, Loader2, X, Copy, Download, Code2, History as HistoryIcon } from "lucide-react";
-import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat, type CoreSettings, type InferenceSettings, type AdvancedSettings, type KnowledgeResetOptions, type KnowledgeResetResult, type InferenceJobSetting, type InferenceJobStatus, type BackgroundJobRunMode, type BackgroundProcessingScope } from "../lib/api";
+import { api, REFRESH_WORKSPACE_TASK_TYPES, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat, type CoreSettings, type InferenceSettings, type AdvancedSettings, type KnowledgeResetOptions, type KnowledgeResetResult, type InferenceJobSetting, type InferenceJobStatus, type BackgroundJobRunMode, type BackgroundProcessingScope, type BackgroundTaskEvent } from "../lib/api";
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
 import { groupModelsByFamily } from "../lib/modelFamilyGrouping";
+import { useBackgroundJobsStore } from "../stores/backgroundJobs";
 import { applyHeadroom, classifyModelFit, formatBytes, formatParams, inferHardwareModelGuidance, parseModelParamsB, type ModelFit } from "../lib/modelSizing";
 import {
   CODE_BLOCK_CONTAINER_STYLES,
@@ -1737,8 +1738,12 @@ function DataControlsPreferences() {
   const [processingScope, setProcessingScope] = useState<BackgroundProcessingScope>("current_workspace");
   const [selectedWorkspaceIds, setSelectedWorkspaceIds] = useState<string[]>([]);
   const [selectedProcessingJobs, setSelectedProcessingJobs] = useState<string[]>(
-    INFERENCE_JOBS_CATALOG.map((job) => job.job_key),
+    () => [...REFRESH_WORKSPACE_TASK_TYPES],
   );
+  type BatchRowStatus = "queued" | "running" | "completed" | "failed";
+  const [batchStatus, setBatchStatus] = useState<Record<string, BatchRowStatus> | null>(null);
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
+  const batchActiveRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [successDialog, setSuccessDialog] = useState<{ title: string; description: string } | null>(null);
@@ -1827,28 +1832,52 @@ function DataControlsPreferences() {
     }
   }
 
+  const isStandardSelection = useMemo(() => {
+    if (selectedProcessingJobs.length !== REFRESH_WORKSPACE_TASK_TYPES.length) { return false; }
+    const selected = new Set(selectedProcessingJobs);
+    return REFRESH_WORKSPACE_TASK_TYPES.every((t) => selected.has(t));
+  }, [selectedProcessingJobs]);
+
+  function resetToStandardSelection() {
+    setSelectedProcessingJobs([...REFRESH_WORKSPACE_TASK_TYPES]);
+  }
+
   async function queueBackgroundProcessing() {
     setProcessingRunning(true);
     setError(null);
     setSuccess(null);
+    const taskTypes = selectedProcessingJobs.length > 0
+      ? selectedProcessingJobs
+      : [...REFRESH_WORKSPACE_TASK_TYPES];
+    const initialStatus: Record<string, BatchRowStatus> = Object.fromEntries(
+      taskTypes.map((t) => [t, "queued" as BatchRowStatus]),
+    );
+    setBatchStatus(initialStatus);
+    setBatchProgress({ current: 0, total: taskTypes.length });
+    batchActiveRef.current = true;
     try {
-      const taskTypes = selectedProcessingJobs.length > 0
-        ? selectedProcessingJobs
-        : INFERENCE_JOBS_CATALOG.map((job) => job.job_key);
-      const workspaceIds = processingScope === "selected_workspaces"
-        ? selectedWorkspaceIds
-        : processingScope === "current_workspace" && activeWorkspaceId
-          ? [activeWorkspaceId]
-          : [];
-      await api.backgroundJobs.queueProcessingNow({
-        scope: processingScope,
-        workspace_ids: workspaceIds,
-        task_types: taskTypes,
-        include_imported: true,
-      });
-      setSuccess("Background processing queued. Progress will appear in the status bar.");
+      if (isStandardSelection && processingScope === "current_workspace" && activeWorkspaceId) {
+        await api.knowledge.refreshWorkspace(activeWorkspaceId, "async");
+        setSuccess("Refresh started. Progress will appear below and in the status bar.");
+      } else {
+        const workspaceIds = processingScope === "selected_workspaces"
+          ? selectedWorkspaceIds
+          : processingScope === "current_workspace" && activeWorkspaceId
+            ? [activeWorkspaceId]
+            : [];
+        await api.backgroundJobs.queueProcessingNow({
+          scope: processingScope,
+          workspace_ids: workspaceIds,
+          task_types: taskTypes,
+          include_imported: true,
+        });
+        setSuccess("Background processing queued. Progress will appear below and in the status bar.");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      batchActiveRef.current = false;
+      setBatchStatus(null);
+      setBatchProgress(null);
     } finally {
       setProcessingRunning(false);
     }
@@ -1866,9 +1895,116 @@ function DataControlsPreferences() {
       : current.filter((id) => id !== workspaceId));
   }
 
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    let clearTimer: ReturnType<typeof setTimeout> | null = null;
+    const childTypes = new Set(REFRESH_WORKSPACE_TASK_TYPES as readonly string[]);
+    api.listenBackgroundTask((event: BackgroundTaskEvent) => {
+      if (!batchActiveRef.current) { return; }
+      const isStandardChild = childTypes.has(event.task_type);
+      const isBatch = event.task_type === "manual_data_processing";
+      if (!isStandardChild && !isBatch) { return; }
+
+      if (isBatch) {
+        if (typeof event.current === "number" && typeof event.total === "number") {
+          setBatchProgress({ current: event.current, total: event.total });
+        }
+        const childKey = event.current_task_type;
+        if (event.status === "processing" && childKey) {
+          setBatchStatus((prev) => {
+            if (!prev) { return prev; }
+            const next: Record<string, BatchRowStatus> = { ...prev };
+            for (const key of Object.keys(next)) {
+              if (key === childKey) {
+                next[key] = "running";
+              } else if (next[key] === "running") {
+                next[key] = "completed";
+              }
+            }
+            return next;
+          });
+        } else if (event.status === "completed") {
+          setBatchStatus((prev) => {
+            if (!prev) { return prev; }
+            const next: Record<string, BatchRowStatus> = { ...prev };
+            for (const key of Object.keys(next)) {
+              if (next[key] !== "failed") { next[key] = "completed"; }
+            }
+            return next;
+          });
+          finalizeBatch();
+        } else if (event.status === "failed" || event.status === "cancelled") {
+          setBatchStatus((prev) => {
+            if (!prev) { return prev; }
+            const next: Record<string, BatchRowStatus> = { ...prev };
+            for (const key of Object.keys(next)) {
+              if (next[key] === "running") { next[key] = "failed"; }
+            }
+            return next;
+          });
+          finalizeBatch();
+        }
+      } else if (isStandardChild) {
+        const key = event.task_type;
+        if (event.status === "started" || event.status === "processing") {
+          setBatchStatus((prev) => prev && prev[key] !== undefined
+            ? { ...prev, [key]: "running" }
+            : prev);
+        } else if (event.status === "completed") {
+          setBatchStatus((prev) => {
+            if (!prev || prev[key] === undefined) { return prev; }
+            const next = { ...prev, [key]: "completed" as BatchRowStatus };
+            advanceProgressFromStatus(next);
+            checkAllSettled(next);
+            return next;
+          });
+        } else if (event.status === "failed" || event.status === "cancelled") {
+          setBatchStatus((prev) => {
+            if (!prev || prev[key] === undefined) { return prev; }
+            const next = { ...prev, [key]: "failed" as BatchRowStatus };
+            advanceProgressFromStatus(next);
+            checkAllSettled(next);
+            return next;
+          });
+        }
+      }
+    }).then((fn) => {
+      if (cancelled) { fn(); return; }
+      unlisten = fn;
+    }).catch(() => {});
+
+    function advanceProgressFromStatus(status: Record<string, BatchRowStatus>) {
+      const total = Object.keys(status).length;
+      const settled = Object.values(status).filter((s) => s === "completed" || s === "failed").length;
+      setBatchProgress({ current: settled, total });
+    }
+    function checkAllSettled(status: Record<string, BatchRowStatus>) {
+      const allSettled = Object.values(status).every((s) => s === "completed" || s === "failed");
+      if (allSettled) { finalizeBatch(); }
+    }
+    function finalizeBatch() {
+      batchActiveRef.current = false;
+      if (clearTimer) { clearTimeout(clearTimer); }
+      clearTimer = setTimeout(() => {
+        setBatchStatus(null);
+        setBatchProgress(null);
+      }, 5000);
+    }
+
+    return () => {
+      cancelled = true;
+      if (unlisten) { unlisten(); }
+      if (clearTimer) { clearTimeout(clearTimer); }
+    };
+  }, []);
+
   const busy = loadingPreview || running;
   const totalRows = totalKnowledgeResetRows(preview);
+  const batchInFlight = batchStatus !== null
+    && Object.values(batchStatus).some((s) => s === "queued" || s === "running");
   const processingDisabled = processingRunning
+    || batchInFlight
     || (processingScope === "current_workspace" && !activeWorkspaceId)
     || (processingScope === "selected_workspaces" && selectedWorkspaceIds.length === 0)
     || selectedProcessingJobs.length === 0;
@@ -1903,12 +2039,43 @@ function DataControlsPreferences() {
                   type="button"
                   onClick={() => { void queueBackgroundProcessing(); }}
                   disabled={processingDisabled}
+                  title={isStandardSelection ? "Runs the standard refresh (7 jobs)" : "Runs only the jobs you have selected"}
                   className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[var(--accent-color)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {processingRunning ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
-                  Run Now
+                  {processingRunning || batchInFlight ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+                  {isStandardSelection ? "Run Now" : "Run Custom"}
                 </button>
               </div>
+
+              {!isStandardSelection && (
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-muted)]">
+                  <span>Custom selection — does not match the standard refresh.</span>
+                  <button
+                    type="button"
+                    onClick={resetToStandardSelection}
+                    className="text-[var(--accent-color)] hover:underline"
+                  >
+                    Reset to default
+                  </button>
+                </div>
+              )}
+
+              {batchStatus && batchProgress && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
+                    <span>
+                      {batchInFlight ? "Running" : "Finished"} job {batchProgress.current} of {batchProgress.total}
+                    </span>
+                    <span>{Math.round((batchProgress.current / Math.max(batchProgress.total, 1)) * 100)}%</span>
+                  </div>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-primary)]">
+                    <div
+                      className="h-full bg-[var(--accent-color)] transition-all duration-300"
+                      style={{ width: `${Math.min(100, (batchProgress.current / Math.max(batchProgress.total, 1)) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
                 <div className="space-y-2">
@@ -1956,20 +2123,36 @@ function DataControlsPreferences() {
                   <div className="space-y-2">
                     <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Jobs</div>
                     <div className="grid gap-2 sm:grid-cols-2">
-                      {INFERENCE_JOBS_CATALOG.map((job) => (
-                        <label key={job.job_key} className="flex cursor-pointer items-start gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
-                          <input
-                            type="checkbox"
-                            checked={selectedProcessingJobs.includes(job.job_key)}
-                            onChange={(event) => toggleProcessingJob(job.job_key, event.target.checked)}
-                            className="mt-0.5 h-4 w-4 accent-[var(--accent-color)]"
-                          />
-                          <span className="min-w-0">
-                            <span className="block truncate text-sm font-medium text-[var(--text-primary)]">{job.label}</span>
-                            <span className="block text-xs leading-5 text-[var(--text-muted)]">{job.description}</span>
-                          </span>
-                        </label>
-                      ))}
+                      {INFERENCE_JOBS_CATALOG.map((job) => {
+                        const rowStatus = batchStatus?.[job.job_key];
+                        const pillStyles: Record<BatchRowStatus, string> = {
+                          queued: "bg-[var(--bg-elevated)] text-[var(--text-muted)]",
+                          running: "bg-[var(--accent-color)]/20 text-[var(--accent-color)] animate-pulse",
+                          completed: "bg-emerald-500/15 text-emerald-300",
+                          failed: "bg-red-500/15 text-red-300",
+                        };
+                        return (
+                          <label key={job.job_key} className="flex cursor-pointer items-start gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
+                            <input
+                              type="checkbox"
+                              checked={selectedProcessingJobs.includes(job.job_key)}
+                              onChange={(event) => toggleProcessingJob(job.job_key, event.target.checked)}
+                              className="mt-0.5 h-4 w-4 accent-[var(--accent-color)]"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-center justify-between gap-2">
+                                <span className="block truncate text-sm font-medium text-[var(--text-primary)]">{job.label}</span>
+                                {rowStatus && (
+                                  <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${pillStyles[rowStatus]}`}>
+                                    {rowStatus}
+                                  </span>
+                                )}
+                              </span>
+                              <span className="block text-xs leading-5 text-[var(--text-muted)]">{job.description}</span>
+                            </span>
+                          </label>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
@@ -2262,6 +2445,7 @@ const RUN_MODE_OPTIONS: { value: BackgroundJobRunMode; label: string; descriptio
   { value: "auto", label: "Auto", description: "Run on schedule with the small model" },
   { value: "confirm_only", label: "Ask first", description: "Only run when the play-button is clicked; skip on timeout" },
   { value: "dual_model", label: "Ask for heavy, fallback small", description: "Run small on timeout; heavy on confirm" },
+  { value: "disabled", label: "Disabled", description: "Do not run this job automatically" },
 ];
 
 function scheduledStateMeta(state?: string): { label: string; className: string } {
@@ -2275,7 +2459,7 @@ function scheduledStateMeta(state?: string): { label: string; className: string 
     case "disabled":
       return { label: "Disabled", className: "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-muted)]" };
     case "no_eligible_work":
-      return { label: "No work", className: "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-muted)]" };
+      return { label: "Up to date", className: "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-muted)]" };
     case "waiting_for_idle":
       return { label: "Waiting", className: "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)]" };
     default:
@@ -2312,6 +2496,8 @@ function InferenceJobsCard({
   const [timeoutSeconds, setTimeoutSec] = useState<number>(20);
   const [loading, setLoading] = useState<boolean>(true);
   const [queueingJob, setQueueingJob] = useState<string | null>(null);
+  const lastErrors = useBackgroundJobsStore((s) => s.lastErrors);
+  const dismissError = useBackgroundJobsStore((s) => s.dismissError);
 
   const loadScheduledStatus = () => {
     return api.backgroundJobs.getInferenceJobStatuses().then((items) => {
@@ -2344,14 +2530,26 @@ function InferenceJobsCard({
 
   const eligibleModels = aiModels.filter((m) => m.provider === "ollama" && m.enabled);
   const smallModelOptions = useMemo(
-    () => [
-      { value: "", label: "Default (background model)" },
-      ...eligibleModels.map((m) => ({
-        value: m.model_id,
-        label: resolveModelDisplayName(m.model_id, modelLabels, aiModels),
-      })),
-    ],
-    [eligibleModels, modelLabels, aiModels],
+    () => {
+      const bgId = dbSettings.background_model as string | undefined;
+      let bgLabel = "background model";
+      if (bgId) {
+        bgLabel = resolveModelDisplayName(bgId, modelLabels, aiModels);
+      } else {
+        const topModel = [...eligibleModels].sort((a, b) => a.priority - b.priority)[0];
+        if (topModel) {
+          bgLabel = resolveModelDisplayName(topModel.model_id, modelLabels, aiModels);
+        }
+      }
+      return [
+        { value: "", label: `Default (${bgLabel})` },
+        ...eligibleModels.map((m) => ({
+          value: m.model_id,
+          label: resolveModelDisplayName(m.model_id, modelLabels, aiModels),
+        })),
+      ];
+    },
+    [eligibleModels, modelLabels, aiModels, dbSettings.background_model],
   );
   const heavyModelOptions = useMemo(
     () => [
@@ -2446,122 +2644,176 @@ function InferenceJobsCard({
         )}
 
         {!loading && (
-          <div className="space-y-2">
-            {INFERENCE_JOBS_CATALOG.map((job) => {
-              const entry = scheduled[job.job_key];
-              const status = statuses[job.job_key];
-              const runMode = (entry?.run_mode ?? "auto") as BackgroundJobRunMode;
-              const heavyModel = entry?.heavy_model ?? "";
-              const smallModel = (dbSettings[job.model_setting] as string) ?? "";
-              const isManualTask = job.manual === true;
+          <div className="space-y-4 md:space-y-0">
+            {/* Table Header (hidden on mobile) */}
+            <div className="hidden md:grid md:grid-cols-[2fr_1fr_1.5fr_1.5fr_auto] gap-4 px-3 pb-2 border-b border-[var(--border-color)]">
+              <div className="text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Job</div>
+              <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">
+                Run Mode
+                <Tooltip content="Auto: runs in background. Ask first: prompts you to confirm before running."><Info size={12} /></Tooltip>
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">
+                Small Model
+                <Tooltip content="Fast model used for automatic background processing."><Info size={12} /></Tooltip>
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">
+                Heavy Model
+                <Tooltip content="Optional larger model used only when you manually confirm a run."><Info size={12} /></Tooltip>
+              </div>
+              <div className="w-[88px]"></div>
+            </div>
 
-              const smallSelected = smallModel ? eligibleModels.find((m) => m.model_id === smallModel) : null;
-              const smallOllamaMeta = smallSelected ? ollamaModels.find((om) => om.name === smallSelected.model_id) : null;
-              const smallParams = smallSelected
-                ? parseModelParamsB(smallSelected.model_id)
-                  ?? parseModelParamsB(smallSelected.name)
-                  ?? parseModelParamsB(smallOllamaMeta?.details?.parameter_size ?? "")
-                : null;
-              const smallParamsLabel = smallParams != null ? formatParams(smallParams) : null;
-              const smallFit = systemGuidance ? classifyModelFit(smallParams, systemGuidance.recommendedMaxParamsB) : "unknown";
-              const smallFitMeta = getModelFitMeta(smallFit);
+            <div className="space-y-2 md:space-y-0 md:divide-y md:divide-[var(--border-color)]">
+              {INFERENCE_JOBS_CATALOG.map((job) => {
+                const entry = scheduled[job.job_key];
+                const status = statuses[job.job_key];
+                const runMode = (entry?.run_mode ?? "auto") as BackgroundJobRunMode;
+                const heavyModel = entry?.heavy_model ?? "";
+                const smallModel = (dbSettings[job.model_setting] as string) ?? "";
+                const isManualTask = job.manual === true;
 
-              const heavySelected = heavyModel ? eligibleModels.find((m) => m.model_id === heavyModel) : null;
-              const heavyOllamaMeta = heavySelected ? ollamaModels.find((om) => om.name === heavySelected.model_id) : null;
-              const heavyParams = heavySelected
-                ? parseModelParamsB(heavySelected.model_id)
-                  ?? parseModelParamsB(heavySelected.name)
-                  ?? parseModelParamsB(heavyOllamaMeta?.details?.parameter_size ?? "")
-                : null;
-              const heavyParamsLabel = heavyParams != null ? formatParams(heavyParams) : null;
+                const smallSelected = smallModel ? eligibleModels.find((m) => m.model_id === smallModel) : null;
+                const smallOllamaMeta = smallSelected ? ollamaModels.find((om) => om.name === smallSelected.model_id) : null;
+                const smallParams = smallSelected
+                  ? parseModelParamsB(smallSelected.model_id)
+                    ?? parseModelParamsB(smallSelected.name)
+                    ?? parseModelParamsB(smallOllamaMeta?.details?.parameter_size ?? "")
+                  : null;
+                const smallParamsLabel = smallParams != null ? formatParams(smallParams) : null;
+                const smallFit = systemGuidance ? classifyModelFit(smallParams, systemGuidance.recommendedMaxParamsB) : "unknown";
+                const smallFitMeta = getModelFitMeta(smallFit);
 
-              return (
-                <div
-                  key={job.job_key}
-                  className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-[220px] flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="text-xs font-medium text-[var(--text-primary)]">{job.label}</div>
-                        {isManualTask ? (
-                          <span className="rounded-full border border-[var(--border-color)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
-                            Manual
-                          </span>
-                        ) : (
-                          <ScheduledJobStatePill state={status?.state} />
-                        )}
-                      </div>
-                      <div className="mt-0.5 text-[11px] text-[var(--text-secondary)]">{job.description}</div>
-                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-[var(--text-muted)]">
-                        <span>{formatPendingTokens(status, job.tokens)}</span>
-                        <span>{job.note}</span>
-                        <span>{isManualTask ? "global setting; uses the top enabled model unless overridden" : status?.due_label ?? "checks every minute when idle"}</span>
-                      </div>
-                    </div>
+                const heavySelected = heavyModel ? eligibleModels.find((m) => m.model_id === heavyModel) : null;
+                const heavyOllamaMeta = heavySelected ? ollamaModels.find((om) => om.name === heavySelected.model_id) : null;
+                const heavyParams = heavySelected
+                  ? parseModelParamsB(heavySelected.model_id)
+                    ?? parseModelParamsB(heavySelected.name)
+                    ?? parseModelParamsB(heavyOllamaMeta?.details?.parameter_size ?? "")
+                  : null;
+                const heavyParamsLabel = heavyParams != null ? formatParams(heavyParams) : null;
 
-                    {!isManualTask && (
-                      <button
-                        type="button"
-                        onClick={() => void queueJobNow(job.job_key)}
-                        disabled={queueingJob === job.job_key || status?.state === "running" || status?.state === "queued"}
-                        className="h-7 shrink-0 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {queueingJob === job.job_key ? "Queueing…" : status?.state === "queued" ? "Queued" : "Run next"}
-                      </button>
-                    )}
-                  </div>
+                const failure = lastErrors.get(job.job_key);
 
-                  <div className={`mt-2 grid gap-2 ${isManualTask ? "md:grid-cols-1" : "md:grid-cols-3"}`}>
-                    {!isManualTask && (
-                      <div>
-                        <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Run mode</div>
-                        <CompactMenuSelect
-                          label="Run mode"
-                          value={runMode}
-                          options={modeOptions}
-                          onChange={(value) => updateRunMode(job.job_key, value as BackgroundJobRunMode)}
-                        />
-                      </div>
-                    )}
-
-                    <div>
-                      <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">
-                        {isManualTask ? "Model" : "Small model"}
-                      </div>
-                      <CompactMenuSelect
-                        label={isManualTask ? "Model" : "Small model"}
-                        value={smallModel}
-                        options={isManualTask ? manualModelOptions : smallModelOptions}
-                        onChange={(value) => set(job.model_setting, value as never)}
-                      />
-                      {smallSelected && (smallParamsLabel || smallFitMeta.label) && (
-                        <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[10px] text-[var(--text-muted)]">
-                          {smallParamsLabel && <span>{smallParamsLabel}</span>}
-                          {smallParamsLabel && smallFitMeta.label && <span>·</span>}
-                          {smallFitMeta.label && <span className={`font-medium ${smallFitMeta.textClassName}`}>{smallFitMeta.label}</span>}
+                return (
+                  <div
+                    key={job.job_key}
+                    className="rounded-lg md:rounded-none border md:border-0 border-[var(--border-color)] bg-[var(--bg-primary)] md:bg-transparent px-3 py-3"
+                  >
+                    {failure && (
+                      <div className="mb-2 flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1.5">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-red-300">
+                            Last run failed
+                          </div>
+                          <div className="mt-0.5 break-words text-[11px] leading-snug text-red-200">
+                            {failure.message}
+                          </div>
                         </div>
-                      )}
-                    </div>
-
-                    {!isManualTask && (
-                      <div>
-                        <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Heavy model</div>
-                        <CompactMenuSelect
-                          label="Heavy model"
-                          value={heavyModel}
-                          options={heavyModelOptions}
-                          onChange={(value) => updateHeavyModel(job.job_key, value)}
-                        />
-                        {heavyParamsLabel && (
-                          <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">{heavyParamsLabel}</div>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => dismissError(job.job_key)}
+                          className="shrink-0 rounded p-0.5 text-red-300 transition-colors hover:bg-red-500/20 hover:text-red-100"
+                          aria-label="Dismiss error"
+                        >
+                          <X size={12} />
+                        </button>
                       </div>
                     )}
+                    <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1.5fr_1.5fr_auto] gap-4 md:gap-4 items-start md:items-center">
+                      {/* Column 1: Job Info */}
+                      <div className="flex flex-col min-w-0 md:pr-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="text-xs font-medium text-[var(--text-primary)]">{job.label}</div>
+                          {isManualTask ? (
+                            <span className="rounded-full border border-[var(--border-color)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">
+                              Manual
+                            </span>
+                          ) : (
+                            <ScheduledJobStatePill state={status?.state} />
+                          )}
+                        </div>
+                        <div className="mt-0.5 text-[11px] text-[var(--text-secondary)]">{job.description}</div>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-[var(--text-muted)]">
+                          <span>{formatPendingTokens(status, job.tokens)}</span>
+                          <span>{job.note}</span>
+                          <span>{isManualTask ? "global setting; uses the top enabled model unless overridden" : status?.due_label ?? "checks every minute when idle"}</span>
+                        </div>
+                      </div>
+
+                      {/* Column 2: Run Mode */}
+                      <div className="flex flex-col gap-1 min-w-0">
+                        {!isManualTask ? (
+                          <>
+                            <div className="md:hidden text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Run mode</div>
+                            <CompactMenuSelect
+                              label="Run mode"
+                              value={runMode}
+                              options={modeOptions}
+                              menuWidth={200}
+                              onChange={(value) => updateRunMode(job.job_key, value as BackgroundJobRunMode)}
+                            />
+                          </>
+                        ) : null}
+                      </div>
+
+                      {/* Column 3: Small Model */}
+                      <div className="flex flex-col gap-1 min-w-0">
+                        <div className="md:hidden text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">
+                          {isManualTask ? "Model" : "Small model"}
+                        </div>
+                        <CompactMenuSelect
+                          label={isManualTask ? "Model" : "Small model"}
+                          value={smallModel}
+                          options={isManualTask ? manualModelOptions : smallModelOptions}
+                          menuWidth={220}
+                          onChange={(value) => set(job.model_setting, value as never)}
+                        />
+                        {smallSelected && (smallParamsLabel || smallFitMeta.label) && (
+                          <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[10px] text-[var(--text-muted)] pl-1">
+                            {smallParamsLabel && <span>{smallParamsLabel}</span>}
+                            {smallParamsLabel && smallFitMeta.label && <span>·</span>}
+                            {smallFitMeta.label && <span className={`font-medium ${smallFitMeta.textClassName}`}>{smallFitMeta.label}</span>}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Column 4: Heavy Model */}
+                      <div className="flex flex-col gap-1 min-w-0">
+                        {!isManualTask ? (
+                          <>
+                            <div className="md:hidden text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Heavy model</div>
+                            <CompactMenuSelect
+                              label="Heavy model"
+                              value={heavyModel}
+                              options={heavyModelOptions}
+                              menuWidth={220}
+                              onChange={(value) => updateHeavyModel(job.job_key, value)}
+                            />
+                            {heavyParamsLabel && (
+                              <div className="mt-0.5 text-[10px] text-[var(--text-muted)] pl-1">{heavyParamsLabel}</div>
+                            )}
+                          </>
+                        ) : null}
+                      </div>
+
+                      {/* Column 5: Action */}
+                      <div className="flex justify-end w-full md:w-[88px]">
+                        {!isManualTask ? (
+                          <button
+                            type="button"
+                            onClick={() => void queueJobNow(job.job_key)}
+                            disabled={queueingJob === job.job_key || status?.state === "running" || status?.state === "queued"}
+                            className="h-7 w-full shrink-0 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50 text-center"
+                          >
+                            {queueingJob === job.job_key ? "Queueing…" : status?.state === "queued" ? "Queued" : "Run next"}
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         )}
       </div>

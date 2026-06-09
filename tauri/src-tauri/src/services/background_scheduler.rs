@@ -25,7 +25,7 @@ static EVENT_BUS: LazyLock<broadcast::Sender<BackgroundTaskEvent>> = LazyLock::n
 });
 
 /// Subscribe to background-task events broadcast in-process. The returned
-/// receiver yields every event emitted via `emit_task` / `emit_task_with_workspace`
+/// receiver yields every event emitted via `emit_task` / `emit_task_with_progress`
 /// from the moment of subscription. Missed messages while the receiver is
 /// behind become `RecvError::Lagged`; callers should treat that as a soft
 /// signal to re-check their pending set.
@@ -134,6 +134,18 @@ pub struct BackgroundTaskEvent {
     pub model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace_id: Option<String>,
+    /// 1-indexed position of the child job currently running within a batch.
+    /// Populated by `manual_data_processing`; `None` for jobs that aren't
+    /// part of a multi-step batch.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current: Option<u32>,
+    /// Total number of child jobs in the current batch. See `current`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total: Option<u32>,
+    /// `task_type` of the child job currently running inside a batch. Lets the
+    /// frontend map progress to the right row without parsing `message`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_task_type: Option<String>,
 }
 
 /// Emitted on `background-task-prompt` when a job is gated on user
@@ -254,6 +266,7 @@ async fn gate_job(
 ) -> (bool, Option<String>) {
     let (mode, heavy_model, timeout_seconds) = lookup_job_mode(app, job_key).await;
     match mode {
+        RunMode::Disabled => (false, None),
         RunMode::Auto => (true, default_model),
         RunMode::ConfirmOnly | RunMode::DualModel => {
             let (tx, rx) = oneshot::channel::<PromptResolution>();
@@ -323,16 +336,47 @@ async fn gate_job(
 }
 
 fn emit_task(app: &AppHandle, task_type: &str, status: &str, message: &str, model: Option<String>) {
-    emit_task_with_workspace(app, task_type, status, message, model, None);
+    emit_task_full(app, task_type, status, message, model, None, None, None, None);
 }
 
-fn emit_task_with_workspace(
+/// Like `emit_task` but carries batch progress numerics (`current` / `total`)
+/// and the child `task_type` currently running. Used by `manual_data_processing`
+/// so the Data Controls panel can render a total + per-row progress UI without
+/// parsing free-text status messages.
+fn emit_task_with_progress(
+    app: &AppHandle,
+    task_type: &str,
+    status: &str,
+    message: &str,
+    model: Option<String>,
+    current: Option<u32>,
+    total: Option<u32>,
+    current_task_type: Option<String>,
+) {
+    emit_task_full(
+        app,
+        task_type,
+        status,
+        message,
+        model,
+        None,
+        current,
+        total,
+        current_task_type,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_task_full(
     app: &AppHandle,
     task_type: &str,
     status: &str,
     message: &str,
     model: Option<String>,
     workspace_id: Option<String>,
+    current: Option<u32>,
+    total: Option<u32>,
+    current_task_type: Option<String>,
 ) {
     let resolved_workspace_id = match status {
         "queued" => {
@@ -395,6 +439,9 @@ fn emit_task_with_workspace(
         message: message.to_string(),
         model,
         workspace_id: resolved_workspace_id,
+        current,
+        total,
+        current_task_type,
     };
     // Mirror to the in-process broadcast bus first so subscribers (e.g., the
     // workspace-refresh coordinator) cannot race with the IPC emit. Receive
@@ -647,7 +694,7 @@ async fn lookup_manual_job_model(app: &AppHandle, job_key: &str) -> Option<Strin
         let default_model = get_model_for_job(&conn, &format!("{}_model", job_key_owned))
             .or_else(|| get_model_for_job(&conn, &job_key_owned));
         match mode {
-            RunMode::Auto => default_model,
+            RunMode::Auto | RunMode::Disabled => default_model,
             RunMode::ConfirmOnly | RunMode::DualModel => {
                 get_heavy_model(&conn, &job_key_owned).or(default_model)
             }
@@ -1098,28 +1145,36 @@ async fn run_manual_processing_batch(
 ) {
     let task_type = "manual_data_processing";
     let _permit = acquire_job_permit().await;
-    emit_task(
+    let total_tasks = u32::try_from(tasks.len()).unwrap_or(u32::MAX);
+    emit_task_with_progress(
         &app,
         task_type,
         "started",
         "Running background processing…",
+        None,
+        Some(0),
+        Some(total_tasks),
         None,
     );
     register_running(task_type);
 
     let mut any_failed = false;
     let mut completed = 0usize;
-    for task in &tasks {
+    for (idx, task) in tasks.iter().enumerate() {
         if is_cancelled(task_type) {
             any_failed = true;
             break;
         }
-        emit_task(
+        let current_idx = u32::try_from(idx + 1).unwrap_or(u32::MAX);
+        emit_task_with_progress(
             &app,
             task_type,
             "processing",
             &format!("Running {}…", job_label(task)),
             None,
+            Some(current_idx),
+            Some(total_tasks),
+            Some(task.clone()),
         );
         match run_manual_processing_job(&app, task, &workspace_ids, req.include_imported).await {
             Ok(()) => completed += 1,
@@ -1147,7 +1202,17 @@ async fn run_manual_processing_batch(
     } else {
         format!("Background processing done ({completed}/{})", tasks.len())
     };
-    emit_task(&app, task_type, status, &message, None);
+    let completed_u32 = u32::try_from(completed).unwrap_or(u32::MAX);
+    emit_task_with_progress(
+        &app,
+        task_type,
+        status,
+        &message,
+        None,
+        Some(completed_u32),
+        Some(total_tasks),
+        None,
+    );
     unregister_running(task_type);
     MANUAL_PROCESSING_RUNNING.store(false, Ordering::SeqCst);
 }
@@ -2114,25 +2179,25 @@ pub fn list_scheduled_statuses(
             let heavy_model = get_heavy_model(conn, job_key);
             let active = active_jobs.get(*job_key);
             let is_manual_queued = queued_jobs.iter().any(|queued| queued == job_key);
-            let has_work = background_enabled && has_auto_work(conn, job_key);
-            let mut state = if background_enabled {
-                if has_work {
-                    "scheduled"
-                } else {
-                    "no_eligible_work"
-                }
-                .to_string()
-            } else {
+            let is_disabled = !background_enabled || run_mode == "disabled";
+            let has_work = background_enabled && run_mode != "disabled" && has_auto_work(conn, job_key);
+            let mut state = if is_disabled {
                 "disabled".to_string()
-            };
-            let mut due_label = if background_enabled {
-                if has_work {
-                    every_tick_label(1)
-                } else {
-                    "waiting for new messages or sources".to_string()
-                }
+            } else if has_work {
+                "scheduled".to_string()
             } else {
-                "background inference disabled".to_string()
+                "no_eligible_work".to_string()
+            };
+            let mut due_label = if is_disabled {
+                if run_mode == "disabled" {
+                    "disabled".to_string()
+                } else {
+                    "background inference disabled".to_string()
+                }
+            } else if has_work {
+                every_tick_label(1)
+            } else {
+                "waiting for new messages or sources".to_string()
             };
             let mut next_due_at = None;
 

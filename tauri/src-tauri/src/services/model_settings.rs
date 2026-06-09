@@ -64,6 +64,7 @@ pub enum RunMode {
     Auto,
     ConfirmOnly,
     DualModel,
+    Disabled,
 }
 
 impl RunMode {
@@ -72,6 +73,7 @@ impl RunMode {
             RunMode::Auto => "auto",
             RunMode::ConfirmOnly => "confirm_only",
             RunMode::DualModel => "dual_model",
+            RunMode::Disabled => "disabled",
         }
     }
 }
@@ -81,6 +83,7 @@ pub fn get_run_mode(conn: &Connection, job_key: &str) -> RunMode {
     match get_string_setting(conn, &key).as_deref() {
         Some("confirm_only") => RunMode::ConfirmOnly,
         Some("dual_model") => RunMode::DualModel,
+        Some("disabled") => RunMode::Disabled,
         _ => RunMode::Auto,
     }
 }

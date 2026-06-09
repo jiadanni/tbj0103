@@ -533,6 +533,12 @@ export interface BackgroundTaskEvent {
   model?: string;
   /** Workspace the job belongs to, when applicable. */
   workspace_id?: string;
+  /** 1-indexed position of the child job currently running within a batch. */
+  current?: number;
+  /** Total number of child jobs in the current batch. */
+  total?: number;
+  /** `task_type` of the child job currently running inside a batch. */
+  current_task_type?: string;
 }
 
 export interface ActiveJob {
@@ -542,6 +548,9 @@ export interface ActiveJob {
   model?: string;
   started_at?: string;
   status: string;
+  current?: number;
+  total?: number;
+  current_task_type?: string;
 }
 
 
@@ -559,7 +568,7 @@ export interface BackgroundTaskPromptEvent {
   timeout_seconds: number;
 }
 
-export type BackgroundJobRunMode = 'auto' | 'confirm_only' | 'dual_model';
+export type BackgroundJobRunMode = 'auto' | 'confirm_only' | 'dual_model' | 'disabled';
 
 export interface InferenceJobSetting {
   job_key: string;
