@@ -7,7 +7,8 @@ import { useNavigate } from "react-router-dom";
 import {
   Plus, Trash2, Pencil, Check, X, LayoutGrid,
   MessageSquare, FileText, Globe, Brain, CreditCard,
-  Database, Sparkles, Save, Loader2, ChevronRight, ChevronDown, ArrowUpDown, BookOpen, FolderPlus, RotateCcw
+  Database, Sparkles, Save, Loader2, ChevronRight, ChevronDown, ArrowUpDown, BookOpen, FolderPlus, RotateCcw,
+  Folder, Code, Palette, HeartPulse, Music, Plug, User, Terminal, GitBranch, ShieldCheck, Container, Rocket, WandSparkles
 } from "lucide-react";
 import { api } from "../lib/api";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -21,6 +22,26 @@ import { useSettingsStore } from "../stores/settingsStore";
 import { useBackgroundJobsStore } from "../stores/backgroundJobs";
 import type { Workspace } from "../stores/workspaceStore";
 import type { DashboardSummary, KnowledgeResetOptions, KnowledgeResetResult, KnowledgeResetScope, PromptBankStatus, RoadmapSnapshot, TopicSignature, WorkspaceGlossaryTerm } from "../lib/api";
+import { inferWorkspaceIconName } from "../lib/workspaceIconRules";
+import { WorkspaceIcon } from "../lib/workspaceIcon";
+
+const WORKSPACE_ICON_OPTIONS = [
+  { name: "folder", label: "Folder", Icon: Folder },
+  { name: "code", label: "Code", Icon: Code },
+  { name: "palette", label: "Design", Icon: Palette },
+  { name: "heart-pulse", label: "Health", Icon: HeartPulse },
+  { name: "book-open", label: "Study", Icon: BookOpen },
+  { name: "sparkles", label: "AI", Icon: Sparkles },
+  { name: "music", label: "Music", Icon: Music },
+  { name: "plug", label: "Integrate", Icon: Plug },
+  { name: "user", label: "Person", Icon: User },
+  { name: "terminal", label: "Terminal", Icon: Terminal },
+  { name: "git-branch", label: "Git", Icon: GitBranch },
+  { name: "database", label: "Database", Icon: Database },
+  { name: "shield-check", label: "Security", Icon: ShieldCheck },
+  { name: "container", label: "Container", Icon: Container },
+  { name: "rocket", label: "Productivity", Icon: Rocket },
+];
 
 type WorkspaceDialogState =
   | { kind: "last-workspace" }
@@ -885,6 +906,17 @@ export default function WorkspaceSettingsView() {
     }
   }
 
+  async function updateWorkspaceIcon(workspace: Workspace, icon: string) {
+    setWorkspaces(workspaces.map((item) => item.id === workspace.id ? { ...item, icon } : item));
+    try {
+      await api.workspace.updateIcon(workspace.id, icon);
+    } catch (err) {
+      console.error("Failed to update workspace icon:", err);
+      const current = await api.workspace.list();
+      setWorkspaces(current);
+    }
+  }
+
   function resolveWorkspaceActivation(workspaceId: string) {
     const workspace = workspaces.find((item) => item.id === workspaceId);
     if (!workspace) {
@@ -1135,6 +1167,7 @@ export default function WorkspaceSettingsView() {
                             {isActive && (
                               <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-[var(--accent-color)]" />
                             )}
+                            <WorkspaceIcon name={ws.icon} label={ws.name} className="h-3.5 w-3.5 opacity-70 shrink-0" />
                             <span className="text-sm truncate">
                               {ws.name}
                             </span>
@@ -1230,6 +1263,7 @@ export default function WorkspaceSettingsView() {
                                     {isChildActive && (
                                       <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-[var(--accent-color)]" />
                                     )}
+                                    <WorkspaceIcon name={child.icon} label={child.name} className="h-3.5 w-3.5 opacity-70 shrink-0" />
                                     <span className="text-sm truncate">
                                       {child.name}
                                     </span>
@@ -1373,6 +1407,51 @@ export default function WorkspaceSettingsView() {
                   rows={2}
                   className="w-full resize-none text-sm bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-xl px-4 py-3 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] transition-colors shadow-sm"
                 />
+              </div>
+
+              {/* Icon Selector */}
+              <div className="space-y-3 py-5">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">
+                    Icon
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void updateWorkspaceIcon(selectedWorkspace, inferWorkspaceIconName(selectedWorkspace.name));
+                    }}
+                    title="Auto-pick icon"
+                    aria-label="Auto-pick workspace icon"
+                    className="flex items-center gap-1.5 px-3 py-1 text-xs rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent-color)] transition-all font-medium"
+                  >
+                    <WandSparkles size={12} />
+                    Auto-pick Icon
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {WORKSPACE_ICON_OPTIONS.map(({ name, label, Icon }) => {
+                    const isSelected = selectedWorkspace.icon === name;
+                    return (
+                      <button
+                        key={name}
+                        type="button"
+                        onClick={() => {
+                          void updateWorkspaceIcon(selectedWorkspace, name);
+                        }}
+                        title={label}
+                        aria-label={`Set workspace icon to ${label}`}
+                        aria-pressed={isSelected}
+                        className={`flex h-10 w-10 items-center justify-center rounded-xl border transition-all ${
+                          isSelected
+                            ? "border-[var(--accent-color)] bg-[rgba(var(--accent-color-rgb),0.18)] text-[var(--accent-color)]"
+                            : "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+                        }`}
+                      >
+                        <Icon size={16} />
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Statistics Row */}
