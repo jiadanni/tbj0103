@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 import {
   api,
   type PerformanceStats,
@@ -394,6 +395,8 @@ function ScheduledJobsPopover({
   loading: boolean;
   onClose: () => void;
 }) {
+  const navigate = useNavigate();
+
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") { onClose(); }
@@ -441,7 +444,7 @@ function ScheduledJobsPopover({
         <div className="py-4 text-xs text-[var(--text-muted)]">No scheduled jobs found.</div>
       )}
       {!loading && jobs.length > 0 && (
-        <div className="max-h-80 overflow-y-auto divide-y divide-[var(--border-color)]/60">
+        <div className="max-h-[500px] overflow-y-auto divide-y divide-[var(--border-color)]/60">
           {jobs.map((job) => (
             <div key={job.job_key} className="flex items-start justify-between gap-3 py-2">
               <div className="min-w-0">
@@ -455,6 +458,18 @@ function ScheduledJobsPopover({
           ))}
         </div>
       )}
+      <div className="mt-2 pt-2 border-t border-[var(--border-color)]/60 flex justify-end">
+        <button
+          type="button"
+          onClick={() => {
+            navigate("/preferences", { state: { settingsTab: "inference-jobs" } });
+            onClose();
+          }}
+          className="text-[10px] text-[var(--accent-color)] hover:underline font-medium"
+        >
+          Configure Jobs →
+        </button>
+      </div>
     </div>,
     document.body,
   );

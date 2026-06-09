@@ -54,6 +54,16 @@ vi.mock("@/lib/api", () => ({
   },
 }));
 
+const mockNavigate = vi.fn();
+
+vi.mock("react-router-dom", async () => {
+  const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  };
+});
+
 import StatusBar from "@/components/StatusBar";
 
 const emptyStats: PerformanceStats = {
@@ -221,6 +231,17 @@ describe("StatusBar", () => {
     expect(screen.getByText("Memory Extraction")).toBeInTheDocument();
     expect(screen.getByText("checks every minute when idle")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /run next/i })).not.toBeInTheDocument();
+
+    const configureBtn = screen.getByRole("button", { name: "Configure Jobs →" });
+    expect(configureBtn).toBeInTheDocument();
+    
+    act(() => {
+      configureBtn.click();
+    });
+
+    expect(mockNavigate).toHaveBeenCalledWith("/preferences", {
+      state: { settingsTab: "inference-jobs" },
+    });
   });
 
   it("shows a play-button prompt when a job requests confirmation and confirms on click", async () => {
