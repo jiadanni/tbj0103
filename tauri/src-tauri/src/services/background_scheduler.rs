@@ -55,6 +55,29 @@ static MANUAL_DRAIN_RUNNING: AtomicBool = AtomicBool::new(false);
 static MANUAL_PROCESSING_RUNNING: AtomicBool = AtomicBool::new(false);
 static NEXT_TICK_AT: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 
+type PendingTokens = (Option<i64>, Option<i64>);
+
+/// Per-job token counts staged by `record_job_tokens(...)` between job start
+/// and the terminal `emit_task_full("completed" | "failed" | "cancelled", ...)`.
+/// Cleared as part of writing the `inference_job_runs` row.
+static PENDING_RUN_TOKENS: LazyLock<Mutex<HashMap<String, PendingTokens>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Per-job start instants for measuring duration. Keyed by job_key; populated
+/// on the "started" / "processing" transition and consumed on terminal status.
+static RUN_STARTED_AT: LazyLock<Mutex<HashMap<String, std::time::Instant>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Stash the input/output token count for a job's currently-running execution.
+/// Called by job handlers just before they emit the terminal "completed" /
+/// "failed" status. Either value may be `None` if the job genuinely doesn't
+/// produce that count (the aggregate query skips NULLs).
+pub fn record_job_tokens(job_key: &str, input_tokens: Option<i64>, output_tokens: Option<i64>) {
+    if let Ok(mut map) = PENDING_RUN_TOKENS.lock() {
+        map.insert(job_key.to_string(), (input_tokens, output_tokens));
+    }
+}
+
 /// Single-permit semaphore serializing every background job — scheduler ticks
 /// and manually-triggered IPCs (e.g. `start_workspace_prompt_bank_job`) all
 /// acquire this before doing work. Holding it for the duration of a job means
@@ -420,6 +443,12 @@ fn emit_task_full(
                     },
                 );
             }
+            if status == "started" {
+                if let Ok(mut starts) = RUN_STARTED_AT.lock() {
+                    starts.entry(task_type.to_string())
+                        .or_insert_with(std::time::Instant::now);
+                }
+            }
             resolved
         }
         _ => {
@@ -429,6 +458,50 @@ fn emit_task_full(
                     resolved = jobs.get(task_type).and_then(|job| job.workspace_id.clone());
                 }
                 jobs.remove(task_type);
+            }
+            if matches!(status, "completed" | "failed" | "cancelled") {
+                let started_at = RUN_STARTED_AT.lock().ok().and_then(|mut m| m.remove(task_type));
+                let (input_tokens, output_tokens) = PENDING_RUN_TOKENS
+                    .lock()
+                    .ok()
+                    .and_then(|mut m| m.remove(task_type))
+                    .unwrap_or((None, None));
+                let duration_ms = started_at.map(|t| t.elapsed().as_millis() as i64);
+                let completed_at = chrono::Utc::now().to_rfc3339();
+                let started_at_rfc = started_at
+                    .map(|t| {
+                        let elapsed = chrono::Duration::from_std(t.elapsed())
+                            .unwrap_or(chrono::Duration::zero());
+                        (chrono::Utc::now() - elapsed).to_rfc3339()
+                    })
+                    .unwrap_or_else(|| completed_at.clone());
+                let error_message = if status == "completed" { None } else { Some(message.to_string()) };
+                let job_key = task_type.to_string();
+                let ws_id = resolved.clone();
+                let status_owned = status.to_string();
+                let db = app.state::<DbState>();
+                let pool = db.0.clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    if let Ok(conn) = pool.get() {
+                        let _ = conn.execute(
+                            "INSERT INTO inference_job_runs \
+                                (job_key, workspace_id, started_at, completed_at, duration_ms, \
+                                 input_tokens, output_tokens, status, error_message) \
+                             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                            rusqlite::params![
+                                job_key,
+                                ws_id,
+                                started_at_rfc,
+                                completed_at,
+                                duration_ms,
+                                input_tokens,
+                                output_tokens,
+                                status_owned,
+                                error_message,
+                            ],
+                        );
+                    }
+                });
             }
             resolved
         }
@@ -1939,6 +2012,14 @@ pub struct InferenceJobStatus {
     /// Number of eligible work items in the current workspace that the next
     /// run would consume.
     pub pending_work_count: Option<i64>,
+    /// Aggregate stats over the retention window (default 30 days) for the
+    /// current workspace. All `None` when there is no run history yet.
+    pub avg_duration_ms: Option<f64>,
+    pub avg_input_tokens: Option<f64>,
+    pub runs_count: Option<i64>,
+    pub success_rate: Option<f64>,
+    pub last_duration_ms: Option<i64>,
+    pub last_completed_at: Option<String>,
 }
 
 /// Approximate token count from character count. Matches the 4-char/token
@@ -2165,6 +2246,8 @@ pub fn list_scheduled_statuses(
             .unwrap_or(true);
     let next_check_at = current_next_tick_at();
     let current_workspace = crate::services::model_settings::get_current_workspace_id(conn);
+    let aggregate_stats = compute_run_aggregates(conn, current_workspace.as_deref())
+        .unwrap_or_default();
 
     Ok(SCHEDULED_JOB_KEYS
         .iter()
@@ -2280,6 +2363,7 @@ pub fn list_scheduled_statuses(
 
             let (pending_work_count, pending_input_tokens) =
                 pending_workload_for_job(conn, job_key, current_workspace.as_deref());
+            let stats = aggregate_stats.get(*job_key).cloned().unwrap_or_default();
 
             InferenceJobStatus {
                 job_key: (*job_key).to_string(),
@@ -2294,9 +2378,101 @@ pub fn list_scheduled_statuses(
                 due_label,
                 pending_input_tokens,
                 pending_work_count,
+                avg_duration_ms: stats.avg_duration_ms,
+                avg_input_tokens: stats.avg_input_tokens,
+                runs_count: stats.runs_count,
+                success_rate: stats.success_rate,
+                last_duration_ms: stats.last_duration_ms,
+                last_completed_at: stats.last_completed_at,
             }
         })
         .collect())
+}
+
+#[derive(Debug, Clone, Default)]
+struct JobRunStats {
+    avg_duration_ms: Option<f64>,
+    avg_input_tokens: Option<f64>,
+    runs_count: Option<i64>,
+    success_rate: Option<f64>,
+    last_duration_ms: Option<i64>,
+    last_completed_at: Option<String>,
+}
+
+/// Read `inference_job_runs_retention_days` setting (default 30, clamped 1..=365).
+fn run_retention_days(conn: &rusqlite::Connection) -> i64 {
+    crate::commands::settings::get_setting(conn, "inference_job_runs_retention_days")
+        .and_then(|v| v.parse::<i64>().ok())
+        .map(|v| v.clamp(1, 365))
+        .unwrap_or(30)
+}
+
+/// Aggregate per-job run stats over the retention window, scoped to the active
+/// workspace. Returns a map from job_key to stats; jobs with no runs are absent.
+fn compute_run_aggregates(
+    conn: &rusqlite::Connection,
+    workspace_id: Option<&str>,
+) -> rusqlite::Result<std::collections::HashMap<String, JobRunStats>> {
+    let days = run_retention_days(conn);
+    let cutoff = format!("-{} days", days);
+    let mut stmt = conn.prepare(
+        "SELECT job_key, \
+                AVG(duration_ms)  AS avg_duration_ms, \
+                AVG(input_tokens) AS avg_input_tokens, \
+                COUNT(*)          AS runs_count, \
+                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_count, \
+                MAX(completed_at) AS last_completed_at \
+         FROM inference_job_runs \
+         WHERE completed_at IS NOT NULL \
+           AND completed_at >= datetime('now', ?1) \
+           AND (workspace_id = ?2 OR (?2 IS NULL AND workspace_id IS NULL)) \
+         GROUP BY job_key",
+    )?;
+    let mut out = std::collections::HashMap::new();
+    let mut rows = stmt.query(rusqlite::params![cutoff, workspace_id])?;
+    while let Some(row) = rows.next()? {
+        let job_key: String = row.get(0)?;
+        let avg_duration_ms: Option<f64> = row.get(1)?;
+        let avg_input_tokens: Option<f64> = row.get(2)?;
+        let runs_count: Option<i64> = row.get(3)?;
+        let completed_count: Option<i64> = row.get(4)?;
+        let last_completed_at: Option<String> = row.get(5)?;
+        let success_rate = match (runs_count, completed_count) {
+            (Some(r), Some(c)) if r > 0 => Some(c as f64 / r as f64),
+            _ => None,
+        };
+        let last_duration_ms: Option<i64> = conn.query_row(
+            "SELECT duration_ms FROM inference_job_runs \
+             WHERE job_key = ?1 \
+               AND completed_at IS NOT NULL \
+               AND (workspace_id = ?2 OR (?2 IS NULL AND workspace_id IS NULL)) \
+             ORDER BY completed_at DESC LIMIT 1",
+            rusqlite::params![job_key, workspace_id],
+            |r| r.get(0),
+        ).ok().flatten();
+        out.insert(
+            job_key,
+            JobRunStats {
+                avg_duration_ms,
+                avg_input_tokens,
+                runs_count,
+                success_rate,
+                last_duration_ms,
+                last_completed_at,
+            },
+        );
+    }
+    Ok(out)
+}
+
+/// Delete runs older than the retention window. Called on app start.
+pub fn prune_old_runs(conn: &rusqlite::Connection) -> rusqlite::Result<usize> {
+    let days = run_retention_days(conn);
+    let cutoff = format!("-{} days", days);
+    conn.execute(
+        "DELETE FROM inference_job_runs WHERE completed_at < datetime('now', ?1)",
+        rusqlite::params![cutoff],
+    )
 }
 
 pub fn list_active(conn: &rusqlite::Connection) -> Result<Vec<ActiveBackgroundJob>, String> {

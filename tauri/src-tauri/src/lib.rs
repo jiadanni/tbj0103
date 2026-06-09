@@ -840,6 +840,12 @@ pub fn complete_db_dependent_setup(
 
     crate::services::background_scheduler::start_scheduler(app.clone());
 
+    if let Some(db) = app.try_state::<crate::db::DbState>() {
+        if let Ok(conn) = db.0.get() {
+            let _ = crate::services::background_scheduler::prune_old_runs(&conn);
+        }
+    }
+
     let app_handle = app.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_secs(60)).await;

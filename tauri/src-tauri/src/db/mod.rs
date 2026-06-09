@@ -2127,6 +2127,32 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    let applied_v74: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v74_inference_job_runs'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v74 == 0 {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS inference_job_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_key TEXT NOT NULL,
+                workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                duration_ms INTEGER,
+                input_tokens INTEGER,
+                output_tokens INTEGER,
+                status TEXT NOT NULL,
+                error_message TEXT
+            );
+             CREATE INDEX IF NOT EXISTS idx_inference_job_runs_key_completed
+                ON inference_job_runs(job_key, workspace_id, completed_at DESC);
+             INSERT INTO _migrations(name) VALUES('v74_inference_job_runs');",
+        )?;
+    }
+
     Ok(())
 }
 

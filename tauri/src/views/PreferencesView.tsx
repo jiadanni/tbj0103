@@ -382,6 +382,7 @@ function mergeSplitSettings(
     vram_headroom_percent: advanced.vram_headroom_percent,
     ram_headroom_gb: advanced.ram_headroom_gb,
     ram_headroom_percent: advanced.ram_headroom_percent,
+    inference_job_runs_retention_days: advanced.inference_job_runs_retention_days,
   };
 }
 
@@ -2693,6 +2694,24 @@ function InferenceJobsCard({
           </div>
         </div>
 
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-[var(--text-secondary)]">Keep run history for</p>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="number"
+              min={1}
+              max={365}
+              value={Number(dbSettings.inference_job_runs_retention_days ?? 30)}
+              onChange={(e) => {
+                const next = Math.max(1, Math.min(365, Number(e.target.value) || 30));
+                set("inference_job_runs_retention_days", next as never);
+              }}
+              className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+            />
+            <span className="text-xs text-[var(--text-muted)]">days</span>
+          </div>
+        </div>
+
         {loading && (
           <div className="py-3 text-xs text-[var(--text-muted)]">Loading…</div>
         )}
@@ -2716,7 +2735,7 @@ function InferenceJobsCard({
               </div>
               <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">
                 Progress
-                <Tooltip content="Pending work right now. Average runtime and tokens processed coming soon."><Info size={12} /></Tooltip>
+                <Tooltip content="Average runtime and run count over the retention window (workspace-scoped). Falls back to pending work when no history exists yet. Token counts per run coming in a follow-up."><Info size={12} /></Tooltip>
               </div>
               <div className="w-[88px]"></div>
             </div>
@@ -2854,27 +2873,55 @@ function InferenceJobsCard({
                         ) : null}
                       </div>
 
-                      {/* Column 5: Progress / pending work */}
+                      {/* Column 5: Progress / monitoring */}
                       <div className="flex flex-col gap-0.5 min-w-0">
                         <div className="md:hidden text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Progress</div>
                         {(() => {
+                          const runs = status?.runs_count ?? 0;
+                          const avgMs = status?.avg_duration_ms ?? null;
+                          const avgTokens = status?.avg_input_tokens ?? null;
+                          const successRate = status?.success_rate ?? null;
                           const pendingTokens = status?.pending_input_tokens ?? 0;
                           const pendingCount = status?.pending_work_count ?? 0;
-                          if (pendingTokens <= 0 && pendingCount <= 0) {
-                            return <span className="text-[11px] text-[var(--text-muted)]">—</span>;
+
+                          const formatMs = (ms: number) => {
+                            if (ms < 1000) { return `${Math.round(ms)}ms`; }
+                            if (ms < 60_000) { return `${(ms / 1000).toFixed(1)}s`; }
+                            return `${Math.round(ms / 1000)}s`;
+                          };
+                          const formatTokens = (t: number) => {
+                            if (t >= 10_000) { return `${Math.round(t / 1000)}k`; }
+                            if (t >= 1000) { return `${(t / 1000).toFixed(1)}k`; }
+                            return `${Math.round(t)}`;
+                          };
+
+                          if (runs > 0 && avgMs != null) {
+                            const tokenStr = avgTokens != null ? ` · ${formatTokens(avgTokens)} tok` : "";
+                            const runStr = `${runs} run${runs === 1 ? "" : "s"}`;
+                            const showRate = successRate != null && successRate < 0.999;
+                            return (
+                              <div className="flex flex-col text-[11px] text-[var(--text-secondary)] leading-tight">
+                                <span>avg {formatMs(avgMs)}{tokenStr}</span>
+                                <span className="text-[var(--text-muted)]">
+                                  {runStr}
+                                  {showRate && ` · ${Math.round(successRate * 100)}% ok`}
+                                </span>
+                              </div>
+                            );
                           }
-                          const tokenStr = pendingTokens >= 1000
-                            ? `~${(pendingTokens / 1000).toFixed(pendingTokens >= 10_000 ? 0 : 1)}k`
-                            : pendingTokens > 0 ? `~${pendingTokens}` : "";
-                          const countStr = pendingCount > 0
-                            ? `${pendingCount} ${pendingCount === 1 ? "item" : "items"}`
-                            : "";
-                          return (
-                            <div className="flex flex-col text-[11px] text-[var(--text-secondary)] leading-tight">
-                              {tokenStr && <span>{tokenStr} pending</span>}
-                              {countStr && <span className="text-[var(--text-muted)]">{countStr}</span>}
-                            </div>
-                          );
+                          if (pendingTokens > 0 || pendingCount > 0) {
+                            const tokenStr = pendingTokens > 0 ? `~${formatTokens(pendingTokens)} tok pending` : "";
+                            const countStr = pendingCount > 0
+                              ? `${pendingCount} ${pendingCount === 1 ? "item" : "items"}`
+                              : "";
+                            return (
+                              <div className="flex flex-col text-[11px] text-[var(--text-secondary)] leading-tight">
+                                {tokenStr && <span>{tokenStr}</span>}
+                                {countStr && <span className="text-[var(--text-muted)]">{countStr}</span>}
+                              </div>
+                            );
+                          }
+                          return <span className="text-[11px] text-[var(--text-muted)]">—</span>;
                         })()}
                       </div>
 

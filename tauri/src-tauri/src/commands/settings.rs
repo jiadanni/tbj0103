@@ -81,6 +81,7 @@ pub struct Settings {
     pub vram_headroom_percent: u32,
     pub ram_headroom_gb: f64,
     pub ram_headroom_percent: u32,
+    pub inference_job_runs_retention_days: u32,
 }
 
 impl Default for Settings {
@@ -166,6 +167,7 @@ impl Default for Settings {
             vram_headroom_percent: 10,
             ram_headroom_gb: 0.0,
             ram_headroom_percent: 10,
+            inference_job_runs_retention_days: 30,
         }
     }
 }
@@ -536,6 +538,9 @@ pub async fn get_settings(app: AppHandle, state: State<'_, DbState>) -> Result<S
         ram_headroom_percent: get_setting(&conn, "ram_headroom_percent")
             .and_then(|v| v.parse().ok())
             .unwrap_or(def.ram_headroom_percent),
+        inference_job_runs_retention_days: get_setting(&conn, "inference_job_runs_retention_days")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(def.inference_job_runs_retention_days),
         };
         let __t_body = __t2.elapsed();
         let __total = __t0.elapsed();
@@ -935,6 +940,12 @@ pub fn update_settings(
         "ram_headroom_percent",
         &ram_headroom_percent.to_string(),
     )?;
+    let retention_days = settings.inference_job_runs_retention_days.clamp(1, 365);
+    set_setting(
+        &conn,
+        "inference_job_runs_retention_days",
+        &retention_days.to_string(),
+    )?;
 
     if settings.start_at_login {
         if let Err(err) = app.autolaunch().enable() {
@@ -1206,6 +1217,7 @@ pub struct AdvancedSettings {
     pub vram_headroom_percent: u32,
     pub ram_headroom_gb: f64,
     pub ram_headroom_percent: u32,
+    pub inference_job_runs_retention_days: u32,
 }
 
 #[tauri::command]
@@ -1531,6 +1543,9 @@ pub async fn get_advanced_settings(
             ram_headroom_percent: lookup("ram_headroom_percent")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(def.ram_headroom_percent),
+            inference_job_runs_retention_days: lookup("inference_job_runs_retention_days")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(def.inference_job_runs_retention_days),
         })
     })
     .await

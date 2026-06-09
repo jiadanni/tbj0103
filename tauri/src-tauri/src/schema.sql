@@ -207,6 +207,24 @@ CREATE TABLE IF NOT EXISTS roadmap_snapshots (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Per-run history for background inference jobs. Powers the Inference Jobs
+-- preferences view monitoring column (avg runtime / avg tokens / success rate).
+-- Pruned by retention setting `inference_job_runs_retention_days` on app start.
+CREATE TABLE IF NOT EXISTS inference_job_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_key TEXT NOT NULL,
+    workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    duration_ms INTEGER,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    status TEXT NOT NULL,
+    error_message TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_inference_job_runs_key_completed
+    ON inference_job_runs(job_key, workspace_id, completed_at DESC);
+
 -- Note templates & daily notes (from NoteTemplate.swift)
 CREATE TABLE IF NOT EXISTS note_templates (
     id TEXT PRIMARY KEY NOT NULL,

@@ -594,6 +594,13 @@ export interface InferenceJobStatus {
   due_label: string;
   pending_input_tokens?: number | null;
   pending_work_count?: number | null;
+  /** Aggregate stats over the retention window for the active workspace. */
+  avg_duration_ms?: number | null;
+  avg_input_tokens?: number | null;
+  runs_count?: number | null;
+  success_rate?: number | null;
+  last_duration_ms?: number | null;
+  last_completed_at?: string | null;
 }
 
 export type BackgroundProcessingScope = "current_workspace" | "selected_workspaces" | "all_workspaces";
@@ -716,6 +723,7 @@ export interface AppSettings {
   vram_headroom_percent: number;
   ram_headroom_gb: number;
   ram_headroom_percent: number;
+  inference_job_runs_retention_days: number;
 }
 
 // Narrow slices of AppSettings returned by the split `get_core_settings`,
@@ -805,6 +813,7 @@ export interface AdvancedSettings {
   vram_headroom_percent: number;
   ram_headroom_gb: number;
   ram_headroom_percent: number;
+  inference_job_runs_retention_days: number;
 }
 
 export interface GitSyncStatus {
