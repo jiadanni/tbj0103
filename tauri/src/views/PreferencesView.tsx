@@ -240,9 +240,6 @@ const SPLIT_LAYOUT_TABS: PreferencesSection[] = [
   "chat",
   "learning",
   "about-you",
-  "webai",
-  "security",
-  "sync",
 ];
 
 function PreferencesCloseButton({ onClose }: { onClose: () => void }) {
@@ -2405,6 +2402,16 @@ function PreferencesSplitLayout({
  * is the AppSettings key that holds the small (default) model — already wired
  * through Rust's `get_model_for_job`. `tokens`/`note` are sizing hints.
  */
+type JobCadenceField = {
+  setting: keyof AppSettings;
+  label: string;
+  min: number;
+  max: number;
+  fallback: number;
+  kind?: "number" | "toggle";
+  gatedBy?: keyof AppSettings;
+};
+
 const INFERENCE_JOBS_CATALOG: {
   job_key: string;
   model_setting: keyof AppSettings;
@@ -2413,13 +2420,67 @@ const INFERENCE_JOBS_CATALOG: {
   tokens: string;
   note: string;
   manual?: boolean;
+  cadence?: JobCadenceField[];
 }[] = [
-  { job_key: "memory_extraction", model_setting: "memory_extraction_model", label: "Memory Extraction", description: "Extract durable facts from finished chats", tokens: "~200–1,000 tokens input", note: "2k context OK" },
-  { job_key: "summarization", model_setting: "summarization_model", label: "Summarization", description: "Roll up long chat sessions", tokens: "~500–5,000 tokens input", note: "≥4k context recommended" },
+  {
+    job_key: "memory_extraction",
+    model_setting: "memory_extraction_model",
+    label: "Memory Extraction",
+    description: "Extract durable facts from finished chats",
+    tokens: "~200–1,000 tokens input",
+    note: "2k context OK",
+    cadence: [
+      { setting: "memory_extraction_threshold", label: "After N messages", min: 2, max: 50, fallback: 5 },
+      { setting: "memory_extraction_idle_minutes", label: "Idle minutes before run", min: 1, max: 60, fallback: 5 },
+    ],
+  },
+  {
+    job_key: "summarization",
+    model_setting: "summarization_model",
+    label: "Summarization",
+    description: "Roll up long chat sessions",
+    tokens: "~500–5,000 tokens input",
+    note: "≥4k context recommended",
+    cadence: [
+      { setting: "summarization_min_messages", label: "Min messages before summarizing", min: 1, max: 100, fallback: 1 },
+      { setting: "summarization_max_sessions", label: "Max sessions per tick", min: 1, max: 20, fallback: 5 },
+    ],
+  },
   { job_key: "flashcard_generation", model_setting: "flashcard_model", label: "Flashcard Generation", description: "Generate spaced-repetition cards from topics", tokens: "~100–200 tokens input", note: "2k context OK" },
-  { job_key: "workspace_glossary", model_setting: "glossary_model", label: "Workspace Glossary", description: "Refresh per-workspace term definitions", tokens: "~800–2,000 tokens input", note: "≥4k context recommended" },
-  { job_key: "hover_definition_scan", model_setting: "glossary_model", label: "Hover Definitions", description: "Find undefined terms in recent chats", tokens: "~400–1,500 tokens input", note: "2k context OK" },
-  { job_key: "workspace_prompt_bank", model_setting: "topic_signature_model", label: "Starter Prompts / Topic Signatures", description: "Refresh per-workspace prompt suggestions", tokens: "~1,000–3,000 tokens input", note: "≥4k context recommended" },
+  {
+    job_key: "workspace_glossary",
+    model_setting: "glossary_model",
+    label: "Workspace Glossary",
+    description: "Refresh per-workspace term definitions",
+    tokens: "~800–2,000 tokens input",
+    note: "≥4k context recommended",
+    cadence: [
+      { setting: "workspace_glossary_refresh_interval_minutes", label: "Refresh every (minutes)", min: 5, max: 240, fallback: 60 },
+    ],
+  },
+  {
+    job_key: "hover_definition_scan",
+    model_setting: "glossary_model",
+    label: "Hover Definitions",
+    description: "Find undefined terms in recent chats",
+    tokens: "~400–1,500 tokens input",
+    note: "2k context OK",
+    cadence: [
+      { setting: "hover_definition_scan_enabled", label: "Scan replies for unresolved terminology", min: 0, max: 1, fallback: 1, kind: "toggle" },
+      { setting: "hover_definition_scan_max_sessions", label: "Max sessions scanned per tick", min: 1, max: 20, fallback: 3, gatedBy: "hover_definition_scan_enabled" },
+    ],
+  },
+  {
+    job_key: "workspace_prompt_bank",
+    model_setting: "topic_signature_model",
+    label: "Starter Prompts / Topic Signatures",
+    description: "Refresh per-workspace prompt suggestions",
+    tokens: "~1,000–3,000 tokens input",
+    note: "≥4k context recommended",
+    cadence: [
+      { setting: "topic_analysis_interval_minutes", label: "Refresh every (minutes)", min: 5, max: 120, fallback: 30 },
+    ],
+  },
   { job_key: "concept_hierarchy", model_setting: "concept_hierarchy_model", label: "Topic Hierarchy", description: "LLM-assisted concept parent linking", tokens: "~200–800 tokens input", note: "2k context OK" },
   { job_key: "workspace_analysis", model_setting: "workspace_analysis_model", label: "Workspace Analysis", description: "Global default for manual roadmap extraction", tokens: "~1,000–10,000 tokens input", note: "larger context recommended", manual: true },
 ];
@@ -2624,6 +2685,16 @@ function InferenceJobsCard({
       </div>
 
       <div className="space-y-2">
+        <div className="flex items-start gap-3 py-0.5">
+          <Toggle
+            on={dbSettings.background_inference_enabled}
+            onToggle={() => set("background_inference_enabled", !dbSettings.background_inference_enabled)}
+          />
+          <p className="text-sm text-[var(--text-secondary)]">
+            Run memory, summarization, and glossary jobs automatically when idle
+          </p>
+        </div>
+
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm text-[var(--text-secondary)]">Play-button confirmation timeout</p>
           <div className="flex items-center gap-1.5">
@@ -2810,6 +2881,51 @@ function InferenceJobsCard({
                         ) : null}
                       </div>
                     </div>
+
+                    {job.cadence && job.cadence.length > 0 && (
+                      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-dashed border-[var(--border-color)] pt-2">
+                        {job.cadence.map((field) => {
+                          const gateOn = field.gatedBy
+                            ? Boolean(dbSettings[field.gatedBy])
+                            : true;
+                          if (field.kind === "toggle") {
+                            return (
+                              <label key={String(field.setting)} className="flex items-center gap-2 text-[11px] text-[var(--text-secondary)]">
+                                <Toggle
+                                  on={Boolean(dbSettings[field.setting])}
+                                  onToggle={() => set(field.setting, !dbSettings[field.setting] as never)}
+                                />
+                                <span>{field.label}</span>
+                              </label>
+                            );
+                          }
+                          const currentValue = Number(dbSettings[field.setting] ?? field.fallback);
+                          return (
+                            <div
+                              key={String(field.setting)}
+                              className={`flex items-center gap-2 text-[11px] text-[var(--text-secondary)] ${gateOn ? "" : "opacity-50"}`}
+                            >
+                              <span>{field.label}</span>
+                              <input
+                                type="number"
+                                min={field.min}
+                                max={field.max}
+                                disabled={!gateOn}
+                                value={currentValue}
+                                onChange={(e) => {
+                                  const next = Math.max(
+                                    field.min,
+                                    Math.min(field.max, Number(e.target.value) || field.fallback),
+                                  );
+                                  set(field.setting, next as never);
+                                }}
+                                className="w-16 rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-0.5 text-center text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] disabled:cursor-not-allowed"
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -5965,7 +6081,16 @@ export default function PreferencesView() {
                 )}
 
                 {/* ── Browser Automation ── */}
-                {activeTab === "webai" && (
+
+
+
+                </div>
+            </PreferencesSplitLayout>
+          )}
+
+          {activeTab === "webai" && (
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <div className="max-w-4xl px-5 py-4 space-y-8">
                   <section data-pref-section>
                     <div className="pb-1.5 mb-3 border-b border-[var(--border-color)] flex items-start justify-between gap-3">
                       <div>
@@ -6124,10 +6249,14 @@ export default function PreferencesView() {
                     </div>
 
                   </section>
-                )}
+              </div>
+            </div>
+          )}
 
-                {/* ── Security ── */}
-                {activeTab === "security" && (
+          {/* ── Security ── */}
+          {activeTab === "security" && (
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <div className="max-w-4xl px-5 py-4 space-y-8">
                   <>
                     <div className="flex flex-col gap-8">
                     {/* Left Column: Enable & Unlock Options */}
@@ -6528,10 +6657,14 @@ export default function PreferencesView() {
                       </div>
                     )}
                   </>
-                )}
+              </div>
+            </div>
+          )}
 
-                {/* ── Sync ── */}
-                {activeTab === "sync" && (
+          {/* ── Sync ── */}
+          {activeTab === "sync" && (
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <div className="max-w-4xl px-5 py-4 space-y-8">
                   <section className="space-y-3" data-pref-section>
                     <div className="pb-1.5 border-b border-[var(--border-color)]">
                       <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Multi-device Sync</h3>
@@ -6545,7 +6678,7 @@ export default function PreferencesView() {
                     <div className="flex items-center justify-between py-1 border-t border-[var(--border-color)] pt-4">
                       <div>
                         <p className="text-sm font-semibold text-[var(--text-secondary)]">Enable sync</p>
-                        <p className="text-xs text-[var(--text-muted)] mt-0.5">Automatically sync every 5 minutes in the background</p>
+                        <p className="text-xs text-[var(--text-muted)] mt-0.5">Automatically sync in the background</p>
                       </div>
                       <Toggle
                         on={gitSync?.enabled ?? false}
@@ -6563,6 +6696,24 @@ export default function PreferencesView() {
                             setGitSyncSaving(false);
                           }
                         }}
+                      />
+                    </div>
+
+                    <div className={`flex items-center justify-between py-1 ${gitSync?.enabled ? "" : "opacity-50"}`}>
+                      <div>
+                        <p className="text-sm text-[var(--text-secondary)]">Sync every (minutes)</p>
+                        {!gitSync?.enabled && (
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">Enable sync above to change this</p>
+                        )}
+                      </div>
+                      <input
+                        type="number"
+                        min={1}
+                        max={60}
+                        disabled={!gitSync?.enabled}
+                        value={dbSettings.git_sync_interval_minutes}
+                        onChange={(e) => set("git_sync_interval_minutes", Math.max(1, Math.min(60, Number(e.target.value) || 5)))}
+                        className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] disabled:cursor-not-allowed"
                       />
                     </div>
 
@@ -6638,180 +6789,13 @@ export default function PreferencesView() {
                       </div>
                     )}
                   </section>
-                )}
-
-                </div>
-            </PreferencesSplitLayout>
+              </div>
+            </div>
           )}
 
           {activeTab === "inference-jobs" && (
             <div className="flex-1 min-h-0 overflow-y-auto">
               <div className="max-w-4xl px-5 py-4 space-y-4">
-                {/* Background Jobs */}
-                <section className="space-y-2" data-pref-section>
-                  <div className="pb-1 border-b border-[var(--border-color)]">
-                    <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Background Jobs</h3>
-                  </div>
-
-                  <div className="flex items-start gap-3 py-0.5">
-                    <Toggle
-                      on={dbSettings.background_inference_enabled}
-                      onToggle={() => set("background_inference_enabled", !dbSettings.background_inference_enabled)}
-                    />
-                    <p className="text-sm text-[var(--text-secondary)]">
-                      Run memory, summarization, and glossary jobs automatically when idle
-                    </p>
-                  </div>
-
-                  <div className="flex items-center justify-between py-0.5">
-                    <p className="text-sm text-[var(--text-secondary)]">Auto-extract memories after N messages</p>
-                    <input
-                      type="number"
-                      min={2}
-                      max={50}
-                      value={dbSettings.memory_extraction_threshold}
-                      onChange={(e) => set("memory_extraction_threshold", Math.max(2, Math.min(50, Number(e.target.value) || 5)))}
-                      className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between py-0.5">
-                    <p className="text-sm text-[var(--text-secondary)]">Idle minutes before extraction runs</p>
-                    <input
-                      type="number"
-                      min={1}
-                      max={60}
-                      value={dbSettings.memory_extraction_idle_minutes}
-                      onChange={(e) => set("memory_extraction_idle_minutes", Math.max(1, Math.min(60, Number(e.target.value) || 5)))}
-                      className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                    />
-                  </div>
-
-                  <div className="pt-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1">Summarization</p>
-                  </div>
-                  <div className="flex items-center justify-between py-0.5">
-                    <p className="text-sm text-[var(--text-secondary)]">Min messages before summarizing</p>
-                    <input
-                      type="number"
-                      min={1}
-                      max={100}
-                      value={dbSettings.summarization_min_messages}
-                      onChange={(e) => set("summarization_min_messages", Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
-                      className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between py-0.5">
-                    <p className="text-sm text-[var(--text-secondary)]">Max sessions per scheduler tick</p>
-                    <input
-                      type="number"
-                      min={1}
-                      max={20}
-                      value={dbSettings.summarization_max_sessions}
-                      onChange={(e) => set("summarization_max_sessions", Math.max(1, Math.min(20, Number(e.target.value) || 5)))}
-                      className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                    />
-                  </div>
-
-                  <div className="pt-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1">Topic Analysis</p>
-                  </div>
-                  <div className="flex items-center justify-between py-0.5">
-                    <p className="text-sm text-[var(--text-secondary)]">Refresh topic signatures every (minutes)</p>
-                    <input
-                      type="number"
-                      min={5}
-                      max={120}
-                      value={dbSettings.topic_analysis_interval_minutes}
-                      onChange={(e) => set("topic_analysis_interval_minutes", Math.max(5, Math.min(120, Number(e.target.value) || 30)))}
-                      className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                    />
-                  </div>
-
-                  <div className="pt-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1">Workspace Glossary</p>
-                  </div>
-                  <div className="flex items-center justify-between py-0.5">
-                    <p className="text-sm text-[var(--text-secondary)]">Refresh glossary every (minutes)</p>
-                    <input
-                      type="number"
-                      min={5}
-                      max={240}
-                      value={dbSettings.workspace_glossary_refresh_interval_minutes}
-                      onChange={(e) => set("workspace_glossary_refresh_interval_minutes", Math.max(5, Math.min(240, Number(e.target.value) || 60)))}
-                      className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                    />
-                  </div>
-                  <div className="flex items-start gap-3 py-0.5">
-                    <Toggle
-                      on={dbSettings.hover_definition_scan_enabled}
-                      onToggle={() => set("hover_definition_scan_enabled", !dbSettings.hover_definition_scan_enabled)}
-                    />
-                    <p className="text-sm text-[var(--text-secondary)]">
-                      Scan assistant replies for unresolved terminology after glossary refresh
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-between py-0.5">
-                    <p className="text-sm text-[var(--text-secondary)]">Max sessions scanned per tick</p>
-                    <input
-                      type="number"
-                      min={1}
-                      max={20}
-                      value={dbSettings.hover_definition_scan_max_sessions}
-                      onChange={(e) => set("hover_definition_scan_max_sessions", Math.max(1, Math.min(20, Number(e.target.value) || 3)))}
-                      className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
-                    />
-                  </div>
-
-                  <div className="pt-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1">Logs</p>
-                  </div>
-                  <div className="flex items-start gap-3 py-0.5">
-                    <Toggle
-                      on={dbSettings.log_retention_enabled}
-                      onToggle={() => set("log_retention_enabled", !dbSettings.log_retention_enabled)}
-                    />
-                    <div>
-                      <p className="text-sm text-[var(--text-secondary)]">Prune old logs</p>
-                      <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                        Automatically remove in-app log entries older than the retention window.
-                      </p>
-                    </div>
-                  </div>
-                  <div className={`flex items-center justify-between py-0.5 ${dbSettings.log_retention_enabled ? "" : "opacity-50"}`}>
-                    <p className="text-sm text-[var(--text-secondary)]">Keep logs for (days)</p>
-                    <input
-                      type="number"
-                      min={1}
-                      max={3650}
-                      disabled={!dbSettings.log_retention_enabled}
-                      value={dbSettings.log_retention_days}
-                      onChange={(e) => set("log_retention_days", Math.max(1, Math.min(3650, Number(e.target.value) || 30)))}
-                      className="w-20 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] disabled:cursor-not-allowed"
-                    />
-                  </div>
-
-                  <div className="pt-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1">Git Sync</p>
-                  </div>
-                  <div className={`flex items-center justify-between py-0.5 ${gitSync?.enabled ? "" : "opacity-50"}`}>
-                    <p className="text-sm text-[var(--text-secondary)]">
-                      Sync every (minutes)
-                      {!gitSync?.enabled && (
-                        <span className="ml-2 text-xs text-[var(--text-muted)]">— disabled</span>
-                      )}
-                    </p>
-                    <input
-                      type="number"
-                      min={1}
-                      max={60}
-                      disabled={!gitSync?.enabled}
-                      value={dbSettings.git_sync_interval_minutes}
-                      onChange={(e) => set("git_sync_interval_minutes", Math.max(1, Math.min(60, Number(e.target.value) || 5)))}
-                      className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] disabled:cursor-not-allowed"
-                    />
-                  </div>
-                </section>
-
                 <InferenceJobsCard
                   ollamaModels={ollamaModels}
                   aiModels={aiModels}
@@ -6871,10 +6855,38 @@ export default function PreferencesView() {
           )}
 
           {activeTab === "logs" && (
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <React.Suspense fallback={null}>
-                <LogsView />
-              </React.Suspense>
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+              <div className="border-b border-[var(--border-color)] px-5 py-3 space-y-2">
+                <div className="flex items-start gap-3 py-0.5">
+                  <Toggle
+                    on={dbSettings.log_retention_enabled}
+                    onToggle={() => set("log_retention_enabled", !dbSettings.log_retention_enabled)}
+                  />
+                  <div>
+                    <p className="text-sm text-[var(--text-secondary)]">Prune old logs</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                      Automatically remove in-app log entries older than the retention window.
+                    </p>
+                  </div>
+                </div>
+                <div className={`flex items-center justify-between py-0.5 ${dbSettings.log_retention_enabled ? "" : "opacity-50"}`}>
+                  <p className="text-sm text-[var(--text-secondary)]">Keep logs for (days)</p>
+                  <input
+                    type="number"
+                    min={1}
+                    max={3650}
+                    disabled={!dbSettings.log_retention_enabled}
+                    value={dbSettings.log_retention_days}
+                    onChange={(e) => set("log_retention_days", Math.max(1, Math.min(3650, Number(e.target.value) || 30)))}
+                    className="w-20 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] disabled:cursor-not-allowed"
+                  />
+                </div>
+              </div>
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <React.Suspense fallback={null}>
+                  <LogsView />
+                </React.Suspense>
+              </div>
             </div>
           )}
 
