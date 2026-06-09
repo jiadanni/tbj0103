@@ -11,6 +11,7 @@ export interface RoadmapNode {
   hierarchy_level: string;
   concept_type: string;
   children?: RoadmapNode[];
+  hiddenChildCount?: number;
 }
 
 function isLegacyUncategorizedScaffold(node: Pick<RoadmapNode, "name" | "hierarchy_level">): boolean {
@@ -101,4 +102,26 @@ export function buildForest(nodes: ConceptNode[], links: ConceptLink[]): Roadmap
     concept_type: "topic",
     children: mergedRoots.filter((node) => !isLegacyUncategorizedScaffold(node)),
   };
+}
+
+/**
+ * Walk a forest and strip children from `section` nodes whose IDs are not in
+ * `expandedSectionIds`, recording the count of removed children in
+ * `hiddenChildCount` so the renderer can show a `+N` affordance.
+ *
+ * Pure: returns a new tree; the input is not mutated.
+ */
+export function pruneCollapsedSections(
+  root: RoadmapNode,
+  expandedSectionIds: Set<string>,
+): RoadmapNode {
+  const visit = (node: RoadmapNode): RoadmapNode => {
+    const children = node.children ?? [];
+    if (node.hierarchy_level === "section" && !expandedSectionIds.has(node.id)) {
+      const hiddenChildCount = children.length;
+      return { ...node, children: [], hiddenChildCount };
+    }
+    return { ...node, children: children.map(visit) };
+  };
+  return visit(root);
 }

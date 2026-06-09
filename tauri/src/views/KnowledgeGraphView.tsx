@@ -1352,7 +1352,7 @@ export default function KnowledgeGraphView({
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
                   <p className="max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
-                    A top-down roadmap of your concepts. Chapters anchor the spine; sections and concepts branch beneath them. Scroll to zoom, drag to pan.
+                    A top-down roadmap of your concepts. Chapters anchor the spine; sections branch beneath them. Click a section&apos;s +N badge to reveal its concepts. Scroll to zoom, drag to pan.
                   </p>
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="relative w-48 sm:w-64">

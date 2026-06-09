@@ -6,7 +6,7 @@
 import { forwardRef, memo, useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
 import * as d3 from "d3";
 import type { ConceptNode, ConceptLink } from "../lib/api";
-import { buildForest, type RoadmapNode } from "../lib/conceptTree";
+import { buildForest, pruneCollapsedSections, type RoadmapNode } from "../lib/conceptTree";
 
 const TYPE_COLORS: Record<string, string> = {
   person: "#60a5fa",
@@ -76,6 +76,18 @@ function RoadmapGraphInner(
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const [transform, setTransform] = useState<d3.ZoomTransform>(d3.zoomIdentity);
   const [dims, setDims] = useState({ width: 0, height: 0 });
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => new Set());
+
+  // Stale section IDs (kept across data refreshes) are filtered out lazily
+  // inside the layout memo below rather than via a setState-in-effect pass.
+
+  const toggleSection = (sectionId: string) => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(sectionId)) { next.delete(sectionId); } else { next.add(sectionId); }
+      return next;
+    });
+  };
 
   // Track container dimensions
   useEffect(() => {
@@ -105,7 +117,13 @@ function RoadmapGraphInner(
     if (nodes.length === 0) { return null; }
 
     const forest = buildForest(nodes, links);
-    const root = d3.hierarchy<RoadmapNode>(forest);
+    const sectionIds = new Set(
+      nodes.filter((n) => (n.hierarchy_level || "concept") === "section").map((n) => n.id),
+    );
+    const effectiveExpanded = new Set<string>();
+    expandedSections.forEach((id) => { if (sectionIds.has(id)) { effectiveExpanded.add(id); } });
+    const pruned = pruneCollapsedSections(forest, effectiveExpanded);
+    const root = d3.hierarchy<RoadmapNode>(pruned);
 
     // node size: [horizontal between siblings, vertical between levels]
     // Chapter boxes are 220 wide; add a 40px gutter so siblings cannot overlap.
@@ -147,7 +165,7 @@ function RoadmapGraphInner(
     );
 
     return { visibleNodes, hierarchyLinks, bbox };
-  }, [nodes, links]);
+  }, [nodes, links, expandedSections]);
 
   // Auto-fit when layout or dims change
   useEffect(() => {
@@ -339,6 +357,17 @@ function RoadmapGraphInner(
 
             const sourceNode = nodes.find((n) => n.id === d.data.id) ?? null;
 
+            // Section expansion affordance: show `+N` when collapsed with hidden
+            // children, or `−` when this section is currently expanded.
+            const isExpanded = isSection && expandedSections.has(d.data.id);
+            const hiddenCount = d.data.hiddenChildCount ?? 0;
+            const showBadge = isSection && (hiddenCount > 0 || isExpanded);
+            const badgeLabel = isExpanded ? "−" : `+${hiddenCount}`;
+            const badgeWidth = isExpanded ? 18 : 8 + String(hiddenCount).length * 7;
+            const badgeHeight = 16;
+            const badgeX = dim.width - badgeWidth - 6;
+            const badgeY = (dim.height - badgeHeight) / 2;
+
             return (
               <g
                 key={d.data.id}
@@ -377,6 +406,37 @@ function RoadmapGraphInner(
                 >
                   {label}
                 </text>
+                {showBadge && (
+                  <g
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      toggleSection(d.data.id);
+                    }}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <rect
+                      x={badgeX}
+                      y={badgeY}
+                      width={badgeWidth}
+                      height={badgeHeight}
+                      rx={8}
+                      fill="var(--accent-color)"
+                      fillOpacity={0.85}
+                    />
+                    <text
+                      x={badgeX + badgeWidth / 2}
+                      y={badgeY + badgeHeight / 2 + 0.5}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      fontSize={10}
+                      fontWeight={700}
+                      fill="#ffffff"
+                      style={{ pointerEvents: "none", userSelect: "none" }}
+                    >
+                      {badgeLabel}
+                    </text>
+                  </g>
+                )}
               </g>
             );
           })}
