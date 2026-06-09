@@ -1260,7 +1260,7 @@ export default function KnowledgeGraphView({
                       aria-label="Refresh mode"
                       onClick={() => setRefreshModeMenuOpen((open) => !open)}
                       disabled={isAnalyzing}
-                      className="inline-flex h-full min-h-[34px] w-9 items-center justify-center rounded-l-none rounded-r-xl border border-l border-[rgba(var(--accent-color-rgb),0.35)] bg-[var(--accent-color)] text-white hover:bg-[var(--accent-color)]/90 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex self-stretch w-9 items-center justify-center rounded-l-none rounded-r-xl border border-l border-[rgba(var(--accent-color-rgb),0.35)] bg-[var(--accent-color)] text-white hover:bg-[var(--accent-color)]/90 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <ChevronDown size={14} />
                     </button>
