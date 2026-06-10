@@ -87,6 +87,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v71_conversation_summary_types",
     "v72_make_memories_workspace_nullable",
     "v73_repair_quick_search_chat_sessions_au",
+    "v74_inference_job_runs",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -129,6 +130,10 @@ pub fn initialize_database_with_key(
         conn.execute_batch(include_str!("../schema.sql"))?;
         seed_all_migrations(&conn)?;
     } else {
+        // Some databases can carry a malformed legacy quick-search trigger body
+        // that references conversation_summaries_old. Repair it before running
+        // migrations so setup does not fail while parsing/dropping triggers.
+        repair_dangling_quick_search_trigger(&conn)?;
         // Existing databases must migrate first so schema-level indexes do not
         // reference columns that are added by later migrations.
         run_migrations(&conn)?;
@@ -179,6 +184,39 @@ fn seed_all_migrations(conn: &Connection) -> Result<()> {
             rusqlite::params![name],
         )?;
     }
+
+    Ok(())
+}
+
+fn repair_dangling_quick_search_trigger(conn: &Connection) -> Result<()> {
+    let has_dangling_trigger: i64 = conn.query_row(
+        "SELECT COUNT(*)
+         FROM sqlite_master
+         WHERE type = 'trigger'
+           AND name = 'quick_search_chat_sessions_au'
+           AND sql LIKE '%conversation_summaries_old%'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if has_dangling_trigger == 0 {
+        return Ok(());
+    }
+
+    if conn
+        .execute_batch("DROP TRIGGER IF EXISTS quick_search_chat_sessions_au;")
+        .is_ok()
+    {
+        return Ok(());
+    }
+
+    // Fallback for malformed trigger entries that cannot be dropped normally.
+    conn.execute_batch(
+        "PRAGMA writable_schema=ON;
+         DELETE FROM sqlite_master
+         WHERE type = 'trigger' AND name = 'quick_search_chat_sessions_au';
+         PRAGMA writable_schema=OFF;",
+    )?;
 
     Ok(())
 }
