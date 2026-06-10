@@ -25,6 +25,9 @@ fn emit_icon_task<R: Runtime>(
             message: message.to_string(),
             model,
             workspace_id,
+            current: None,
+            total: None,
+            current_task_type: None,
         },
     );
 }
