@@ -2735,7 +2735,7 @@ function InferenceJobsCard({
               </div>
               <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">
                 Progress
-                <Tooltip content="Average runtime and run count over the retention window (workspace-scoped). Falls back to pending work when no history exists yet. Token counts per run coming in a follow-up."><Info size={12} /></Tooltip>
+                <Tooltip content="Average runtime and run count over the retention window (workspace-scoped). Falls back to pending work when no history exists yet."><Info size={12} /></Tooltip>
               </div>
               <div className="w-[88px]"></div>
             </div>
@@ -2879,7 +2879,6 @@ function InferenceJobsCard({
                         {(() => {
                           const runs = status?.runs_count ?? 0;
                           const avgMs = status?.avg_duration_ms ?? null;
-                          const avgTokens = status?.avg_input_tokens ?? null;
                           const successRate = status?.success_rate ?? null;
                           const pendingTokens = status?.pending_input_tokens ?? 0;
                           const pendingCount = status?.pending_work_count ?? 0;
@@ -2896,12 +2895,11 @@ function InferenceJobsCard({
                           };
 
                           if (runs > 0 && avgMs != null) {
-                            const tokenStr = avgTokens != null ? ` · ${formatTokens(avgTokens)} tok` : "";
                             const runStr = `${runs} run${runs === 1 ? "" : "s"}`;
                             const showRate = successRate != null && successRate < 0.999;
                             return (
                               <div className="flex flex-col text-[11px] text-[var(--text-secondary)] leading-tight">
-                                <span>avg {formatMs(avgMs)}{tokenStr}</span>
+                                <span>avg {formatMs(avgMs)}</span>
                                 <span className="text-[var(--text-muted)]">
                                   {runStr}
                                   {showRate && ` · ${Math.round(successRate * 100)}% ok`}

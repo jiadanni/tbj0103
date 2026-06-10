@@ -55,28 +55,10 @@ static MANUAL_DRAIN_RUNNING: AtomicBool = AtomicBool::new(false);
 static MANUAL_PROCESSING_RUNNING: AtomicBool = AtomicBool::new(false);
 static NEXT_TICK_AT: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 
-type PendingTokens = (Option<i64>, Option<i64>);
-
-/// Per-job token counts staged by `record_job_tokens(...)` between job start
-/// and the terminal `emit_task_full("completed" | "failed" | "cancelled", ...)`.
-/// Cleared as part of writing the `inference_job_runs` row.
-static PENDING_RUN_TOKENS: LazyLock<Mutex<HashMap<String, PendingTokens>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
-
 /// Per-job start instants for measuring duration. Keyed by job_key; populated
 /// on the "started" / "processing" transition and consumed on terminal status.
 static RUN_STARTED_AT: LazyLock<Mutex<HashMap<String, std::time::Instant>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
-
-/// Stash the input/output token count for a job's currently-running execution.
-/// Called by job handlers just before they emit the terminal "completed" /
-/// "failed" status. Either value may be `None` if the job genuinely doesn't
-/// produce that count (the aggregate query skips NULLs).
-pub fn record_job_tokens(job_key: &str, input_tokens: Option<i64>, output_tokens: Option<i64>) {
-    if let Ok(mut map) = PENDING_RUN_TOKENS.lock() {
-        map.insert(job_key.to_string(), (input_tokens, output_tokens));
-    }
-}
 
 /// Single-permit semaphore serializing every background job — scheduler ticks
 /// and manually-triggered IPCs (e.g. `start_workspace_prompt_bank_job`) all
@@ -461,11 +443,8 @@ fn emit_task_full(
             }
             if matches!(status, "completed" | "failed" | "cancelled") {
                 let started_at = RUN_STARTED_AT.lock().ok().and_then(|mut m| m.remove(task_type));
-                let (input_tokens, output_tokens) = PENDING_RUN_TOKENS
-                    .lock()
-                    .ok()
-                    .and_then(|mut m| m.remove(task_type))
-                    .unwrap_or((None, None));
+                let input_tokens: Option<i64> = None;
+                let output_tokens: Option<i64> = None;
                 let duration_ms = started_at.map(|t| t.elapsed().as_millis() as i64);
                 let completed_at = chrono::Utc::now().to_rfc3339();
                 let started_at_rfc = started_at
