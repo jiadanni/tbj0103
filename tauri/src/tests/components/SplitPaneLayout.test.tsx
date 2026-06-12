@@ -123,4 +123,30 @@ describe("SplitPaneLayout — PaneSubWorkspaceTabs", () => {
     expect(firstChild).toBeTruthy();
     expect(firstChild?.contains(pinnedTab)).toBe(true);
   });
+
+  it("uses split section navigation instead of the main section navigation", () => {
+    useWorkspaceStore.setState({
+      ...INITIAL_STORE,
+      sectionNavigation: "sidebar",
+      splitSectionNavigation: "dropdown",
+    });
+
+    render(<SplitPaneLayout />);
+
+    expect(screen.getByRole("button", { name: "Section primary: Chat" })).toBeInTheDocument();
+    expect(screen.queryByTestId("pane-section-sidebar-primary")).not.toBeInTheDocument();
+  });
+
+  it("uses split workspace navigation instead of the main workspace navigation", () => {
+    useWorkspaceStore.setState({
+      ...INITIAL_STORE,
+      workspaceNavigation: "sidebar",
+      splitWorkspaceNavigation: "tabs",
+    });
+
+    render(<SplitPaneLayout />);
+
+    expect(screen.queryByTestId("pane-workspace-sidebar-primary")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Child Workspace").length).toBeGreaterThan(0);
+  });
 });

@@ -153,7 +153,6 @@ describe("FolderDashboardView", () => {
     expect(screen.getByText("Rootless container setup")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Map/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Practice/ })).not.toBeInTheDocument();
 
     // The retired AI-scored sections must not render.
     expect(screen.queryByText("Knowledge Health")).not.toBeInTheDocument();

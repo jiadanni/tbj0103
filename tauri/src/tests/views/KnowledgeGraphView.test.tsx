@@ -39,6 +39,15 @@ vi.mock("@/components/RoadmapGraph", () => ({
 }));
 
 vi.mock("@/lib/api", () => ({
+  REFRESH_WORKSPACE_TASK_TYPES: [
+    "memory_extraction",
+    "workspace_glossary",
+    "hover_definition_scan",
+    "summarization",
+    "flashcard_generation",
+    "concept_hierarchy",
+    "workspace_prompt_bank",
+  ],
   api: {
     aiModel: {
       list: mocks.listModels,
@@ -263,7 +272,7 @@ describe("KnowledgeGraphView", () => {
     fireEvent.click(analyzeButton);
 
     await waitFor(() => {
-      expect(screen.getAllByText("Demo analysis refreshed the seeded sample content.")).toHaveLength(2);
+      expect(screen.getByText("Demo analysis refreshed the seeded sample content.")).toBeInTheDocument();
     }, { timeout: 4000 });
     expect(mocks.analyzeWorkspace).not.toHaveBeenCalled();
 

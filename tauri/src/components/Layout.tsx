@@ -156,8 +156,11 @@ function handleHorizontalWheel(event: React.WheelEvent<HTMLDivElement>) {
 }
 
 function resolveSplitWorkspaceNavigation(
-  workspaceNavigation: ReturnType<typeof useWorkspaceStore.getState>["workspaceNavigation"]
+  workspaceNavigation: ReturnType<typeof useWorkspaceStore.getState>["workspaceNavigation"],
+  splitWorkspaceNavigation: ReturnType<typeof useWorkspaceStore.getState>["splitWorkspaceNavigation"] = "match-main"
 ): "sidebar" | "tabs" | "dropdown" {
+  if (splitWorkspaceNavigation === "dropdown") { return "dropdown"; }
+  if (splitWorkspaceNavigation === "tabs") { return "tabs"; }
   if (workspaceNavigation === "top-dropdown") { return "dropdown"; }
   if (workspaceNavigation === "sidebar") { return "sidebar"; }
   return "tabs";
@@ -705,7 +708,11 @@ function SingleTitlebarWorkspaceDropdown({
 function SplitTitlebarWorkspaceNavigation() {
   const splitSizes = useWorkspaceStore((s) => s.splitSizes);
   const workspaceNavigation = useWorkspaceStore((s) => s.workspaceNavigation);
-  const resolvedSplitWorkspaceNavigation = resolveSplitWorkspaceNavigation(workspaceNavigation);
+  const splitWorkspaceNavigation = useWorkspaceStore((s) => s.splitWorkspaceNavigation);
+  const resolvedSplitWorkspaceNavigation = resolveSplitWorkspaceNavigation(
+    workspaceNavigation,
+    splitWorkspaceNavigation,
+  );
   const hasCustomWindowControls = isLinux || isWindows;
   const primaryPanePaddingClass = (isLinux ? "pl-[52px]" : isMac ? "pl-[80px]" : "pl-2") + " pr-2";
   const secondaryPaneTrailingInset = hasCustomWindowControls ? "pr-[192px]" : "pr-24";
@@ -1276,6 +1283,7 @@ function WorkspaceTabBar({
   const setActiveParentWorkspaceId = useWorkspaceStore((state) => state.setActiveParentWorkspaceId);
   const splitMode = useWorkspaceStore((state) => state.splitMode);
   const workspaceNavigation = useWorkspaceStore((state) => state.workspaceNavigation);
+  const splitWorkspaceNavigation = useWorkspaceStore((state) => state.splitWorkspaceNavigation);
   const subWorkspaceNavigation = useWorkspaceStore((state) => state.subWorkspaceNavigation);
   const sectionNavigation = useWorkspaceStore((state) => state.sectionNavigation);
   const combineWorkspaceDropdown = useWorkspaceStore((state) => state.combineWorkspaceDropdown);
@@ -1296,7 +1304,11 @@ function WorkspaceTabBar({
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
   const splitUnsupportedRoute = ["/preferences"].some((path) => location.pathname.startsWith(path));
-  const showSplitTitlebarWorkspaceNavigation = splitMode && !splitUnsupportedRoute && workspaceNavigation !== "sidebar";
+  const resolvedSplitWorkspaceNavigation = resolveSplitWorkspaceNavigation(
+    workspaceNavigation,
+    splitWorkspaceNavigation,
+  );
+  const showSplitTitlebarWorkspaceNavigation = splitMode && !splitUnsupportedRoute && resolvedSplitWorkspaceNavigation !== "sidebar";
   const showSinglePaneWorkspaceDropdown = !showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs && workspaceNavigation === "top-dropdown";
   const showSinglePaneWorkspaceSidebar = !showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs && workspaceNavigation === "sidebar";
   const showSplitToggle = !splitUnsupportedRoute || splitMode;

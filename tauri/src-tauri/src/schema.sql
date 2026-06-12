@@ -769,13 +769,15 @@ USING fts5(
     tokenize='unicode61 remove_diacritics 2'
 );
 
-CREATE TRIGGER IF NOT EXISTS quick_search_documents_ai
+DROP TRIGGER IF EXISTS quick_search_documents_ai;
+CREATE TRIGGER quick_search_documents_ai
 AFTER INSERT ON quick_search_documents BEGIN
     INSERT INTO quick_search_documents_fts(rowid, title, subtitle, body)
     VALUES (NEW.rowid, NEW.title, NEW.subtitle, NEW.body);
 END;
 
-CREATE TRIGGER IF NOT EXISTS quick_search_documents_ad
+DROP TRIGGER IF EXISTS quick_search_documents_ad;
+CREATE TRIGGER quick_search_documents_ad
 AFTER DELETE ON quick_search_documents BEGIN
     INSERT INTO quick_search_documents_fts(quick_search_documents_fts, rowid, title, subtitle, body)
     VALUES ('delete', OLD.rowid, OLD.title, OLD.subtitle, OLD.body);
@@ -795,7 +797,8 @@ BEGIN
     VALUES (NEW.rowid, NEW.title, NEW.subtitle, NEW.body);
 END;
 
-CREATE TRIGGER IF NOT EXISTS quick_search_chat_sessions_ai
+DROP TRIGGER IF EXISTS quick_search_chat_sessions_ai;
+CREATE TRIGGER quick_search_chat_sessions_ai
 AFTER INSERT ON chat_sessions BEGIN
     INSERT INTO quick_search_documents (
         doc_id, target_id, kind, workspace_id, folder_id, session_id, source_session_id, title, subtitle, body, updated_at
@@ -927,7 +930,8 @@ BEGIN
       AND session_id = NEW.id;
 END;
 
-CREATE TRIGGER IF NOT EXISTS quick_search_messages_ai
+DROP TRIGGER IF EXISTS quick_search_messages_ai;
+CREATE TRIGGER quick_search_messages_ai
 AFTER INSERT ON messages BEGIN
     INSERT OR REPLACE INTO quick_search_documents (
         doc_id, target_id, kind, workspace_id, folder_id, session_id, source_session_id, title, subtitle, body, updated_at
@@ -984,12 +988,14 @@ BEGIN
       AND cs.is_deleted = 0;
 END;
 
-CREATE TRIGGER IF NOT EXISTS quick_search_messages_ad
+DROP TRIGGER IF EXISTS quick_search_messages_ad;
+CREATE TRIGGER quick_search_messages_ad
 AFTER DELETE ON messages BEGIN
     DELETE FROM quick_search_documents WHERE doc_id = 'message:' || OLD.id;
 END;
 
-CREATE TRIGGER IF NOT EXISTS quick_search_artifacts_ai
+DROP TRIGGER IF EXISTS quick_search_artifacts_ai;
+CREATE TRIGGER quick_search_artifacts_ai
 AFTER INSERT ON artifacts BEGIN
     INSERT OR REPLACE INTO quick_search_documents (
         doc_id, target_id, kind, workspace_id, folder_id, session_id, source_session_id, title, subtitle, body, updated_at
@@ -1042,12 +1048,14 @@ BEGIN
     LEFT JOIN chat_sessions cs ON cs.id = NEW.session_id;
 END;
 
-CREATE TRIGGER IF NOT EXISTS quick_search_artifacts_ad
+DROP TRIGGER IF EXISTS quick_search_artifacts_ad;
+CREATE TRIGGER quick_search_artifacts_ad
 AFTER DELETE ON artifacts BEGIN
     DELETE FROM quick_search_documents WHERE doc_id = 'artifact:' || OLD.id;
 END;
 
-CREATE TRIGGER IF NOT EXISTS quick_search_memories_ai
+DROP TRIGGER IF EXISTS quick_search_memories_ai;
+CREATE TRIGGER quick_search_memories_ai
 AFTER INSERT ON memories BEGIN
     INSERT OR REPLACE INTO quick_search_documents (
         doc_id, target_id, kind, workspace_id, folder_id, session_id, source_session_id, title, subtitle, body, updated_at
@@ -1106,12 +1114,14 @@ BEGIN
     );
 END;
 
-CREATE TRIGGER IF NOT EXISTS quick_search_memories_ad
+DROP TRIGGER IF EXISTS quick_search_memories_ad;
+CREATE TRIGGER quick_search_memories_ad
 AFTER DELETE ON memories BEGIN
     DELETE FROM quick_search_documents WHERE doc_id = 'memory:' || OLD.id;
 END;
 
-CREATE TRIGGER IF NOT EXISTS quick_search_summaries_ai
+DROP TRIGGER IF EXISTS quick_search_summaries_ai;
+CREATE TRIGGER quick_search_summaries_ai
 AFTER INSERT ON conversation_summaries BEGIN
     INSERT OR REPLACE INTO quick_search_documents (
         doc_id, target_id, kind, workspace_id, folder_id, session_id, source_session_id, title, subtitle, body, updated_at
@@ -1166,7 +1176,8 @@ BEGIN
       AND cs.is_deleted = 0;
 END;
 
-CREATE TRIGGER IF NOT EXISTS quick_search_summaries_ad
+DROP TRIGGER IF EXISTS quick_search_summaries_ad;
+CREATE TRIGGER quick_search_summaries_ad
 AFTER DELETE ON conversation_summaries BEGIN
     DELETE FROM quick_search_documents WHERE doc_id = 'summary:' || OLD.id;
 END;

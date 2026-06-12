@@ -23,16 +23,22 @@ const PANE_NAV_ITEMS: { view: PaneView; icon: LucideIcon; label: string }[] = [
 ];
 
 function resolveSplitSectionNavigation(
-  sectionNavigation: ReturnType<typeof useWorkspaceStore.getState>["sectionNavigation"]
+  sectionNavigation: ReturnType<typeof useWorkspaceStore.getState>["sectionNavigation"],
+  splitSectionNavigation: ReturnType<typeof useWorkspaceStore.getState>["splitSectionNavigation"] = "match-main"
 ): "sidebar" | "tabs" | "dropdown" {
+  if (splitSectionNavigation === "dropdown") { return "dropdown"; }
+  if (splitSectionNavigation === "tabs") { return "tabs"; }
   if (sectionNavigation === "top-dropdown") { return "dropdown"; }
   if (sectionNavigation === "sidebar") { return "sidebar"; }
   return "tabs";
 }
 
 function resolveSplitWorkspaceNavigation(
-  workspaceNavigation: ReturnType<typeof useWorkspaceStore.getState>["workspaceNavigation"]
+  workspaceNavigation: ReturnType<typeof useWorkspaceStore.getState>["workspaceNavigation"],
+  splitWorkspaceNavigation: ReturnType<typeof useWorkspaceStore.getState>["splitWorkspaceNavigation"] = "match-main"
 ): "sidebar" | "tabs" | "dropdown" {
+  if (splitWorkspaceNavigation === "dropdown") { return "dropdown"; }
+  if (splitWorkspaceNavigation === "tabs") { return "tabs"; }
   if (workspaceNavigation === "top-dropdown") { return "dropdown"; }
   if (workspaceNavigation === "sidebar") { return "sidebar"; }
   return "tabs";
@@ -345,11 +351,19 @@ function SplitSectionSidebar({ paneId }: { paneId: PaneId }) {
 function WorkspacePaneChrome({ paneId }: { paneId: PaneId }) {
   const sectionNavigation = useWorkspaceStore((s) => s.sectionNavigation);
   const workspaceNavigation = useWorkspaceStore((s) => s.workspaceNavigation);
+  const splitSectionNavigation = useWorkspaceStore((s) => s.splitSectionNavigation);
+  const splitWorkspaceNavigation = useWorkspaceStore((s) => s.splitWorkspaceNavigation);
   const setPaneView = useWorkspaceStore((s) => s.setPaneView);
   const setActivePaneId = useWorkspaceStore((s) => s.setActivePaneId);
   const { activeView } = useScopedWorkspace();
-  const resolvedSplitSectionNavigation = resolveSplitSectionNavigation(sectionNavigation);
-  const resolvedSplitWorkspaceNavigation = resolveSplitWorkspaceNavigation(workspaceNavigation);
+  const resolvedSplitSectionNavigation = resolveSplitSectionNavigation(
+    sectionNavigation,
+    splitSectionNavigation,
+  );
+  const resolvedSplitWorkspaceNavigation = resolveSplitWorkspaceNavigation(
+    workspaceNavigation,
+    splitWorkspaceNavigation,
+  );
 
   return (
     <div

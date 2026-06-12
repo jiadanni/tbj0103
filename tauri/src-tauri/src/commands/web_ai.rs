@@ -1,10 +1,15 @@
 use crate::db::DbState;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
+use tokio::sync::oneshot;
+
+pub struct WebStreamCancelState(pub Mutex<HashMap<String, oneshot::Sender<()>>>);
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct StreamEvent {
@@ -68,6 +73,7 @@ fn resolve_playwright_runner_path(app: &AppHandle) -> Result<PathBuf, String> {
 pub async fn send_web_message(
     app: AppHandle,
     _state: State<'_, DbState>,
+    cancel_state: State<'_, WebStreamCancelState>,
     session_id: String,
     provider: String,
     query: String,
@@ -128,8 +134,29 @@ pub async fn send_web_message(
 
     let mut reader = BufReader::new(stdout).lines();
     let event_name = format!("ollama-stream-{session_id}");
+    let (cancel_tx, mut cancel_rx) = oneshot::channel();
+    {
+        let mut cancel_map = cancel_state.0.lock().map_err(|e| e.to_string())?;
+        if let Some(previous) = cancel_map.insert(session_id.clone(), cancel_tx) {
+            let _ = previous.send(());
+        }
+    }
 
-    while let Some(line) = reader.next_line().await.map_err(|e| e.to_string())? {
+    let mut cancelled = false;
+
+    loop {
+        let line = tokio::select! {
+            _ = &mut cancel_rx => {
+                cancelled = true;
+                break;
+            }
+            line = reader.next_line() => line.map_err(|e| e.to_string())?,
+        };
+
+        let Some(line) = line else {
+            break;
+        };
+
         if line.trim().is_empty() {
             continue;
         }
@@ -177,9 +204,38 @@ pub async fn send_web_message(
         }
     }
 
-    // Wait for the child to exit; ignore its exit code — errors are surfaced
-    // through the event stream above.
-    let _ = child.wait().await;
+    {
+        let mut cancel_map = cancel_state.0.lock().map_err(|e| e.to_string())?;
+        cancel_map.remove(&session_id);
+    }
+
+    if cancelled {
+        let _ = child.kill().await;
+        let event = StreamEvent {
+            session_id: session_id.clone(),
+            chunk: String::new(),
+            done: true,
+            tokens_used: None,
+            duration_ms: None,
+        };
+        let _ = app.emit(&event_name, &event);
+    } else {
+        // Wait for the child to exit; ignore its exit code — errors are surfaced
+        // through the event stream above.
+        let _ = child.wait().await;
+    }
 
     Ok(String::new())
+}
+
+#[tauri::command]
+pub fn stop_web_stream(
+    session_id: String,
+    cancel_state: State<'_, WebStreamCancelState>,
+) -> Result<(), String> {
+    let mut cancel_map = cancel_state.0.lock().map_err(|e| e.to_string())?;
+    if let Some(cancel_tx) = cancel_map.remove(&session_id) {
+        let _ = cancel_tx.send(());
+    }
+    Ok(())
 }

@@ -556,13 +556,13 @@ pub async fn generate_workspace_prompts(
 mod tests {
     use super::*;
     use crate::db::test_utils::tests::setup_test_db;
-    use tauri::test::mock_builder;
+    use tauri::test::{mock_builder, mock_context, noop_assets};
     use tauri::Manager;
 
     #[tokio::test]
     async fn test_create_and_list_workspace() {
         let db = setup_test_db();
-        let app = mock_builder().build(tauri::generate_context!()).unwrap();
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
         app.manage(DbState(db));
         let state = app.state::<DbState>();
         let handle = app.handle().clone();
@@ -588,7 +588,7 @@ mod tests {
     #[tokio::test]
     async fn test_hide_unhide_workspace() {
         let db = setup_test_db();
-        let app = mock_builder().build(tauri::generate_context!()).unwrap();
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
         app.manage(DbState(db));
         let state = app.state::<DbState>();
         let handle = app.handle().clone();

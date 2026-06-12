@@ -751,6 +751,33 @@ describe("Layout", () => {
     expect(screen.getByRole("button", { name: "Workspace secondary: Linux" })).toBeInTheDocument();
   });
 
+  it("uses split workspace navigation when the main workspace navigation is sidebar", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "ws-1", name: "Security", description: "", prompt_instructions: "", topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "ws-2", name: "Linux", description: "", prompt_instructions: "", topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+      ],
+      activeWorkspaceId: "ws-1",
+      workspaceNavigation: "sidebar",
+      splitMode: true,
+      splitWorkspaceNavigation: "dropdown",
+      panes: {
+        primary: { workspaceId: "ws-1", folderId: null, view: "folder", chatSessionId: null, noteSelection: null },
+        secondary: { workspaceId: "ws-2", folderId: null, view: "chat", chatSessionId: null, noteSelection: null },
+      },
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/folder"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    expect(document.querySelector("[data-split-titlebar-workspace-nav]")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Workspace primary: Security" })).toBeInTheDocument();
+    expect(screen.queryByTestId("single-pane-workspace-sidebar")).not.toBeInTheDocument();
+  });
+
   it("reserves trailing titlebar space in split mode and renders an icon-only split toggle", () => {
     useWorkspaceStore.setState({
       workspaces: [

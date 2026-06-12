@@ -581,6 +581,7 @@ pub fn run() {
             commands::chat_file::detect_claude_format,
             // Web AI (Playwright bridge)
             commands::web_ai::send_web_message,
+            commands::web_ai::stop_web_stream,
             // Topic signatures
             commands::topic_signature::get_topic_signature,
             commands::topic_signature::regenerate_topic_signature,
@@ -703,6 +704,9 @@ pub fn complete_db_dependent_setup(
     app.manage(commands::ollama::StreamAbortState(std::sync::Mutex::new(
         std::collections::HashMap::new(),
     )));
+    app.manage(commands::web_ai::WebStreamCancelState(
+        std::sync::Mutex::new(std::collections::HashMap::new()),
+    ));
     let (bg_cancel_tx, _) = tokio::sync::watch::channel(0u64);
     app.manage(commands::ollama::BackgroundInferenceCancel(bg_cancel_tx));
     app.manage(commands::quick_search::QuickSearchRuntimeState::default());

@@ -5872,7 +5872,15 @@ export default function ChatView() {
                                           setIsStreaming(false);
                                           api.ollama.stopStream(activeChatId).catch(() => { });
                                           api.llamacpp.stopStream(activeChatId).catch(() => { });
-                                          api.webAI.stopStream(activeChatId).catch(() => { });
+                                          api.webAI.stopStream(activeChatId).catch((error) => {
+                                            const message = error instanceof Error ? error.message : String(error);
+                                            void api.logs.logFrontendEvent(
+                                              "warn",
+                                              "chat",
+                                              "Failed to stop web AI stream",
+                                              JSON.stringify({ session_id: activeChatId, error: message }),
+                                            ).catch(() => {});
+                                          });
                                           if (lastUserMessage) {
                                             setInput(lastUserMessage);
                                             requestAnimationFrame(() => {

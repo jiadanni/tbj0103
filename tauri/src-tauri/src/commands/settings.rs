@@ -233,6 +233,15 @@ fn set_setting(conn: &rusqlite::Connection, key: &str, value: &str) -> Result<()
     Ok(())
 }
 
+fn set_json_setting<T: Serialize>(
+    conn: &rusqlite::Connection,
+    key: &str,
+    value: &T,
+) -> Result<(), String> {
+    let encoded = serde_json::to_string(value).map_err(|e| e.to_string())?;
+    set_setting(conn, key, &encoded)
+}
+
 fn is_windows_missing_autostart_target(error: &str) -> bool {
     cfg!(target_os = "windows")
         && (error.contains("(os error 2)")
@@ -588,75 +597,51 @@ pub fn update_settings(
         normalized_quick_search_shortcut.clone(),
     )?;
 
-    set_setting(
-        &conn,
-        "preferred_model",
-        &serde_json::to_string(&settings.preferred_model).unwrap(),
-    )?;
-    set_setting(
-        &conn,
-        "background_model",
-        &serde_json::to_string(&settings.background_model).unwrap(),
-    )?;
-    set_setting(
-        &conn,
-        "summarization_model",
-        &serde_json::to_string(&settings.summarization_model).unwrap(),
-    )?;
-    set_setting(
+    set_json_setting(&conn, "preferred_model", &settings.preferred_model)?;
+    set_json_setting(&conn, "background_model", &settings.background_model)?;
+    set_json_setting(&conn, "summarization_model", &settings.summarization_model)?;
+    set_json_setting(
         &conn,
         "memory_extraction_model",
-        &serde_json::to_string(&settings.memory_extraction_model).unwrap(),
+        &settings.memory_extraction_model,
     )?;
-    set_setting(
-        &conn,
-        "flashcard_model",
-        &serde_json::to_string(&settings.flashcard_model).unwrap(),
-    )?;
-    set_setting(
-        &conn,
-        "glossary_model",
-        &serde_json::to_string(&settings.glossary_model).unwrap(),
-    )?;
-    set_setting(
+    set_json_setting(&conn, "flashcard_model", &settings.flashcard_model)?;
+    set_json_setting(&conn, "glossary_model", &settings.glossary_model)?;
+    set_json_setting(
         &conn,
         "topic_signature_model",
-        &serde_json::to_string(&settings.topic_signature_model).unwrap(),
+        &settings.topic_signature_model,
     )?;
-    set_setting(
+    set_json_setting(
         &conn,
         "goal_suggestion_model",
-        &serde_json::to_string(&settings.goal_suggestion_model).unwrap(),
+        &settings.goal_suggestion_model,
     )?;
-    set_setting(
+    set_json_setting(
         &conn,
         "concept_hierarchy_model",
-        &serde_json::to_string(&settings.concept_hierarchy_model).unwrap(),
+        &settings.concept_hierarchy_model,
     )?;
-    set_setting(
+    set_json_setting(
         &conn,
         "workspace_analysis_model",
-        &serde_json::to_string(&settings.workspace_analysis_model).unwrap(),
+        &settings.workspace_analysis_model,
     )?;
-    set_setting(
-        &conn,
-        "quick_search_models",
-        &serde_json::to_string(&settings.quick_search_models).unwrap(),
-    )?;
-    set_setting(
+    set_json_setting(&conn, "quick_search_models", &settings.quick_search_models)?;
+    set_json_setting(
         &conn,
         "quick_search_shortcut",
-        &serde_json::to_string(&normalized_quick_search_shortcut.unwrap_or_default()).unwrap(),
+        &normalized_quick_search_shortcut.unwrap_or_default(),
     )?;
-    set_setting(
+    set_json_setting(
         &conn,
         "quick_search_workspace_scope",
-        &serde_json::to_string(&settings.quick_search_workspace_scope).unwrap(),
+        &settings.quick_search_workspace_scope,
     )?;
-    set_setting(
+    set_json_setting(
         &conn,
         "quick_search_type_filters",
-        &serde_json::to_string(&settings.quick_search_type_filters).unwrap(),
+        &settings.quick_search_type_filters,
     )?;
     set_setting(
         &conn,
@@ -679,23 +664,11 @@ pub fn update_settings(
         "auto_lock_minutes",
         &settings.auto_lock_minutes.to_string(),
     )?;
-    set_setting(
-        &conn,
-        "theme",
-        &serde_json::to_string(&normalized_theme).map_err(|e| e.to_string())?,
-    )?;
-    set_setting(
-        &conn,
-        "accent_color",
-        &serde_json::to_string(&settings.accent_color).unwrap(),
-    )?;
+    set_json_setting(&conn, "theme", &normalized_theme)?;
+    set_json_setting(&conn, "accent_color", &settings.accent_color)?;
     set_setting(&conn, "font_size", &settings.font_size.to_string())?;
     set_setting(&conn, "sidebar_width", &settings.sidebar_width.to_string())?;
-    set_setting(
-        &conn,
-        "ollama_base_url",
-        &serde_json::to_string(&settings.ollama_base_url).unwrap(),
-    )?;
+    set_json_setting(&conn, "ollama_base_url", &settings.ollama_base_url)?;
     set_setting(
         &conn,
         "ollama_remote_enabled",
@@ -706,21 +679,13 @@ pub fn update_settings(
         "auto_start_ollama",
         &(settings.auto_start_ollama && !settings.ollama_remote_enabled).to_string(),
     )?;
-    set_setting(
-        &conn,
-        "mlx_base_url",
-        &serde_json::to_string(&settings.mlx_base_url).unwrap(),
-    )?;
-    set_setting(
+    set_json_setting(&conn, "mlx_base_url", &settings.mlx_base_url)?;
+    set_json_setting(
         &conn,
         "llamacpp_model_paths",
-        &serde_json::to_string(&settings.llamacpp_model_paths).unwrap(),
+        &settings.llamacpp_model_paths,
     )?;
-    set_setting(
-        &conn,
-        "embedding_model",
-        &serde_json::to_string(&settings.embedding_model).unwrap(),
-    )?;
+    set_json_setting(&conn, "embedding_model", &settings.embedding_model)?;
     set_setting(
         &conn,
         "chat_title_auto_refresh",
@@ -746,26 +711,14 @@ pub fn update_settings(
         "dual_model_enabled",
         &settings.dual_model_enabled.to_string(),
     )?;
-    set_setting(
-        &conn,
-        "draft_model",
-        &serde_json::to_string(&settings.draft_model).unwrap(),
-    )?;
-    set_setting(
+    set_json_setting(&conn, "draft_model", &settings.draft_model)?;
+    set_json_setting(
         &conn,
         "dual_model_execution_mode",
-        &serde_json::to_string(&settings.dual_model_execution_mode).unwrap(),
+        &settings.dual_model_execution_mode,
     )?;
-    set_setting(
-        &conn,
-        "compare_model_a",
-        &serde_json::to_string(&settings.compare_model_a).unwrap(),
-    )?;
-    set_setting(
-        &conn,
-        "compare_model_b",
-        &serde_json::to_string(&settings.compare_model_b).unwrap(),
-    )?;
+    set_json_setting(&conn, "compare_model_a", &settings.compare_model_a)?;
+    set_json_setting(&conn, "compare_model_b", &settings.compare_model_b)?;
     set_setting(
         &conn,
         "start_at_login",
@@ -791,16 +744,8 @@ pub fn update_settings(
         "confirm_move_to_trash",
         &settings.confirm_move_to_trash.to_string(),
     )?;
-    set_setting(
-        &conn,
-        "prompt_instructions",
-        &serde_json::to_string(&settings.prompt_instructions).unwrap(),
-    )?;
-    set_setting(
-        &conn,
-        "about_you",
-        &serde_json::to_string(&settings.about_you).unwrap(),
-    )?;
+    set_json_setting(&conn, "prompt_instructions", &settings.prompt_instructions)?;
+    set_json_setting(&conn, "about_you", &settings.about_you)?;
     set_setting(
         &conn,
         "inject_about_you_into_chat",
@@ -904,20 +849,12 @@ pub fn update_settings(
         "demo_dismissed",
         &settings.demo_dismissed.to_string(),
     )?;
-    set_setting(
-        &conn,
-        "menubar_icon_style",
-        &serde_json::to_string(&settings.menubar_icon_style).unwrap(),
-    )?;
-    set_setting(
-        &conn,
-        "user_chat_label",
-        &serde_json::to_string(&settings.user_chat_label).unwrap(),
-    )?;
-    set_setting(
+    set_json_setting(&conn, "menubar_icon_style", &settings.menubar_icon_style)?;
+    set_json_setting(&conn, "user_chat_label", &settings.user_chat_label)?;
+    set_json_setting(
         &conn,
         "assistant_chat_label",
-        &serde_json::to_string(&settings.assistant_chat_label).unwrap(),
+        &settings.assistant_chat_label,
     )?;
     set_setting(
         &conn,
@@ -1302,7 +1239,9 @@ pub async fn get_core_settings(state: State<'_, DbState>) -> Result<CoreSettings
 }
 
 #[tauri::command]
-pub async fn get_inference_settings(state: State<'_, DbState>) -> Result<InferenceSettings, String> {
+pub async fn get_inference_settings(
+    state: State<'_, DbState>,
+) -> Result<InferenceSettings, String> {
     let pool = state.0.clone();
     tokio::task::spawn_blocking(move || -> Result<InferenceSettings, String> {
         let conn = pool.get().map_err(|e| e.to_string())?;

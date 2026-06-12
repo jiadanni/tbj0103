@@ -1163,7 +1163,9 @@ Rules:\n\
                                     if update_level { payload.insert("hierarchy_level".to_string(), serde_json::Value::String(hierarchy_level.to_string())); }
                                     if !payload.is_empty() {
                                         payload.insert("source_model".to_string(), serde_json::Value::String(model.to_string()));
-                                        payload.insert("confidence".to_string(), serde_json::Value::Number(serde_json::Number::from_f64(new_confidence).unwrap()));
+                                        if let Some(confidence) = serde_json::Number::from_f64(new_confidence) {
+                                            payload.insert("confidence".to_string(), serde_json::Value::Number(confidence));
+                                        }
                                         let payload_str = serde_json::to_string(&payload).unwrap_or_default();
                                         let proposal_id = uuid::Uuid::new_v4().to_string();
                                         let old_model_str = old_source_model.unwrap_or_else(|| "user".to_string());
