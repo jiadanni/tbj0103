@@ -3,13 +3,57 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::oneshot;
 
-pub struct WebStreamCancelState(pub Mutex<HashMap<String, oneshot::Sender<()>>>);
+#[derive(Default)]
+pub struct WebStreamCancelState {
+    senders: Mutex<HashMap<String, (u64, oneshot::Sender<()>)>>,
+    next_generation: AtomicU64,
+}
+
+impl WebStreamCancelState {
+    /// Register a new stream for `session_id`, cancelling any previous stream
+    /// still registered under the same session. Returns the generation token
+    /// identifying this registration plus the receiver that fires on cancel.
+    fn register(&self, session_id: &str) -> Result<(u64, oneshot::Receiver<()>), String> {
+        let generation = self.next_generation.fetch_add(1, Ordering::Relaxed);
+        let (cancel_tx, cancel_rx) = oneshot::channel();
+        let mut senders = self.senders.lock().map_err(|e| e.to_string())?;
+        if let Some((_, previous)) = senders.insert(session_id.to_string(), (generation, cancel_tx))
+        {
+            let _ = previous.send(());
+        }
+        Ok((generation, cancel_rx))
+    }
+
+    /// Remove the registration for `session_id` only if it still belongs to
+    /// `generation`. A newer stream for the same session may have replaced the
+    /// entry while this one was draining; its sender must stay registered or
+    /// `stop_web_stream` can no longer cancel it.
+    fn unregister(&self, session_id: &str, generation: u64) {
+        if let Ok(mut senders) = self.senders.lock() {
+            if senders
+                .get(session_id)
+                .is_some_and(|(entry_generation, _)| *entry_generation == generation)
+            {
+                senders.remove(session_id);
+            }
+        }
+    }
+
+    fn cancel(&self, session_id: &str) -> Result<(), String> {
+        let mut senders = self.senders.lock().map_err(|e| e.to_string())?;
+        if let Some((_, cancel_tx)) = senders.remove(session_id) {
+            let _ = cancel_tx.send(());
+        }
+        Ok(())
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct StreamEvent {
@@ -134,80 +178,76 @@ pub async fn send_web_message(
 
     let mut reader = BufReader::new(stdout).lines();
     let event_name = format!("ollama-stream-{session_id}");
-    let (cancel_tx, mut cancel_rx) = oneshot::channel();
-    {
-        let mut cancel_map = cancel_state.0.lock().map_err(|e| e.to_string())?;
-        if let Some(previous) = cancel_map.insert(session_id.clone(), cancel_tx) {
-            let _ = previous.send(());
-        }
-    }
+    let (generation, mut cancel_rx) = cancel_state.register(&session_id)?;
 
     let mut cancelled = false;
 
-    loop {
-        let line = tokio::select! {
-            _ = &mut cancel_rx => {
-                cancelled = true;
-                break;
-            }
-            line = reader.next_line() => line.map_err(|e| e.to_string())?,
-        };
-
-        let Some(line) = line else {
-            break;
-        };
-
-        if line.trim().is_empty() {
-            continue;
-        }
-
-        let parsed: RunnerLine = match serde_json::from_str(&line) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-
-        match parsed.line_type.as_str() {
-            "chunk" => {
-                let text = parsed.text.unwrap_or_default();
-                if text.is_empty() {
-                    continue;
+    let stream_result: Result<(), String> = async {
+        loop {
+            let line = tokio::select! {
+                _ = &mut cancel_rx => {
+                    cancelled = true;
+                    break;
                 }
-                let event = StreamEvent {
-                    session_id: session_id.clone(),
-                    chunk: text,
-                    done: false,
-                    tokens_used: None,
-                    duration_ms: None,
-                };
-                app.emit(&event_name, &event)
-                    .map_err(|e| format!("Tauri emit error: {e}"))?;
-            }
-            "done" => {
-                let event = StreamEvent {
-                    session_id: session_id.clone(),
-                    chunk: String::new(),
-                    done: true,
-                    tokens_used: None,
-                    duration_ms: None,
-                };
-                app.emit(&event_name, &event)
-                    .map_err(|e| format!("Tauri emit error: {e}"))?;
-                break;
-            }
-            "error" => {
-                let msg = parsed
-                    .message
-                    .unwrap_or_else(|| "Unknown error from playwright-runner".to_string());
-                return Err(msg);
-            }
-            _ => {}
-        }
-    }
+                line = reader.next_line() => line.map_err(|e| e.to_string())?,
+            };
 
-    {
-        let mut cancel_map = cancel_state.0.lock().map_err(|e| e.to_string())?;
-        cancel_map.remove(&session_id);
+            let Some(line) = line else {
+                break;
+            };
+
+            if line.trim().is_empty() {
+                continue;
+            }
+
+            let parsed: RunnerLine = match serde_json::from_str(&line) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+
+            match parsed.line_type.as_str() {
+                "chunk" => {
+                    let text = parsed.text.unwrap_or_default();
+                    if text.is_empty() {
+                        continue;
+                    }
+                    let event = StreamEvent {
+                        session_id: session_id.clone(),
+                        chunk: text,
+                        done: false,
+                        tokens_used: None,
+                        duration_ms: None,
+                    };
+                    app.emit(&event_name, &event)
+                        .map_err(|e| format!("Tauri emit error: {e}"))?;
+                }
+                "done" => {
+                    let event = StreamEvent {
+                        session_id: session_id.clone(),
+                        chunk: String::new(),
+                        done: true,
+                        tokens_used: None,
+                        duration_ms: None,
+                    };
+                    app.emit(&event_name, &event)
+                        .map_err(|e| format!("Tauri emit error: {e}"))?;
+                    break;
+                }
+                "error" => {
+                    let msg = parsed
+                        .message
+                        .unwrap_or_else(|| "Unknown error from playwright-runner".to_string());
+                    return Err(msg);
+                }
+                _ => {}
+            }
+        }
+        Ok(())
     }
+    .await;
+
+    cancel_state.unregister(&session_id, generation);
+    stream_result?;
 
     if cancelled {
         let _ = child.kill().await;
@@ -233,9 +273,54 @@ pub fn stop_web_stream(
     session_id: String,
     cancel_state: State<'_, WebStreamCancelState>,
 ) -> Result<(), String> {
-    let mut cancel_map = cancel_state.0.lock().map_err(|e| e.to_string())?;
-    if let Some(cancel_tx) = cancel_map.remove(&session_id) {
-        let _ = cancel_tx.send(());
+    cancel_state.cancel(&session_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_register_replaces_and_cancels_previous_stream() {
+        let state = WebStreamCancelState::default();
+        let (_gen_a, mut rx_a) = state.register("session").unwrap();
+        let (_gen_b, mut rx_b) = state.register("session").unwrap();
+
+        assert!(rx_a.try_recv().is_ok(), "stream A should be cancelled");
+        assert!(rx_b.try_recv().is_err(), "stream B should stay live");
     }
-    Ok(())
+
+    #[test]
+    fn test_stale_unregister_keeps_newer_stream_cancellable() {
+        let state = WebStreamCancelState::default();
+        let (gen_a, _rx_a) = state.register("session").unwrap();
+        let (_gen_b, mut rx_b) = state.register("session").unwrap();
+
+        // Stream A finishes draining after B replaced it; its cleanup must
+        // not evict B's sender.
+        state.unregister("session", gen_a);
+
+        state.cancel("session").unwrap();
+        assert!(
+            rx_b.try_recv().is_ok(),
+            "stop_web_stream should still cancel stream B"
+        );
+    }
+
+    #[test]
+    fn test_unregister_removes_own_entry() {
+        let state = WebStreamCancelState::default();
+        let (gen_a, mut rx_a) = state.register("session").unwrap();
+
+        state.unregister("session", gen_a);
+
+        state.cancel("session").unwrap();
+        assert!(
+            matches!(
+                rx_a.try_recv(),
+                Err(oneshot::error::TryRecvError::Closed)
+            ),
+            "entry should be gone; sender dropped without a cancel signal"
+        );
+    }
 }

@@ -704,9 +704,7 @@ pub fn complete_db_dependent_setup(
     app.manage(commands::ollama::StreamAbortState(std::sync::Mutex::new(
         std::collections::HashMap::new(),
     )));
-    app.manage(commands::web_ai::WebStreamCancelState(
-        std::sync::Mutex::new(std::collections::HashMap::new()),
-    ));
+    app.manage(commands::web_ai::WebStreamCancelState::default());
     let (bg_cancel_tx, _) = tokio::sync::watch::channel(0u64);
     app.manage(commands::ollama::BackgroundInferenceCancel(bg_cancel_tx));
     app.manage(commands::quick_search::QuickSearchRuntimeState::default());
