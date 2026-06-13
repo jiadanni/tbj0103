@@ -33,6 +33,7 @@ struct DemoDataService {
 
     // MARK: - Project 1: Understanding Transformers
 
+    // swiftlint:disable:next function_body_length
     private static func seedTransformers(into context: ModelContext) {
         let project = Workspace(
             title: "Understanding Transformers",
@@ -42,7 +43,10 @@ struct DemoDataService {
         )
         context.insert(project)
 
-        let demoProject = Project(title: "Transformer Research", customInstructions: "You are a helpful tutor specializing in deep learning and the Transformer architecture. Explain concepts clearly using analogies.")
+        let demoProject = Project(
+            title: "Transformer Research",
+            customInstructions: "You are a helpful tutor specializing in deep learning and the Transformer architecture. Explain concepts clearly using analogies."
+        )
         demoProject.workspace = project
         context.insert(demoProject)
 
@@ -89,11 +93,13 @@ struct DemoDataService {
             metadata: paperMeta
         )
         let chunk1 = DocumentChunk(
-            content: "Scaled Dot-Product Attention: The input consists of queries and keys of dimension dk, and values of dimension dv. We compute the dot products of the query with all keys, divide each by √dk, and apply a softmax function.",
+            content: "Scaled Dot-Product Attention: The input consists of queries and keys of dimension dk, and values of dimension dv. " +
+                "We compute the dot products of the query with all keys, divide each by √dk, and apply a softmax function.",
             chunkIndex: 0, tokenCount: 52
         )
         let chunk2 = DocumentChunk(
-            content: "Multi-Head Attention allows the model to jointly attend to information from different representation subspaces at different positions. Multi-head attention runs the attention function h times in parallel.",
+            content: "Multi-Head Attention allows the model to jointly attend to information from different representation subspaces " +
+                "at different positions. Multi-head attention runs the attention function h times in parallel.",
             chunkIndex: 1, tokenCount: 46
         )
         paperDoc.chunks = [chunk1, chunk2]
@@ -124,7 +130,8 @@ struct DemoDataService {
             # Key Insights — Attention Mechanism
 
             ## What is attention?
-            Attention lets the model decide which parts of the input to focus on when producing each output. Rather than compressing the whole input into a single vector (like RNNs), attention allows the decoder to look back at *all* encoder states.
+            Attention lets the model decide which parts of the input to focus on when producing each output. Rather than compressing
+            the whole input into a single vector (like RNNs), attention allows the decoder to look back at *all* encoder states.
 
             ## Scaled Dot-Product
             ```
@@ -193,10 +200,12 @@ struct DemoDataService {
         Great follow-up! The difference is where Q, K, and V come from.
 
         **Self-Attention** (encoder and decoder)
-        Q, K, and V all come from the *same* sequence. Every token attends to every other token in the same input. This lets the model build contextual representations — "bank" knows whether it's a river bank or a financial institution based on surrounding words.
+        Q, K, and V all come from the *same* sequence. Every token attends to every other token in the same input. This lets the model
+        build contextual representations — "bank" knows whether it's a river bank or a financial institution based on surrounding words.
 
         **Cross-Attention** (decoder only)
-        Q comes from the *decoder* (what the model is currently generating), while K and V come from the *encoder* output. This is how the decoder "reads" the source sentence when generating each target word.
+        Q comes from the *decoder* (what the model is currently generating), while K and V come from the *encoder* output. This is
+        how the decoder "reads" the source sentence when generating each target word.
 
         In the classical Transformer:
         - Encoder: self-attention only
@@ -220,7 +229,8 @@ struct DemoDataService {
         let m3a = Message(content: """
         You've spotted one of the most elegant design decisions in the Transformer paper.
 
-        **The problem:** RNNs process tokens sequentially so order is baked in. Transformers process all tokens *in parallel* — "The cat sat" and "The sat cat" would look identical without extra information.
+        **The problem:** RNNs process tokens sequentially so order is baked in. Transformers process all tokens *in parallel* —
+        "The cat sat" and "The sat cat" would look identical without extra information.
 
         **The solution: Positional Encodings**
         A unique vector is added to each token embedding encoding its position. The original paper uses sinusoidal functions:
@@ -244,14 +254,38 @@ struct DemoDataService {
 
         // ── Concept Nodes ─────────────────────────────────────────────────────
 
-        let cTransformer   = ConceptNode(name: "Transformer", description: "Neural network architecture based entirely on attention mechanisms, introduced in 'Attention is All You Need' (2017).", nodeType: .technology)
-        let cAttention     = ConceptNode(name: "Attention Mechanism", description: "Technique allowing a model to selectively focus on parts of the input. Core to the Transformer.", nodeType: .definition)
-        let cSelfAttn      = ConceptNode(name: "Self-Attention", description: "Attention where Q, K, V come from the same sequence. Enables each token to attend to all others.", nodeType: .definition)
-        let cMHA           = ConceptNode(name: "Multi-Head Attention", description: "Running attention h times in parallel with different learned projections, then concatenating.", nodeType: .definition)
-        let cPosEnc        = ConceptNode(name: "Positional Encoding", description: "Vectors added to embeddings to inject position information since Transformers lack recurrence.", nodeType: .definition)
+        let cTransformer = ConceptNode(
+            name: "Transformer",
+            description: "Neural network architecture based entirely on attention mechanisms, introduced in 'Attention is All You Need' (2017).",
+            nodeType: .technology
+        )
+        let cAttention = ConceptNode(
+            name: "Attention Mechanism",
+            description: "Technique allowing a model to selectively focus on parts of the input. Core to the Transformer.",
+            nodeType: .definition
+        )
+        let cSelfAttn = ConceptNode(
+            name: "Self-Attention",
+            description: "Attention where Q, K, V come from the same sequence. Enables each token to attend to all others.",
+            nodeType: .definition
+        )
+        let cMHA = ConceptNode(
+            name: "Multi-Head Attention",
+            description: "Running attention h times in parallel with different learned projections, then concatenating.",
+            nodeType: .definition
+        )
+        let cPosEnc = ConceptNode(
+            name: "Positional Encoding",
+            description: "Vectors added to embeddings to inject position information since Transformers lack recurrence.",
+            nodeType: .definition
+        )
         let cEncoder       = ConceptNode(name: "Encoder", description: "Processes input tokens with self-attention, building contextual representations.", nodeType: .technology)
         let cDecoder       = ConceptNode(name: "Decoder", description: "Generates output autoregressively, using masked self-attention and cross-attention to encoder outputs.", nodeType: .technology)
-        let cQKV          = ConceptNode(name: "Query-Key-Value", description: "Three components of attention: Q (what to search for), K (what to match against), V (what to return).", nodeType: .definition)
+        let cQKV = ConceptNode(
+            name: "Query-Key-Value",
+            description: "Three components of attention: Q (what to search for), K (what to match against), V (what to return).",
+            nodeType: .definition
+        )
 
         for node in [cTransformer, cAttention, cSelfAttn, cMHA, cPosEnc, cEncoder, cDecoder, cQKV] {
             node.project = project
@@ -310,7 +344,12 @@ struct DemoDataService {
         let ms2 = PathMilestone(title: "Understand RNNs and LSTMs", description: "Learn sequential models before studying why Transformers replace them.", orderIndex: 1)
         ms2.isCompleted = true; ms2.completedAt = ago(15)
 
-        let ms3 = PathMilestone(title: "Master the Transformer Architecture", description: "Read the paper, work through the Illustrated Transformer, implement attention.", orderIndex: 2, dueDate: inDays(14))
+        let ms3 = PathMilestone(
+            title: "Master the Transformer Architecture",
+            description: "Read the paper, work through the Illustrated Transformer, implement attention.",
+            orderIndex: 2,
+            dueDate: inDays(14)
+        )
 
         let ms4 = PathMilestone(title: "Build a Transformer Application", description: "Use a pre-trained model to build something useful.", orderIndex: 3, dueDate: inMonths(2))
 
@@ -321,13 +360,55 @@ struct DemoDataService {
         // ── Daily Notes ───────────────────────────────────────────────────────
 
         let dailyData: [(Int, String, String, Int)] = [
-            (6, "# Day 1 – Starting the Transformer Journey\nRead the abstract and introduction. The core idea — \"Attention is All You Need\" — is bold. Replaces recurrence entirely with attention. A foundational paper.", "curious", 7),
-            (5, "# Day 2 – Encoder Architecture\nWorked through the encoder stack. Each layer: multi-head attention + feed-forward network, wrapped with residual connections and layer norm.", "focused", 8),
-            (4, "# Day 3 – Attention Deep Dive\nSpent 2 hours on the attention section. Q, K, V finally clicked when I thought of it as a soft database lookup. Used Aetherium to ask for an explanation — it cited the paper directly.", "excited", 9),
-            (3, "# Day 4 – Decoder & Cross-Attention\nThe decoder has an extra attention layer — cross-attention that looks at encoder outputs. This is how translation works: the decoder queries the encoded representation of the source sentence.", "focused", 7),
-            (2, "# Day 5 – Positional Encodings\nSinusoidal encodings are elegant. Plotted them in a notebook — you can see the different frequencies across embedding dimensions. Learned positions are used in GPT but sinusoidal generalises better to longer sequences.", "calm", 8),
-            (1, "# Day 6 – Multi-Head Attention\nFinally understand why multiple heads are useful. Each head can focus on different relationships — syntactic in one, semantic in another. Paper uses h=8 with d_model=512, so each head has d_k=64.", "happy", 9),
-            (0, "# Day 7 – Review & Consolidation\nGone through all flashcards. Still shaky on the exact forward pass dimensions. Will spend tomorrow doing a Python implementation to cement understanding. Massive week!", "productive", 10)
+            (
+                6,
+                "# Day 1 – Starting the Transformer Journey\nRead the abstract and introduction. " +
+                    "The core idea — \"Attention is All You Need\" — is bold. Replaces recurrence entirely with attention. A foundational paper.",
+                "curious",
+                7
+            ),
+            (
+                5,
+                "# Day 2 – Encoder Architecture\nWorked through the encoder stack. Each layer: multi-head attention + feed-forward network, " +
+                    "wrapped with residual connections and layer norm.",
+                "focused",
+                8
+            ),
+            (
+                4,
+                "# Day 3 – Attention Deep Dive\nSpent 2 hours on the attention section. Q, K, V finally clicked when I thought of it as " +
+                    "a soft database lookup. Used Aetherium to ask for an explanation — it cited the paper directly.",
+                "excited",
+                9
+            ),
+            (
+                3,
+                "# Day 4 – Decoder & Cross-Attention\nThe decoder has an extra attention layer — cross-attention that looks at encoder outputs. " +
+                    "This is how translation works: the decoder queries the encoded representation of the source sentence.",
+                "focused",
+                7
+            ),
+            (
+                2,
+                "# Day 5 – Positional Encodings\nSinusoidal encodings are elegant. Plotted them in a notebook — you can see the different " +
+                    "frequencies across embedding dimensions. Learned positions are used in GPT but sinusoidal generalises better to longer sequences.",
+                "calm",
+                8
+            ),
+            (
+                1,
+                "# Day 6 – Multi-Head Attention\nFinally understand why multiple heads are useful. Each head can focus on different relationships — " +
+                    "syntactic in one, semantic in another. Paper uses h=8 with d_model=512, so each head has d_k=64.",
+                "happy",
+                9
+            ),
+            (
+                0,
+                "# Day 7 – Review & Consolidation\nGone through all flashcards. Still shaky on the exact forward pass dimensions. " +
+                    "Will spend tomorrow doing a Python implementation to cement understanding. Massive week!",
+                "productive",
+                10
+            )
         ]
         for (daysAgo, content, mood, productivity) in dailyData {
             let dn = DailyNote(date: ago(daysAgo), content: content, mood: mood, productivity: productivity)
@@ -401,7 +482,9 @@ struct DemoDataService {
         let metricsCapture = WebCapture(
             url: "https://baremetrics.com/saas-metrics",
             pageTitle: "The SaaS Metrics Dashboard – Baremetrics",
-            extractedContent: "Monthly Recurring Revenue (MRR) is the normalized, predictable revenue from all active subscriptions in a month. Customer Acquisition Cost (CAC) measures the total sales and marketing spend per new customer. Lifetime Value (LTV) estimates the total revenue from a customer over their entire relationship.",
+            extractedContent: "Monthly Recurring Revenue (MRR) is the normalized, predictable revenue from all active subscriptions in a month. " +
+                "Customer Acquisition Cost (CAC) measures the total sales and marketing spend per new customer. " +
+                "Lifetime Value (LTV) estimates the total revenue from a customer over their entire relationship.",
             capturedAt: ago(30)
         )
         let metricsSource = ProjectSource(sourceType: .webpage, title: "The SaaS Metrics Dashboard – Baremetrics", createdAt: ago(30))
@@ -501,13 +584,21 @@ struct DemoDataService {
         )
         context.insert(project)
 
-        let demoProject = Project(title: "Roman History Research", customInstructions: "You are a history tutor specializing in ancient Rome. Use primary sources where possible and connect events to broader themes.")
+        let demoProject = Project(
+            title: "Roman History Research",
+            customInstructions: "You are a history tutor specializing in ancient Rome. Use primary sources where possible and connect events to broader themes."
+        )
         demoProject.workspace = project
         context.insert(demoProject)
 
         // ── Learning Goals ────────────────────────────────────────────────────
 
-        let g1 = LearningGoal(title: "Understand the Roman Republic", description: "The SPQR era: Senate, magistrates, the Punic Wars, and Caesar's crossing of the Rubicon.", progress: 0.6, createdAt: ago(55))
+        let g1 = LearningGoal(
+            title: "Understand the Roman Republic",
+            description: "The SPQR era: Senate, magistrates, the Punic Wars, and Caesar's crossing of the Rubicon.",
+            progress: 0.6,
+            createdAt: ago(55)
+        )
         let g2 = LearningGoal(title: "Study the Principate (27 BC – 284 AD)", description: "From Augustus to the Crisis of the Third Century.", progress: 0.25, createdAt: ago(40))
         let g3 = LearningGoal(title: "Understand the Fall of Rome", description: "Why did the Western Empire collapse in 476 AD? Internal and external causes.", progress: 0.0, createdAt: ago(20))
         g1.project = project; g2.project = project; g3.project = project
@@ -519,7 +610,9 @@ struct DemoDataService {
         let wikiCapture = WebCapture(
             url: "https://en.wikipedia.org/wiki/Roman_Empire",
             pageTitle: "Roman Empire – Wikipedia",
-            extractedContent: "The Roman Empire was the post-Republican period of ancient Rome. Its first two centuries are known as the Pax Romana, a period of relative peace and stability. At its peak under Trajan (98–117 AD), the Empire controlled approximately 5 million km² of land.",
+            extractedContent: "The Roman Empire was the post-Republican period of ancient Rome. " +
+                "Its first two centuries are known as the Pax Romana, a period of relative peace and stability. " +
+                "At its peak under Trajan (98–117 AD), the Empire controlled approximately 5 million km² of land.",
             capturedAt: ago(55)
         )
         let wikiSource = ProjectSource(sourceType: .webpage, title: "Roman Empire – Wikipedia", createdAt: ago(55))
@@ -580,13 +673,16 @@ struct DemoDataService {
         Marius's reforms (107 BC) opened the legions to landless volunteers who depended on their *general* for land grants. Soldiers followed Marius, Sulla, Caesar — not the Senate.
 
         **2. Breakdown of the cursus honorum**
-        The traditional ladder of magistracies (quaestor → aedile → praetor → consul) kept ambition structured. When ambitious men bypassed it via military force or popular tribunes, the unwritten rules that held the system together dissolved.
+        The traditional ladder of magistracies (quaestor → aedile → praetor → consul) kept ambition structured. When ambitious men
+        bypassed it via military force or popular tribunes, the unwritten rules that held the system together dissolved.
 
         **3. Economic inequality and the Gracchi**
-        The Gracchi brothers (133 & 123 BC) pushed land reform to help displaced farmers. When Tiberius Gracchus was murdered on the Senate floor, it proved that political violence had entered Roman life — and it never left.
+        The Gracchi brothers (133 & 123 BC) pushed land reform to help displaced farmers. When Tiberius Gracchus was murdered on the
+        Senate floor, it proved that political violence had entered Roman life — and it never left.
 
         **4. Caesar's final act**
-        Crossing the Rubicon in 49 BC was the coup de grâce. The civil war that followed ended with his dictatorship. His assassination in 44 BC didn't restore the Republic — it triggered another civil war that ended with Augustus outmanoeuvring everyone.
+        Crossing the Rubicon in 49 BC was the coup de grâce. The civil war that followed ended with his dictatorship. His assassination
+        in 44 BC didn't restore the Republic — it triggered another civil war that ended with Augustus outmanoeuvring everyone.
         """, role: .assistant, timestamp: ago(45))
 
         let cit3 = Citation(
@@ -610,8 +706,16 @@ struct DemoDataService {
 
         // ── Concepts ──────────────────────────────────────────────────────────
 
-        let cCaesar    = ConceptNode(name: "Julius Caesar", description: "Roman general and statesman; played a critical role in the fall of the Republic. Crossed the Rubicon 49 BC; assassinated 44 BC.", nodeType: .person)
-        let cAugustus  = ConceptNode(name: "Augustus", description: "First Roman Emperor (27 BC–14 AD). Transformed the Republic into the Principate while maintaining republican forms.", nodeType: .person)
+        let cCaesar = ConceptNode(
+            name: "Julius Caesar",
+            description: "Roman general and statesman; played a critical role in the fall of the Republic. Crossed the Rubicon 49 BC; assassinated 44 BC.",
+            nodeType: .person
+        )
+        let cAugustus = ConceptNode(
+            name: "Augustus",
+            description: "First Roman Emperor (27 BC–14 AD). Transformed the Republic into the Principate while maintaining republican forms.",
+            nodeType: .person
+        )
         let cPompey    = ConceptNode(name: "Pompey", description: "Roman general; Caesar's ally turned enemy. Defeated at Pharsalus (48 BC).", nodeType: .person)
         let cSenate    = ConceptNode(name: "Senate of Rome", description: "Governing body of the Roman Republic and early Empire. Composed of the highest-property class.", nodeType: .topic)
         let cPaxRomana = ConceptNode(name: "Pax Romana", description: "~200 years of relative peace (27 BC–180 AD), beginning with Augustus.", nodeType: .definition)
@@ -640,11 +744,21 @@ struct DemoDataService {
         // ── Flashcards ────────────────────────────────────────────────────────
 
         let rCards: [(String, String, Int, Int)] = [
-            ("When did Caesar cross the Rubicon and why was it significant?", "January 49 BC. Crossing with an army violated Roman law, triggering civil war and effectively ending the Republic's constitutional order.", 2, 0),
+            (
+                "When did Caesar cross the Rubicon and why was it significant?",
+                "January 49 BC. Crossing with an army violated Roman law, triggering civil war and effectively ending the Republic's constitutional order.",
+                2,
+                0
+            ),
             ("What were Marius's military reforms?", "107 BC: opened the military to landless citizens. Soldiers became loyal to commanders who promised land grants — not to the state.", 4, 7),
             ("Who were the Gracchi brothers?", "Tiberius (133 BC) and Gaius (123 BC) — tribunes who tried to redistribute public land. Both were murdered by political opponents.", 3, 3),
             ("What is the Pax Romana?", "~200 years of relative peace and stability (27 BC–180 AD) across the Roman Empire, beginning with Augustus.", 2, 0),
-            ("What title did Augustus use instead of 'King'?", "Princeps ('first citizen'). Also held tribunicia potestas and imperium proconsulare — total authority without appearing to be a monarch.", 4, 5),
+            (
+                "What title did Augustus use instead of 'King'?",
+                "Princeps ('first citizen'). Also held tribunicia potestas and imperium proconsulare — total authority without appearing to be a monarch.",
+                4,
+                5
+            ),
             ("What was the cursus honorum?", "The traditional sequence of Roman magistracies: quaestor → aedile → praetor → consul. It regulated political ambition during the Republic.", 3, 1),
             ("When did the Western Roman Empire fall, and to whom?", "476 AD, when the Germanic leader Odoacer deposed Romulus Augustulus, the last Western Roman Emperor.", 2, 0)
         ]
@@ -661,9 +775,27 @@ struct DemoDataService {
         // ── Daily Notes ───────────────────────────────────────────────────────
 
         let rDailyData: [(Int, String, String, Int)] = [
-            (5, "# Roman History Day 1\nStarted with the founding myths and the early Republic. The system of two consuls elected annually — each with veto power over the other — is a fascinating design for preventing tyranny.", "curious", 7),
-            (3, "# The Punic Wars\nSpent the morning on Carthage. Three wars, ~120 years. Hannibal crossing the Alps with elephants is still one of history's great military gambits. Rome's persistence despite Cannae (216 BC) is remarkable.", "focused", 8),
-            (1, "# Caesar's Civil War\nRead through the Rubicon crossing in detail. 'The die is cast' is so good. The political analysis — why he had no choice — makes it feel less like hubris and more like a calculated survival decision.", "excited", 9)
+            (
+                5,
+                "# Roman History Day 1\nStarted with the founding myths and the early Republic. The system of two consuls elected annually — " +
+                    "each with veto power over the other — is a fascinating design for preventing tyranny.",
+                "curious",
+                7
+            ),
+            (
+                3,
+                "# The Punic Wars\nSpent the morning on Carthage. Three wars, ~120 years. Hannibal crossing the Alps with elephants is " +
+                    "still one of history's great military gambits. Rome's persistence despite Cannae (216 BC) is remarkable.",
+                "focused",
+                8
+            ),
+            (
+                1,
+                "# Caesar's Civil War\nRead through the Rubicon crossing in detail. 'The die is cast' is so good. " +
+                    "The political analysis — why he had no choice — makes it feel less like hubris and more like a calculated survival decision.",
+                "excited",
+                9
+            )
         ]
         for (daysAgo, content, mood, productivity) in rDailyData {
             let dn = DailyNote(date: ago(daysAgo), content: content, mood: mood, productivity: productivity)

@@ -79,6 +79,7 @@ final class ArtifactService {
 
     /// Lists all artifacts for a workspace, sorted by pinned first, then updated date
     func listArtifacts(workspaceId: UUID) throws -> [Artifact] {
+        // swiftlint:disable:next line_length
         let descriptor = FetchDescriptor<Artifact>(predicate: #Predicate { $0.workspace?.id == workspaceId }, sortBy: [SortDescriptor(\.isPinned, order: .reverse), SortDescriptor(\.updatedAt, order: .reverse)])
         return try modelContext.fetch(descriptor)
     }
