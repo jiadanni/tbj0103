@@ -33,14 +33,14 @@ const NEAR = "1.5rem"; // card sits near the pane edge
 const FAR = "3.5rem"; // card pulled slightly inward (corners)
 
 const ARC_SLOTS: ArcSlot[] = [
-  { side: "left", top: "22%", inset: FAR },
+  { side: "left", top: "18%", inset: FAR },
   { side: "left", top: "40%", inset: NEAR },
   { side: "left", top: "62%", inset: NEAR },
-  { side: "left", top: "80%", inset: FAR },
-  { side: "right", top: "22%", inset: FAR },
+  { side: "left", top: "84%", inset: FAR },
+  { side: "right", top: "18%", inset: FAR },
   { side: "right", top: "40%", inset: NEAR },
   { side: "right", top: "62%", inset: NEAR },
-  { side: "right", top: "80%", inset: FAR },
+  { side: "right", top: "84%", inset: FAR },
 ];
 
 export function WaterfallSuggestions({ suggestions, onSelect }: WaterfallSuggestionsProps) {
@@ -78,7 +78,7 @@ export function WaterfallSuggestions({ suggestions, onSelect }: WaterfallSuggest
             onClick={() => onSelect(suggestion)}
           >
             <Icon size={14} className="mt-0.5 shrink-0 opacity-70" />
-            <span className="min-w-0 line-clamp-2">{suggestion.label}</span>
+            <span className="min-w-0">{suggestion.label}</span>
           </button>
         );
       })}
