@@ -1,4 +1,5 @@
 import React, { useMemo } from "react";
+import { Atom, Braces, Code, FileText, Hash, type LucideIcon } from "lucide-react";
 import type { ComposerSuggestion } from "../lib/composerSuggestions";
 
 interface WaterfallSuggestionsProps {
@@ -6,67 +7,81 @@ interface WaterfallSuggestionsProps {
   onSelect: (suggestion: ComposerSuggestion) => void;
 }
 
+function iconFor(label: string): LucideIcon {
+  const text = label.toLowerCase();
+  if (/\breact\b|\bhook\b|\buse[a-z]/.test(text)) { return Atom; }
+  if (/\bcss\b|\bhtml\b|flexbox|\bstyle\b/.test(text)) { return Code; }
+  if (/javascript|\bjs\b|function|require|\btype\b|[{}]/.test(text)) { return Braces; }
+  if (/count|number|sort/.test(text)) { return Hash; }
+  return FileText;
+}
+
+// Slots that scatter the prompt cards around the centered button, matching the
+// mockup. Each card is anchored to its near edge (`side`) by a small `inset`, and
+// sits at vertical center `top`. Card WIDTH is computed so the inner edge never
+// crosses a reserved center gutter — this keeps the heading + button clear at any
+// pane width (including a narrow 1080px window), shrinking cards instead of
+// congesting the middle. `near`/`far` insets give the arc its splay: rows flanking
+// the button tuck closer to the edge, corners reach a touch further in.
+type ArcSlot = { side: "left" | "right"; top: string; inset: string };
+
+// Half-width of the protected center zone (heading + button). A card's inner edge
+// stays at least this far from the container's horizontal center.
+const CENTER_GUTTER = "12.5rem";
+
+const NEAR = "1.5rem"; // card sits near the pane edge
+const FAR = "3.5rem"; // card pulled slightly inward (corners)
+
+const ARC_SLOTS: ArcSlot[] = [
+  { side: "left", top: "22%", inset: FAR },
+  { side: "left", top: "40%", inset: NEAR },
+  { side: "left", top: "62%", inset: NEAR },
+  { side: "left", top: "80%", inset: FAR },
+  { side: "right", top: "22%", inset: FAR },
+  { side: "right", top: "40%", inset: NEAR },
+  { side: "right", top: "62%", inset: NEAR },
+  { side: "right", top: "80%", inset: FAR },
+];
+
 export function WaterfallSuggestions({ suggestions, onSelect }: WaterfallSuggestionsProps) {
-  const columns = useMemo(() => {
-    const cols: ComposerSuggestion[][] = [[], []];
-    suggestions.forEach((s, i) => {
-      cols[i % 2].push(s);
-    });
-    return cols.map((col, colIndex) => {
-      const source = col.length > 0 ? col : suggestions;
-      const filled: ComposerSuggestion[] = [];
-      for (let i = 0; i < 5; i += 1) {
-        filled.push(source[(i + colIndex) % source.length]);
-      }
-      return filled;
-    });
+  const arranged = useMemo(() => {
+    if (suggestions.length === 0) { return []; }
+    return ARC_SLOTS.map((slot, i) => ({
+      slot,
+      suggestion: suggestions[i % suggestions.length],
+      key: `${suggestions[i % suggestions.length].id}-${i}`,
+    }));
   }, [suggestions]);
 
   if (suggestions.length === 0) { return null; }
 
-  const randomUnit = (seed: string) => {
-    let hash = 0;
-    for (let i = 0; i < seed.length; i += 1) {
-      hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
-    }
-    return (hash % 1000) / 1000;
-  };
-
-  const renderSuggestion = (suggestion: ComposerSuggestion, key: string, columnIndex: number, rowIndex: number) => {
-    const baseSeed = `${suggestion.id}-${columnIndex}-${rowIndex}`;
-    const offsetX = Math.round((randomUnit(`${baseSeed}-x`) - 0.5) * 56);
-    const offsetY = Math.round(randomUnit(`${baseSeed}-y`) * 18);
-    const widthBoost = 32 + Math.round(randomUnit(`${baseSeed}-w`) * 96);
-    const opacity = 0.72 + randomUnit(`${baseSeed}-o`) * 0.18;
-
-    return (
-      <button
-        key={key}
-        type="button"
-        className="pointer-events-auto w-full cursor-pointer truncate rounded-full border border-[rgba(255,255,255,0.08)] bg-[var(--bg-primary)]/52 px-6 py-3 text-left text-[15px] font-semibold leading-6 text-[var(--text-secondary)] backdrop-blur-sm transition-colors duration-200 hover:border-[rgba(var(--accent-color-rgb),0.45)] hover:bg-[rgba(var(--accent-color-rgb),0.10)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-color)]"
-        style={{
-          maxWidth: `calc(30rem + ${widthBoost}px)`,
-          transform: `translate(${offsetX}px, ${offsetY}px)`,
-          opacity,
-        }}
-        onClick={() => onSelect(suggestion)}
-      >
-        {suggestion.label}
-      </button>
-    );
-  };
-
   return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none select-none grid grid-cols-[minmax(0,1fr)_minmax(0,34rem)_minmax(0,1fr)] gap-10 px-6 md:px-12 opacity-85 [mask-image:linear-gradient(to_bottom,transparent_0%,black_14%,black_80%,transparent_100%)]">
-      {columns.map((col, i) => (
-        <div
-          key={i}
-          className={`flex min-w-0 flex-col gap-8 hover:[animation-play-state:paused] focus-within:[animation-play-state:paused] ${i === 1 ? "animate-waterfall-reverse col-start-3 items-start" : "animate-waterfall col-start-1 items-end"} ${i === 0 ? "[animation-duration:48s]" : "[animation-duration:44s]"}`}
-        >
-          {col.map((s, j) => renderSuggestion(s, `${s.id}-${j}`, i, j))}
-          {col.map((s, j) => renderSuggestion(s, `${s.id}-dup-${j}`, i, j + col.length))}
-        </div>
-      ))}
+    <div className="pointer-events-none absolute inset-0 select-none overflow-hidden [container-type:inline-size]">
+      {arranged.map(({ slot, suggestion, key }) => {
+        const Icon = iconFor(suggestion.label);
+        // Anchor to the near edge by `inset`; width fills the gap from there to the
+        // reserved center gutter, capped at a comfortable max. On narrow panes the
+        // gap shrinks so cards stay out of the center instead of overlapping it.
+        const availableWidth = `calc(50cqw - ${CENTER_GUTTER} - ${slot.inset})`;
+        const positionStyle: React.CSSProperties = {
+          top: slot.top,
+          width: `clamp(8rem, ${availableWidth}, 18rem)`,
+          transform: "translateY(-50%)",
+          ...(slot.side === "left" ? { left: slot.inset } : { right: slot.inset }),
+        };
+        return (
+          <button
+            key={key}
+            type="button"
+            style={positionStyle}
+            className="pointer-events-auto absolute flex cursor-pointer items-start gap-2.5 rounded-2xl border border-[rgba(255,255,255,0.22)] bg-[rgba(255,255,255,0.10)] px-4 py-2.5 text-left text-[13px] font-medium leading-5 text-[var(--text-secondary)] shadow-[0_12px_32px_-16px_rgba(0,0,0,0.85)] ring-1 ring-inset ring-white/10 backdrop-blur-md transition-colors duration-200 hover:border-[rgba(var(--accent-color-rgb),0.55)] hover:bg-[rgba(var(--accent-color-rgb),0.16)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-color)]"
+            onClick={() => onSelect(suggestion)}
+          >
+            <Icon size={14} className="mt-0.5 shrink-0 opacity-70" />
+            <span className="min-w-0 line-clamp-2">{suggestion.label}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
