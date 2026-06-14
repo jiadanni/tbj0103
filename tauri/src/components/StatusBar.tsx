@@ -379,7 +379,7 @@ function scheduledStateLabel(state: string): string {
     case "due_now": return "Due now";
     case "disabled": return "Disabled";
     case "waiting_for_idle": return "Waiting";
-    case "no_eligible_work": return "No work";
+    case "no_eligible_work": return "Up to date";
     default: return "Scheduled";
   }
 }
