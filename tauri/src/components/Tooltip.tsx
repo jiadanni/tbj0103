@@ -150,11 +150,11 @@ export const Tooltip: React.FC<TooltipProps> = ({
       {clonedChild}
       {isVisible && content && createPortal(
         <div
-          className={`fixed z-[9999] px-2.5 py-1.5 text-[11px] font-medium 
-                     text-[var(--text-primary)] bg-[var(--bg-elevated)] 
-                     border border-[var(--border-color)] rounded-lg 
-                     shadow-xl pointer-events-none backdrop-blur-md 
-                     whitespace-nowrap ${getAnimationClass()} ${className}`}
+          className={`fixed z-[9999] px-2.5 py-1.5 text-[11px] font-medium
+                     text-[var(--text-primary)] bg-[var(--bg-elevated)]
+                     border border-[var(--border-color)] rounded-lg
+                     shadow-xl pointer-events-none backdrop-blur-md
+                     whitespace-normal break-words max-w-xs ${getAnimationClass()} ${className}`}
           style={{
             top: coords.top,
             left: coords.left,

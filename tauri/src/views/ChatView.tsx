@@ -5459,7 +5459,13 @@ export default function ChatView() {
                       </span>
                     </div>
                     {activeChatId && sessionTokensUsed > 0 && (
-                      <ContextWindowBar tokensUsed={sessionTokensUsed} contextSize={effectiveContextSize} />
+                      <ContextWindowBar
+                        tokensUsed={sessionTokensUsed}
+                        contextSize={effectiveContextSize}
+                        isOverride={selectedModelMeta?.context_size != null}
+                        modelName={selectedModel || undefined}
+                        onConfigure={() => navigate("/preferences", { state: { settingsTab: "inference" } })}
+                      />
                     )}
                     {activeSession && (
                       <Tooltip content={canRefreshActiveSessionTitle ? "Refresh chat name" : "Refresh is unavailable for empty chats"} position="bottom">
