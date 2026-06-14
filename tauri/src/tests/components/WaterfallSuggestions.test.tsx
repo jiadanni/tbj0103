@@ -25,4 +25,18 @@ describe("WaterfallSuggestions", () => {
 
     expect(container).toBeEmptyDOMElement();
   });
+
+  it("dismisses a prompt via the hover X without selecting it", () => {
+    const onSelect = vi.fn();
+    const onDismiss = vi.fn();
+
+    render(
+      <WaterfallSuggestions suggestions={suggestions} onSelect={onSelect} onDismiss={onDismiss} />,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Dismiss this suggestion" })[0]);
+
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
 });

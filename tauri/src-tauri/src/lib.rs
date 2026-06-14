@@ -273,6 +273,7 @@ pub fn run() {
             commands::workspace::unhide_workspace,
             commands::workspace::reorder_workspaces,
             commands::prompt_bank::list_workspace_prompt_suggestions,
+            commands::prompt_bank::dismiss_workspace_prompt_suggestion,
             commands::prompt_bank::get_workspace_prompt_bank_status,
             commands::prompt_bank::start_workspace_prompt_bank_job,
             commands::background_jobs::confirm_background_job,

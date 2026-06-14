@@ -5221,10 +5221,28 @@ export default function ChatView() {
   const virtuosoComponents = useMemo(() => ({ Footer: VirtuosoFooter }), [VirtuosoFooter]);
 
   // Extract all suggestions for the waterfall background
+  // Locally suppress prompts the user has dismissed (X'd) this session so they
+  // disappear immediately regardless of source (bank / AI / fallback). The
+  // dismissal is also persisted to the backend as negative feedback below.
+  const [dismissedPromptKeys, setDismissedPromptKeys] = useState<Set<string>>(() => new Set());
+
   const waterfallSuggestions = useMemo(() => {
     if (activeChatId) { return []; }
-    return composerSuggestionRows.flatMap(row => row.suggestions);
-  }, [activeChatId, composerSuggestionRows]);
+    const all = composerSuggestionRows.flatMap(row => row.suggestions);
+    if (dismissedPromptKeys.size === 0) { return all; }
+    return all.filter((s) => !dismissedPromptKeys.has(s.prompt.trim().toLowerCase()));
+  }, [activeChatId, composerSuggestionRows, dismissedPromptKeys]);
+
+  const handleDismissSuggestion = useCallback((suggestion: ComposerSuggestion) => {
+    setDismissedPromptKeys((prev) => {
+      const next = new Set(prev);
+      next.add(suggestion.prompt.trim().toLowerCase());
+      return next;
+    });
+    if (effectiveWorkspaceId) {
+      void api.workspace.dismissPromptSuggestion(effectiveWorkspaceId, suggestion.prompt);
+    }
+  }, [effectiveWorkspaceId]);
 
   const isComparePanelOpen = activeSubView === "compare";
   const chatWorkspaceClassName = "flex flex-1 min-w-0 min-h-0 overflow-hidden";
@@ -5295,14 +5313,17 @@ export default function ChatView() {
                   <WaterfallSuggestions
                     suggestions={waterfallSuggestions}
                     onSelect={(suggestion) => void handleComposerSuggestion(suggestion, false)}
+                    onDismiss={handleDismissSuggestion}
                   />
                   <div className="relative z-10 flex flex-col items-center gap-5">
-                    <MessageSquare size={48} className="text-[var(--text-secondary)] opacity-55" />
-                    <p className="text-lg font-medium tracking-[0.01em] text-[var(--text-primary)]">Select a chat or start a new one</p>
                     <div
                       ref={emptyStatePrivacyMenuRef}
                       className="relative flex flex-wrap justify-center gap-3"
                     >
+                      <span
+                        aria-hidden
+                        className="pointer-events-none absolute left-1/2 top-1/2 -z-10 h-20 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(255,255,255,0.35),rgba(var(--accent-color-rgb),0.25),transparent)] blur-2xl"
+                      />
                       <div className="flex overflow-hidden rounded-xl border border-[rgba(var(--accent-color-rgb),0.38)] bg-[var(--accent-color)] text-white shadow-[0_18px_44px_-24px_rgba(var(--accent-color-rgb),0.9)] ring-1 ring-white/10 transition-transform hover:-translate-y-0.5">
                         <button
                           type="button"

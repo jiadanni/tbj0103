@@ -35,6 +35,15 @@ pub async fn list_workspace_prompt_suggestions(
 }
 
 #[tauri::command]
+pub async fn dismiss_workspace_prompt_suggestion(
+    state: State<'_, DbState>,
+    workspace_id: String,
+    prompt: String,
+) -> Result<(), String> {
+    prompt_bank::dismiss_prompt(&state, &workspace_id, &prompt)
+}
+
+#[tauri::command]
 pub fn get_workspace_prompt_bank_status(
     state: State<'_, DbState>,
     workspace_id: String,
