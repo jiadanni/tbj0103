@@ -1136,6 +1136,8 @@ export const api = {
     generateWorkspacePrompts: (workspaceId: string, workspaceName: string, surveyData?: string | null) => invoke<string[]>("generate_workspace_prompts", { workspaceId, workspaceName, surveyData }),
     listPromptSuggestions: (workspaceId: string, limit = 12) =>
       invoke<PromptSuggestion[]>("list_workspace_prompt_suggestions", { workspaceId, limit }),
+    dismissPromptSuggestion: (workspaceId: string, prompt: string) =>
+      invoke<void>("dismiss_workspace_prompt_suggestion", { workspaceId, prompt }),
     getPromptBankStatus: (workspaceId: string) =>
       invoke<PromptBankStatus>("get_workspace_prompt_bank_status", { workspaceId }),
     startPromptBankJob: (workspaceId: string, targetCount = 120) =>

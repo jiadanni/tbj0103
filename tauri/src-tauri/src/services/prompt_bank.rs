@@ -790,6 +790,37 @@ async fn insert_prompt(
     Ok(changed > 0)
 }
 
+/// Record that the user dismissed (blacklisted) a starter prompt. Keyed on the
+/// normalized prompt text so it suppresses the prompt regardless of which source
+/// surfaced it (prompt bank, AI topic signature, or fallback). If the prompt is
+/// already in the bank its `dismissed_at` is stamped; otherwise a dismissed row is
+/// inserted, both hiding it from `list_suggestions` (which filters
+/// `dismissed_at IS NULL`) and retaining it as a negative signal for prompt quality.
+pub fn dismiss_prompt(db: &DbState, workspace_id: &str, prompt: &str) -> Result<(), String> {
+    let normalized = normalize_prompt(prompt);
+    if normalized.is_empty() {
+        return Ok(());
+    }
+    let now = now();
+    let conn = db.0.get().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO workspace_prompt_bank
+            (id, workspace_id, prompt, normalized_prompt, tags_json, source, quality_score, dismissed_at, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, '[]', 'manual', 0.0, ?5, ?5, ?5)
+         ON CONFLICT(workspace_id, normalized_prompt)
+         DO UPDATE SET dismissed_at = ?5, updated_at = ?5",
+        params![
+            uuid::Uuid::new_v4().to_string(),
+            workspace_id,
+            prompt.trim(),
+            normalized,
+            now,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 pub fn mark_job_failed(pool: &Pool<SqliteConnectionManager>, job_id: &str, error: &str) {
     if let Ok(conn) = pool.get() {
         let _ = conn.execute(
