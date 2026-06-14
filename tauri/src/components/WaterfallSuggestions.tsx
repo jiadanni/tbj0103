@@ -16,31 +16,29 @@ function iconFor(label: string): LucideIcon {
   return FileText;
 }
 
-// Slots that scatter the prompt cards around the centered button, matching the
-// mockup. Each card is anchored to its near edge (`side`) by a small `inset`, and
-// sits at vertical center `top`. Card WIDTH is computed so the inner edge never
-// crosses a reserved center gutter — this keeps the heading + button clear at any
-// pane width (including a narrow 1080px window), shrinking cards instead of
-// congesting the middle. `near`/`far` insets give the arc its splay: rows flanking
-// the button tuck closer to the edge, corners reach a touch further in.
+// Six slots (3 per side) that bow the prompt cards into an arc around the centered
+// button. Each card anchors to its near edge (`side`) by `inset` at vertical center
+// `top`. Card WIDTH fills the gap from that edge to a reserved center gutter, so the
+// heading + button stay clear at any pane width — cards shrink instead of crowding
+// the middle. The arc comes from varying inset by row: the MIDDLE row hugs the edge
+// (small inset, furthest toward the side) while the TOP and BOTTOM rows pull inward
+// (large inset), tracing a convex `‹ ›` bracket framing the button.
 type ArcSlot = { side: "left" | "right"; top: string; inset: string };
 
 // Half-width of the protected center zone (heading + button). A card's inner edge
 // stays at least this far from the container's horizontal center.
-const CENTER_GUTTER = "12.5rem";
+const CENTER_GUTTER = "11rem";
 
-const NEAR = "1.5rem"; // card sits near the pane edge
-const FAR = "3.5rem"; // card pulled slightly inward (corners)
+const EDGE = "1.5rem"; // middle row — hugs the pane edge (widest point of the arc)
+const PULLED = "5rem"; // top/bottom rows — pulled inward toward center
 
 const ARC_SLOTS: ArcSlot[] = [
-  { side: "left", top: "18%", inset: FAR },
-  { side: "left", top: "40%", inset: NEAR },
-  { side: "left", top: "62%", inset: NEAR },
-  { side: "left", top: "84%", inset: FAR },
-  { side: "right", top: "18%", inset: FAR },
-  { side: "right", top: "40%", inset: NEAR },
-  { side: "right", top: "62%", inset: NEAR },
-  { side: "right", top: "84%", inset: FAR },
+  { side: "left", top: "20%", inset: PULLED },
+  { side: "left", top: "50%", inset: EDGE },
+  { side: "left", top: "80%", inset: PULLED },
+  { side: "right", top: "20%", inset: PULLED },
+  { side: "right", top: "50%", inset: EDGE },
+  { side: "right", top: "80%", inset: PULLED },
 ];
 
 export function WaterfallSuggestions({ suggestions, onSelect }: WaterfallSuggestionsProps) {
@@ -65,7 +63,7 @@ export function WaterfallSuggestions({ suggestions, onSelect }: WaterfallSuggest
         const availableWidth = `calc(50cqw - ${CENTER_GUTTER} - ${slot.inset})`;
         const positionStyle: React.CSSProperties = {
           top: slot.top,
-          width: `clamp(8rem, ${availableWidth}, 18rem)`,
+          width: `clamp(11rem, ${availableWidth}, 18rem)`,
           transform: "translateY(-50%)",
           ...(slot.side === "left" ? { left: slot.inset } : { right: slot.inset }),
         };
