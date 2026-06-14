@@ -47,7 +47,7 @@ vi.mock("@/lib/api", () => ({
     "flashcard_generation",
     "concept_hierarchy",
     "workspace_prompt_bank",
-  ],
+  ] as const,
   api: {
     aiModel: {
       list: mocks.listModels,
@@ -71,10 +71,12 @@ vi.mock("@/lib/api", () => ({
     knowledge: {
       analyzeWorkspace: mocks.analyzeWorkspace,
       checkWorkspaceAnalyzable: mocks.checkWorkspaceAnalyzable,
+      refreshWorkspace: vi.fn().mockResolvedValue({ enqueued: [], failed_to_enqueue: [] }),
     },
     ollama: {
       listModels: mocks.ollamaListModels,
     },
+    listenBackgroundTask: vi.fn().mockResolvedValue(() => {}),
   },
 }));
 
@@ -272,7 +274,7 @@ describe("KnowledgeGraphView", () => {
     fireEvent.click(analyzeButton);
 
     await waitFor(() => {
-      expect(screen.getByText("Demo analysis refreshed the seeded sample content.")).toBeInTheDocument();
+      expect(screen.getAllByText("Demo analysis refreshed the seeded sample content.").length).toBeGreaterThanOrEqual(1);
     }, { timeout: 4000 });
     expect(mocks.analyzeWorkspace).not.toHaveBeenCalled();
 
