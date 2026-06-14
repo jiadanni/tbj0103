@@ -134,6 +134,11 @@ pub fn initialize_database_with_key(
         // that references conversation_summaries_old. Repair it before running
         // migrations so setup does not fail while parsing/dropping triggers.
         repair_dangling_quick_search_trigger(&conn)?;
+        // A v72 attempt that crashed mid-batch can leave an orphaned
+        // `memories_old` table behind, which makes every subsequent startup
+        // panic on v72's `RENAME TO memories_old`. Repair it before migrations
+        // run so v72 can re-apply cleanly.
+        repair_orphaned_memories_old(&conn)?;
         // Existing databases must migrate first so schema-level indexes do not
         // reference columns that are added by later migrations.
         run_migrations(&conn)?;
@@ -216,6 +221,53 @@ fn repair_dangling_quick_search_trigger(conn: &Connection) -> Result<()> {
          DELETE FROM sqlite_master
          WHERE type = 'trigger' AND name = 'quick_search_chat_sessions_au';
          PRAGMA writable_schema=OFF;",
+    )?;
+
+    Ok(())
+}
+
+/// Recover from a partially-applied v72 migration.
+///
+/// `v72_make_memories_workspace_nullable` rebuilds the `memories` table via
+/// `ALTER TABLE memories RENAME TO memories_old; CREATE TABLE memories ...;
+/// INSERT ... SELECT FROM memories_old; DROP TABLE memories_old;` inside a
+/// single `execute_batch`. That batch is not transactional, so if the process
+/// dies (or any statement fails) partway through, the `_migrations` row is
+/// never written and a `memories_old` table is left behind. The next startup
+/// re-runs v72 and panics on `RENAME TO memories_old` because that name is
+/// already taken.
+///
+/// This restores the pre-v72 state so v72 can re-apply exactly once:
+/// `memories_old` holds the original, pre-migration rows, so it is the source
+/// of truth. We discard any partial new `memories` table and rename
+/// `memories_old` back to `memories`. We only act when v72 is not yet recorded
+/// — once v72 has committed, no orphan should exist and we must not touch it.
+fn repair_orphaned_memories_old(conn: &Connection) -> Result<()> {
+    let v72_applied: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v72_make_memories_workspace_nullable'",
+        [],
+        |row| row.get(0),
+    )?;
+    if v72_applied != 0 {
+        return Ok(());
+    }
+
+    let has_memories_old: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'memories_old'",
+        [],
+        |row| row.get(0),
+    )?;
+    if has_memories_old == 0 {
+        return Ok(());
+    }
+
+    // `memories_old` is the original pre-v72 table. Drop any partial rebuild and
+    // restore it under the canonical name so the frozen v72 body runs cleanly.
+    conn.execute_batch(
+        "PRAGMA foreign_keys=OFF;
+         DROP TABLE IF EXISTS memories;
+         ALTER TABLE memories_old RENAME TO memories;
+         PRAGMA foreign_keys=ON;",
     )?;
 
     Ok(())
@@ -2759,5 +2811,109 @@ mod tests {
             vec!["l_valid_con_sec".to_string(), "l_valid_sec_ch".to_string()],
             "only valid part_of rows should survive"
         );
+    }
+
+    #[test]
+    fn recovers_from_orphaned_memories_old_after_crashed_v72() {
+        // Reproduce a database where the v72 rebuild crashed mid-batch: the
+        // `ALTER TABLE memories RENAME TO memories_old` ran, but the process
+        // died before `CREATE TABLE memories` / the `_migrations` insert. The
+        // result is an orphaned `memories_old` table, no `memories` table, and
+        // v72 still unrecorded. Before the fix, the next startup panicked with
+        // "there is already another table or index with this name: memories_old"
+        // when v72 re-ran its RENAME.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("orphaned-memories.db");
+        let conn = Connection::open(&path).expect("open db");
+
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS _migrations (
+                name TEXT PRIMARY KEY NOT NULL,
+                applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE TABLE IF NOT EXISTS workspaces (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL DEFAULT 'My Workspace'
+            );
+            -- The orphan: pre-v72 `memories` shape, already renamed aside by the
+            -- crashed migration. No live `memories` table exists.
+            CREATE TABLE memories_old (
+                id TEXT PRIMARY KEY NOT NULL,
+                workspace_id TEXT,
+                folder_id TEXT NOT NULL DEFAULT '',
+                content TEXT NOT NULL,
+                memory_type TEXT NOT NULL DEFAULT 'fact',
+                scope TEXT NOT NULL DEFAULT 'workspace',
+                source_session_id TEXT,
+                is_pinned INTEGER NOT NULL DEFAULT 0,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                reinforcement_count INTEGER NOT NULL DEFAULT 1,
+                last_reinforced_at TEXT,
+                superseded_by TEXT,
+                superseded_at TEXT,
+                superseded_reason TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );",
+        )
+        .expect("create legacy schema with orphaned memories_old");
+
+        conn.execute(
+            "INSERT INTO workspaces (id, name) VALUES ('ws-1', 'Workspace')",
+            [],
+        )
+        .expect("insert workspace");
+        conn.execute(
+            "INSERT INTO memories_old (id, workspace_id, content) VALUES ('mem-1', 'ws-1', 'remembered fact')",
+            [],
+        )
+        .expect("insert orphaned memory row");
+
+        // Seed every migration as applied EXCEPT v72, matching the crash state.
+        for name in ALL_MIGRATION_NAMES {
+            if *name == "v72_make_memories_workspace_nullable" {
+                continue;
+            }
+            conn.execute(
+                "INSERT INTO _migrations(name) VALUES(?1)",
+                rusqlite::params![name],
+            )
+            .expect("seed migration");
+        }
+        drop(conn);
+
+        // Must not panic; the pre-migration repair restores `memories`, then v72
+        // re-applies cleanly.
+        let pool = initialize_database(&path).expect("init must recover, not panic");
+        let conn = pool.get().expect("get connection");
+
+        // The orphan is gone and the canonical table exists with data preserved.
+        let orphan_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'memories_old'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count memories_old");
+        assert_eq!(orphan_count, 0, "orphaned memories_old should be cleaned up");
+
+        let content: String = conn
+            .query_row(
+                "SELECT content FROM memories WHERE id = 'mem-1'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("original memory row should survive the recovery");
+        assert_eq!(content, "remembered fact");
+
+        // v72 should now be recorded so it never runs again.
+        let v72_applied: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM _migrations WHERE name = 'v72_make_memories_workspace_nullable'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count v72 migration");
+        assert_eq!(v72_applied, 1, "v72 should be recorded after recovery");
     }
 }
