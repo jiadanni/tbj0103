@@ -325,17 +325,24 @@ pub fn write_session_file(
 
 /// Delete both file variants (plain + encrypted) for a session, from both the
 /// workspace/project subdirectory and the legacy flat location.
-pub fn delete_session_file(conn: &Connection, chats_dir: &Path, session_id: &str) {
+///
+/// Takes pre-captured `variants` (see [`capture_session_file_variants`]) rather
+/// than resolving paths here: the subdirectory path is derived from the
+/// session's DB row, so callers that delete the row must capture the paths
+/// *before* the `DELETE` or the lookup falls back to the flat location and
+/// misses the real file.
+pub fn delete_session_file_variants(
+    chats_dir: &Path,
+    variants: &SessionFileVariants,
+    session_id: &str,
+) {
     // Delete from the current (subdirectory) location
-    let _ = std::fs::remove_file(session_file_path_for_session(
-        conn, chats_dir, session_id, false,
-    ));
-    let _ = std::fs::remove_file(session_file_path_for_session(
-        conn, chats_dir, session_id, true,
-    ));
+    let _ = std::fs::remove_file(&variants.plain);
+    let _ = std::fs::remove_file(&variants.encrypted);
     // Also clean up any legacy flat-dir files
     let _ = std::fs::remove_file(session_file_path(chats_dir, session_id, false));
     let _ = std::fs::remove_file(session_file_path(chats_dir, session_id, true));
+    prune_empty_parent_dirs(chats_dir, &variants.plain);
 }
 
 /// Read and optionally decrypt a chat JSON file.

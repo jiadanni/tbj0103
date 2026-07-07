@@ -88,9 +88,13 @@ pub fn search_chat_sessions(
 }
 
 #[tauri::command]
-pub fn get_chat_session(state: State<DbState>, id: String) -> Result<Option<ChatSession>, String> {
+pub fn get_chat_session(
+    state: State<DbState>,
+    workspace_id: String,
+    id: String,
+) -> Result<Option<ChatSession>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    chat_service::get_session(&conn, &id)
+    chat_service::get_session(&conn, &workspace_id, &id)
 }
 
 #[tauri::command]
@@ -143,9 +147,13 @@ pub fn get_related_chats(
 }
 
 #[tauri::command]
-pub fn delete_chat_session(state: State<DbState>, id: String) -> Result<(), String> {
+pub fn delete_chat_session(
+    state: State<DbState>,
+    workspace_id: String,
+    id: String,
+) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    chat_service::soft_delete(&conn, &id)
+    chat_service::soft_delete(&conn, &workspace_id, &id)
 }
 
 #[tauri::command]
@@ -153,9 +161,10 @@ pub fn hard_delete_chat_session(
     state: State<DbState>,
     workspace_id: String,
     id: String,
+    chats_dir_state: State<ChatsDirState>,
 ) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    chat_service::hard_delete(&conn, &workspace_id, &id)
+    chat_service::hard_delete(&conn, &workspace_id, &id, &chats_dir_state.0)
 }
 
 #[tauri::command]
@@ -179,9 +188,13 @@ pub fn restore_chat_session(
 }
 
 #[tauri::command]
-pub fn empty_recycle_bin(state: State<DbState>, workspace_id: String) -> Result<(), String> {
+pub fn empty_recycle_bin(
+    state: State<DbState>,
+    workspace_id: String,
+    chats_dir_state: State<ChatsDirState>,
+) -> Result<(), String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    chat_service::empty_recycle_bin(&conn, &workspace_id)
+    chat_service::empty_recycle_bin(&conn, &workspace_id, &chats_dir_state.0)
 }
 
 #[tauri::command]
@@ -290,8 +303,10 @@ pub fn get_messages(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn update_chat_session(
     state: State<DbState>,
+    workspace_id: String,
     id: String,
     title: Option<String>,
     is_pinned: Option<bool>,
@@ -303,6 +318,7 @@ pub fn update_chat_session(
     let conn = state.0.get().map_err(|e| e.to_string())?;
     chat_service::update_session(
         &conn,
+        &workspace_id,
         &id,
         title,
         is_pinned,

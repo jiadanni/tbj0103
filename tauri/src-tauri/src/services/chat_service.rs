@@ -230,15 +230,19 @@ pub fn search_sessions(
         .map_err(|e| e.to_string())
 }
 
-pub fn get_session(conn: &Connection, id: &str) -> Result<Option<ChatSession>, String> {
+pub fn get_session(
+    conn: &Connection,
+    workspace_id: &str,
+    id: &str,
+) -> Result<Option<ChatSession>, String> {
     let result = conn.query_row(
         "SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned,
                 is_incognito, exclude_from_analytics, is_deleted, deleted_at,
                 last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
                 is_unread, created_at, updated_at,
                 message_count
-         FROM chat_sessions WHERE id = ?1",
-        rusqlite::params![id],
+         FROM chat_sessions WHERE id = ?1 AND workspace_id = ?2",
+        rusqlite::params![id, workspace_id],
         row_to_session,
     );
 
@@ -249,24 +253,38 @@ pub fn get_session(conn: &Connection, id: &str) -> Result<Option<ChatSession>, S
     }
 }
 
-pub fn soft_delete(conn: &Connection, id: &str) -> Result<(), String> {
+pub fn soft_delete(conn: &Connection, workspace_id: &str, id: &str) -> Result<(), String> {
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "UPDATE chat_sessions
          SET is_deleted = 1, deleted_at = ?1, updated_at = ?1
-         WHERE id = ?2",
-        rusqlite::params![now, id],
+         WHERE id = ?2 AND workspace_id = ?3",
+        rusqlite::params![now, id, workspace_id],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-pub fn hard_delete(conn: &Connection, workspace_id: &str, id: &str) -> Result<(), String> {
-    conn.execute(
-        "DELETE FROM chat_sessions WHERE id = ?1 AND workspace_id = ?2",
-        rusqlite::params![id, workspace_id],
-    )
-    .map_err(|e| e.to_string())?;
+pub fn hard_delete(
+    conn: &Connection,
+    workspace_id: &str,
+    id: &str,
+    chats_dir: &Path,
+) -> Result<(), String> {
+    // Capture file paths before the DELETE — resolution reads the session row.
+    let variants =
+        chat_file_store::capture_session_file_variants(conn, chats_dir, &[id.to_string()]);
+    let deleted = conn
+        .execute(
+            "DELETE FROM chat_sessions WHERE id = ?1 AND workspace_id = ?2",
+            rusqlite::params![id, workspace_id],
+        )
+        .map_err(|e| e.to_string())?;
+    if deleted > 0 {
+        if let Some(v) = variants.get(id) {
+            chat_file_store::delete_session_file_variants(chats_dir, v, id);
+        }
+    }
     Ok(())
 }
 
@@ -306,12 +324,35 @@ pub fn restore(conn: &Connection, workspace_id: &str, id: &str) -> Result<(), St
     Ok(())
 }
 
-pub fn empty_recycle_bin(conn: &Connection, workspace_id: &str) -> Result<(), String> {
+pub fn empty_recycle_bin(
+    conn: &Connection,
+    workspace_id: &str,
+    chats_dir: &Path,
+) -> Result<(), String> {
+    let mut stmt = conn
+        .prepare("SELECT id FROM chat_sessions WHERE workspace_id = ?1 AND is_deleted = 1")
+        .map_err(|e| e.to_string())?;
+    let ids = stmt
+        .query_map(rusqlite::params![workspace_id], |row| {
+            row.get::<_, String>(0)
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    drop(stmt);
+
+    // Capture file paths before the DELETE — resolution reads the session rows.
+    let variants = chat_file_store::capture_session_file_variants(conn, chats_dir, &ids);
     conn.execute(
         "DELETE FROM chat_sessions WHERE workspace_id = ?1 AND is_deleted = 1",
         rusqlite::params![workspace_id],
     )
     .map_err(|e| e.to_string())?;
+    for id in &ids {
+        if let Some(v) = variants.get(id) {
+            chat_file_store::delete_session_file_variants(chats_dir, v, id);
+        }
+    }
     Ok(())
 }
 
@@ -623,8 +664,10 @@ pub fn get_messages(
         .map_err(|e| e.to_string())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn update_session(
     conn: &Connection,
+    workspace_id: &str,
     id: &str,
     title: Option<String>,
     is_pinned: Option<bool>,
@@ -643,7 +686,7 @@ pub fn update_session(
             exclude_from_analytics = COALESCE(?5, exclude_from_analytics),
             is_unread = COALESCE(?6, is_unread),
             updated_at = ?7
-         WHERE id = ?8",
+         WHERE id = ?8 AND workspace_id = ?9",
         rusqlite::params![
             title,
             is_pinned.map(|value| value as i32),
@@ -653,6 +696,7 @@ pub fn update_session(
             is_unread.map(|v| v as i32),
             now,
             id,
+            workspace_id,
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -889,6 +933,7 @@ mod tests {
     use crate::db::test_utils::tests::setup_test_db;
     use crate::models::workspace::CreateWorkspaceRequest;
     use crate::services::workspace_service;
+    use std::path::PathBuf;
 
     fn setup_workspace(conn: &Connection) -> String {
         let ws = workspace_service::create(
@@ -923,9 +968,14 @@ mod tests {
         let created = create_session(&conn, req).unwrap();
         assert_eq!(created.title, "Test Chat");
 
-        let fetched = get_session(&conn, &created.id).unwrap().unwrap();
+        let fetched = get_session(&conn, &ws_id, &created.id).unwrap().unwrap();
         assert_eq!(fetched.id, created.id);
         assert_eq!(fetched.workspace_id, ws_id);
+
+        // Lookups scoped to a different workspace must not see the session.
+        assert!(get_session(&conn, "other-workspace", &created.id)
+            .unwrap()
+            .is_none());
     }
 
     #[test]
@@ -996,7 +1046,7 @@ mod tests {
         )
         .unwrap();
 
-        soft_delete(&conn, &s.id).unwrap();
+        soft_delete(&conn, &ws_id, &s.id).unwrap();
         assert_eq!(
             list_sessions(&conn, &ws_id, "", None, None, false)
                 .unwrap()
@@ -1012,6 +1062,91 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    fn create_named_session(conn: &Connection, ws_id: &str, title: &str) -> ChatSession {
+        create_session(
+            conn,
+            CreateChatSessionRequest {
+                workspace_id: ws_id.to_string(),
+                folder_id: "".to_string(),
+                title: Some(title.to_string()),
+                model_name: None,
+                system_prompt: None,
+                is_incognito: None,
+                exclude_from_analytics: None,
+                parent_session_id: None,
+                branch_message_id: None,
+            },
+        )
+        .unwrap()
+    }
+
+    /// Write dummy chat files at every location a session's file may live,
+    /// returning the paths so the test can assert they were removed.
+    fn write_session_files(conn: &Connection, chats_dir: &Path, session_id: &str) -> Vec<PathBuf> {
+        let variants =
+            chat_file_store::capture_session_file_variants(conn, chats_dir, &[session_id
+                .to_string()]);
+        let v = variants.get(session_id).unwrap();
+        let legacy_plain = chat_file_store::session_file_path(chats_dir, session_id, false);
+        let legacy_enc = chat_file_store::session_file_path(chats_dir, session_id, true);
+        let paths = vec![
+            v.plain.clone(),
+            v.encrypted.clone(),
+            legacy_plain,
+            legacy_enc,
+        ];
+        for path in &paths {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).unwrap();
+            }
+            std::fs::write(path, b"{}").unwrap();
+        }
+        paths
+    }
+
+    #[test]
+    fn test_hard_delete_removes_session_files() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        let ws_id = setup_workspace(&conn);
+        let chats_dir = tempfile::tempdir().unwrap();
+
+        let s = create_named_session(&conn, &ws_id, "Permanently deleted");
+        let paths = write_session_files(&conn, chats_dir.path(), &s.id);
+
+        hard_delete(&conn, &ws_id, &s.id, chats_dir.path()).unwrap();
+
+        assert!(get_session(&conn, &ws_id, &s.id).unwrap().is_none());
+        for path in &paths {
+            assert!(!path.exists(), "file should be deleted: {}", path.display());
+        }
+    }
+
+    #[test]
+    fn test_empty_recycle_bin_removes_session_files() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        let ws_id = setup_workspace(&conn);
+        let chats_dir = tempfile::tempdir().unwrap();
+
+        let deleted = create_named_session(&conn, &ws_id, "In recycle bin");
+        let kept = create_named_session(&conn, &ws_id, "Still active");
+        let deleted_paths = write_session_files(&conn, chats_dir.path(), &deleted.id);
+        let kept_paths = write_session_files(&conn, chats_dir.path(), &kept.id);
+        soft_delete(&conn, &ws_id, &deleted.id).unwrap();
+
+        empty_recycle_bin(&conn, &ws_id, chats_dir.path()).unwrap();
+
+        assert_eq!(list_deleted(&conn, &ws_id, false).unwrap().len(), 0);
+        for path in &deleted_paths {
+            assert!(!path.exists(), "file should be deleted: {}", path.display());
+        }
+        // Files for sessions that were not in the recycle bin must survive.
+        for path in &kept_paths {
+            assert!(path.exists(), "file should survive: {}", path.display());
+        }
     }
 
     #[test]
