@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiModel {
@@ -48,6 +48,14 @@ pub struct UpdateAiModelRequest {
     pub enabled: Option<bool>,
     pub is_hidden: Option<bool>,
     /// Optional per-model `num_ctx`. `Some(None)` clears the override.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_double_option")]
     pub context_size: Option<Option<i64>>,
+}
+
+pub fn deserialize_double_option<'de, T, D>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    Ok(Some(Option::<T>::deserialize(deserializer)?))
 }
