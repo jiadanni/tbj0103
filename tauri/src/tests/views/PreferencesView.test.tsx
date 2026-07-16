@@ -275,6 +275,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 vi.mock("@/views/WorkspaceSettingsView", () => ({ default: () => <div>Workspace Settings</div> }));
 vi.mock("@/views/BackupSettingsSection", () => ({ default: () => <div>Backup Settings</div> }));
+vi.mock("@/views/BoomScrollExportSection", () => ({ default: () => <div>Boom Scroll Export</div> }));
 vi.mock("@/views/ImportSettingsSection", () => ({ default: () => <div>Import Settings</div> }));
 
 describe("PreferencesView", () => {

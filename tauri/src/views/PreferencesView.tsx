@@ -30,6 +30,7 @@ import { type NavigationPresentation, useWorkspaceStore } from "../stores/worksp
 const WorkspaceSettingsView = React.lazy(() => import("./WorkspaceSettingsView"));
 const BackupSettingsSection = React.lazy(() => import("./BackupSettingsSection"));
 const GlobalBackupSection = React.lazy(() => import("./GlobalBackupSection"));
+const BoomScrollExportSection = React.lazy(() => import("./BoomScrollExportSection"));
 const ImportSettingsSection = React.lazy(() => import("./ImportSettingsSection"));
 const GlobalMemoryView = React.lazy(() => import("./GlobalMemoryView"));
 const LogsView = React.lazy(() => import("./LogsView"));
@@ -201,7 +202,7 @@ const TAB_KEYWORDS: Record<string, string[]> = {
   ],
   workspaces: ["Workspaces", "Workspace management"],
   data: ["Data Controls", "Reset AI-Inferred Workspace Data", "Derived data", "Global maintenance"],
-  backup: ["Workspace Backup", "Global Backup", "Backup directory", "Schedule"],
+  backup: ["Workspace Backup", "Global Backup", "Backup directory", "Schedule", "Boom Scroll"],
   import: ["Import", "Migrate"],
   mcp: ["Model Context Protocol", "MCP Server", "Server Name", "Command"],
   memory: ["Global Memory", "Memory entries"],
@@ -6898,6 +6899,13 @@ export default function PreferencesView() {
                     <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Global Backup</h2>
                     <React.Suspense fallback={null}>
                       <GlobalBackupSection />
+                    </React.Suspense>
+                  </div>
+                  {/* Boom Scroll deck export section */}
+                  <div className="border-t border-[var(--border-color)] pt-8">
+                    <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Boom Scroll</h2>
+                    <React.Suspense fallback={null}>
+                      <BoomScrollExportSection />
                     </React.Suspense>
                   </div>
                 </div>

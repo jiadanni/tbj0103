@@ -201,3 +201,155 @@ pub fn export_obsidian_vault(
 
     Ok(files)
 }
+
+pub(crate) fn build_feed_deck(
+    conn: &rusqlite::Connection,
+    workspace_id: &str,
+) -> Result<String, String> {
+    let workspace: serde_json::Value = conn
+        .query_row(
+            "SELECT id, name FROM workspaces WHERE id = ?1",
+            rusqlite::params![workspace_id],
+            |r| {
+                Ok(serde_json::json!({
+                    "id": r.get::<_, String>(0)?,
+                    "name": r.get::<_, String>(1)?,
+                }))
+            },
+        )
+        .map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT lc.id, lc.front, lc.back, ft.topic
+             FROM learning_cards lc
+             LEFT JOIN flashcard_topics ft ON ft.id = lc.topic_id
+             WHERE lc.workspace_id = ?1
+             ORDER BY lc.created_at",
+        )
+        .map_err(|e| e.to_string())?;
+    let cards: Vec<serde_json::Value> = stmt
+        .query_map(rusqlite::params![workspace_id], |r| {
+            Ok(serde_json::json!({
+                "id": r.get::<_, String>(0)?,
+                "kind": "flashcard",
+                "front": r.get::<_, String>(1)?,
+                "back": r.get::<_, String>(2)?,
+                "topic": r.get::<_, Option<String>>(3)?,
+            }))
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
+
+    if cards.is_empty() {
+        return Err("No flashcards in this workspace".to_string());
+    }
+
+    let deck = serde_json::json!({
+        "format": "aetherium.boomscroll.deck",
+        "version": 1,
+        "exported_at": chrono::Utc::now().to_rfc3339(),
+        "workspace": workspace,
+        "card_count": cards.len(),
+        "cards": cards,
+    });
+    serde_json::to_string_pretty(&deck).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn export_feed_deck(
+    auth: State<AuthState>,
+    state: State<DbState>,
+    req: ExportRequest,
+) -> Result<String, String> {
+    require_auth(&auth, &state)?;
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    build_feed_deck(&conn, &req.workspace_id)
+}
+
+#[cfg(test)]
+mod feed_deck_tests {
+    use super::*;
+    use crate::db::test_utils::tests::setup_test_db;
+
+    fn insert_workspace(conn: &rusqlite::Connection, id: &str, name: &str) {
+        conn.execute(
+            "INSERT OR IGNORE INTO workspaces (id, name, created_at, updated_at)
+             VALUES (?1, ?2, datetime('now'), datetime('now'))",
+            rusqlite::params![id, name],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn builds_versioned_deck_with_topic_join() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        insert_workspace(&conn, "ws_deck", "Deck WS");
+        conn.execute(
+            "INSERT INTO flashcard_topics (id, workspace_id, topic) VALUES ('t1', 'ws_deck', 'Ownership')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            crate::commands::flashcard::INSERT_CARD_SQL,
+            rusqlite::params![
+                "c1",
+                "ws_deck",
+                "What is borrowing?",
+                "A reference without ownership",
+                "manual",
+                Option::<String>::None,
+                Some("t1"),
+                2.5_f64,
+                0_i64,
+                0_i64,
+                "2026-01-01",
+                Option::<String>::None,
+                "2026-01-01T00:00:00Z"
+            ],
+        )
+        .unwrap();
+        conn.execute(
+            crate::commands::flashcard::INSERT_CARD_SQL,
+            rusqlite::params![
+                "c2",
+                "ws_deck",
+                "Front 2",
+                "Back 2",
+                "manual",
+                Option::<String>::None,
+                Option::<String>::None,
+                2.5_f64,
+                0_i64,
+                0_i64,
+                "2026-01-01",
+                Option::<String>::None,
+                "2026-01-02T00:00:00Z"
+            ],
+        )
+        .unwrap();
+
+        let json = build_feed_deck(&conn, "ws_deck").unwrap();
+        let deck: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(deck["format"], "aetherium.boomscroll.deck");
+        assert_eq!(deck["version"], 1);
+        assert_eq!(deck["card_count"], 2);
+        assert_eq!(deck["workspace"]["name"], "Deck WS");
+        let cards = deck["cards"].as_array().unwrap();
+        assert_eq!(cards.len(), 2);
+        assert_eq!(cards[0]["kind"], "flashcard");
+        assert_eq!(cards[0]["topic"], "Ownership");
+        assert!(cards[1]["topic"].is_null());
+    }
+
+    #[test]
+    fn empty_workspace_errors() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        insert_workspace(&conn, "ws_empty", "Empty WS");
+        let err = build_feed_deck(&conn, "ws_empty").unwrap_err();
+        assert!(err.contains("No flashcards"));
+    }
+}

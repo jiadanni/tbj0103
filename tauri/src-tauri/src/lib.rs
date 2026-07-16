@@ -433,6 +433,7 @@ pub fn run() {
             commands::export::export_markdown,
             commands::export::export_json,
             commands::export::export_obsidian_vault,
+            commands::export::export_feed_deck,
             // Roadmap export
             commands::roadmap_export::export_roadmap_markdown,
             commands::roadmap_export::export_roadmap_json,
