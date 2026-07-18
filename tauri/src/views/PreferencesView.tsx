@@ -1640,6 +1640,13 @@ type JobCadenceField = {
   gatedBy?: keyof AppSettings;
 };
 
+/**
+ * Jobs flagged `structured` must parse strict JSON out of the model response.
+ * Models under ~4B parameters routinely emit invalid JSON (single quotes,
+ * broken keys), so every run fails at the parse step — warn before it happens.
+ */
+const STRUCTURED_OUTPUT_MIN_PARAMS_B = 4;
+
 const INFERENCE_JOBS_CATALOG: {
   job_key: string;
   model_setting: keyof AppSettings;
@@ -1648,6 +1655,7 @@ const INFERENCE_JOBS_CATALOG: {
   tokens: string;
   note: string;
   manual?: boolean;
+  structured?: boolean;
   cadence?: JobCadenceField[];
 }[] = [
   {
@@ -1657,6 +1665,7 @@ const INFERENCE_JOBS_CATALOG: {
     description: "Extract durable facts from finished chats",
     tokens: "~200–1,000 tokens input",
     note: "2k context OK",
+    structured: true,
     cadence: [
       { setting: "memory_extraction_threshold", label: "After N messages", min: 2, max: 50, fallback: 5 },
       { setting: "memory_extraction_idle_minutes", label: "Idle minutes before run", min: 1, max: 60, fallback: 5 },
@@ -1674,7 +1683,7 @@ const INFERENCE_JOBS_CATALOG: {
       { setting: "summarization_max_sessions", label: "Max sessions per tick", min: 1, max: 20, fallback: 5 },
     ],
   },
-  { job_key: "flashcard_generation", model_setting: "flashcard_model", label: "Flashcard Generation", description: "Generate spaced-repetition cards from topics", tokens: "~100–200 tokens input", note: "2k context OK" },
+  { job_key: "flashcard_generation", model_setting: "flashcard_model", label: "Flashcard Generation", description: "Generate spaced-repetition cards from topics", tokens: "~100–200 tokens input", note: "2k context OK", structured: true },
   {
     job_key: "workspace_glossary",
     model_setting: "glossary_model",
@@ -1682,6 +1691,7 @@ const INFERENCE_JOBS_CATALOG: {
     description: "Refresh per-workspace term definitions",
     tokens: "~800–2,000 tokens input",
     note: "≥4k context recommended",
+    structured: true,
     cadence: [
       { setting: "workspace_glossary_refresh_interval_minutes", label: "Refresh every (minutes)", min: 5, max: 240, fallback: 60 },
     ],
@@ -1693,6 +1703,7 @@ const INFERENCE_JOBS_CATALOG: {
     description: "Find undefined terms in recent chats",
     tokens: "~400–1,500 tokens input",
     note: "2k context OK",
+    structured: true,
     cadence: [
       { setting: "hover_definition_scan_enabled", label: "Scan replies for unresolved terminology", min: 0, max: 1, fallback: 1, kind: "toggle" },
       { setting: "hover_definition_scan_max_sessions", label: "Max sessions scanned per tick", min: 1, max: 20, fallback: 3, gatedBy: "hover_definition_scan_enabled" },
@@ -1705,6 +1716,7 @@ const INFERENCE_JOBS_CATALOG: {
     description: "Refresh per-workspace prompt suggestions",
     tokens: "~1,000–3,000 tokens input",
     note: "≥4k context recommended",
+    structured: true,
     cadence: [
       { setting: "topic_analysis_interval_minutes", label: "Refresh every (minutes)", min: 5, max: 120, fallback: 30 },
     ],
@@ -1996,6 +2008,27 @@ function InferenceJobsCard({
                   : null;
                 const heavyParamsLabel = heavyParams != null ? formatParams(heavyParams) : null;
 
+                // Structured jobs parse strict JSON from the model. Warn when
+                // the model that will actually run (explicit small model, or
+                // the background-model fallback) is below the reliability floor.
+                const effectiveModelId =
+                  smallModel ||
+                  (dbSettings.background_model as string) ||
+                  ([...eligibleModels].sort((a, b) => a.priority - b.priority)[0]?.model_id ?? "");
+                const effectiveOllamaMeta = effectiveModelId
+                  ? ollamaModels.find((om) => om.name === effectiveModelId)
+                  : null;
+                const effectiveParams = effectiveModelId
+                  ? parseModelParamsB(effectiveModelId)
+                    ?? parseModelParamsB(effectiveOllamaMeta?.details?.parameter_size ?? "")
+                  : null;
+                const structuredWarning =
+                  job.structured &&
+                  effectiveParams != null &&
+                  effectiveParams < STRUCTURED_OUTPUT_MIN_PARAMS_B
+                    ? `${resolveModelDisplayName(effectiveModelId, modelLabels, aiModels)} (${formatParams(effectiveParams) ?? "small"}) is below the ~${STRUCTURED_OUTPUT_MIN_PARAMS_B}B floor for this job — models this small usually emit invalid JSON, so runs will fail. Pick a ${STRUCTURED_OUTPUT_MIN_PARAMS_B}B+ model${smallModel ? "" : " or change the background model"}.`
+                    : null;
+
                 const failure = lastErrors.get(job.job_key);
 
                 return (
@@ -2077,6 +2110,11 @@ function InferenceJobsCard({
                             {smallParamsLabel && <span>{smallParamsLabel}</span>}
                             {smallParamsLabel && smallFitMeta.label && <span>·</span>}
                             {smallFitMeta.label && <span className={`font-medium ${smallFitMeta.textClassName}`}>{smallFitMeta.label}</span>}
+                          </div>
+                        )}
+                        {structuredWarning && (
+                          <div className="mt-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] leading-snug text-amber-300">
+                            {structuredWarning}
                           </div>
                         )}
                       </div>
@@ -3268,6 +3306,20 @@ export default function PreferencesView() {
           )}
         </div>
       </div>
+
+      {(() => {
+        const bgId = dbSettings.background_model as string | undefined;
+        if (!bgId) {return null;}
+        const bgMeta = ollamaModels.find((om) => om.name === bgId);
+        const bgParams = parseModelParamsB(bgId) ?? parseModelParamsB(bgMeta?.details?.parameter_size ?? "");
+        if (bgParams == null || bgParams >= STRUCTURED_OUTPUT_MIN_PARAMS_B) {return null;}
+        return (
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-snug text-amber-300">
+            <span className="font-semibold">Background model is very small.</span>{" "}
+            {resolveModelDisplayName(bgId, modelLabels, aiModels)} ({formatParams(bgParams) ?? "under 1B"}) is below the ~{STRUCTURED_OUTPUT_MIN_PARAMS_B}B floor for structured jobs (flashcards, glossary, starter prompts, memory extraction) — models this small usually emit invalid JSON, so those runs fail. Pick a {STRUCTURED_OUTPUT_MIN_PARAMS_B}B+ BG Default, or set per-job models in Inference Jobs.
+          </div>
+        );
+      })()}
 
       {aiModels.length === 0 ? (
         <p className="text-xs text-[var(--text-muted)] py-2">No models configured. Add one above to set up priority ordering.</p>
