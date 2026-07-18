@@ -1,6 +1,6 @@
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::{Connection, Result};
+use rusqlite::{Connection, OptionalExtension, Result};
 use std::collections::BTreeSet;
 use std::path::Path;
 
@@ -88,6 +88,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v72_make_memories_workspace_nullable",
     "v73_repair_quick_search_chat_sessions_au",
     "v74_inference_job_runs",
+    "v75_fix_workspace_fk_shapes",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -2243,6 +2244,194 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    // v75: repair workspace-scoped tables whose shape drifted on upgraded
+    // databases. Two historical defects, both invisible to `cargo check` and
+    // both blocking every INSERT while features appeared to "work":
+    //   1. `learning_cards.workspace_id` still carried the legacy FK to
+    //      "folders" (a column rename kept the old constraint), so inserting a
+    //      card with a real workspace id failed `FOREIGN KEY constraint failed`.
+    //   2. `uploaded_documents`, `web_captures`, `audio_transcriptions`, and
+    //      `project_notes` kept a legacy `NOT NULL project_id/folder_id`
+    //      FK column that current INSERTs never populate, while their bolted-on
+    //      `workspace_id` column had no FK at all.
+    // Each table is rebuilt to the schema.sql shape only when the drift marker
+    // is present, so fresh installs and already-repaired databases skip the
+    // rebuild entirely (idempotent re-runs).
+    let applied_v75: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v75_fix_workspace_fk_shapes'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v75 == 0 {
+        v75_fix_workspace_fk_shapes(conn)?;
+        conn.execute(
+            "INSERT INTO _migrations(name) VALUES('v75_fix_workspace_fk_shapes')",
+            [],
+        )?;
+    }
+
+    Ok(())
+}
+
+/// Returns true when `table`'s current DDL is missing the healthy
+/// `workspace_id TEXT NOT NULL REFERENCES workspaces` shape.
+fn v75_table_needs_rebuild(conn: &Connection, table: &str) -> Result<bool> {
+    let sql: Option<String> = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?1",
+            rusqlite::params![table],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(sql) = sql else {
+        // Table absent (very old DB before its introduction) — schema.sql
+        // creates it correctly on this same startup, nothing to rebuild.
+        return Ok(false);
+    };
+    let normalized = sql.split_whitespace().collect::<Vec<_>>().join(" ");
+    Ok(!normalized.contains("workspace_id TEXT NOT NULL REFERENCES workspaces"))
+}
+
+fn v75_fix_workspace_fk_shapes(conn: &Connection) -> Result<()> {
+    if v75_table_needs_rebuild(conn, "learning_cards")? {
+        conn.execute_batch(
+            "PRAGMA foreign_keys=OFF;
+             CREATE TABLE learning_cards_v75 (
+                 id TEXT PRIMARY KEY NOT NULL,
+                 workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                 front TEXT NOT NULL,
+                 back TEXT NOT NULL,
+                 source_type TEXT NOT NULL DEFAULT 'manual',
+                 source_id TEXT,
+                 topic_id TEXT,
+                 ease_factor REAL NOT NULL DEFAULT 2.5,
+                 interval INTEGER NOT NULL DEFAULT 1,
+                 repetitions INTEGER NOT NULL DEFAULT 0,
+                 next_review_date TEXT NOT NULL DEFAULT (date('now')),
+                 last_reviewed_at TEXT,
+                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
+             );
+             INSERT INTO learning_cards_v75 (id, workspace_id, front, back, source_type, source_id, topic_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at)
+             SELECT id, workspace_id, front, back, source_type, source_id, topic_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at
+             FROM learning_cards
+             WHERE workspace_id IN (SELECT id FROM workspaces);
+             DROP TABLE learning_cards;
+             ALTER TABLE learning_cards_v75 RENAME TO learning_cards;
+             CREATE INDEX IF NOT EXISTS idx_learning_cards_review ON learning_cards(next_review_date);
+             CREATE INDEX IF NOT EXISTS idx_learning_cards_workspace_review ON learning_cards(workspace_id, next_review_date);
+             PRAGMA foreign_keys=ON;",
+        )?;
+    }
+
+    if v75_table_needs_rebuild(conn, "uploaded_documents")? {
+        conn.execute_batch(
+            "PRAGMA foreign_keys=OFF;
+             CREATE TABLE uploaded_documents_v75 (
+                 id TEXT PRIMARY KEY NOT NULL,
+                 workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                 filename TEXT NOT NULL,
+                 file_type TEXT NOT NULL,
+                 file_size INTEGER NOT NULL DEFAULT 0,
+                 content TEXT NOT NULL DEFAULT '',
+                 summary TEXT,
+                 is_processed INTEGER NOT NULL DEFAULT 0,
+                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+             );
+             INSERT INTO uploaded_documents_v75 (id, workspace_id, filename, file_type, file_size, content, summary, is_processed, created_at, updated_at)
+             SELECT id, workspace_id, filename, file_type, file_size, content, summary, is_processed, created_at, updated_at
+             FROM uploaded_documents
+             WHERE workspace_id IN (SELECT id FROM workspaces);
+             DROP TABLE uploaded_documents;
+             ALTER TABLE uploaded_documents_v75 RENAME TO uploaded_documents;
+             CREATE INDEX IF NOT EXISTS idx_uploaded_docs_workspace ON uploaded_documents(workspace_id);
+             PRAGMA foreign_keys=ON;",
+        )?;
+    }
+
+    if v75_table_needs_rebuild(conn, "web_captures")? {
+        conn.execute_batch(
+            "PRAGMA foreign_keys=OFF;
+             CREATE TABLE web_captures_v75 (
+                 id TEXT PRIMARY KEY NOT NULL,
+                 workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                 url TEXT NOT NULL,
+                 title TEXT NOT NULL DEFAULT '',
+                 content TEXT NOT NULL DEFAULT '',
+                 summary TEXT,
+                 favicon_data TEXT,
+                 is_processed INTEGER NOT NULL DEFAULT 0,
+                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
+             );
+             INSERT INTO web_captures_v75 (id, workspace_id, url, title, content, summary, favicon_data, is_processed, created_at)
+             SELECT id, workspace_id, url, title, content, summary, favicon_data, is_processed, created_at
+             FROM web_captures
+             WHERE workspace_id IN (SELECT id FROM workspaces);
+             DROP TABLE web_captures;
+             ALTER TABLE web_captures_v75 RENAME TO web_captures;
+             CREATE INDEX IF NOT EXISTS idx_web_captures_workspace ON web_captures(workspace_id);
+             PRAGMA foreign_keys=ON;",
+        )?;
+    }
+
+    if v75_table_needs_rebuild(conn, "audio_transcriptions")? {
+        conn.execute_batch(
+            "PRAGMA foreign_keys=OFF;
+             CREATE TABLE audio_transcriptions_v75 (
+                 id TEXT PRIMARY KEY NOT NULL,
+                 workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                 folder_id TEXT REFERENCES folders(id) ON DELETE CASCADE,
+                 filename TEXT NOT NULL,
+                 transcript TEXT NOT NULL DEFAULT '',
+                 duration_seconds REAL,
+                 is_processed INTEGER NOT NULL DEFAULT 0,
+                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
+             );
+             INSERT INTO audio_transcriptions_v75 (id, workspace_id, folder_id, filename, transcript, duration_seconds, is_processed, created_at)
+             SELECT id, workspace_id, folder_id, filename, transcript, duration_seconds, is_processed, created_at
+             FROM audio_transcriptions
+             WHERE workspace_id IN (SELECT id FROM workspaces)
+               AND (folder_id IS NULL OR folder_id IN (SELECT id FROM folders));
+             DROP TABLE audio_transcriptions;
+             ALTER TABLE audio_transcriptions_v75 RENAME TO audio_transcriptions;
+             CREATE INDEX IF NOT EXISTS idx_audio_transcriptions_workspace ON audio_transcriptions(workspace_id);
+             PRAGMA foreign_keys=ON;",
+        )?;
+    }
+
+    if v75_table_needs_rebuild(conn, "project_notes")? {
+        conn.execute_batch(
+            "PRAGMA foreign_keys=OFF;
+             CREATE TABLE project_notes_v75 (
+                 id TEXT PRIMARY KEY NOT NULL,
+                 workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                 title TEXT NOT NULL,
+                 content TEXT NOT NULL DEFAULT '',
+                 note_type TEXT NOT NULL DEFAULT 'manual'
+                     CHECK(note_type IN ('manual','ai_generated','quiz')),
+                 tags TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(tags)),
+                 is_pinned INTEGER NOT NULL DEFAULT 0,
+                 folder TEXT,
+                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+             );
+             INSERT INTO project_notes_v75 (id, workspace_id, title, content, note_type, tags, is_pinned, folder, created_at, updated_at)
+             SELECT id, workspace_id, title, content, note_type, tags, is_pinned, folder, created_at, updated_at
+             FROM project_notes
+             WHERE workspace_id IN (SELECT id FROM workspaces)
+               AND json_valid(tags);
+             DROP TABLE project_notes;
+             ALTER TABLE project_notes_v75 RENAME TO project_notes;
+             CREATE INDEX IF NOT EXISTS idx_project_notes_workspace ON project_notes(workspace_id);
+             CREATE INDEX IF NOT EXISTS idx_project_notes_workspace_updated
+                 ON project_notes(workspace_id, updated_at DESC);
+             CREATE INDEX IF NOT EXISTS idx_project_notes_workspace_pinned_updated
+                 ON project_notes(workspace_id, is_pinned, updated_at DESC);
+             PRAGMA foreign_keys=ON;",
+        )?;
+    }
+
     Ok(())
 }
 
@@ -2915,5 +3104,98 @@ mod tests {
             )
             .expect("count v72 migration");
         assert_eq!(v72_applied, 1, "v72 should be recorded after recovery");
+    }
+
+    #[test]
+    fn v75_rebuilds_drifted_workspace_fk_tables() {
+        let conn = Connection::open_in_memory().expect("open in-memory db");
+        conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+
+        // Simulate the drifted upgraded-database shape: learning_cards whose
+        // workspace_id FK still targets "folders", and project_notes with a
+        // legacy NOT NULL project_id FK plus an unconstrained workspace_id.
+        conn.execute_batch(
+            "CREATE TABLE workspaces (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL);
+             CREATE TABLE folders (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL);
+             INSERT INTO workspaces (id, name) VALUES ('ws-1', 'Workspace');
+             INSERT INTO folders (id, name) VALUES ('fold-1', 'Project');
+             CREATE TABLE learning_cards (
+                 id TEXT PRIMARY KEY NOT NULL,
+                 workspace_id TEXT NOT NULL REFERENCES \"folders\"(id) ON DELETE CASCADE,
+                 front TEXT NOT NULL,
+                 back TEXT NOT NULL,
+                 source_type TEXT NOT NULL DEFAULT 'manual',
+                 source_id TEXT,
+                 ease_factor REAL NOT NULL DEFAULT 2.5,
+                 interval INTEGER NOT NULL DEFAULT 1,
+                 repetitions INTEGER NOT NULL DEFAULT 0,
+                 next_review_date TEXT NOT NULL DEFAULT (date('now')),
+                 last_reviewed_at TEXT,
+                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                 topic_id TEXT
+             );
+             CREATE TABLE project_notes (
+                 id TEXT PRIMARY KEY NOT NULL,
+                 project_id TEXT NOT NULL REFERENCES \"folders\"(id) ON DELETE CASCADE,
+                 title TEXT NOT NULL,
+                 content TEXT NOT NULL DEFAULT '',
+                 note_type TEXT NOT NULL DEFAULT 'manual',
+                 tags TEXT NOT NULL DEFAULT '[]',
+                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                 updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                 workspace_id TEXT NOT NULL DEFAULT '',
+                 folder TEXT,
+                 is_pinned INTEGER NOT NULL DEFAULT 0
+             );",
+        )
+        .expect("create drifted schema");
+
+        // The drifted shape rejects a workspace-scoped card insert.
+        let failed = conn.execute(
+            "INSERT INTO learning_cards (id, workspace_id, front, back) VALUES ('c1', 'ws-1', 'f', 'b')",
+            [],
+        );
+        assert!(failed.is_err(), "drifted FK should reject workspace ids");
+
+        // Seed one legacy row that must survive the rebuild (FKs off, the way
+        // it would have landed historically).
+        conn.execute_batch(
+            "PRAGMA foreign_keys=OFF;
+             INSERT INTO project_notes (id, project_id, title, workspace_id) VALUES ('n1', 'fold-1', 'Old note', 'ws-1');
+             PRAGMA foreign_keys=ON;",
+        )
+        .expect("seed legacy note");
+
+        super::v75_fix_workspace_fk_shapes(&conn).expect("run v75 rebuild");
+
+        // Inserts with real workspace ids now succeed on both tables.
+        conn.execute(
+            "INSERT INTO learning_cards (id, workspace_id, front, back) VALUES ('c2', 'ws-1', 'f', 'b')",
+            [],
+        )
+        .expect("card insert should succeed after rebuild");
+        conn.execute(
+            "INSERT INTO project_notes (id, workspace_id, title) VALUES ('n2', 'ws-1', 'New note')",
+            [],
+        )
+        .expect("note insert should succeed after rebuild");
+
+        // Legacy data survived the rebuild.
+        let title: String = conn
+            .query_row("SELECT title FROM project_notes WHERE id = 'n1'", [], |r| r.get(0))
+            .expect("legacy note should survive");
+        assert_eq!(title, "Old note");
+
+        // Invalid workspace ids are still rejected (FK really points at workspaces).
+        let bad = conn.execute(
+            "INSERT INTO learning_cards (id, workspace_id, front, back) VALUES ('c3', 'fold-1', 'f', 'b')",
+            [],
+        );
+        assert!(bad.is_err(), "folder ids must not satisfy the corrected FK");
+
+        // Healthy tables are detected as not needing a rebuild (idempotent).
+        assert!(!super::v75_table_needs_rebuild(&conn, "learning_cards").unwrap());
+        assert!(!super::v75_table_needs_rebuild(&conn, "project_notes").unwrap());
+        assert!(!super::v75_table_needs_rebuild(&conn, "missing_table").unwrap());
     }
 }
