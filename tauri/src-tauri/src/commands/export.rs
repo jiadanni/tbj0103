@@ -202,24 +202,23 @@ pub fn export_obsidian_vault(
     Ok(files)
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeedDeckRequest {
+    pub workspace_ids: Vec<String>,
+}
+
 pub(crate) fn build_feed_deck(
     conn: &rusqlite::Connection,
-    workspace_id: &str,
+    workspace_ids: &[String],
 ) -> Result<String, String> {
-    let workspace: serde_json::Value = conn
-        .query_row(
-            "SELECT id, name FROM workspaces WHERE id = ?1",
-            rusqlite::params![workspace_id],
-            |r| {
-                Ok(serde_json::json!({
-                    "id": r.get::<_, String>(0)?,
-                    "name": r.get::<_, String>(1)?,
-                }))
-            },
-        )
-        .map_err(|e| e.to_string())?;
+    if workspace_ids.is_empty() {
+        return Err("No workspaces selected".to_string());
+    }
 
-    let mut stmt = conn
+    let mut workspaces: Vec<serde_json::Value> = Vec::new();
+    let mut cards: Vec<serde_json::Value> = Vec::new();
+
+    let mut card_stmt = conn
         .prepare(
             "SELECT lc.id, lc.front, lc.back, ft.topic
              FROM learning_cards lc
@@ -228,29 +227,48 @@ pub(crate) fn build_feed_deck(
              ORDER BY lc.created_at",
         )
         .map_err(|e| e.to_string())?;
-    let cards: Vec<serde_json::Value> = stmt
-        .query_map(rusqlite::params![workspace_id], |r| {
-            Ok(serde_json::json!({
-                "id": r.get::<_, String>(0)?,
-                "kind": "flashcard",
-                "front": r.get::<_, String>(1)?,
-                "back": r.get::<_, String>(2)?,
-                "topic": r.get::<_, Option<String>>(3)?,
-            }))
-        })
-        .map_err(|e| e.to_string())?
-        .filter_map(Result::ok)
-        .collect();
+
+    for workspace_id in workspace_ids {
+        let (ws_id, ws_name): (String, String) = conn
+            .query_row(
+                "SELECT id, name FROM workspaces WHERE id = ?1",
+                rusqlite::params![workspace_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(|e| e.to_string())?;
+
+        let ws_cards: Vec<serde_json::Value> = card_stmt
+            .query_map(rusqlite::params![workspace_id], |r| {
+                Ok(serde_json::json!({
+                    "id": r.get::<_, String>(0)?,
+                    "kind": "flashcard",
+                    "front": r.get::<_, String>(1)?,
+                    "back": r.get::<_, String>(2)?,
+                    "topic": r.get::<_, Option<String>>(3)?,
+                    "workspace_id": ws_id,
+                }))
+            })
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .collect();
+
+        workspaces.push(serde_json::json!({
+            "id": ws_id,
+            "name": ws_name,
+            "card_count": ws_cards.len(),
+        }));
+        cards.extend(ws_cards);
+    }
 
     if cards.is_empty() {
-        return Err("No flashcards in this workspace".to_string());
+        return Err("No flashcards in the selected workspaces".to_string());
     }
 
     let deck = serde_json::json!({
         "format": "aetherium.boomscroll.deck",
-        "version": 1,
+        "version": 2,
         "exported_at": chrono::Utc::now().to_rfc3339(),
-        "workspace": workspace,
+        "workspaces": workspaces,
         "card_count": cards.len(),
         "cards": cards,
     });
@@ -261,11 +279,11 @@ pub(crate) fn build_feed_deck(
 pub fn export_feed_deck(
     auth: State<AuthState>,
     state: State<DbState>,
-    req: ExportRequest,
+    req: FeedDeckRequest,
 ) -> Result<String, String> {
     require_auth(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    build_feed_deck(&conn, &req.workspace_id)
+    build_feed_deck(&conn, &req.workspace_ids)
 }
 
 #[cfg(test)]
@@ -282,74 +300,77 @@ mod feed_deck_tests {
         .unwrap();
     }
 
-    #[test]
-    fn builds_versioned_deck_with_topic_join() {
-        let pool = setup_test_db();
-        let conn = pool.get().unwrap();
-        insert_workspace(&conn, "ws_deck", "Deck WS");
-        conn.execute(
-            "INSERT INTO flashcard_topics (id, workspace_id, topic) VALUES ('t1', 'ws_deck', 'Ownership')",
-            [],
-        )
-        .unwrap();
+    fn insert_card(conn: &rusqlite::Connection, id: &str, workspace_id: &str, topic_id: Option<&str>) {
         conn.execute(
             crate::commands::flashcard::INSERT_CARD_SQL,
             rusqlite::params![
-                "c1",
-                "ws_deck",
-                "What is borrowing?",
-                "A reference without ownership",
+                id,
+                workspace_id,
+                format!("Front {id}"),
+                format!("Back {id}"),
                 "manual",
                 Option::<String>::None,
-                Some("t1"),
+                topic_id,
                 2.5_f64,
                 0_i64,
                 0_i64,
                 "2026-01-01",
                 Option::<String>::None,
-                "2026-01-01T00:00:00Z"
+                format!("2026-01-01T00:00:0{}Z", id.len() % 10)
             ],
         )
         .unwrap();
-        conn.execute(
-            crate::commands::flashcard::INSERT_CARD_SQL,
-            rusqlite::params![
-                "c2",
-                "ws_deck",
-                "Front 2",
-                "Back 2",
-                "manual",
-                Option::<String>::None,
-                Option::<String>::None,
-                2.5_f64,
-                0_i64,
-                0_i64,
-                "2026-01-01",
-                Option::<String>::None,
-                "2026-01-02T00:00:00Z"
-            ],
-        )
-        .unwrap();
-
-        let json = build_feed_deck(&conn, "ws_deck").unwrap();
-        let deck: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert_eq!(deck["format"], "aetherium.boomscroll.deck");
-        assert_eq!(deck["version"], 1);
-        assert_eq!(deck["card_count"], 2);
-        assert_eq!(deck["workspace"]["name"], "Deck WS");
-        let cards = deck["cards"].as_array().unwrap();
-        assert_eq!(cards.len(), 2);
-        assert_eq!(cards[0]["kind"], "flashcard");
-        assert_eq!(cards[0]["topic"], "Ownership");
-        assert!(cards[1]["topic"].is_null());
     }
 
     #[test]
-    fn empty_workspace_errors() {
+    fn builds_multi_workspace_deck_with_topic_join() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        insert_workspace(&conn, "ws_a", "Rust Study");
+        insert_workspace(&conn, "ws_b", "Biology");
+        conn.execute(
+            "INSERT INTO flashcard_topics (id, workspace_id, topic) VALUES ('t1', 'ws_a', 'Ownership')",
+            [],
+        )
+        .unwrap();
+        insert_card(&conn, "c1", "ws_a", Some("t1"));
+        insert_card(&conn, "c2", "ws_a", None);
+        insert_card(&conn, "c3", "ws_b", None);
+
+        let json =
+            build_feed_deck(&conn, &["ws_a".to_string(), "ws_b".to_string()]).unwrap();
+        let deck: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(deck["format"], "aetherium.boomscroll.deck");
+        assert_eq!(deck["version"], 2);
+        assert_eq!(deck["card_count"], 3);
+        let workspaces = deck["workspaces"].as_array().unwrap();
+        assert_eq!(workspaces.len(), 2);
+        assert_eq!(workspaces[0]["name"], "Rust Study");
+        assert_eq!(workspaces[0]["card_count"], 2);
+        assert_eq!(workspaces[1]["name"], "Biology");
+        let cards = deck["cards"].as_array().unwrap();
+        assert_eq!(cards.len(), 3);
+        assert_eq!(cards[0]["kind"], "flashcard");
+        assert_eq!(cards[0]["topic"], "Ownership");
+        assert_eq!(cards[0]["workspace_id"], "ws_a");
+        assert!(cards[1]["topic"].is_null());
+        assert_eq!(cards[2]["workspace_id"], "ws_b");
+    }
+
+    #[test]
+    fn skips_nothing_but_errors_when_all_empty() {
         let pool = setup_test_db();
         let conn = pool.get().unwrap();
         insert_workspace(&conn, "ws_empty", "Empty WS");
-        let err = build_feed_deck(&conn, "ws_empty").unwrap_err();
+        let err = build_feed_deck(&conn, &["ws_empty".to_string()]).unwrap_err();
         assert!(err.contains("No flashcards"));
+    }
+
+    #[test]
+    fn empty_selection_errors() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        let err = build_feed_deck(&conn, &[]).unwrap_err();
+        assert!(err.contains("No workspaces selected"));
     }
 }

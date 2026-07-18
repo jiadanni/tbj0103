@@ -32,55 +32,91 @@ vi.mock("@/lib/api", () => ({
   },
 }));
 
-const workspace = {
-  id: "workspace-1",
-  name: "Rust Study",
-  description: "",
-  prompt_instructions: "",
-  topic_signature: {
-    auto_detected_tags: [],
-    custom_tags: [],
-    excluded_tags: [],
-    intent_patterns: [],
-    generated_at: null,
-    message_count_at_gen: null,
-    ollama_enriched: false,
-  },
-  signature_updated_at: null,
-  is_hidden: false,
-  created_at: "",
-  updated_at: "",
-  parent_workspace_id: null,
-  icon: "folder",
-  order_index: 0,
-  last_message_at: null,
-  survey_data: null,
-};
+function makeWorkspace(id: string, name: string, parentId: string | null = null) {
+  return {
+    id,
+    name,
+    description: "",
+    prompt_instructions: "",
+    topic_signature: {
+      auto_detected_tags: [],
+      custom_tags: [],
+      excluded_tags: [],
+      intent_patterns: [],
+      generated_at: null,
+      message_count_at_gen: null,
+      ollama_enriched: false,
+    },
+    signature_updated_at: null,
+    is_hidden: false,
+    created_at: "",
+    updated_at: "",
+    parent_workspace_id: parentId,
+    icon: "folder",
+    order_index: 0,
+    last_message_at: null,
+    survey_data: null,
+  };
+}
+
+const rustStudy = makeWorkspace("workspace-1", "Rust Study");
+const biology = makeWorkspace("workspace-2", "Biology");
+const subWorkspace = makeWorkspace("workspace-3", "Genetics", "workspace-2");
 
 describe("BoomScrollExportSection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useWorkspaceStore.setState({
-      workspaces: [workspace],
+      workspaces: [rustStudy, biology, subWorkspace],
       activeWorkspaceId: "workspace-1",
     });
   });
 
-  it("exports the deck to the chosen path", async () => {
-    const deckJson = JSON.stringify({ format: "aetherium.boomscroll.deck", version: 1 });
-    vi.mocked(saveDialog).mockResolvedValue("/exports/rust-study-boomscroll.json");
+  it("exports all workspaces (including sub-workspaces) by default", async () => {
+    const deckJson = JSON.stringify({ format: "aetherium.boomscroll.deck", version: 2 });
+    vi.mocked(saveDialog).mockResolvedValue("/exports/aetherium-boomscroll.json");
     vi.mocked(api.export.feedDeck).mockResolvedValue(deckJson);
 
     render(<BoomScrollExportSection />);
     fireEvent.click(screen.getByRole("button", { name: /export/i }));
 
     await waitFor(() => {
-      expect(api.export.feedDeck).toHaveBeenCalledWith("workspace-1");
+      expect(api.export.feedDeck).toHaveBeenCalledWith([
+        "workspace-1",
+        "workspace-2",
+        "workspace-3",
+      ]);
     });
     await waitFor(() => {
-      expect(writeTextFile).toHaveBeenCalledWith("/exports/rust-study-boomscroll.json", deckJson);
+      expect(writeTextFile).toHaveBeenCalledWith("/exports/aetherium-boomscroll.json", deckJson);
     });
     expect(await screen.findByTestId("success-dialog")).toHaveTextContent("Deck exported");
+  });
+
+  it("exports only the selected workspaces", async () => {
+    const deckJson = JSON.stringify({ format: "aetherium.boomscroll.deck", version: 2 });
+    vi.mocked(saveDialog).mockResolvedValue("/exports/rust-study-boomscroll.json");
+    vi.mocked(api.export.feedDeck).mockResolvedValue(deckJson);
+
+    render(<BoomScrollExportSection />);
+    fireEvent.click(screen.getByLabelText("Biology"));
+    fireEvent.click(screen.getByLabelText("Genetics"));
+    fireEvent.click(screen.getByRole("button", { name: /export/i }));
+
+    await waitFor(() => {
+      expect(api.export.feedDeck).toHaveBeenCalledWith(["workspace-1"]);
+    });
+  });
+
+  it("select-all checkbox clears and restores the selection", () => {
+    render(<BoomScrollExportSection />);
+    const selectAll = screen.getByLabelText(/All workspaces/);
+
+    fireEvent.click(selectAll);
+    expect(screen.getByRole("button", { name: /export/i })).toBeDisabled();
+
+    fireEvent.click(selectAll);
+    expect(screen.getByRole("button", { name: /export/i })).toBeEnabled();
   });
 
   it("does nothing when the save dialog is cancelled", async () => {
@@ -98,22 +134,22 @@ describe("BoomScrollExportSection", () => {
 
   it("shows the backend error when export fails", async () => {
     vi.mocked(saveDialog).mockResolvedValue("/exports/deck.json");
-    vi.mocked(api.export.feedDeck).mockRejectedValue("No flashcards in this workspace");
+    vi.mocked(api.export.feedDeck).mockRejectedValue("No flashcards in the selected workspaces");
 
     render(<BoomScrollExportSection />);
     fireEvent.click(screen.getByRole("button", { name: /export/i }));
 
     await waitFor(() => {
       expect(showMessage).toHaveBeenCalledWith(
-        "No flashcards in this workspace",
+        "No flashcards in the selected workspaces",
         { title: "Export failed", kind: "error" },
       );
     });
     expect(writeTextFile).not.toHaveBeenCalled();
-    expect(screen.getByText("No flashcards in this workspace")).toBeInTheDocument();
+    expect(screen.getByText("No flashcards in the selected workspaces")).toBeInTheDocument();
   });
 
-  it("disables the export button when no workspace is active", () => {
+  it("disables the export button when there are no workspaces", () => {
     useWorkspaceStore.setState({ workspaces: [], activeWorkspaceId: null });
 
     render(<BoomScrollExportSection />);

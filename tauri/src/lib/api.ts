@@ -1943,7 +1943,7 @@ export const api = {
     markdown: (workspaceId: string) => invoke<string>("export_markdown", { req: { workspace_id: workspaceId } }),
     json: (workspaceId: string) => invoke<string>("export_json", { req: { workspace_id: workspaceId } }),
     obsidian: (workspaceId: string) => invoke<Array<{ path: string; content: string }>>("export_obsidian_vault", { req: { workspace_id: workspaceId } }),
-    feedDeck: (workspaceId: string) => invoke<string>("export_feed_deck", { req: { workspace_id: workspaceId } }),
+    feedDeck: (workspaceIds: string[]) => invoke<string>("export_feed_deck", { req: { workspace_ids: workspaceIds } }),
     roadmap: {
       markdown: (workspaceId: string) =>
         invoke<string>("export_roadmap_markdown", { req: { workspace_id: workspaceId } }),
