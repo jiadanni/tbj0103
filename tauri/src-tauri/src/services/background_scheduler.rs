@@ -550,7 +550,7 @@ fn max_source_updated_sql(workspace_id_expr: &str) -> String {
            WHERE dn.workspace_id = {workspace_id_expr}
            UNION ALL
            SELECT d.updated_at
-           FROM documents d
+           FROM uploaded_documents d
            WHERE d.workspace_id = {workspace_id_expr}
            UNION ALL
            SELECT wc.created_at

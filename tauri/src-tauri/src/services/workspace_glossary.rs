@@ -1141,7 +1141,7 @@ pub async fn refresh_due_workspaces(state: &DbState) -> Result<usize, String> {
                          WHERE mem.workspace_id = w.id AND mem.scope = 'workspace'
                          UNION ALL
                          SELECT d.updated_at
-                         FROM documents d
+                         FROM uploaded_documents d
                          WHERE d.workspace_id = w.id
                          UNION ALL
                          SELECT wc.created_at
