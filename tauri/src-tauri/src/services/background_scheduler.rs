@@ -1723,6 +1723,16 @@ pub fn start_scheduler(app: AppHandle) {
                                 .await
                         };
                         let cancelled = is_cancelled("flashcard_generation");
+                        // Carry the tick's actual error into the event/run record;
+                        // a bare "failed" hides the reason (missing model, bad JSON).
+                        let fc_message = if cancelled {
+                            "Flashcard generation cancelled".to_string()
+                        } else {
+                            match &fc_result {
+                                Ok(()) => "Flashcard generation done".to_string(),
+                                Err(e) => format!("Flashcard generation failed: {e}"),
+                            }
+                        };
                         emit_task(
                             &app,
                             "flashcard_generation",
@@ -1731,13 +1741,7 @@ pub fn start_scheduler(app: AppHandle) {
                             } else {
                                 "completed"
                             },
-                            if cancelled {
-                                "Flashcard generation cancelled"
-                            } else if fc_result.is_ok() {
-                                "Flashcard generation done"
-                            } else {
-                                "Flashcard generation failed"
-                            },
+                            &fc_message,
                             fc_model,
                         );
                         unregister_running("flashcard_generation");
