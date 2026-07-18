@@ -303,14 +303,19 @@ pub async fn tick_for_workspaces(
         };
 
         if let Some(topic) = due {
-            let _ = generate_for_topic(
+            // Propagate generation failures so the scheduler records a failed
+            // run with the real error (e.g. model missing, unparseable JSON).
+            // Swallowing them here made every run report "completed" while
+            // producing zero cards.
+            generate_for_topic(
                 state,
                 &topic,
                 &model,
                 DEFAULT_BATCH_SIZE,
                 ollama_url.clone(),
             )
-            .await;
+            .await
+            .map_err(|e| format!("Flashcard generation for topic \"{}\" failed: {e}", topic.topic))?;
             return Ok(()); // One batch per tick.
         }
     }
