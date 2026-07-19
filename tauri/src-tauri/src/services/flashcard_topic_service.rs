@@ -304,6 +304,66 @@ pub async fn tick(state: &DbState, ollama_url: Option<String>) -> Result<(), Str
     tick_for_workspaces(state, ollama_url, None).await
 }
 
+/// Pick the single most-starved due topic across all eligible workspaces.
+///
+/// Selection is global — NOT per-workspace — so one workspace with many
+/// unfilled topics cannot monopolize the one-batch-per-tick budget while
+/// every other workspace stays at zero cards. The user's active workspace
+/// wins ties first; after that, the topic with the fewest cards.
+pub(crate) fn next_due_topic(
+    conn: &Connection,
+    workspace_filter: Option<&[String]>,
+    target_cards: i64,
+    min_interval_minutes: i64,
+    current_workspace: Option<&str>,
+) -> Option<FlashcardTopicRow> {
+    let cooldown = format!("-{min_interval_minutes} minutes");
+    let mut sql = String::from(
+        "SELECT ft.id, ft.workspace_id, ft.topic, ft.mastery_score, ft.last_generated_at, ft.card_count
+         FROM flashcard_topics ft
+         JOIN workspaces w ON w.id = ft.workspace_id
+         WHERE w.is_hidden = 0
+           AND ft.card_count < ?1
+           AND (ft.last_generated_at IS NULL
+                OR datetime(ft.last_generated_at) < datetime('now', ?2))",
+    );
+    let mut values: Vec<rusqlite::types::Value> = vec![
+        rusqlite::types::Value::Integer(target_cards),
+        rusqlite::types::Value::Text(cooldown),
+        rusqlite::types::Value::Text(current_workspace.unwrap_or("").to_string()),
+    ];
+    if let Some(filter) = workspace_filter {
+        let placeholders: Vec<String> = filter
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", values.len() + 1 + i))
+            .collect();
+        sql.push_str(&format!(
+            " AND ft.workspace_id IN ({})",
+            placeholders.join(", ")
+        ));
+        for ws in filter {
+            values.push(rusqlite::types::Value::Text(ws.clone()));
+        }
+    }
+    sql.push_str(
+        " ORDER BY (ft.workspace_id = ?3) DESC, ft.card_count ASC, ft.mastery_score ASC
+          LIMIT 1",
+    );
+    let mut stmt = conn.prepare(&sql).ok()?;
+    stmt.query_row(rusqlite::params_from_iter(values.iter()), |r| {
+        Ok(FlashcardTopicRow {
+            id: r.get(0)?,
+            workspace_id: r.get(1)?,
+            topic: r.get(2)?,
+            mastery_score: r.get(3)?,
+            last_generated_at: r.get(4)?,
+            card_count: r.get(5)?,
+        })
+    })
+    .ok()
+}
+
 pub async fn tick_for_workspaces(
     state: &DbState,
     ollama_url: Option<String>,
@@ -347,55 +407,32 @@ pub async fn tick_for_workspaces(
         let _ = sync_concepts_from_signatures(&conn, ws_id);
     }
 
-    for ws_id in &workspace_ids {
-        let due = {
-            let conn = state.0.get().map_err(|e| e.to_string())?;
-            // Only consider topics that still need more cards under our target.
-            let mut stmt = conn
-                .prepare(
-                    "SELECT id, workspace_id, topic, mastery_score, last_generated_at, card_count
-                     FROM flashcard_topics
-                     WHERE workspace_id = ?1
-                       AND card_count < ?2
-                       AND (last_generated_at IS NULL
-                            OR datetime(last_generated_at) < datetime('now', ?3))
-                     ORDER BY card_count ASC, mastery_score ASC
-                     LIMIT 1",
-                )
-                .map_err(|e| e.to_string())?;
-            let cooldown = format!("-{min_interval} minutes");
-            stmt.query_row(
-                rusqlite::params![ws_id, target_cards, cooldown],
-                |r| {
-                    Ok(FlashcardTopicRow {
-                        id: r.get(0)?,
-                        workspace_id: r.get(1)?,
-                        topic: r.get(2)?,
-                        mastery_score: r.get(3)?,
-                        last_generated_at: r.get(4)?,
-                        card_count: r.get(5)?,
-                    })
-                },
-            )
-            .ok()
-        };
+    let due = {
+        let conn = state.0.get().map_err(|e| e.to_string())?;
+        let current = crate::services::model_settings::get_current_workspace_id(&conn);
+        next_due_topic(
+            &conn,
+            workspace_filter,
+            target_cards,
+            min_interval,
+            current.as_deref(),
+        )
+    };
 
-        if let Some(topic) = due {
-            // Propagate generation failures so the scheduler records a failed
-            // run with the real error (e.g. model missing, unparseable JSON).
-            // Swallowing them here made every run report "completed" while
-            // producing zero cards.
-            generate_for_topic(
-                state,
-                &topic,
-                &model,
-                DEFAULT_BATCH_SIZE,
-                ollama_url.clone(),
-            )
-            .await
-            .map_err(|e| format!("Flashcard generation for topic \"{}\" failed: {e}", topic.topic))?;
-            return Ok(()); // One batch per tick.
-        }
+    if let Some(topic) = due {
+        // Propagate generation failures so the scheduler records a failed
+        // run with the real error (e.g. model missing, unparseable JSON).
+        // Swallowing them here made every run report "completed" while
+        // producing zero cards.
+        generate_for_topic(
+            state,
+            &topic,
+            &model,
+            DEFAULT_BATCH_SIZE,
+            ollama_url.clone(),
+        )
+        .await
+        .map_err(|e| format!("Flashcard generation for topic \"{}\" failed: {e}", topic.topic))?;
     }
 
     Ok(())
@@ -582,6 +619,83 @@ pub async fn cleanup_tick(state: &DbState, ollama_url: Option<String>) -> Result
     .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod next_due_topic_tests {
+    use super::*;
+    use crate::db::test_utils::tests::setup_test_db;
+
+    fn insert_ws(conn: &Connection, id: &str) {
+        conn.execute(
+            "INSERT INTO workspaces (id, name, created_at, updated_at)
+             VALUES (?1, ?1, datetime('now'), datetime('now'))",
+            rusqlite::params![id],
+        )
+        .unwrap();
+    }
+
+    fn insert_topic(conn: &Connection, id: &str, ws: &str, card_count: i64) {
+        conn.execute(
+            "INSERT INTO flashcard_topics (id, workspace_id, topic, card_count)
+             VALUES (?1, ?2, ?1, ?3)",
+            rusqlite::params![id, ws, card_count],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn earlier_workspace_does_not_starve_later_ones() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        insert_ws(&conn, "ws_first");
+        insert_ws(&conn, "ws_second");
+        // The first workspace has a due topic, but the second workspace's
+        // topic is more starved. Global selection must pick the emptier one.
+        insert_topic(&conn, "t_first", "ws_first", 3);
+        insert_topic(&conn, "t_second", "ws_second", 0);
+
+        let due = next_due_topic(&conn, None, 20, 60, None).unwrap();
+        assert_eq!(due.id, "t_second");
+    }
+
+    #[test]
+    fn active_workspace_wins_over_card_count() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        insert_ws(&conn, "ws_other");
+        insert_ws(&conn, "ws_active");
+        insert_topic(&conn, "t_other", "ws_other", 0);
+        insert_topic(&conn, "t_active", "ws_active", 5);
+
+        let due = next_due_topic(&conn, None, 20, 60, Some("ws_active")).unwrap();
+        assert_eq!(due.id, "t_active");
+    }
+
+    #[test]
+    fn respects_target_cooldown_and_filter() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        insert_ws(&conn, "ws_a");
+        insert_ws(&conn, "ws_b");
+        // At target — never due.
+        insert_topic(&conn, "t_full", "ws_a", 20);
+        // Generated moments ago — cooling down.
+        insert_topic(&conn, "t_cooling", "ws_a", 1);
+        conn.execute(
+            "UPDATE flashcard_topics SET last_generated_at = datetime('now') WHERE id = 't_cooling'",
+            [],
+        )
+        .unwrap();
+        insert_topic(&conn, "t_b", "ws_b", 2);
+
+        let due = next_due_topic(&conn, None, 20, 60, None).unwrap();
+        assert_eq!(due.id, "t_b");
+
+        // A workspace filter excludes topics outside it entirely.
+        let filter = vec!["ws_a".to_string()];
+        assert!(next_due_topic(&conn, Some(&filter), 20, 60, None).is_none());
+    }
 }
 
 #[cfg(test)]
