@@ -324,7 +324,7 @@ fn normalize_kind_filters(kind_filters: Option<&[String]>) -> Option<Vec<String>
     }
 }
 
-fn build_fts_query(input: &str) -> Option<String> {
+pub(crate) fn build_fts_query(input: &str) -> Option<String> {
     let terms = input
         .split_whitespace()
         .filter_map(|term| {

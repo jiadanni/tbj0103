@@ -3,6 +3,7 @@ use crate::models::chat::{
 };
 use crate::models::folder::Folder;
 use crate::services::chat_file_store;
+use crate::services::quick_search_service;
 use crate::services::workspace_hierarchy::workspace_filter_sql;
 use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
@@ -187,44 +188,57 @@ pub fn search_sessions(
     query: &str,
     include_descendants: bool,
 ) -> Result<Vec<ChatSession>, String> {
-    let pattern = format!("%{}%", query.trim());
+    let trimmed = query.trim();
+    let pattern = format!("%{}%", trimmed);
     let (cte, ws_cond) = workspace_filter_sql(include_descendants);
-    let sql = if folder_id.unwrap_or_default().is_empty() {
-        format!(
-            "{cte}SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned,
-                is_incognito, exclude_from_analytics, is_deleted, deleted_at,
-                last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
-                is_unread, created_at, updated_at,
-                message_count
-          FROM chat_sessions
-          WHERE workspace_id {ws_cond} AND is_deleted = 0
-            AND (title LIKE ?2 OR model_name LIKE ?2)
-          ORDER BY is_pinned DESC, updated_at DESC"
-        )
-    } else {
-        format!(
-            "{cte}SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned,
-                is_incognito, exclude_from_analytics, is_deleted, deleted_at,
-                last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
-                is_unread, created_at, updated_at,
-                message_count
-          FROM chat_sessions
-          WHERE workspace_id {ws_cond} AND folder_id = ?2 AND is_deleted = 0
-            AND (title LIKE ?3 OR model_name LIKE ?3)
-          ORDER BY is_pinned DESC, updated_at DESC"
-        )
+    // Message-content matching goes through the quick-search FTS index, which
+    // schema triggers keep in sync with the messages table.
+    let fts_query = quick_search_service::build_fts_query(trimmed);
+    let folder = folder_id.filter(|id| !id.is_empty());
+
+    let mut params: Vec<&dyn rusqlite::ToSql> = vec![&workspace_id];
+    let folder_cond = match folder.as_ref() {
+        Some(f) => {
+            params.push(f);
+            format!("AND folder_id = ?{}", params.len())
+        }
+        None => String::new(),
+    };
+    params.push(&pattern);
+    let like_idx = params.len();
+    let message_match_cond = match fts_query.as_ref() {
+        Some(fts) => {
+            params.push(fts);
+            format!(
+                "OR id IN (
+                    SELECT d.session_id
+                    FROM quick_search_documents_fts
+                    JOIN quick_search_documents d ON d.rowid = quick_search_documents_fts.rowid
+                    WHERE quick_search_documents_fts MATCH ?{}
+                      AND d.kind = 'message'
+                      AND d.session_id IS NOT NULL)",
+                params.len()
+            )
+        }
+        None => String::new(),
     };
 
+    let sql = format!(
+        "{cte}SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned,
+                is_incognito, exclude_from_analytics, is_deleted, deleted_at,
+                last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
+                is_unread, created_at, updated_at,
+                message_count
+          FROM chat_sessions
+          WHERE workspace_id {ws_cond} AND is_deleted = 0 {folder_cond}
+            AND (title LIKE ?{like_idx} OR model_name LIKE ?{like_idx} {message_match_cond})
+          ORDER BY is_pinned DESC, updated_at DESC"
+    );
+
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-    let rows = if let Some(folder_id) = folder_id.filter(|id| !id.is_empty()) {
-        stmt.query_map(
-            rusqlite::params![workspace_id, folder_id, pattern],
-            row_to_session,
-        )
-    } else {
-        stmt.query_map(rusqlite::params![workspace_id, pattern], row_to_session)
-    }
-    .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params.as_slice(), row_to_session)
+        .map_err(|e| e.to_string())?;
 
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
@@ -1022,6 +1036,62 @@ mod tests {
         let search = search_sessions(&conn, &ws_id, None, "App", false).unwrap();
         assert_eq!(search.len(), 1);
         assert_eq!(search[0].title, "Apple");
+    }
+
+    #[test]
+    fn test_search_sessions_matches_message_content() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        let ws_id = setup_workspace(&conn);
+
+        let make_session = |title: &str| {
+            create_session(
+                &conn,
+                CreateChatSessionRequest {
+                    workspace_id: ws_id.clone(),
+                    folder_id: "".to_string(),
+                    title: Some(title.to_string()),
+                    model_name: None,
+                    system_prompt: None,
+                    is_incognito: None,
+                    exclude_from_analytics: None,
+                    parent_session_id: None,
+                    branch_message_id: None,
+                },
+            )
+            .unwrap()
+        };
+
+        let apple = make_session("Apple");
+        let banana = make_session("Banana");
+
+        add_message(
+            &conn,
+            AddMessageRequest {
+                workspace_id: ws_id.clone(),
+                session_id: banana.id.clone(),
+                role: MessageRole::User,
+                content: "How do I configure zustand stores?".to_string(),
+                model_name: None,
+                tokens_used: None,
+                duration_ms: None,
+            },
+        )
+        .unwrap();
+
+        // A term that only appears in a message body should surface its session.
+        let by_content = search_sessions(&conn, &ws_id, None, "zustand", false).unwrap();
+        assert_eq!(by_content.len(), 1);
+        assert_eq!(by_content[0].id, banana.id);
+
+        // Title matching still works alongside the FTS branch.
+        let by_title = search_sessions(&conn, &ws_id, None, "App", false).unwrap();
+        assert_eq!(by_title.len(), 1);
+        assert_eq!(by_title[0].id, apple.id);
+
+        // Punctuation-only input degrades to the LIKE-only path without erroring.
+        let odd = search_sessions(&conn, &ws_id, None, "\"\"", false).unwrap();
+        assert!(odd.is_empty());
     }
 
     #[test]
