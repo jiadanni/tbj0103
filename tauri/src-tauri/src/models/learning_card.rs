@@ -17,6 +17,10 @@ pub struct LearningCard {
     pub next_review_date: String,
     pub last_reviewed_at: Option<String>,
     pub created_at: String,
+    /// Model that generated this card (None for manual cards and cards
+    /// created before provenance tracking).
+    #[serde(default)]
+    pub generated_by_model: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -114,6 +118,7 @@ impl LearningCard {
             next_review_date: today,
             last_reviewed_at: None,
             created_at: now,
+            generated_by_model: None,
         }
     }
 }

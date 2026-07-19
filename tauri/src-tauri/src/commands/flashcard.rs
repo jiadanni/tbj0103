@@ -23,11 +23,12 @@ fn row_to_card(row: &rusqlite::Row) -> rusqlite::Result<LearningCard> {
         next_review_date: row.get(10)?,
         last_reviewed_at: row.get(11)?,
         created_at: row.get(12)?,
+        generated_by_model: row.get(13)?,
     })
 }
 
-pub(crate) const INSERT_CARD_SQL: &str = "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, source_id, topic_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)";
+pub(crate) const INSERT_CARD_SQL: &str = "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, source_id, topic_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at, generated_by_model)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)";
 
 /// Difficulty levels used when crafting a generation prompt.
 #[derive(Debug, Clone, Copy)]
@@ -143,7 +144,8 @@ pub(crate) fn insert_card(
             card.repetitions,
             card.next_review_date,
             card.last_reviewed_at,
-            card.created_at
+            card.created_at,
+            card.generated_by_model
         ],
     )?;
     Ok(())
@@ -181,7 +183,7 @@ pub fn list_flashcards_due(
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let (cte, ws_cond) = workspace_filter_sql(include_descendants.unwrap_or(false));
     let sql = format!(
-        "{cte}SELECT id, workspace_id, front, back, source_type, source_id, topic_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at
+        "{cte}SELECT id, workspace_id, front, back, source_type, source_id, topic_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at, generated_by_model
          FROM learning_cards WHERE workspace_id {ws_cond}
            AND next_review_date <= ?2
            AND (?5 IS NULL OR (source_type = 'concept' AND source_id = ?5))
@@ -205,7 +207,7 @@ pub fn review_flashcard(state: State<DbState>, req: ReviewRequest) -> Result<Lea
     let conn = state.0.get().map_err(|e| e.to_string())?;
     // Fetch current card
     let card = conn.query_row(
-        "SELECT id, workspace_id, front, back, source_type, source_id, topic_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at
+        "SELECT id, workspace_id, front, back, source_type, source_id, topic_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at, generated_by_model
          FROM learning_cards WHERE id = ?1",
         rusqlite::params![req.card_id],
         row_to_card,
@@ -327,6 +329,7 @@ pub async fn generate_flashcards(
     for (front, back) in pairs {
         let mut card = LearningCard::new(req.workspace_id.clone(), front, back);
         card.source_type = "ai_generated".to_string();
+        card.generated_by_model = Some(req.model.clone());
         tx.execute(
             INSERT_CARD_SQL,
             rusqlite::params![
@@ -342,7 +345,8 @@ pub async fn generate_flashcards(
                 card.repetitions,
                 card.next_review_date,
                 card.last_reviewed_at,
-                card.created_at
+                card.created_at,
+                card.generated_by_model
             ],
         )
         .map_err(|e| e.to_string())?;
@@ -425,6 +429,7 @@ pub async fn generate_flashcards_from_concept(
         let mut card = LearningCard::new(req.workspace_id.clone(), pair.front, pair.back);
         card.source_type = "concept".to_string();
         card.source_id = Some(req.concept_id.clone());
+        card.generated_by_model = Some(req.model.clone());
         tx.execute(
             INSERT_CARD_SQL,
             rusqlite::params![
@@ -440,7 +445,8 @@ pub async fn generate_flashcards_from_concept(
                 card.repetitions,
                 card.next_review_date,
                 card.last_reviewed_at,
-                card.created_at
+                card.created_at,
+                card.generated_by_model
             ],
         )
         .map_err(|e| e.to_string())?;
@@ -458,7 +464,7 @@ pub fn list_flashcards_by_concept(
 ) -> Result<Vec<LearningCard>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT id, workspace_id, front, back, source_type, source_id, topic_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at
+        "SELECT id, workspace_id, front, back, source_type, source_id, topic_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at, generated_by_model
          FROM learning_cards WHERE source_type = 'concept' AND source_id = ?1 ORDER BY created_at DESC"
     ).map_err(|e| e.to_string())?;
     let items = stmt
@@ -559,6 +565,7 @@ pub async fn extract_flashcards_from_content(
         let mut card = LearningCard::new(req.workspace_id.clone(), pair.front, pair.back);
         card.source_type = req.source_type.clone();
         card.source_id = req.source_id.clone();
+        card.generated_by_model = Some(req.model.clone());
         tx.execute(
             INSERT_CARD_SQL,
             rusqlite::params![
@@ -574,7 +581,8 @@ pub async fn extract_flashcards_from_content(
                 card.repetitions,
                 card.next_review_date,
                 card.last_reviewed_at,
-                card.created_at
+                card.created_at,
+                card.generated_by_model
             ],
         )
         .map_err(|e| e.to_string())?;

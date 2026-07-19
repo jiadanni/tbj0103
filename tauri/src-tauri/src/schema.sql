@@ -265,7 +265,8 @@ CREATE TABLE IF NOT EXISTS learning_cards (
     repetitions INTEGER NOT NULL DEFAULT 0,
     next_review_date TEXT NOT NULL DEFAULT (date('now')),
     last_reviewed_at TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    generated_by_model TEXT
 );
 
 CREATE TABLE IF NOT EXISTS flashcard_topics (

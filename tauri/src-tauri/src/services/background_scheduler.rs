@@ -102,6 +102,8 @@ const GLOSSARY_TICK_INTERVAL: u32 = 6;
 const HOVER_SCAN_TICK_INTERVAL: u32 = 3;
 const SUMMARIZATION_TICK_INTERVAL: u32 = 2;
 const FLASHCARD_TICK_INTERVAL: u32 = 6;
+// Cleanup checks hourly; the real gate is the 24h (configurable) watermark.
+const FLASHCARD_CLEANUP_TICK_INTERVAL: u32 = 12;
 
 pub const SCHEDULED_JOB_KEYS: &[&str] = &[
     "memory_extraction",
@@ -109,6 +111,7 @@ pub const SCHEDULED_JOB_KEYS: &[&str] = &[
     "hover_definition_scan",
     "summarization",
     "flashcard_generation",
+    "flashcard_cleanup",
     "concept_hierarchy",
     "workspace_prompt_bank",
 ];
@@ -118,6 +121,7 @@ fn job_label(task_type: &str) -> &'static str {
         "memory_extraction" => "Memory Extraction",
         "summarization" => "Summarization",
         "flashcard_generation" => "Flashcard Generation",
+        "flashcard_cleanup" => "Flashcard Cleanup",
         "workspace_glossary" => "Workspace Glossary",
         "hover_definition_scan" => "Hover Definitions",
         "concept_hierarchy" => "Topic Hierarchy",
@@ -689,6 +693,32 @@ fn has_auto_work(conn: &rusqlite::Connection, job_key: &str) -> bool {
                 ),
             )
         }
+        "flashcard_cleanup" => {
+            let interval_hours = conn
+                .query_row(
+                    "SELECT value FROM settings WHERE key = 'flashcard_cleanup_interval_hours'",
+                    [],
+                    |r| r.get::<_, String>(0),
+                )
+                .ok()
+                .and_then(|value| value.trim_matches('"').parse::<i64>().ok())
+                .unwrap_or(
+                    crate::services::flashcard_topic_service::DEFAULT_CLEANUP_INTERVAL_HOURS,
+                );
+            eligible_count(
+                conn,
+                &format!(
+                    "SELECT COUNT(*)
+                     FROM flashcard_topics
+                     WHERE card_count >= 2
+                       AND COALESCE(
+                             (SELECT datetime(trim(value, '\"')) FROM settings
+                              WHERE key = 'flashcard_cleanup_last_run_at'),
+                             datetime('1970-01-01')
+                           ) < datetime('now', '-{interval_hours} hours')"
+                ),
+            )
+        }
         "concept_hierarchy" => eligible_count(
             conn,
             "SELECT COUNT(*)
@@ -855,6 +885,9 @@ async fn run_manual_job(
         }
         "flashcard_generation" => {
             crate::services::flashcard_topic_service::tick(&db, ollama_url).await
+        }
+        "flashcard_cleanup" => {
+            crate::services::flashcard_topic_service::cleanup_tick(&db, ollama_url).await
         }
         "concept_hierarchy" => crate::services::concept_hierarchy_service::tick(&db, ollama_url)
             .await
@@ -1361,6 +1394,7 @@ pub fn start_scheduler(app: AppHandle) {
         let mut hover_scan_tick: u32 = 0;
         let mut summarization_tick: u32 = 0;
         let mut flashcard_tick: u32 = 0;
+        let mut flashcard_cleanup_tick: u32 = 0;
         set_next_tick_at_from_now();
 
         loop {
@@ -1372,6 +1406,7 @@ pub fn start_scheduler(app: AppHandle) {
             hover_scan_tick += 1;
             summarization_tick += 1;
             flashcard_tick += 1;
+            flashcard_cleanup_tick += 1;
 
             // Guard: skip this tick if the previous one is still running
             if SCHEDULER_RUNNING
@@ -1747,6 +1782,57 @@ pub fn start_scheduler(app: AppHandle) {
                             fc_model,
                         );
                         unregister_running("flashcard_generation");
+                    }
+                }
+
+                // 4b. Flashcard duplicate cleanup — LLM groups same-question
+                //     cards; keeper prefers reviewed cards, then larger models.
+                if flashcard_cleanup_tick.is_multiple_of(FLASHCARD_CLEANUP_TICK_INTERVAL)
+                    && has_auto_work_for_job(&app, "flashcard_cleanup").await
+                {
+                    let fcc_default = lookup_job_model(&app, "flashcard_cleanup_model").await;
+                    let (fcc_run, fcc_model) =
+                        gate_job(&app, "flashcard_cleanup", fcc_default).await;
+                    if fcc_run {
+                        let _permit = acquire_job_permit_with_queue(
+                            &app,
+                            "flashcard_cleanup",
+                            "Queued for flashcard cleanup…",
+                            "Cleaning up duplicate flashcards…",
+                            fcc_model.clone(),
+                        )
+                        .await;
+                        register_running("flashcard_cleanup");
+                        let fcc_result = if is_cancelled("flashcard_cleanup") {
+                            Err("cancelled".to_string())
+                        } else {
+                            crate::services::flashcard_topic_service::cleanup_tick(
+                                &db,
+                                ollama_url.clone(),
+                            )
+                            .await
+                        };
+                        let cancelled = is_cancelled("flashcard_cleanup");
+                        let fcc_message = if cancelled {
+                            "Flashcard cleanup cancelled".to_string()
+                        } else {
+                            match &fcc_result {
+                                Ok(()) => "Flashcard cleanup done".to_string(),
+                                Err(e) => format!("Flashcard cleanup failed: {e}"),
+                            }
+                        };
+                        emit_task(
+                            &app,
+                            "flashcard_cleanup",
+                            if cancelled || fcc_result.is_err() {
+                                "failed"
+                            } else {
+                                "completed"
+                            },
+                            &fcc_message,
+                            fcc_model,
+                        );
+                        unregister_running("flashcard_cleanup");
                     }
                 }
 

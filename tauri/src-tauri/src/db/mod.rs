@@ -89,6 +89,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v73_repair_quick_search_chat_sessions_au",
     "v74_inference_job_runs",
     "v75_fix_workspace_fk_shapes",
+    "v76_learning_cards_generated_by_model",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -2267,6 +2268,31 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         v75_fix_workspace_fk_shapes(conn)?;
         conn.execute(
             "INSERT INTO _migrations(name) VALUES('v75_fix_workspace_fk_shapes')",
+            [],
+        )?;
+    }
+
+    // v76: record which model generated each flashcard, enabling the cleanup
+    // job to prefer cards from larger models when deduplicating. Idempotent:
+    // the column is only added when missing (fresh installs get it from
+    // schema.sql).
+    let applied_v76: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v76_learning_cards_generated_by_model'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v76 == 0 {
+        let has_column: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('learning_cards') WHERE name = 'generated_by_model'",
+            [],
+            |row| row.get(0),
+        )?;
+        if has_column == 0 {
+            conn.execute_batch("ALTER TABLE learning_cards ADD COLUMN generated_by_model TEXT;")?;
+        }
+        conn.execute(
+            "INSERT INTO _migrations(name) VALUES('v76_learning_cards_generated_by_model')",
             [],
         )?;
     }

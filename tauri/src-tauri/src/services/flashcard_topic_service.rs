@@ -21,6 +21,41 @@ const DEFAULT_TARGET_CARDS_PER_TOPIC: i64 = 20;
 const DEFAULT_MIN_INTERVAL_MINUTES: i64 = 60;
 const DEFAULT_BATCH_SIZE: u32 = 3;
 
+/// Hours between duplicate-cleanup sweeps. Overridable via the
+/// `flashcard_cleanup_interval_hours` setting.
+pub(crate) const DEFAULT_CLEANUP_INTERVAL_HOURS: i64 = 24;
+/// Topics examined per cleanup sweep (one LLM call each).
+const CLEANUP_TOPICS_PER_RUN: i64 = 10;
+
+/// Rough parameter count (in billions) parsed from a model name like
+/// "qwen3:4b" or "gemma3:27b"; 0.0 when unknown so unknown provenance loses
+/// ties against known models.
+fn model_params_b(model: &str) -> f64 {
+    let lower = model.to_lowercase();
+    let bytes = lower.as_bytes();
+    let mut best: f64 = 0.0;
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i].is_ascii_digit() {
+            let start = i;
+            while i < bytes.len() && (bytes[i].is_ascii_digit() || bytes[i] == b'.') {
+                i += 1;
+            }
+            if i < bytes.len() && (bytes[i] == b'b' || bytes[i] == b'm') {
+                if let Ok(value) = lower[start..i].parse::<f64>() {
+                    let scaled = if bytes[i] == b'b' { value } else { value / 1000.0 };
+                    if scaled > best {
+                        best = scaled;
+                    }
+                }
+            }
+        } else {
+            i += 1;
+        }
+    }
+    best
+}
+
 /// How many cards a topic accumulates before background generation stops
 /// adding to it. Overridable via the `flashcard_topic_target_cards` setting.
 pub(crate) fn topic_target_cards(conn: &Connection) -> i64 {
@@ -250,6 +285,7 @@ pub async fn generate_for_topic(
         let mut card = LearningCard::new(topic.workspace_id.clone(), front, back);
         card.source_type = "chat_topic".to_string();
         card.topic_id = Some(topic.id.clone());
+        card.generated_by_model = Some(model.to_string());
         insert_card(&tx, &card).map_err(|e| e.to_string())?;
         cards.push(card);
     }
@@ -363,4 +399,204 @@ pub async fn tick_for_workspaces(
     }
 
     Ok(())
+}
+
+/// One card row as seen by the cleanup sweep.
+struct CleanupCard {
+    id: String,
+    front: String,
+    repetitions: i64,
+    generated_by_model: Option<String>,
+    created_at: String,
+}
+
+/// LLM-assisted duplicate cleanup. For each topic with 2+ cards (up to
+/// [`CLEANUP_TOPICS_PER_RUN`] per sweep), asks the model to group cards that
+/// ask essentially the same question, then keeps the best card per group:
+/// reviewed cards win first (SM-2 progress is preserved), then cards from
+/// larger models (a 27B card outranks a 4B one), then the newest. Losers are
+/// deleted and the topic's card_count is recomputed.
+pub async fn cleanup_tick(state: &DbState, ollama_url: Option<String>) -> Result<(), String> {
+    let (model, topics) = {
+        let conn = state.0.get().map_err(|e| e.to_string())?;
+        let model = get_model_for_job(&conn, "flashcard_cleanup_model").unwrap_or_default();
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, topic FROM flashcard_topics
+                 WHERE card_count >= 2
+                 ORDER BY card_count DESC
+                 LIMIT ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        let topics: Vec<(String, String)> = stmt
+            .query_map(rusqlite::params![CLEANUP_TOPICS_PER_RUN], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            })
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .collect();
+        (model, topics)
+    };
+    if model.is_empty() {
+        return Ok(());
+    }
+
+    let client = crate::ollama::client::OllamaClient::new(ollama_url)?;
+    for (topic_id, topic_name) in &topics {
+        let cards: Vec<CleanupCard> = {
+            let conn = state.0.get().map_err(|e| e.to_string())?;
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, front, repetitions, generated_by_model, created_at
+                     FROM learning_cards
+                     WHERE topic_id = ?1
+                     ORDER BY created_at ASC",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows: Vec<CleanupCard> = stmt
+                .query_map(rusqlite::params![topic_id], |r| {
+                    Ok(CleanupCard {
+                        id: r.get(0)?,
+                        front: r.get(1)?,
+                        repetitions: r.get(2)?,
+                        generated_by_model: r.get(3)?,
+                        created_at: r.get(4)?,
+                    })
+                })
+                .map_err(|e| e.to_string())?
+                .filter_map(Result::ok)
+                .collect();
+            rows
+        };
+        if cards.len() < 2 {
+            continue;
+        }
+
+        let listing = cards
+            .iter()
+            .enumerate()
+            .map(|(i, card)| {
+                let truncated: String = card.front.chars().take(120).collect();
+                format!("{}. {}", i + 1, truncated)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let prompt = format!(
+            "These are flashcard questions about \"{topic_name}\":\n{listing}\n\n\
+            Identify groups of questions that ask essentially the same thing \
+            (same fact, trivially rephrased). Output ONLY a JSON array of arrays \
+            of the question numbers, e.g. [[1,4],[2,7]]. If there are no \
+            duplicates, output []. No markdown, no explanation."
+        );
+        let raw = client
+            .send_message(
+                "flashcard_cleanup",
+                &model,
+                vec![crate::ollama::client::OllamaMessage {
+                    role: "user".to_string(),
+                    content: prompt,
+                }],
+            )
+            .await
+            .map_err(|e| format!("Cleanup for topic \"{topic_name}\" failed: {e}"))?;
+        let trimmed = raw.trim();
+        let json_str = match (trimmed.find('['), trimmed.rfind(']')) {
+            (Some(start), Some(end)) if end > start => &trimmed[start..=end],
+            _ => {
+                return Err(format!(
+                    "Cleanup for topic \"{topic_name}\" failed: response contained no JSON array"
+                ))
+            }
+        };
+        let groups: Vec<Vec<usize>> = serde_json::from_str(json_str).map_err(|e| {
+            format!("Cleanup for topic \"{topic_name}\" failed: unparseable groups: {e}")
+        })?;
+
+        let mut delete_ids: Vec<String> = Vec::new();
+        let mut claimed = vec![false; cards.len()];
+        for group in groups {
+            let mut indices: Vec<usize> = group
+                .into_iter()
+                .filter_map(|n| n.checked_sub(1))
+                .filter(|&i| i < cards.len() && !claimed[i])
+                .collect();
+            indices.sort_unstable();
+            indices.dedup();
+            if indices.len() < 2 {
+                continue;
+            }
+            for &i in &indices {
+                claimed[i] = true;
+            }
+            // Keeper: most reviews, then largest generating model, then newest.
+            let keeper = *indices
+                .iter()
+                .max_by(|&&a, &&b| {
+                    let ca = &cards[a];
+                    let cb = &cards[b];
+                    ca.repetitions
+                        .cmp(&cb.repetitions)
+                        .then_with(|| {
+                            model_params_b(ca.generated_by_model.as_deref().unwrap_or(""))
+                                .total_cmp(&model_params_b(
+                                    cb.generated_by_model.as_deref().unwrap_or(""),
+                                ))
+                        })
+                        .then_with(|| ca.created_at.cmp(&cb.created_at))
+                })
+                .unwrap_or(&indices[0]);
+            for &i in &indices {
+                if i != keeper {
+                    delete_ids.push(cards[i].id.clone());
+                }
+            }
+        }
+
+        if !delete_ids.is_empty() {
+            let mut conn = state.0.get().map_err(|e| e.to_string())?;
+            let tx = conn.transaction().map_err(|e| e.to_string())?;
+            for id in &delete_ids {
+                tx.execute(
+                    "DELETE FROM learning_cards WHERE id = ?1",
+                    rusqlite::params![id],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+            tx.execute(
+                "UPDATE flashcard_topics
+                 SET card_count = (SELECT COUNT(*) FROM learning_cards WHERE topic_id = ?1)
+                 WHERE id = ?1",
+                rusqlite::params![topic_id],
+            )
+            .map_err(|e| e.to_string())?;
+            tx.commit().map_err(|e| e.to_string())?;
+        }
+    }
+
+    // Watermark so the scheduler doesn't re-sweep until the interval elapses.
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('flashcard_cleanup_last_run_at', ?1)",
+        rusqlite::params![format!("\"{}\"", chrono::Utc::now().to_rfc3339())],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod cleanup_tests {
+    use super::model_params_b;
+
+    #[test]
+    fn parses_model_parameter_counts() {
+        assert_eq!(model_params_b("qwen3:4b"), 4.0);
+        assert_eq!(model_params_b("gemma3:27b"), 27.0);
+        assert_eq!(model_params_b("qwen2.5-coder:1.5b"), 1.5);
+        assert_eq!(model_params_b("gemma3:270m"), 0.27);
+        assert_eq!(model_params_b("mystery-model"), 0.0);
+        // Larger models must outrank smaller ones.
+        assert!(model_params_b("gemma3:27b") > model_params_b("qwen3:4b"));
+        assert!(model_params_b("qwen3:4b") > model_params_b("gemma3:270m"));
+    }
 }

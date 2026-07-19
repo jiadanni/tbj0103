@@ -316,7 +316,8 @@ mod feed_deck_tests {
                 0_i64,
                 "2026-01-01",
                 Option::<String>::None,
-                format!("2026-01-01T00:00:0{}Z", id.len() % 10)
+                format!("2026-01-01T00:00:0{}Z", id.len() % 10),
+                Option::<String>::None
             ],
         )
         .unwrap();
