@@ -628,11 +628,13 @@ pub async fn tick_for_workspaces(
     let mut touched_workspaces: HashSet<String> = HashSet::new();
     let workspace_filter = workspace_filter.map(|ids| ids.to_vec());
 
-    let (candidates, model) = {
+    type CandidateGatherResult = Result<(Vec<Candidate>, Option<String>, Vec<String>), String>;
+
+    let (candidates, model, ws_ids) = {
         let pool = state.0.clone();
         let workspace_filter = workspace_filter.clone();
         tokio::task::spawn_blocking(
-            move || -> Result<(Vec<Candidate>, Option<String>), String> {
+            move || -> CandidateGatherResult {
                 let conn = pool.get().map_err(|e| e.to_string())?;
                 // Seed concept nodes from each workspace's topic signature
                 // before collecting candidates, so a graph-scoped refresh
@@ -660,7 +662,7 @@ pub async fn tick_for_workspaces(
                 let model = resolve_model(&conn);
                 let cands = collect_candidates(&conn, workspace_filter.as_deref())
                     .map_err(|e| e.to_string())?;
-                Ok((cands, model))
+                Ok((cands, model, ws_ids))
             },
         )
         .await
@@ -670,8 +672,17 @@ pub async fn tick_for_workspaces(
     let Some(model) = model else {
         return Ok(report);
     };
+
+    // Even when every concept has already been checked for a parent (so
+    // `candidates` is empty), a workspace can still have orphaned concepts
+    // that never made it into a topic group — e.g. group synthesis found
+    // fewer than two orphans on a prior tick, or an earlier synthesis call
+    // failed silently. Always run synthesis + the Uncategorized sweep for
+    // every workspace in scope, not just ones touched by the nomination
+    // loop below, so "Refresh Knowledge Map" can't report success while
+    // leaving concepts permanently unplaced.
     if candidates.is_empty() {
-        return Ok(report);
+        return sweep_and_synthesize(state, ollama_url, &ws_ids, &model, report).await;
     }
 
     let ollama_url_for_synthesis = ollama_url.clone();
@@ -760,31 +771,39 @@ pub async fn tick_for_workspaces(
 
     if !touched_workspaces.is_empty() {
         let workspaces: Vec<String> = touched_workspaces.into_iter().collect();
-
-        // Try to cluster whatever is still unparented into real topic
-        // groups before falling back to the flat Uncategorized bucket, so
-        // a refresh can build structure even when nothing pre-existing was
-        // there to link against.
-        for ws in &workspaces {
-            let _ = synthesize_topic_groups(
-                state,
-                ollama_url_for_synthesis.clone(),
-                ws,
-                &model,
-            )
+        return sweep_and_synthesize(state, ollama_url_for_synthesis, &workspaces, &model, report)
             .await;
-        }
-
-        let pool = state.0.clone();
-        let _ = tokio::task::spawn_blocking(move || -> Result<(), String> {
-            let conn = pool.get().map_err(|e| e.to_string())?;
-            for ws in &workspaces {
-                let _ = sweep_orphan_concepts(&conn, ws);
-            }
-            Ok(())
-        })
-        .await;
     }
+
+    Ok(report)
+}
+
+/// Cluster still-unparented concepts into real topic groups, then dump
+/// whatever's left into the flat "Uncategorized" bucket. Shared by the
+/// per-candidate nomination path above and the early-out path taken when
+/// every concept has already been checked for a parent but some were never
+/// placed into a group (see the `candidates.is_empty()` branch above).
+async fn sweep_and_synthesize(
+    state: &DbState,
+    ollama_url: Option<String>,
+    workspaces: &[String],
+    model: &str,
+    report: TickReport,
+) -> Result<TickReport, String> {
+    for ws in workspaces {
+        let _ = synthesize_topic_groups(state, ollama_url.clone(), ws, model).await;
+    }
+
+    let pool = state.0.clone();
+    let workspaces = workspaces.to_vec();
+    let _ = tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        for ws in &workspaces {
+            let _ = sweep_orphan_concepts(&conn, ws);
+        }
+        Ok(())
+    })
+    .await;
 
     Ok(report)
 }
@@ -973,6 +992,40 @@ mod tests {
         let names: Vec<_> = orphans.iter().map(|c| c.name.as_str()).collect();
         assert!(names.contains(&"postgresql"));
         assert!(!names.contains(&"cargo.toml"));
+    }
+
+    #[test]
+    fn stamped_but_ungrouped_concepts_stay_visible_to_orphan_sweep() {
+        // Regression test: a concept that has already been checked for a
+        // parent (stamp_checked, e.g. because no suitable peer existed) but
+        // never got linked into any group must still surface as a candidate
+        // for group synthesis / the Uncategorized sweep. Before this fix,
+        // `tick_for_workspaces` bailed out entirely once `collect_candidates`
+        // was empty — permanently stranding concepts like this one with no
+        // parent link and no Uncategorized bucket, even though a "refresh"
+        // reported success.
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        insert_ws(&conn, "w1");
+        insert_concept(&conn, "c_orphan", "w1", "postgresql");
+        stamp_checked(&conn, "c_orphan").unwrap();
+
+        // Already checked and stamped, so the per-tick nomination pass has
+        // nothing left to do...
+        let cands = collect_candidates(&conn, None).unwrap();
+        assert!(
+            cands.is_empty(),
+            "concept should be excluded from re-nomination once stamped"
+        );
+
+        // ...but it was never actually placed into a group, so it must
+        // still be found by the synthesis/sweep pass.
+        let orphans = collect_still_orphaned(&conn, "w1").unwrap();
+        let names: Vec<_> = orphans.iter().map(|c| c.name.as_str()).collect();
+        assert!(
+            names.contains(&"postgresql"),
+            "stamped-but-unplaced concepts must remain visible to sweep/synthesis"
+        );
     }
 
     #[test]
