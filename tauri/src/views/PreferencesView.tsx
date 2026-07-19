@@ -1835,6 +1835,54 @@ function InferenceJobsCard({
     },
     [eligibleModels, modelLabels, aiModels, dbSettings.background_model],
   );
+  // Parameter counts for every eligible model (null when unparseable).
+  const modelParamsById = useMemo(() => {
+    const map = new Map<string, number | null>();
+    for (const m of eligibleModels) {
+      const meta = ollamaModels.find((om) => om.name === m.model_id);
+      map.set(
+        m.model_id,
+        parseModelParamsB(m.model_id)
+          ?? parseModelParamsB(m.name)
+          ?? parseModelParamsB(meta?.details?.parameter_size ?? ""),
+      );
+    }
+    return map;
+  }, [eligibleModels, ollamaModels]);
+
+  // Structured jobs must parse strict JSON — models under the floor are not
+  // offered at all (models with unknown sizes stay selectable).
+  const structuredEligibleModels = useMemo(
+    () =>
+      eligibleModels.filter((m) => {
+        const params = modelParamsById.get(m.model_id);
+        return params == null || params >= STRUCTURED_OUTPUT_MIN_PARAMS_B;
+      }),
+    [eligibleModels, modelParamsById],
+  );
+
+  const structuredSmallModelOptions = useMemo(
+    () => [
+      smallModelOptions[0],
+      ...structuredEligibleModels.map((m) => ({
+        value: m.model_id,
+        label: resolveModelDisplayName(m.model_id, modelLabels, aiModels),
+      })),
+    ],
+    [smallModelOptions, structuredEligibleModels, modelLabels, aiModels],
+  );
+
+  const structuredHeavyModelOptions = useMemo(
+    () => [
+      { value: "", label: "None (small model only)" },
+      ...structuredEligibleModels.map((m) => ({
+        value: m.model_id,
+        label: resolveModelDisplayName(m.model_id, modelLabels, aiModels),
+      })),
+    ],
+    [structuredEligibleModels, modelLabels, aiModels],
+  );
+
   const heavyModelOptions = useMemo(
     () => [
       { value: "", label: "None (small model only)" },
@@ -2101,7 +2149,7 @@ function InferenceJobsCard({
                         <CompactMenuSelect
                           label={isManualTask ? "Model" : "Small model"}
                           value={smallModel}
-                          options={isManualTask ? manualModelOptions : smallModelOptions}
+                          options={isManualTask ? manualModelOptions : job.structured ? structuredSmallModelOptions : smallModelOptions}
                           menuWidth={220}
                           onChange={(value) => set(job.model_setting, value as never)}
                         />
@@ -2127,7 +2175,7 @@ function InferenceJobsCard({
                             <CompactMenuSelect
                               label="Heavy model"
                               value={heavyModel}
-                              options={heavyModelOptions}
+                              options={job.structured ? structuredHeavyModelOptions : heavyModelOptions}
                               menuWidth={220}
                               onChange={(value) => updateHeavyModel(job.job_key, value)}
                             />
@@ -3399,7 +3447,12 @@ export default function PreferencesView() {
                 const metadataParts = [formattedParams, formattedStorage].filter(Boolean) as string[];
                 const isOllamaModel = m.provider === "ollama";
                 const isWebModel = m.provider.startsWith("web_");
-                const canBeBackgroundModel = isOllamaModel && m.enabled;
+                // Sub-4B models can't be the background fallback: structured
+                // jobs (flashcards, glossary, prompts, memory) fall back to it
+                // and reliably fail to emit valid JSON at that size.
+                const tooSmallForBackground =
+                  modelParams != null && modelParams < STRUCTURED_OUTPUT_MIN_PARAMS_B;
+                const canBeBackgroundModel = isOllamaModel && m.enabled && !tooSmallForBackground;
                 const isBackgroundModel = dbSettings.background_model === m.model_id;
                 const providerMeta = group;
                 const capabilityBadges = (isOllamaModel ? ollamaMeta?.capabilities ?? [] : [])
@@ -3522,7 +3575,7 @@ export default function PreferencesView() {
                       </div>
 
                       {isOllamaModel && (
-                        <Tooltip content={canBeBackgroundModel ? "Use for background tasks" : "Enable this model to make it selectable for background tasks"}>
+                        <Tooltip content={canBeBackgroundModel ? "Use for background tasks" : tooSmallForBackground ? `Too small for background tasks — structured jobs (flashcards, glossary, prompts) need ~${STRUCTURED_OUTPUT_MIN_PARAMS_B}B+ to emit valid JSON` : "Enable this model to make it selectable for background tasks"}>
                           <label
                             className={`flex items-center justify-center md:w-[70px] ${canBeBackgroundModel ? "cursor-pointer text-[var(--text-secondary)]" : "cursor-not-allowed text-[var(--text-muted)] opacity-60"
                               }`}
