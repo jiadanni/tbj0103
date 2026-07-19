@@ -102,6 +102,20 @@ export default function App() {
     reader.readAsText(file);
   }
 
+  async function loadDemoDeck() {
+    setError(null);
+    try {
+      const response = await fetch("/demo.json");
+      if (!response.ok) {
+        throw new Error("Could not fetch the demo deck.");
+      }
+      const raw = await response.text();
+      loadDeckFromText(raw);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Couldn't load demo deck.");
+    }
+  }
+
   function closeDeck() {
     setDeck(null);
     setOrder([]);
@@ -166,12 +180,20 @@ export default function App() {
           Export a deck from Aetherium (Preferences → Backup → Boom Scroll),
           move the file to this device, and open it here.
         </p>
-        <button
-          onClick={() => void openDeck()}
-          className="rounded-full bg-zinc-50 px-6 py-3 text-sm font-semibold text-zinc-900 active:opacity-80"
-        >
-          Open deck
-        </button>
+        <div className="flex flex-col sm:flex-row gap-3 w-full max-w-xs justify-center">
+          <button
+            onClick={() => void openDeck()}
+            className="rounded-full bg-zinc-50 px-6 py-3 text-sm font-semibold text-zinc-900 active:opacity-80 transition-opacity"
+          >
+            Open deck
+          </button>
+          <button
+            onClick={() => void loadDemoDeck()}
+            className="rounded-full border border-zinc-800 bg-transparent px-6 py-3 text-sm font-semibold text-zinc-300 hover:bg-zinc-900/50 hover:text-zinc-100 active:opacity-80 transition-all"
+          >
+            Try demo deck
+          </button>
+        </div>
         {error && <p className="max-w-xs text-sm text-red-400">{error}</p>}
         <input
           ref={fileInputRef}

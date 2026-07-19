@@ -1,0 +1,217 @@
+{
+  "format": "aetherium.boomscroll.deck",
+  "version": 2,
+  "exported_at": "2026-07-19T03:11:10Z",
+  "card_count": 24,
+  "workspaces": [
+    {
+      "id": "demo-workspace-ai-ml-000000000000000",
+      "name": "🧠 AI & Machine Learning",
+      "card_count": 8
+    },
+    {
+      "id": "demo-workspace-music-theory-0000000",
+      "name": "🎼 Music Theory",
+      "card_count": 8
+    },
+    {
+      "id": "demo-workspace-rome-000000000000000",
+      "name": "🏛️ Roman Empire",
+      "card_count": 8
+    }
+  ],
+  "cards": [
+    {
+      "id": "demo-card-ai-1",
+      "kind": "flashcard",
+      "front": "What does Q, K, V stand for in attention?",
+      "back": "Query, Key, Value — Q asks 'what to look for', K advertises 'what I am', and V states 'what I contain'.",
+      "topic": "Attention Mechanism",
+      "workspace_id": "demo-workspace-ai-ml-000000000000000"
+    },
+    {
+      "id": "demo-card-ai-2",
+      "kind": "flashcard",
+      "front": "What is the scaling factor in attention and why?",
+      "back": "√d_k — prevents dot products from growing too large in high dimensions, keeping softmax gradients stable.",
+      "topic": "Attention Mechanism",
+      "workspace_id": "demo-workspace-ai-ml-000000000000000"
+    },
+    {
+      "id": "demo-card-ai-3",
+      "kind": "flashcard",
+      "front": "What are scaling laws?",
+      "back": "Empirical observation that performance improves predictably as N^(-α) where N is model/data size and α ≈ 0.07-0.1.",
+      "topic": "Scaling Laws",
+      "workspace_id": "demo-workspace-ai-ml-000000000000000"
+    },
+    {
+      "id": "demo-card-ai-4",
+      "kind": "flashcard",
+      "front": "Name three emergent abilities in LLMs.",
+      "back": "In-context learning, chain-of-thought reasoning, and instruction following. These appear only above certain scales.",
+      "topic": "Emergent Abilities",
+      "workspace_id": "demo-workspace-ai-ml-000000000000000"
+    },
+    {
+      "id": "demo-card-ai-5",
+      "kind": "flashcard",
+      "front": "What is the compute-optimal model size?",
+      "back": "For fixed compute, the optimal model size is ~20x smaller than data tokens. Violates early intuitions about model vs data trade-offs.",
+      "topic": "Scaling Laws",
+      "workspace_id": "demo-workspace-ai-ml-000000000000000"
+    },
+    {
+      "id": "demo-card-ai-6",
+      "kind": "flashcard",
+      "front": "What is tokenization?",
+      "back": "The process of breaking text into atomic units (tokens) that transformers process. Can be characters, words, or subwords.",
+      "topic": "NLP Basics",
+      "workspace_id": "demo-workspace-ai-ml-000000000000000"
+    },
+    {
+      "id": "demo-card-ai-7",
+      "kind": "flashcard",
+      "front": "Explain multi-head attention.",
+      "back": "Running N parallel attention heads with different projections, then concatenating. Each head specializes in different patterns.",
+      "topic": "Attention Mechanism",
+      "workspace_id": "demo-workspace-ai-ml-000000000000000"
+    },
+    {
+      "id": "demo-card-ai-8",
+      "kind": "flashcard",
+      "front": "What is fine-tuning?",
+      "back": "Continuing training of a pre-trained model on domain-specific data with low learning rates to adapt to new tasks.",
+      "topic": "Transfer Learning",
+      "workspace_id": "demo-workspace-ai-ml-000000000000000"
+    },
+    {
+      "id": "demo-card-music-1",
+      "kind": "flashcard",
+      "front": "What interval is a tritone?",
+      "back": "Three whole steps (6 half-steps) — e.g. C to F#. Divides the octave exactly in half, driving V-I resolution.",
+      "topic": "Intervals",
+      "workspace_id": "demo-workspace-music-theory-0000000"
+    },
+    {
+      "id": "demo-card-music-2",
+      "kind": "flashcard",
+      "front": "What are the chord qualities in a major key?",
+      "back": "I=Major, ii=minor, iii=minor, IV=Major, V=Major, vi=minor, vii°=diminished.",
+      "topic": "Chords",
+      "workspace_id": "demo-workspace-music-theory-0000000"
+    },
+    {
+      "id": "demo-card-music-3",
+      "kind": "flashcard",
+      "front": "What is a perfect cadence?",
+      "back": "V → I (or V7 → I). The strongest resolution, signaling a definitive phrase end.",
+      "topic": "Cadences",
+      "workspace_id": "demo-workspace-music-theory-0000000"
+    },
+    {
+      "id": "demo-card-music-4",
+      "kind": "flashcard",
+      "front": "What is the relative minor of C major?",
+      "back": "A minor — same white keys but starts on A, giving a different tonal center.",
+      "topic": "Keys",
+      "workspace_id": "demo-workspace-music-theory-0000000"
+    },
+    {
+      "id": "demo-card-music-5",
+      "kind": "flashcard",
+      "front": "What does a 4/4 time signature mean?",
+      "back": "4 beats per measure, quarter note gets the beat. The most common signature in Western music.",
+      "topic": "Rhythm",
+      "workspace_id": "demo-workspace-music-theory-0000000"
+    },
+    {
+      "id": "demo-card-music-6",
+      "kind": "flashcard",
+      "front": "Define polyrhythm.",
+      "back": "Layering different rhythmic patterns: 3:2, 4:3, etc. Creates tension through metric conflict.",
+      "topic": "Rhythm",
+      "workspace_id": "demo-workspace-music-theory-0000000"
+    },
+    {
+      "id": "demo-card-music-7",
+      "kind": "flashcard",
+      "front": "What is syncopation?",
+      "back": "Emphasizing offbeats or unexpected rhythmic placement, creating swing and rhythmic interest.",
+      "topic": "Rhythm",
+      "workspace_id": "demo-workspace-music-theory-0000000"
+    },
+    {
+      "id": "demo-card-music-8",
+      "kind": "flashcard",
+      "front": "What is the most common chord progression?",
+      "back": "I→V→vi→IV (C→G→Am→F). Appears in hundreds of pop songs because of its satisfying arc.",
+      "topic": "Chords",
+      "workspace_id": "demo-workspace-music-theory-0000000"
+    },
+    {
+      "id": "demo-card-rome-1",
+      "kind": "flashcard",
+      "front": "What ended the Roman Republic?",
+      "back": "Civil wars culminating in Augustus defeating Antony at Actium (31 BC), becoming the first Emperor (27 BC).",
+      "topic": "Republican Collapse",
+      "workspace_id": "demo-workspace-rome-000000000000000"
+    },
+    {
+      "id": "demo-card-rome-2",
+      "kind": "flashcard",
+      "front": "When did Caesar cross the Rubicon?",
+      "back": "49 BC. Bringing his army past Rome's pomerium was an act of war, triggering civil war with Pompey.",
+      "topic": "Julius Caesar",
+      "workspace_id": "demo-workspace-rome-000000000000000"
+    },
+    {
+      "id": "demo-card-rome-3",
+      "kind": "flashcard",
+      "front": "What was Marius's military reform?",
+      "back": "Professionalized legions by recruiting poor citizens and paying them. Soldiers became loyal to generals, destabilizing the state.",
+      "topic": "Military Reforms",
+      "workspace_id": "demo-workspace-rome-000000000000000"
+    },
+    {
+      "id": "demo-card-rome-4",
+      "kind": "flashcard",
+      "front": "Describe a Roman legion.",
+      "back": "~5,500 troops organized: 10 cohorts, each with maniples/centuries. Centurions (professional NCOs) enforced discipline.",
+      "topic": "Military Organization",
+      "workspace_id": "demo-workspace-rome-000000000000000"
+    },
+    {
+      "id": "demo-card-rome-5",
+      "kind": "flashcard",
+      "front": "What is a centurion?",
+      "back": "A professional military officer commanding a century (~80 troops). The backbone of Roman military organization and discipline.",
+      "topic": "Military Organization",
+      "workspace_id": "demo-workspace-rome-000000000000000"
+    },
+    {
+      "id": "demo-card-rome-6",
+      "kind": "flashcard",
+      "front": "Why were Roman tactics superior?",
+      "back": "Formation discipline, centurion command, standardized weapons, fortifications, logistics, and years of training vs seasonal warriors.",
+      "topic": "Tactics",
+      "workspace_id": "demo-workspace-rome-000000000000000"
+    },
+    {
+      "id": "demo-card-rome-7",
+      "kind": "flashcard",
+      "front": "What did Augustus accomplish?",
+      "back": "Ended civil wars, became first Emperor. Kept republican institutions as cover while consolidating absolute power.",
+      "topic": "Augustan Era",
+      "workspace_id": "demo-workspace-rome-000000000000000"
+    },
+    {
+      "id": "demo-card-rome-8",
+      "kind": "flashcard",
+      "front": "Name three figures in the Republic's fall.",
+      "back": "Julius Caesar, Octavian (Augustus), Pompey, Marius, Cicero, Antony. All played roles in the ~100 year decline.",
+      "topic": "Republican Collapse",
+      "workspace_id": "demo-workspace-rome-000000000000000"
+    }
+  ]
+}
