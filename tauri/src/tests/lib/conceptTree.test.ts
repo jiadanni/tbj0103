@@ -138,6 +138,49 @@ describe("buildForest", () => {
 
     const forest = buildForest(nodes, links);
 
-    expect(forest.children).toEqual([]);
+    // Uncategorized is the only content available, so it must still be
+    // shown (merged into one branch) rather than leaving the map blank.
+    expect(forest.children).toHaveLength(1);
+    expect(forest.children?.[0].name.toLowerCase()).toBe("uncategorized");
+  });
+
+  it("hides the uncategorized scaffold when a real chapter is also present", () => {
+    const nodes = [
+      {
+        id: "chapter-uncat",
+        workspace_id: "ws-1",
+        name: "Uncategorized",
+        concept_description: "",
+        concept_type: "topic",
+        tags: [],
+        aliases: [],
+        x_position: 0,
+        y_position: 0,
+        review_count: 0,
+        hierarchy_level: "chapter",
+        created_at: "",
+        updated_at: "",
+      },
+      {
+        id: "chapter-real",
+        workspace_id: "ws-1",
+        name: "Closures",
+        concept_description: "",
+        concept_type: "topic",
+        tags: [],
+        aliases: [],
+        x_position: 0,
+        y_position: 0,
+        review_count: 0,
+        hierarchy_level: "chapter",
+        created_at: "",
+        updated_at: "",
+      },
+    ] satisfies ConceptNode[];
+
+    const forest = buildForest(nodes, []);
+
+    expect(forest.children).toHaveLength(1);
+    expect(forest.children?.[0].name).toBe("Closures");
   });
 });

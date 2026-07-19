@@ -95,12 +95,19 @@ export function buildForest(nodes: ConceptNode[], links: ConceptLink[]): Roadmap
 
   const mergedRoots = mergeDuplicateSiblings(roots);
 
+  // Hide the "Uncategorized" scaffold only when there is other categorized
+  // content to show in its place — otherwise every concept the hierarchy job
+  // couldn't place would vanish from the roadmap entirely, leaving a blank
+  // map even though nodes exist (they're still visible via sidebar orphans).
+  const categorizedRoots = mergedRoots.filter((node) => !isLegacyUncategorizedScaffold(node));
+  const visibleRoots = categorizedRoots.length > 0 ? categorizedRoots : mergedRoots;
+
   return {
     id: "__root__",
     name: "Knowledge Map",
     hierarchy_level: "root",
     concept_type: "topic",
-    children: mergedRoots.filter((node) => !isLegacyUncategorizedScaffold(node)),
+    children: visibleRoots,
   };
 }
 

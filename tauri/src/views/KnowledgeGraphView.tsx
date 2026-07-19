@@ -11,11 +11,13 @@ import SuccessDialog from "../components/SuccessDialog";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { writeFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import {
+  AlertTriangle,
   Brain,
   Check,
   ChevronDown,
   Clock3,
   Download,
+  Info,
   Loader2,
   Maximize2,
   Minimize2,
@@ -874,8 +876,9 @@ export default function KnowledgeGraphView({
     : "Analyze Workspace";
 
   // --- Refresh-coordinator button labels (used by the toolbar split button
-  // that drives the seven background jobs, distinct from the sidebar's
-  // legacy single-shot Analyze button). ---
+  // that drives the graph-feeding job, distinct from the sidebar's legacy
+  // single-shot Analyze button). The other six workspace jobs run from
+  // Preferences > Data Controls > Run Background Processing Now. ---
   const REFRESH_JOB_LABELS: Record<RefreshWorkspaceTaskType, string> = {
     memory_extraction: "Memory extraction",
     workspace_glossary: "Workspace glossary",
@@ -900,7 +903,28 @@ export default function KnowledgeGraphView({
     : "Refresh Knowledge Map";
   const refreshButtonTooltip = `Runs these background jobs for this workspace: ${refreshWatchedTasks
     .map((t) => REFRESH_JOB_LABELS[t])
-    .join(", ")}. The map updates as each job completes.`;
+    .join(", ")}. The map updates as each job completes. For memory, glossary, flashcards, and other workspace jobs, use Preferences > Data Controls > Run Background Processing Now.`;
+  // Distinguish "never analyzed" / "not enough material" (info) from "the
+  // hierarchy job actually failed" (warning) so an empty map after a refresh
+  // doesn't read as silently broken.
+  const emptyMapNotice: { kind: "info" | "warning"; message: string } | null = isAnalyzing
+    ? null
+    : refreshFailedCount > 0
+      ? {
+          kind: "warning",
+          message: "The last refresh didn't finish successfully, so the roadmap couldn't be rebuilt. Open the inference jobs panel for details, then try again.",
+        }
+      : insufficientData
+        ? {
+            kind: "info",
+            message: `Not enough source material for AI analysis yet${sourceMaterialSummary ? ` (${sourceMaterialSummary})` : ""}. Add more chat, notes, or documents, then analyze.`,
+          }
+        : refreshCompletedCount > 0
+          ? {
+              kind: "info",
+              message: "The last refresh completed but found no topics to map. Add more source material and try again.",
+            }
+          : null;
   const analyzeHelpText = isDemoWithoutModels
     ? "Demo data is preloaded. No local models are installed on this machine, so AI actions use simulated demo output."
     : insufficientData
@@ -1441,6 +1465,23 @@ export default function KnowledgeGraphView({
                           Analyze this workspace after you have a little material in it, and Aetherium will turn that activity into a structured roadmap.
                         </div>
                       </div>
+                      {emptyMapNotice && (
+                        <div
+                          role={emptyMapNotice.kind === "warning" ? "alert" : "status"}
+                          className={`flex max-w-md items-start gap-2 rounded-xl border px-3 py-2 text-left text-xs leading-5 ${
+                            emptyMapNotice.kind === "warning"
+                              ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
+                              : "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)]"
+                          }`}
+                        >
+                          {emptyMapNotice.kind === "warning" ? (
+                            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                          ) : (
+                            <Info size={14} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
+                          )}
+                          <span>{emptyMapNotice.message}</span>
+                        </div>
+                      )}
                       <button
                         onClick={() => { void handleRefresh("async"); }}
                         disabled={isAnalyzing || !activeWorkspaceId}
