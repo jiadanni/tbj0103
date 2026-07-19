@@ -35,6 +35,7 @@ pub mod semantic_search;
 pub mod settings;
 pub mod spaced_repetition;
 pub mod summarization_service;
+pub mod topic_block_service;
 pub mod topic_signature;
 pub mod vector_index;
 pub mod workspace_glossary;

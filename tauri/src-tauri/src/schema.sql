@@ -166,6 +166,16 @@ CREATE TABLE IF NOT EXISTS concept_links (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_concept_links_source_target_type
     ON concept_links(source_id, target_id, link_type);
 
+CREATE TABLE IF NOT EXISTS blocked_topics (
+    id TEXT PRIMARY KEY NOT NULL,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    normalized_name TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    blocked_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(workspace_id, normalized_name)
+);
+CREATE INDEX IF NOT EXISTS idx_blocked_topics_workspace ON blocked_topics(workspace_id);
+
 CREATE TABLE IF NOT EXISTS concept_mentions (
     id TEXT PRIMARY KEY NOT NULL,
     concept_id TEXT NOT NULL REFERENCES concept_nodes(id) ON DELETE CASCADE,

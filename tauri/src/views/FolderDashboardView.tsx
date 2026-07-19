@@ -302,7 +302,7 @@ export default function FolderDashboardView() {
               value={summary.overview.topics}
               onClick={
                 summary.overview.topics > 0
-                  ? () => roadmapSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+                  ? () => navigate("/topics")
                   : undefined
               }
             />

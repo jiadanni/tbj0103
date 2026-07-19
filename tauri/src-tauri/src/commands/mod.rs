@@ -37,6 +37,7 @@ pub mod source;
 pub mod summary;
 pub mod system;
 pub mod thought_queue;
+pub mod topic_block;
 pub mod topic_signature;
 pub mod web_ai;
 pub mod web_capture;

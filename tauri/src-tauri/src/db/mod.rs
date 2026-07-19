@@ -90,6 +90,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v74_inference_job_runs",
     "v75_fix_workspace_fk_shapes",
     "v76_learning_cards_generated_by_model",
+    "v77_blocked_topics",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -2293,6 +2294,32 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         }
         conn.execute(
             "INSERT INTO _migrations(name) VALUES('v76_learning_cards_generated_by_model')",
+            [],
+        )?;
+    }
+
+    // v77: blocked_topics table — per-workspace name-based topic blocklist.
+    // Survives concept_nodes deletion/recreation on signature resync.
+    let applied_v77: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v77_blocked_topics'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v77 == 0 {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS blocked_topics (
+                id TEXT PRIMARY KEY NOT NULL,
+                workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                normalized_name TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                blocked_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(workspace_id, normalized_name)
+            );
+            CREATE INDEX IF NOT EXISTS idx_blocked_topics_workspace ON blocked_topics(workspace_id);",
+        )?;
+        conn.execute(
+            "INSERT INTO _migrations(name) VALUES('v77_blocked_topics')",
             [],
         )?;
     }

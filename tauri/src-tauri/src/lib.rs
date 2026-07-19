@@ -589,6 +589,11 @@ pub fn run() {
             commands::topic_signature::regenerate_topic_signature,
             commands::topic_signature::update_topic_signature,
             commands::topic_signature::check_workspace_match,
+            // Topic blocklist
+            commands::topic_block::block_topic,
+            commands::topic_block::unblock_topic,
+            commands::topic_block::list_blocked_topics,
+            commands::topic_block::list_all_topics,
             // Git sync commands
             commands::git_sync::get_git_sync_status,
             commands::git_sync::configure_git_sync,

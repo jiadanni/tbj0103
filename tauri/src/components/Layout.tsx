@@ -70,6 +70,7 @@ const PreferencesView = React.lazy(() => import("../views/PreferencesView"));
 const NoteEditorView = React.lazy(() => import("../views/NoteEditorView"));
 const LogsView = React.lazy(() => import("../views/LogsView"));
 const ReviewTopicsView = React.lazy(() => import("../views/ReviewTopicsView"));
+const TopicsListView = React.lazy(() => import("../views/TopicsListView"));
 const HelpView = React.lazy(() => import("../views/HelpView"));
 import type { Workspace, PaneId } from "../stores/workspaceStore";
 import type { ChatSession } from "../stores/chatStore";
@@ -2174,6 +2175,7 @@ function AppRoutes() {
       <Route path="/sources" element={<Navigate to="/notes" replace />} />
       <Route path="/learning" element={<Navigate to="/folder" replace />} />
       <Route path="/review-topics" element={<ReviewTopicsView />} />
+      <Route path="/topics" element={<TopicsListView />} />
       <Route path="/history" element={<HistoryView />} />
       <Route path="/logs" element={<LogsView />} />
       <Route path="/preferences" element={<PreferencesView />} />

@@ -224,6 +224,24 @@ export interface ConceptLink {
   link_type: string; strength: number; context: string; created_at: string;
 }
 
+export interface TopicListItem {
+  concept_id: string | null;
+  name: string;
+  normalized_name: string;
+  is_blocked: boolean;
+  card_count: number;
+  review_count: number;
+  source: string;
+}
+
+export interface BlockedTopicRow {
+  id: string;
+  workspace_id: string;
+  normalized_name: string;
+  display_name: string;
+  blocked_at: string;
+}
+
 export interface ChangeProposal {
   id: string;
   workspace_id: string;
@@ -1543,6 +1561,13 @@ export const api = {
     applyChangeProposal: (id: string) => invoke<void>("apply_change_proposal", { id }),
     dismissChangeProposal: (id: string) => invoke<void>("dismiss_change_proposal", { id }),
     getKnowledgeSettings: () => invoke<KnowledgeSettings>("get_knowledge_settings"),
+  },
+
+  topics: {
+    listAll: (workspaceId: string) => invoke<TopicListItem[]>("list_all_topics", { workspaceId }),
+    block: (workspaceId: string, name: string) => invoke<void>("block_topic", { workspaceId, name }),
+    unblock: (workspaceId: string, normalizedName: string) => invoke<void>("unblock_topic", { workspaceId, normalizedName }),
+    listBlocked: (workspaceId: string) => invoke<BlockedTopicRow[]>("list_blocked_topics", { workspaceId }),
   },
 
   learningGoal: {

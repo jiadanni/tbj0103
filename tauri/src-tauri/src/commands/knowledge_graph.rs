@@ -128,8 +128,11 @@ pub fn list_concepts(
         "AND (superseded_by IS NULL OR superseded_by = '') "
     };
     let sql = format!(
-        "{cte}SELECT id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at, hierarchy_level
-         FROM concept_nodes WHERE workspace_id {ws_cond} {superseded_cond}ORDER BY name ASC
+        "{cte}SELECT cn.id, cn.workspace_id, cn.name, cn.concept_description, cn.concept_type, cn.tags, cn.aliases, cn.references_json, cn.x_position, cn.y_position, cn.review_count, cn.created_at, cn.updated_at, cn.hierarchy_level
+         FROM concept_nodes cn
+         WHERE cn.workspace_id {ws_cond} {superseded_cond}\
+         AND NOT EXISTS (SELECT 1 FROM blocked_topics bt WHERE bt.workspace_id = cn.workspace_id AND bt.normalized_name = lower(cn.name))
+         ORDER BY cn.name ASC
          LIMIT ?2 OFFSET ?3"
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;

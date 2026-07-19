@@ -94,6 +94,9 @@ pub fn sync_concepts_from_signatures(conn: &Connection, workspace_id: &str) -> R
         .map_err(|e| e.to_string())?;
     let signature: TopicSignature = serde_json::from_str(&sig_json).unwrap_or_default();
 
+    let blocked = crate::services::topic_block_service::blocked_names_set(conn, workspace_id)
+        .unwrap_or_default();
+
     let mut seen: Vec<String> = Vec::new();
     for tag in &signature.auto_detected_tags {
         let t = tag.tag.trim();
@@ -102,13 +105,14 @@ pub fn sync_concepts_from_signatures(conn: &Connection, workspace_id: &str) -> R
                 .excluded_tags
                 .iter()
                 .any(|e| e.eq_ignore_ascii_case(t))
+            && !blocked.contains(&t.to_lowercase())
         {
             seen.push(t.to_string());
         }
     }
     for t in &signature.custom_tags {
         let t = t.trim();
-        if !t.is_empty() {
+        if !t.is_empty() && !blocked.contains(&t.to_lowercase()) {
             seen.push(t.to_string());
         }
     }
@@ -573,6 +577,8 @@ async fn topic_quality_pass_for_workspace(
 ) -> Result<(), String> {
     let topics: Vec<TopicQualityRow> = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
+        let blocked = crate::services::topic_block_service::blocked_names_set(&conn, ws_id)
+            .unwrap_or_default();
         let mut stmt = conn
             .prepare(
                 "SELECT ft.id, ft.topic, ft.card_count,
@@ -595,6 +601,7 @@ async fn topic_quality_pass_for_workspace(
             })
             .map_err(|e| e.to_string())?
             .filter_map(Result::ok)
+            .filter(|t| !blocked.contains(&t.topic.trim().to_lowercase()))
             .collect();
         rows
     };

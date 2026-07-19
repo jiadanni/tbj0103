@@ -363,8 +363,10 @@ pub fn recompute_workspace_signature(
 
     sig.custom_tags = existing.custom_tags;
     sig.excluded_tags = existing.excluded_tags;
+    let blocked = crate::services::topic_block_service::blocked_names_set(conn, workspace_id)
+        .unwrap_or_default();
     sig.auto_detected_tags
-        .retain(|t| !sig.excluded_tags.contains(&t.tag));
+        .retain(|t| !sig.excluded_tags.contains(&t.tag) && !blocked.contains(&t.tag.trim().to_lowercase()));
     let now = chrono::Utc::now().to_rfc3339();
     let sig_json = serde_json::to_string(&sig).map_err(|e| e.to_string())?;
 
@@ -560,6 +562,7 @@ pub async fn enrich_with_ollama(
     model: &str,
     ollama_url: &str,
     mut cancel_rx: Option<tokio::sync::watch::Receiver<u64>>,
+    blocked_topics: &[String],
 ) -> TopicSignature {
     #[derive(serde::Deserialize)]
     struct EnrichmentPayload {
@@ -578,6 +581,15 @@ pub async fn enrich_with_ollama(
         return heuristic;
     }
 
+    let blocked_line = if blocked_topics.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "- do NOT return any of these previously-rejected topics: {}\n",
+            blocked_topics.join(", ")
+        )
+    };
+
     let prompt = format!(
         "Analyze these workspace chat excerpts and infer the most specific recurring subject areas.\n\
 Return ONLY a JSON object with this exact shape:\n\
@@ -586,6 +598,7 @@ Rules:\n\
 - topics must be 2 to 4 words when possible\n\
 - prefer concrete domains, libraries, tools, frameworks, languages, environments, and problem areas\n\
 - avoid generic words like system, module, data, import, file, line, command, issue, question\n\
+{blocked_line}\
 - return 6 to 12 topics max\n\
 - intent_patterns can only contain: learning, debugging, tutorial, code-review\n\
 - no markdown, no explanation\n\n\
@@ -646,10 +659,14 @@ Chat excerpts:\n{sample}"
         return heuristic;
     };
 
+    let blocked_set: std::collections::HashSet<&str> =
+        blocked_topics.iter().map(|s| s.as_str()).collect();
+
     let ollama_tags = payload
         .topics
         .into_iter()
         .filter_map(|topic| normalize_topic_label(&topic))
+        .filter(|tag| !blocked_set.contains(tag.to_lowercase().as_str()))
         .enumerate()
         .map(|(idx, tag)| TopicTag {
             tag,
@@ -684,7 +701,7 @@ pub async fn recompute_workspace_signature_with_ai(
     ollama_url_override: Option<String>,
     cancel_rx: Option<tokio::sync::watch::Receiver<u64>>,
 ) -> Result<TopicSignature, String> {
-    let (existing, text, count, model, ollama_url) = {
+    let (existing, text, count, model, ollama_url, blocked_names) = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
         let existing_json: String = conn
             .query_row(
@@ -697,7 +714,9 @@ pub async fn recompute_workspace_signature_with_ai(
         let (text, count) = collect_workspace_text(&conn, workspace_id)?;
         let model = model_override.or_else(|| get_model_for_job(&conn, "topic_signature_model"));
         let ollama_url = ollama_url_override.or_else(|| get_ollama_base_url(&conn));
-        (existing, text, count, model, ollama_url)
+        let blocked = crate::services::topic_block_service::blocked_names_set(&conn, workspace_id)
+            .unwrap_or_default();
+        (existing, text, count, model, ollama_url, blocked)
     };
 
     if count == 0 {
@@ -715,14 +734,15 @@ pub async fn recompute_workspace_signature_with_ai(
     sig.message_count_at_gen = Some(count);
 
     if let (Some(model), Some(ollama_url)) = (model, ollama_url) {
-        sig = enrich_with_ollama(sig, &text, &model, &ollama_url, cancel_rx).await;
+        let blocked_vec: Vec<String> = blocked_names.iter().cloned().collect();
+        sig = enrich_with_ollama(sig, &text, &model, &ollama_url, cancel_rx, &blocked_vec).await;
     }
 
     sig.custom_tags = existing.custom_tags;
     sig.excluded_tags = existing.excluded_tags;
     sig.suggested_prompts = existing.suggested_prompts;
     sig.auto_detected_tags
-        .retain(|t| !sig.excluded_tags.contains(&t.tag));
+        .retain(|t| !sig.excluded_tags.contains(&t.tag) && !blocked_names.contains(&t.tag.trim().to_lowercase()));
 
     let now = chrono::Utc::now().to_rfc3339();
     sig.generated_at = Some(now.clone());
