@@ -12,6 +12,7 @@ pub struct Settings {
     pub summarization_model: String,
     pub memory_extraction_model: String,
     pub flashcard_model: String,
+    pub flashcard_cleanup_model: String,
     pub glossary_model: String,
     pub topic_signature_model: String,
     pub goal_suggestion_model: String,
@@ -92,6 +93,7 @@ impl Default for Settings {
             summarization_model: "".to_string(),
             memory_extraction_model: "".to_string(),
             flashcard_model: "".to_string(),
+            flashcard_cleanup_model: "".to_string(),
             glossary_model: "".to_string(),
             topic_signature_model: "".to_string(),
             goal_suggestion_model: "".to_string(),
@@ -337,6 +339,9 @@ pub async fn get_settings(app: AppHandle, state: State<'_, DbState>) -> Result<S
         flashcard_model: get_setting(&conn, "flashcard_model")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.flashcard_model),
+        flashcard_cleanup_model: get_setting(&conn, "flashcard_cleanup_model")
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or(def.flashcard_cleanup_model),
         glossary_model: get_setting(&conn, "glossary_model")
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or(def.glossary_model),
@@ -606,6 +611,11 @@ pub fn update_settings(
         &settings.memory_extraction_model,
     )?;
     set_json_setting(&conn, "flashcard_model", &settings.flashcard_model)?;
+    set_json_setting(
+        &conn,
+        "flashcard_cleanup_model",
+        &settings.flashcard_cleanup_model,
+    )?;
     set_json_setting(&conn, "glossary_model", &settings.glossary_model)?;
     set_json_setting(
         &conn,
@@ -943,6 +953,7 @@ fn encode_known_setting(key: &str, value: &serde_json::Value) -> Result<String, 
         | "summarization_model"
         | "memory_extraction_model"
         | "flashcard_model"
+        | "flashcard_cleanup_model"
         | "glossary_model"
         | "topic_signature_model"
         | "goal_suggestion_model"
@@ -1097,6 +1108,7 @@ pub struct InferenceSettings {
     pub summarization_model: String,
     pub memory_extraction_model: String,
     pub flashcard_model: String,
+    pub flashcard_cleanup_model: String,
     pub glossary_model: String,
     pub topic_signature_model: String,
     pub goal_suggestion_model: String,
@@ -1265,6 +1277,9 @@ pub async fn get_inference_settings(
             flashcard_model: lookup("flashcard_model")
                 .and_then(|v| serde_json::from_str(&v).ok())
                 .unwrap_or(def.flashcard_model),
+            flashcard_cleanup_model: lookup("flashcard_cleanup_model")
+                .and_then(|v| serde_json::from_str(&v).ok())
+                .unwrap_or(def.flashcard_cleanup_model),
             glossary_model: lookup("glossary_model")
                 .and_then(|v| serde_json::from_str(&v).ok())
                 .unwrap_or(def.glossary_model),
@@ -1508,6 +1523,7 @@ mod tests {
         ("summarization_model", "llama3"),
         ("memory_extraction_model", "llama3"),
         ("flashcard_model", "llama3"),
+        ("flashcard_cleanup_model", "llama3"),
         ("glossary_model", "llama3"),
         ("topic_signature_model", "llama3"),
         ("goal_suggestion_model", "llama3"),
