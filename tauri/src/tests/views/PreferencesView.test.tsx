@@ -184,6 +184,15 @@ const workspaceStoreState = {
 };
 
 vi.mock("@/lib/api", () => ({
+  REFRESH_WORKSPACE_TASK_TYPES: [
+    "memory_extraction",
+    "workspace_glossary",
+    "hover_definition_scan",
+    "summarization",
+    "flashcard_generation",
+    "concept_hierarchy",
+    "workspace_prompt_bank",
+  ],
   api: {
     settings: {
       get: apiMocks.settingsGet,
@@ -253,6 +262,7 @@ vi.mock("@/lib/api", () => ({
       queueProcessingNow: apiMocks.queueBackgroundProcessingNow,
       setInferenceJobSetting: vi.fn(() => Promise.resolve()),
     },
+    listenBackgroundTask: vi.fn().mockResolvedValue(() => {}),
   },
 }));
 
@@ -573,7 +583,9 @@ describe("PreferencesView", () => {
     fireEvent.click(screen.getByLabelText("Imported Chats"));
     fireEvent.click(screen.getByText("Summarization"));
 
-    fireEvent.click(screen.getByRole("button", { name: /run now/i }));
+    // Unchecking one job away from the panel's default selection switches
+    // the button to "Run Custom" (see isDefaultSelection in PreferencesView).
+    fireEvent.click(screen.getByRole("button", { name: /run custom/i }));
 
     await waitFor(() => {
       expect(apiMocks.queueBackgroundProcessingNow).toHaveBeenCalledWith({

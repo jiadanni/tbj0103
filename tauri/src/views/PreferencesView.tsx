@@ -955,6 +955,16 @@ function KnowledgeResetCountGrid({ result }: { result: KnowledgeResetResult }) {
   );
 }
 
+/** Default job selection for the "Run Background Processing Now" panel:
+ *  the standard refresh jobs plus the maintenance/cleanup passes, which are
+ *  opt-in for the Knowledge Map's graph-only refresh but useful here since
+ *  this panel is an explicit, on-demand "catch up everything" action. */
+const DEFAULT_PROCESSING_JOBS = [
+  ...REFRESH_WORKSPACE_TASK_TYPES,
+  "flashcard_cleanup",
+  "memory_cleanup",
+];
+
 function DataControlsPreferences() {
   const [options, setOptions] = useState<KnowledgeResetOptions>({ ...DEFAULT_DATA_RESET_OPTIONS });
   const [preview, setPreview] = useState<KnowledgeResetResult | null>(null);
@@ -965,7 +975,7 @@ function DataControlsPreferences() {
   const [processingScope, setProcessingScope] = useState<BackgroundProcessingScope>("current_workspace");
   const [selectedWorkspaceIds, setSelectedWorkspaceIds] = useState<string[]>([]);
   const [selectedProcessingJobs, setSelectedProcessingJobs] = useState<string[]>(
-    () => [...REFRESH_WORKSPACE_TASK_TYPES],
+    () => [...DEFAULT_PROCESSING_JOBS],
   );
   type BatchRowStatus = "queued" | "running" | "completed" | "failed";
   const [batchStatus, setBatchStatus] = useState<Record<string, BatchRowStatus> | null>(null);
@@ -1059,14 +1069,25 @@ function DataControlsPreferences() {
     }
   }
 
-  const isStandardSelection = useMemo(() => {
+  // True only for the exact 7-job set the backend's dedicated refresh
+  // coordinator (`refreshWorkspace`) runs — lets queueBackgroundProcessing
+  // take that optimized path instead of the generic job queue.
+  const isFastPathSelection = useMemo(() => {
     if (selectedProcessingJobs.length !== REFRESH_WORKSPACE_TASK_TYPES.length) { return false; }
     const selected = new Set(selectedProcessingJobs);
     return REFRESH_WORKSPACE_TASK_TYPES.every((t) => selected.has(t));
   }, [selectedProcessingJobs]);
 
-  function resetToStandardSelection() {
-    setSelectedProcessingJobs([...REFRESH_WORKSPACE_TASK_TYPES]);
+  // True for this panel's own default (standard refresh + cleanup jobs) —
+  // drives the "reset to default" affordance, independent of the fast path.
+  const isDefaultSelection = useMemo(() => {
+    if (selectedProcessingJobs.length !== DEFAULT_PROCESSING_JOBS.length) { return false; }
+    const selected = new Set(selectedProcessingJobs);
+    return DEFAULT_PROCESSING_JOBS.every((t) => selected.has(t));
+  }, [selectedProcessingJobs]);
+
+  function resetToDefaultSelection() {
+    setSelectedProcessingJobs([...DEFAULT_PROCESSING_JOBS]);
   }
 
   async function queueBackgroundProcessing() {
@@ -1083,7 +1104,7 @@ function DataControlsPreferences() {
     setBatchProgress({ current: 0, total: taskTypes.length });
     batchActiveRef.current = true;
     try {
-      if (isStandardSelection && processingScope === "current_workspace" && activeWorkspaceId) {
+      if (isFastPathSelection && processingScope === "current_workspace" && activeWorkspaceId) {
         await api.knowledge.refreshWorkspace(activeWorkspaceId, "async");
         setSuccess("Refresh started. Progress will appear below and in the status bar.");
       } else {
@@ -1266,20 +1287,20 @@ function DataControlsPreferences() {
                   type="button"
                   onClick={() => { void queueBackgroundProcessing(); }}
                   disabled={processingDisabled}
-                  title={isStandardSelection ? "Runs the standard refresh (7 jobs)" : "Runs only the jobs you have selected"}
+                  title={isDefaultSelection ? `Runs the default refresh (${DEFAULT_PROCESSING_JOBS.length} jobs)` : "Runs only the jobs you have selected"}
                   className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[var(--accent-color)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {processingRunning || batchInFlight ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
-                  {isStandardSelection ? "Run Now" : "Run Custom"}
+                  {isDefaultSelection ? "Run Now" : "Run Custom"}
                 </button>
               </div>
 
-              {!isStandardSelection && (
+              {!isDefaultSelection && (
                 <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-muted)]">
-                  <span>Custom selection — does not match the standard refresh.</span>
+                  <span>Custom selection — does not match the default.</span>
                   <button
                     type="button"
-                    onClick={resetToStandardSelection}
+                    onClick={resetToDefaultSelection}
                     className="text-[var(--accent-color)] hover:underline"
                   >
                     Reset to default
