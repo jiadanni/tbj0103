@@ -562,10 +562,91 @@ fn apply_topic_cleanup(
     Ok((junk_deleted, groups_merged))
 }
 
-/// LLM-assisted topic-quality sweep: per workspace, ask the model which
-/// topics are junk (bare question words, fragments) and which groups name the
-/// same subject, then delete/merge accordingly. Workspaces are sampled
-/// randomly so every workspace is eventually covered across sweeps.
+/// LLM-assisted topic-quality sweep for one workspace: ask the model which
+/// topics are junk (bare question words, fragments) and which groups name
+/// the same subject, then delete/merge accordingly.
+async fn topic_quality_pass_for_workspace(
+    state: &DbState,
+    client: &crate::ollama::client::OllamaClient,
+    model: &str,
+    ws_id: &str,
+) -> Result<(), String> {
+    let topics: Vec<TopicQualityRow> = {
+        let conn = state.0.get().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT ft.id, ft.topic, ft.card_count,
+                        COALESCE(SUM(CASE WHEN lc.repetitions > 0 THEN 1 ELSE 0 END), 0)
+                 FROM flashcard_topics ft
+                 LEFT JOIN learning_cards lc ON lc.topic_id = ft.id
+                 WHERE ft.workspace_id = ?1
+                 GROUP BY ft.id
+                 ORDER BY ft.created_at ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows: Vec<TopicQualityRow> = stmt
+            .query_map(rusqlite::params![ws_id], |r| {
+                Ok(TopicQualityRow {
+                    id: r.get(0)?,
+                    topic: r.get(1)?,
+                    card_count: r.get(2)?,
+                    reviewed_count: r.get(3)?,
+                })
+            })
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .collect();
+        rows
+    };
+    if topics.is_empty() {
+        return Ok(());
+    }
+
+    let listing = topics
+        .iter()
+        .enumerate()
+        .map(|(i, t)| {
+            let truncated: String = t.topic.chars().take(80).collect();
+            format!("{}. {}", i + 1, truncated)
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let prompt = format!(
+        "These are the flashcard study topics in one workspace:\n{listing}\n\n\
+        Return ONLY a JSON object of the form {{\"junk\": [], \"duplicates\": []}}.\n\
+        - \"junk\": numbers of entries that are not meaningful standalone study \
+        topics (bare question words, filler, or fragments — e.g. \"what\", \"stuff\").\n\
+        - \"duplicates\": groups of numbers whose topics name the same subject \
+        (spelling variants, singular/plural), e.g. [[1,4],[2,7]]. Group ONLY topics \
+        that are genuinely the same subject; similar-looking but distinct concepts \
+        (e.g. \"jaccard\" the similarity index vs \"jacquard\" the loom) must NOT \
+        be grouped.\n\
+        Use empty arrays when nothing applies. No markdown, no explanation."
+    );
+    let raw = client
+        .send_message(
+            "flashcard_cleanup",
+            model,
+            vec![crate::ollama::client::OllamaMessage {
+                role: "user".to_string(),
+                content: prompt,
+            }],
+        )
+        .await
+        .map_err(|e| format!("Topic cleanup for workspace {ws_id} failed: {e}"))?;
+    let plan = parse_topic_cleanup_response(&raw)
+        .map_err(|e| format!("Topic cleanup for workspace {ws_id} failed: {e}"))?;
+    if plan.junk.is_empty() && plan.duplicates.is_empty() {
+        return Ok(());
+    }
+    let mut conn = state.0.get().map_err(|e| e.to_string())?;
+    apply_topic_cleanup(&mut conn, &topics, &plan)?;
+    Ok(())
+}
+
+/// Runs the topic-quality pass across a random sample of workspaces so every
+/// workspace is eventually covered across sweeps. Used by the automatic
+/// background scheduler.
 async fn topic_quality_pass(
     state: &DbState,
     client: &crate::ollama::client::OllamaClient,
@@ -594,76 +675,7 @@ async fn topic_quality_pass(
     };
 
     for ws_id in &workspaces {
-        let topics: Vec<TopicQualityRow> = {
-            let conn = state.0.get().map_err(|e| e.to_string())?;
-            let mut stmt = conn
-                .prepare(
-                    "SELECT ft.id, ft.topic, ft.card_count,
-                            COALESCE(SUM(CASE WHEN lc.repetitions > 0 THEN 1 ELSE 0 END), 0)
-                     FROM flashcard_topics ft
-                     LEFT JOIN learning_cards lc ON lc.topic_id = ft.id
-                     WHERE ft.workspace_id = ?1
-                     GROUP BY ft.id
-                     ORDER BY ft.created_at ASC",
-                )
-                .map_err(|e| e.to_string())?;
-            let rows: Vec<TopicQualityRow> = stmt
-                .query_map(rusqlite::params![ws_id], |r| {
-                    Ok(TopicQualityRow {
-                        id: r.get(0)?,
-                        topic: r.get(1)?,
-                        card_count: r.get(2)?,
-                        reviewed_count: r.get(3)?,
-                    })
-                })
-                .map_err(|e| e.to_string())?
-                .filter_map(Result::ok)
-                .collect();
-            rows
-        };
-        if topics.is_empty() {
-            continue;
-        }
-
-        let listing = topics
-            .iter()
-            .enumerate()
-            .map(|(i, t)| {
-                let truncated: String = t.topic.chars().take(80).collect();
-                format!("{}. {}", i + 1, truncated)
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        let prompt = format!(
-            "These are the flashcard study topics in one workspace:\n{listing}\n\n\
-            Return ONLY a JSON object of the form {{\"junk\": [], \"duplicates\": []}}.\n\
-            - \"junk\": numbers of entries that are not meaningful standalone study \
-            topics (bare question words, filler, or fragments — e.g. \"what\", \"stuff\").\n\
-            - \"duplicates\": groups of numbers whose topics name the same subject \
-            (spelling variants, singular/plural), e.g. [[1,4],[2,7]]. Group ONLY topics \
-            that are genuinely the same subject; similar-looking but distinct concepts \
-            (e.g. \"jaccard\" the similarity index vs \"jacquard\" the loom) must NOT \
-            be grouped.\n\
-            Use empty arrays when nothing applies. No markdown, no explanation."
-        );
-        let raw = client
-            .send_message(
-                "flashcard_cleanup",
-                model,
-                vec![crate::ollama::client::OllamaMessage {
-                    role: "user".to_string(),
-                    content: prompt,
-                }],
-            )
-            .await
-            .map_err(|e| format!("Topic cleanup for workspace {ws_id} failed: {e}"))?;
-        let plan = parse_topic_cleanup_response(&raw)
-            .map_err(|e| format!("Topic cleanup for workspace {ws_id} failed: {e}"))?;
-        if plan.junk.is_empty() && plan.duplicates.is_empty() {
-            continue;
-        }
-        let mut conn = state.0.get().map_err(|e| e.to_string())?;
-        apply_topic_cleanup(&mut conn, &topics, &plan)?;
+        topic_quality_pass_for_workspace(state, client, model, ws_id).await?;
     }
     Ok(())
 }
@@ -684,21 +696,46 @@ struct CleanupCard {
 /// larger models (a 27B card outranks a 4B one), then the newest. Losers are
 /// deleted and the topic's card_count is recomputed.
 pub async fn cleanup_tick(state: &DbState, ollama_url: Option<String>) -> Result<(), String> {
+    cleanup_tick_inner(state, ollama_url, None).await
+}
+
+/// Runs the topic-quality and card-dedup sweeps scoped to a single,
+/// explicitly-chosen workspace. Used by the manual "Run Background
+/// Processing Now" batch runner so it can report progress per workspace
+/// instead of sweeping a random sample / the globally busiest topics.
+pub async fn cleanup_tick_for_workspace(
+    state: &DbState,
+    ollama_url: Option<String>,
+    workspace_id: &str,
+) -> Result<(), String> {
+    cleanup_tick_inner(state, ollama_url, Some(workspace_id)).await
+}
+
+async fn cleanup_tick_inner(
+    state: &DbState,
+    ollama_url: Option<String>,
+    workspace_id: Option<&str>,
+) -> Result<(), String> {
     let (model, topics) = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
         let model = get_model_for_job(&conn, "flashcard_cleanup_model").unwrap_or_default();
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, topic FROM flashcard_topics
-                 WHERE card_count >= 2
-                 ORDER BY card_count DESC
-                 LIMIT ?1",
-            )
-            .map_err(|e| e.to_string())?;
+        let sql = if workspace_id.is_some() {
+            "SELECT id, topic FROM flashcard_topics
+             WHERE card_count >= 2 AND workspace_id = ?2
+             ORDER BY card_count DESC
+             LIMIT ?1"
+        } else {
+            "SELECT id, topic FROM flashcard_topics
+             WHERE card_count >= 2
+             ORDER BY card_count DESC
+             LIMIT ?1"
+        };
+        let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
         let topics: Vec<(String, String)> = stmt
-            .query_map(rusqlite::params![CLEANUP_TOPICS_PER_RUN], |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-            })
+            .query_map(
+                rusqlite::params![CLEANUP_TOPICS_PER_RUN, workspace_id.unwrap_or("")],
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+            )
             .map_err(|e| e.to_string())?
             .filter_map(Result::ok)
             .collect();
@@ -713,7 +750,10 @@ pub async fn cleanup_tick(state: &DbState, ollama_url: Option<String>) -> Result
     // Topic-quality pass first: junk topics deleted here won't waste a
     // card-dedup LLM call below, and merged topics concentrate their cards
     // so the card sweep sees the duplicates in one place.
-    topic_quality_pass(state, &client, &model).await?;
+    match workspace_id {
+        Some(ws_id) => topic_quality_pass_for_workspace(state, &client, &model, ws_id).await?,
+        None => topic_quality_pass(state, &client, &model).await?,
+    }
 
     for (topic_id, topic_name) in &topics {
         let cards: Vec<CleanupCard> = {
@@ -847,6 +887,12 @@ pub async fn cleanup_tick(state: &DbState, ollama_url: Option<String>) -> Result
     }
 
     // Watermark so the scheduler doesn't re-sweep until the interval elapses.
+    // Only the unscoped (global) sweep advances it — a single-workspace run
+    // from the manual batch runner hasn't covered the sampled set the
+    // watermark is meant to gate.
+    if workspace_id.is_some() {
+        return Ok(());
+    }
     let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT OR REPLACE INTO settings (key, value) VALUES ('flashcard_cleanup_last_run_at', ?1)",

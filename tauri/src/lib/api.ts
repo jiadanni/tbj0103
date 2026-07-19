@@ -539,6 +539,11 @@ export interface BackgroundTaskEvent {
   total?: number;
   /** `task_type` of the child job currently running inside a batch. */
   current_task_type?: string;
+  /** 1-indexed position of the workspace currently being processed within
+   *  the current child job, when that job iterates multiple workspaces. */
+  workspace_index?: number;
+  /** Total workspaces the current child job will process. See `workspace_index`. */
+  workspace_total?: number;
 }
 
 export interface ActiveJob {

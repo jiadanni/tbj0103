@@ -158,6 +158,13 @@ pub struct BackgroundTaskEvent {
     /// frontend map progress to the right row without parsing `message`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_task_type: Option<String>,
+    /// 1-indexed position of the workspace currently being processed within
+    /// the current child job, when that job iterates multiple workspaces.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_index: Option<u32>,
+    /// Total workspaces the current child job will process. See `workspace_index`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_total: Option<u32>,
 }
 
 /// Emitted on `background-task-prompt` when a job is gated on user
@@ -348,7 +355,9 @@ async fn gate_job(
 }
 
 fn emit_task(app: &AppHandle, task_type: &str, status: &str, message: &str, model: Option<String>) {
-    emit_task_full(app, task_type, status, message, model, None, None, None, None);
+    emit_task_full(
+        app, task_type, status, message, model, None, None, None, None, None, None,
+    );
 }
 
 /// Like `emit_task` but carries batch progress numerics (`current` / `total`)
@@ -375,6 +384,39 @@ fn emit_task_with_progress(
         current,
         total,
         current_task_type,
+        None,
+        None,
+    );
+}
+
+/// Reports which workspace a batch child job is currently processing, in
+/// addition to the job-level `current`/`total` from `emit_task_with_progress`.
+/// Used by `manual_data_processing` for jobs that iterate multiple
+/// workspaces, so the Data Controls panel can show "workspace 2 of 5" rather
+/// than just "job 1 of 9".
+#[allow(clippy::too_many_arguments)]
+fn emit_batch_workspace_progress(
+    app: &AppHandle,
+    message: &str,
+    workspace_id: &str,
+    current_task_type: &str,
+    job_current: u32,
+    job_total: u32,
+    workspace_index: u32,
+    workspace_total: u32,
+) {
+    emit_task_full(
+        app,
+        "manual_data_processing",
+        "processing",
+        message,
+        None,
+        Some(workspace_id.to_string()),
+        Some(job_current),
+        Some(job_total),
+        Some(current_task_type.to_string()),
+        Some(workspace_index),
+        Some(workspace_total),
     );
 }
 
@@ -389,6 +431,8 @@ fn emit_task_full(
     current: Option<u32>,
     total: Option<u32>,
     current_task_type: Option<String>,
+    workspace_index: Option<u32>,
+    workspace_total: Option<u32>,
 ) {
     let resolved_workspace_id = match status {
         "queued" => {
@@ -501,6 +545,8 @@ fn emit_task_full(
         current,
         total,
         current_task_type,
+        workspace_index,
+        workspace_total,
     };
     // Mirror to the in-process broadcast bus first so subscribers (e.g., the
     // workspace-refresh coordinator) cannot race with the IPC emit. Receive
@@ -1101,9 +1147,12 @@ async fn run_manual_processing_job(
     task_type: &str,
     workspace_ids: &[String],
     include_imported: bool,
+    job_current: u32,
+    job_total: u32,
 ) -> Result<(), String> {
     let db = app.state::<DbState>();
     let ollama_url = lookup_ollama_url(app).await;
+    let workspace_total = u32::try_from(workspace_ids.len()).unwrap_or(u32::MAX);
     match task_type {
         "memory_extraction" => {
             memory_pipeline::process_memory_extraction_for_workspaces(
@@ -1116,10 +1165,24 @@ async fn run_manual_processing_job(
         }
         "workspace_glossary" => {
             let mut any_failed = false;
-            for workspace_id in workspace_ids {
+            for (idx, workspace_id) in workspace_ids.iter().enumerate() {
                 if is_cancelled("manual_data_processing") {
                     return Err("cancelled".to_string());
                 }
+                let workspace_index = u32::try_from(idx + 1).unwrap_or(u32::MAX);
+                emit_batch_workspace_progress(
+                    app,
+                    &format!(
+                        "Running {}… (workspace {workspace_index} of {workspace_total})",
+                        job_label(task_type)
+                    ),
+                    workspace_id,
+                    task_type,
+                    job_current,
+                    job_total,
+                    workspace_index,
+                    workspace_total,
+                );
                 if workspace_glossary::refresh_workspace_glossary_with_options(
                     &db,
                     workspace_id,
@@ -1150,9 +1213,31 @@ async fn run_manual_processing_job(
             let sessions =
                 collect_summary_sessions_for_workspaces(&db, workspace_ids, include_imported).await;
             let mut any_failed = false;
+            // Sessions for the same workspace are contiguous (sessions are
+            // collected one workspace at a time), so bump the workspace
+            // index only when it changes rather than per session.
+            let mut last_workspace: Option<String> = None;
+            let mut workspace_index: u32 = 0;
             for (session_id, workspace_id) in sessions {
                 if is_cancelled("manual_data_processing") {
                     return Err("cancelled".to_string());
+                }
+                if last_workspace.as_deref() != Some(workspace_id.as_str()) {
+                    workspace_index += 1;
+                    last_workspace = Some(workspace_id.clone());
+                    emit_batch_workspace_progress(
+                        app,
+                        &format!(
+                            "Running {}… (workspace {workspace_index} of {workspace_total})",
+                            job_label(task_type)
+                        ),
+                        &workspace_id,
+                        task_type,
+                        job_current,
+                        job_total,
+                        workspace_index,
+                        workspace_total,
+                    );
                 }
                 if summarization_service::generate_info_summary_with_imported(
                     &db,
@@ -1192,6 +1277,80 @@ async fn run_manual_processing_job(
             crate::services::prompt_bank::tick_for_workspaces(&db, Some(workspace_ids))
                 .await
                 .map(|_| ())
+        }
+        "flashcard_cleanup" => {
+            let mut any_failed = false;
+            for (idx, workspace_id) in workspace_ids.iter().enumerate() {
+                if is_cancelled("manual_data_processing") {
+                    return Err("cancelled".to_string());
+                }
+                let workspace_index = u32::try_from(idx + 1).unwrap_or(u32::MAX);
+                emit_batch_workspace_progress(
+                    app,
+                    &format!(
+                        "Running {}… (workspace {workspace_index} of {workspace_total})",
+                        job_label(task_type)
+                    ),
+                    workspace_id,
+                    task_type,
+                    job_current,
+                    job_total,
+                    workspace_index,
+                    workspace_total,
+                );
+                if crate::services::flashcard_topic_service::cleanup_tick_for_workspace(
+                    &db,
+                    ollama_url.clone(),
+                    workspace_id,
+                )
+                .await
+                .is_err()
+                {
+                    any_failed = true;
+                }
+            }
+            if any_failed {
+                Err("Flashcard cleanup failed".to_string())
+            } else {
+                Ok(())
+            }
+        }
+        "memory_cleanup" => {
+            let mut any_failed = false;
+            for (idx, workspace_id) in workspace_ids.iter().enumerate() {
+                if is_cancelled("manual_data_processing") {
+                    return Err("cancelled".to_string());
+                }
+                let workspace_index = u32::try_from(idx + 1).unwrap_or(u32::MAX);
+                emit_batch_workspace_progress(
+                    app,
+                    &format!(
+                        "Running {}… (workspace {workspace_index} of {workspace_total})",
+                        job_label(task_type)
+                    ),
+                    workspace_id,
+                    task_type,
+                    job_current,
+                    job_total,
+                    workspace_index,
+                    workspace_total,
+                );
+                if crate::services::memory_cleanup::cleanup_tick_for_workspace(
+                    &db,
+                    ollama_url.clone(),
+                    workspace_id,
+                )
+                .await
+                .is_err()
+                {
+                    any_failed = true;
+                }
+            }
+            if any_failed {
+                Err("Memory cleanup failed".to_string())
+            } else {
+                Ok(())
+            }
         }
         other => Err(format!("Unknown background job: {other}")),
     }
@@ -1295,7 +1454,16 @@ async fn run_manual_processing_batch(
             Some(total_tasks),
             Some(task.clone()),
         );
-        match run_manual_processing_job(&app, task, &workspace_ids, req.include_imported).await {
+        match run_manual_processing_job(
+            &app,
+            task,
+            &workspace_ids,
+            req.include_imported,
+            current_idx,
+            total_tasks,
+        )
+        .await
+        {
             Ok(()) => completed += 1,
             Err(error) if error == "cancelled" => {
                 any_failed = true;

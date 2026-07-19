@@ -980,6 +980,7 @@ function DataControlsPreferences() {
   type BatchRowStatus = "queued" | "running" | "completed" | "failed";
   const [batchStatus, setBatchStatus] = useState<Record<string, BatchRowStatus> | null>(null);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
+  const [batchWorkspaceProgress, setBatchWorkspaceProgress] = useState<{ workspaceId: string; index: number; total: number } | null>(null);
   const batchActiveRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -1102,6 +1103,7 @@ function DataControlsPreferences() {
     );
     setBatchStatus(initialStatus);
     setBatchProgress({ current: 0, total: taskTypes.length });
+    setBatchWorkspaceProgress(null);
     batchActiveRef.current = true;
     try {
       if (isFastPathSelection && processingScope === "current_workspace" && activeWorkspaceId) {
@@ -1172,6 +1174,21 @@ function DataControlsPreferences() {
             }
             return next;
           });
+          if (
+            event.workspace_id
+            && typeof event.workspace_index === "number"
+            && typeof event.workspace_total === "number"
+          ) {
+            setBatchWorkspaceProgress({
+              workspaceId: event.workspace_id,
+              index: event.workspace_index,
+              total: event.workspace_total,
+            });
+          } else {
+            // A job without per-workspace reporting is now running — clear
+            // any stale progress left over from the previous child job.
+            setBatchWorkspaceProgress(null);
+          }
         } else if (event.status === "completed") {
           setBatchStatus((prev) => {
             if (!prev) { return prev; }
@@ -1181,6 +1198,7 @@ function DataControlsPreferences() {
             }
             return next;
           });
+          setBatchWorkspaceProgress(null);
           finalizeBatch();
         } else if (event.status === "failed" || event.status === "cancelled") {
           setBatchStatus((prev) => {
@@ -1191,6 +1209,7 @@ function DataControlsPreferences() {
             }
             return next;
           });
+          setBatchWorkspaceProgress(null);
           finalizeBatch();
         }
       } else if (isStandardChild) {
@@ -1237,6 +1256,7 @@ function DataControlsPreferences() {
       clearTimer = setTimeout(() => {
         setBatchStatus(null);
         setBatchProgress(null);
+        setBatchWorkspaceProgress(null);
       }, 5000);
     }
 
@@ -1313,6 +1333,16 @@ function DataControlsPreferences() {
                   <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
                     <span>
                       {batchInFlight ? "Running" : "Finished"} job {batchProgress.current} of {batchProgress.total}
+                      {batchWorkspaceProgress && (
+                        <>
+                          {" — workspace "}
+                          {batchWorkspaceProgress.index} of {batchWorkspaceProgress.total}
+                          {(() => {
+                            const name = workspaces.find((w) => w.id === batchWorkspaceProgress.workspaceId)?.name;
+                            return name ? ` (${name})` : "";
+                          })()}
+                        </>
+                      )}
                     </span>
                     <span>{Math.round((batchProgress.current / Math.max(batchProgress.total, 1)) * 100)}%</span>
                   </div>

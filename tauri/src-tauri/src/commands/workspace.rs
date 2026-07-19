@@ -28,6 +28,8 @@ fn emit_icon_task<R: Runtime>(
             current: None,
             total: None,
             current_task_type: None,
+            workspace_index: None,
+            workspace_total: None,
         },
     );
 }

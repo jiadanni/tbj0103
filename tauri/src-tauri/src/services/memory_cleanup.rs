@@ -141,11 +141,92 @@ fn apply_cleanup(
     Ok((junk_deleted, groups_merged))
 }
 
-/// LLM-assisted memory-quality sweep: per workspace, ask the model which
+/// LLM-assisted memory-quality sweep for one workspace: ask the model which
 /// memories are junk (generic filler, not genuinely useful context) and
 /// which groups restate the same underlying fact or preference, then
-/// delete/merge accordingly. Workspaces are sampled randomly so every
-/// workspace is eventually covered across sweeps.
+/// delete/merge accordingly.
+async fn quality_pass_for_workspace(
+    state: &DbState,
+    client: &crate::ollama::client::OllamaClient,
+    model: &str,
+    ws_id: &str,
+) -> Result<(), String> {
+    let memories: Vec<MemoryQualityRow> = {
+        let conn = state.0.get().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, content, memory_type, is_pinned, reinforcement_count
+                 FROM memories
+                 WHERE workspace_id = ?1 AND is_active = 1
+                 ORDER BY created_at ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows: Vec<MemoryQualityRow> = stmt
+            .query_map(rusqlite::params![ws_id], |r| {
+                Ok(MemoryQualityRow {
+                    id: r.get(0)?,
+                    content: r.get(1)?,
+                    memory_type: r.get(2)?,
+                    is_pinned: r.get(3)?,
+                    reinforcement_count: r.get(4)?,
+                })
+            })
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .collect();
+        rows
+    };
+    if memories.len() < 2 {
+        return Ok(());
+    }
+
+    let listing = memories
+        .iter()
+        .enumerate()
+        .map(|(i, m)| {
+            let truncated: String = m.content.chars().take(140).collect();
+            format!("{}. [{}] {}", i + 1, m.memory_type, truncated)
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let prompt = format!(
+        "These are stored memories (facts and preferences) about one user in one workspace:\n{listing}\n\n\
+        Return ONLY a JSON object of the form {{\"junk\": [], \"duplicates\": []}}.\n\
+        - \"junk\": numbers of entries that are not genuinely useful standalone \
+        context (vague filler, restatements of the obvious, or statements about \
+        the conversation rather than the user).\n\
+        - \"duplicates\": groups of numbers whose entries restate the same \
+        underlying fact or preference in different words, e.g. [[1,4],[2,7]]. \
+        Group ONLY entries that are genuinely the same statement; related but \
+        distinct statements (e.g. \"prefers concise answers\" vs \"prefers visual \
+        examples\") must NOT be grouped.\n\
+        Use empty arrays when nothing applies. No markdown, no explanation."
+    );
+    let raw = client
+        .send_message(
+            "memory_cleanup",
+            model,
+            vec![crate::ollama::client::OllamaMessage {
+                role: "user".to_string(),
+                content: prompt,
+            }],
+        )
+        .await
+        .map_err(|e| format!("Memory cleanup for workspace {ws_id} failed: {e}"))?;
+    let plan = parse_cleanup_response(&raw)
+        .map_err(|e| format!("Memory cleanup for workspace {ws_id} failed: {e}"))?;
+    if plan.junk.is_empty() && plan.duplicates.is_empty() {
+        return Ok(());
+    }
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut conn = state.0.get().map_err(|e| e.to_string())?;
+    apply_cleanup(&mut conn, &memories, &plan, &now)?;
+    Ok(())
+}
+
+/// Runs the quality pass across a random sample of workspaces so every
+/// workspace is eventually covered across sweeps. Used by the automatic
+/// background scheduler.
 async fn quality_pass(
     state: &DbState,
     client: &crate::ollama::client::OllamaClient,
@@ -174,76 +255,7 @@ async fn quality_pass(
     };
 
     for ws_id in &workspaces {
-        let memories: Vec<MemoryQualityRow> = {
-            let conn = state.0.get().map_err(|e| e.to_string())?;
-            let mut stmt = conn
-                .prepare(
-                    "SELECT id, content, memory_type, is_pinned, reinforcement_count
-                     FROM memories
-                     WHERE workspace_id = ?1 AND is_active = 1
-                     ORDER BY created_at ASC",
-                )
-                .map_err(|e| e.to_string())?;
-            let rows: Vec<MemoryQualityRow> = stmt
-                .query_map(rusqlite::params![ws_id], |r| {
-                    Ok(MemoryQualityRow {
-                        id: r.get(0)?,
-                        content: r.get(1)?,
-                        memory_type: r.get(2)?,
-                        is_pinned: r.get(3)?,
-                        reinforcement_count: r.get(4)?,
-                    })
-                })
-                .map_err(|e| e.to_string())?
-                .filter_map(Result::ok)
-                .collect();
-            rows
-        };
-        if memories.len() < 2 {
-            continue;
-        }
-
-        let listing = memories
-            .iter()
-            .enumerate()
-            .map(|(i, m)| {
-                let truncated: String = m.content.chars().take(140).collect();
-                format!("{}. [{}] {}", i + 1, m.memory_type, truncated)
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        let prompt = format!(
-            "These are stored memories (facts and preferences) about one user in one workspace:\n{listing}\n\n\
-            Return ONLY a JSON object of the form {{\"junk\": [], \"duplicates\": []}}.\n\
-            - \"junk\": numbers of entries that are not genuinely useful standalone \
-            context (vague filler, restatements of the obvious, or statements about \
-            the conversation rather than the user).\n\
-            - \"duplicates\": groups of numbers whose entries restate the same \
-            underlying fact or preference in different words, e.g. [[1,4],[2,7]]. \
-            Group ONLY entries that are genuinely the same statement; related but \
-            distinct statements (e.g. \"prefers concise answers\" vs \"prefers visual \
-            examples\") must NOT be grouped.\n\
-            Use empty arrays when nothing applies. No markdown, no explanation."
-        );
-        let raw = client
-            .send_message(
-                "memory_cleanup",
-                model,
-                vec![crate::ollama::client::OllamaMessage {
-                    role: "user".to_string(),
-                    content: prompt,
-                }],
-            )
-            .await
-            .map_err(|e| format!("Memory cleanup for workspace {ws_id} failed: {e}"))?;
-        let plan = parse_cleanup_response(&raw)
-            .map_err(|e| format!("Memory cleanup for workspace {ws_id} failed: {e}"))?;
-        if plan.junk.is_empty() && plan.duplicates.is_empty() {
-            continue;
-        }
-        let now = chrono::Utc::now().to_rfc3339();
-        let mut conn = state.0.get().map_err(|e| e.to_string())?;
-        apply_cleanup(&mut conn, &memories, &plan, &now)?;
+        quality_pass_for_workspace(state, client, model, ws_id).await?;
     }
     Ok(())
 }
@@ -271,6 +283,27 @@ pub async fn cleanup_tick(state: &DbState, ollama_url: Option<String>) -> Result
     )
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Runs the quality pass for a single, explicitly-chosen workspace. Used by
+/// the manual "Run Background Processing Now" batch runner so it can report
+/// progress per workspace instead of sweeping a random sample.
+pub async fn cleanup_tick_for_workspace(
+    state: &DbState,
+    ollama_url: Option<String>,
+    workspace_id: &str,
+) -> Result<(), String> {
+    let model = {
+        let conn = state.0.get().map_err(|e| e.to_string())?;
+        crate::services::model_settings::get_model_for_job(&conn, "memory_cleanup_model")
+            .unwrap_or_default()
+    };
+    if model.is_empty() {
+        return Ok(());
+    }
+
+    let client = crate::ollama::client::OllamaClient::new(ollama_url)?;
+    quality_pass_for_workspace(state, &client, &model, workspace_id).await
 }
 
 #[cfg(test)]

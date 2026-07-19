@@ -21,6 +21,8 @@ fn emit_prompt_bank_task(
             current: None,
             total: None,
             current_task_type: None,
+            workspace_index: None,
+            workspace_total: None,
         },
     );
 }
