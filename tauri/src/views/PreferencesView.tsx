@@ -258,6 +258,7 @@ function mergeSplitSettings(
     background_model: inference.background_model,
     summarization_model: inference.summarization_model,
     memory_extraction_model: inference.memory_extraction_model,
+    memory_cleanup_model: inference.memory_cleanup_model,
     flashcard_model: inference.flashcard_model,
     flashcard_cleanup_model: inference.flashcard_cleanup_model,
     glossary_model: inference.glossary_model,
@@ -1686,6 +1687,7 @@ const INFERENCE_JOBS_CATALOG: {
   },
   { job_key: "flashcard_generation", model_setting: "flashcard_model", label: "Flashcard Generation", description: "Generate spaced-repetition cards from topics", tokens: "~100–200 tokens input", note: "2k context OK", structured: true },
   { job_key: "flashcard_cleanup", model_setting: "flashcard_cleanup_model", label: "Flashcard Cleanup", description: "Merge duplicate cards per topic, keeping the most-reviewed / largest-model card", tokens: "~200–1,000 tokens input", note: "2k context OK", structured: true },
+  { job_key: "memory_cleanup", model_setting: "memory_cleanup_model", label: "Memory Cleanup", description: "Prune junk memories and merge paraphrased duplicates per workspace", tokens: "~200–1,500 tokens input", note: "2k context OK", structured: true },
   {
     job_key: "workspace_glossary",
     model_setting: "glossary_model",

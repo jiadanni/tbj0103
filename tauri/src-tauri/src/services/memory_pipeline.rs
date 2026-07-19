@@ -12,7 +12,7 @@ const EXTRACTION_OVERLAP: usize = 2;
 /// per-user setting is configured. Preferences are kept stricter because they
 /// tend to be short, near-synonymous phrases ("prefers concise" vs "wants
 /// short answers") and would otherwise collide too aggressively.
-const DEFAULT_DEDUP_THRESHOLD_FACT: f32 = 0.85;
+const DEFAULT_DEDUP_THRESHOLD_FACT: f32 = 0.80;
 const DEFAULT_DEDUP_THRESHOLD_PREFERENCE: f32 = 0.92;
 
 /// Cosine similarity at or above this point is treated as a pure duplicate
@@ -826,7 +826,7 @@ mod tests {
     fn dedup_applies_stricter_threshold_for_preferences() {
         // Two preferences that are similar (~0.9 cosine) but distinct.
         // a should NOT dedupe b at the 0.92 preference threshold,
-        // but WOULD dedupe at the 0.85 fact threshold.
+        // but WOULD dedupe at the 0.80 fact threshold.
         let a = vec![1.0_f32, 0.0];
         let b = vec![0.9_f32, 0.435]; // cosine ≈ 0.9 with a
         let existing = vec![("preference".to_string(), a)];

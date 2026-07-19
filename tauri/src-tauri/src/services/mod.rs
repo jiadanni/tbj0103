@@ -20,6 +20,7 @@ pub mod git_sync;
 pub mod graph_algorithms;
 pub mod link_parser;
 pub mod linking_engine;
+pub mod memory_cleanup;
 pub mod memory_pipeline;
 pub mod model_settings;
 pub mod note_template_engine;

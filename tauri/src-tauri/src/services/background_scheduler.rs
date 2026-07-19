@@ -104,9 +104,11 @@ const SUMMARIZATION_TICK_INTERVAL: u32 = 2;
 const FLASHCARD_TICK_INTERVAL: u32 = 6;
 // Cleanup checks hourly; the real gate is the 24h (configurable) watermark.
 const FLASHCARD_CLEANUP_TICK_INTERVAL: u32 = 12;
+const MEMORY_CLEANUP_TICK_INTERVAL: u32 = 12;
 
 pub const SCHEDULED_JOB_KEYS: &[&str] = &[
     "memory_extraction",
+    "memory_cleanup",
     "workspace_glossary",
     "hover_definition_scan",
     "summarization",
@@ -119,6 +121,7 @@ pub const SCHEDULED_JOB_KEYS: &[&str] = &[
 fn job_label(task_type: &str) -> &'static str {
     match task_type {
         "memory_extraction" => "Memory Extraction",
+        "memory_cleanup" => "Memory Cleanup",
         "summarization" => "Summarization",
         "flashcard_generation" => "Flashcard Generation",
         "flashcard_cleanup" => "Flashcard Cleanup",
@@ -597,6 +600,32 @@ fn has_auto_work(conn: &rusqlite::Connection, job_key: &str) -> bool {
                 ),
             )
         }
+        "memory_cleanup" => {
+            let interval_hours = conn
+                .query_row(
+                    "SELECT value FROM settings WHERE key = 'memory_cleanup_interval_hours'",
+                    [],
+                    |r| r.get::<_, String>(0),
+                )
+                .ok()
+                .and_then(|value| value.trim_matches('"').parse::<i64>().ok())
+                .unwrap_or(crate::services::memory_cleanup::DEFAULT_CLEANUP_INTERVAL_HOURS);
+            eligible_count(
+                conn,
+                &format!(
+                    "SELECT COUNT(*)
+                     FROM (
+                       SELECT workspace_id FROM memories WHERE is_active = 1
+                       GROUP BY workspace_id HAVING COUNT(*) >= 2
+                     )
+                     WHERE COALESCE(
+                             (SELECT datetime(trim(value, '\"')) FROM settings
+                              WHERE key = 'memory_cleanup_last_run_at'),
+                             datetime('1970-01-01')
+                           ) < datetime('now', '-{interval_hours} hours')"
+                ),
+            )
+        }
         "summarization" => {
             let min_messages =
                 crate::commands::settings::get_setting(conn, "summarization_min_messages")
@@ -817,6 +846,9 @@ async fn run_manual_job(
     match task_type {
         "memory_extraction" => {
             memory_pipeline::process_auto_memory_extraction(&db, ollama_url).await
+        }
+        "memory_cleanup" => {
+            crate::services::memory_cleanup::cleanup_tick(&db, ollama_url).await
         }
         "workspace_glossary" => workspace_glossary::refresh_due_workspaces(&db)
             .await
@@ -1395,6 +1427,7 @@ pub fn start_scheduler(app: AppHandle) {
         let mut summarization_tick: u32 = 0;
         let mut flashcard_tick: u32 = 0;
         let mut flashcard_cleanup_tick: u32 = 0;
+        let mut memory_cleanup_tick: u32 = 0;
         set_next_tick_at_from_now();
 
         loop {
@@ -1407,6 +1440,7 @@ pub fn start_scheduler(app: AppHandle) {
             summarization_tick += 1;
             flashcard_tick += 1;
             flashcard_cleanup_tick += 1;
+            memory_cleanup_tick += 1;
 
             // Guard: skip this tick if the previous one is still running
             if SCHEDULER_RUNNING
@@ -1833,6 +1867,56 @@ pub fn start_scheduler(app: AppHandle) {
                             fcc_model,
                         );
                         unregister_running("flashcard_cleanup");
+                    }
+                }
+
+                // 4c. Memory quality cleanup — LLM prunes junk memories and
+                //     merges paraphrased duplicates within a workspace.
+                if memory_cleanup_tick.is_multiple_of(MEMORY_CLEANUP_TICK_INTERVAL)
+                    && has_auto_work_for_job(&app, "memory_cleanup").await
+                {
+                    let mc_default = lookup_job_model(&app, "memory_cleanup_model").await;
+                    let (mc_run, mc_model) = gate_job(&app, "memory_cleanup", mc_default).await;
+                    if mc_run {
+                        let _permit = acquire_job_permit_with_queue(
+                            &app,
+                            "memory_cleanup",
+                            "Queued for memory cleanup…",
+                            "Cleaning up duplicate memories…",
+                            mc_model.clone(),
+                        )
+                        .await;
+                        register_running("memory_cleanup");
+                        let mc_result = if is_cancelled("memory_cleanup") {
+                            Err("cancelled".to_string())
+                        } else {
+                            crate::services::memory_cleanup::cleanup_tick(
+                                &db,
+                                ollama_url.clone(),
+                            )
+                            .await
+                        };
+                        let cancelled = is_cancelled("memory_cleanup");
+                        let mc_message = if cancelled {
+                            "Memory cleanup cancelled".to_string()
+                        } else {
+                            match &mc_result {
+                                Ok(()) => "Memory cleanup done".to_string(),
+                                Err(e) => format!("Memory cleanup failed: {e}"),
+                            }
+                        };
+                        emit_task(
+                            &app,
+                            "memory_cleanup",
+                            if cancelled || mc_result.is_err() {
+                                "failed"
+                            } else {
+                                "completed"
+                            },
+                            &mc_message,
+                            mc_model,
+                        );
+                        unregister_running("memory_cleanup");
                     }
                 }
 

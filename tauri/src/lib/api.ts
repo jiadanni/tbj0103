@@ -666,6 +666,7 @@ export interface AppSettings {
   background_model: string;
   summarization_model: string;
   memory_extraction_model: string;
+  memory_cleanup_model: string;
   flashcard_model: string;
   flashcard_cleanup_model: string;
   glossary_model: string;
@@ -757,6 +758,7 @@ export interface InferenceSettings {
   background_model: string;
   summarization_model: string;
   memory_extraction_model: string;
+  memory_cleanup_model: string;
   flashcard_model: string;
   flashcard_cleanup_model: string;
   glossary_model: string;
