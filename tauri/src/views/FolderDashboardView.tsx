@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, lazy, Suspense } from "react";
+import { useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowRight,
@@ -41,18 +41,31 @@ function MetricCard({
   label,
   value,
   accent = "bg-[var(--accent-color)]",
+  onClick,
 }: {
   label: string;
   value: string | number;
   accent?: string;
+  onClick?: () => void;
 }) {
-  return (
-    <div className="min-w-[88px] rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-2">
+  const className = `min-w-[88px] rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-2 text-left ${
+    onClick ? "cursor-pointer transition-colors hover:border-[var(--accent-color)]" : ""
+  }`;
+  const content = (
+    <>
       <div className={`mb-1 h-0.5 w-4 rounded-full ${accent}`} />
       <div className="text-xs font-semibold leading-none text-[var(--text-primary)]">{value}</div>
       <div className="mt-1 text-[10px] text-[var(--text-muted)]">{label}</div>
-    </div>
+    </>
   );
+  if (onClick) {
+    return (
+      <button type="button" className={className} onClick={onClick}>
+        {content}
+      </button>
+    );
+  }
+  return <div className={className}>{content}</div>;
 }
 
 function QuickActionsCard({
@@ -143,6 +156,7 @@ export default function FolderDashboardView() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeContinueThreadId, setActiveContinueThreadId] = useState<string | null>(null);
+  const roadmapSectionRef = useRef<HTMLDivElement | null>(null);
 
   const workspace = useMemo(
     () => workspaces.find((item) => item.id === activeWorkspaceId) ?? null,
@@ -283,7 +297,15 @@ export default function FolderDashboardView() {
           <div className="grid grid-cols-2 content-start gap-2 sm:grid-cols-4 xl:grid-cols-2">
             <MetricCard label="Due Review" value={summary.review.topics_due_for_review} />
             <MetricCard label="Active Goals" value={summary.overview.active_goals} />
-            <MetricCard label="Topics" value={summary.overview.topics} />
+            <MetricCard
+              label="Topics"
+              value={summary.overview.topics}
+              onClick={
+                summary.overview.topics > 0
+                  ? () => roadmapSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+                  : undefined
+              }
+            />
             <MetricCard label="Sources" value={summary.overview.sources} />
           </div>
 
@@ -410,9 +432,11 @@ export default function FolderDashboardView() {
             </section>
           </div>
         ) : (
-          <Suspense fallback={<div className="p-4 text-sm text-[var(--text-muted)]">Loading…</div>}>
-            <RoadmapPane hideSidebar />
-          </Suspense>
+          <div ref={roadmapSectionRef}>
+            <Suspense fallback={<div className="p-4 text-sm text-[var(--text-muted)]">Loading…</div>}>
+              <RoadmapPane hideSidebar />
+            </Suspense>
+          </div>
         )}
       </div>
     </div>
