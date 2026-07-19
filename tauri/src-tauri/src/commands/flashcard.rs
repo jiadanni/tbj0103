@@ -592,7 +592,8 @@ pub async fn extract_flashcards_from_content(
     Ok(cards)
 }
 
-/// List flashcard topics for a workspace (derived from chat topic signatures).
+/// List flashcard topics for a workspace that currently have at least one card
+/// (derived from chat topic signatures; empty/stale topics are excluded).
 #[tauri::command]
 pub fn list_flashcard_topics(
     state: State<DbState>,
@@ -603,7 +604,7 @@ pub fn list_flashcard_topics(
     let (cte, ws_cond) = workspace_filter_sql(include_descendants.unwrap_or(false));
     let sql = format!(
         "{cte}SELECT id, workspace_id, topic, source, mastery_score, last_generated_at, card_count, parent_topic_id
-         FROM flashcard_topics WHERE workspace_id {ws_cond}
+         FROM flashcard_topics WHERE workspace_id {ws_cond} AND card_count > 0
          ORDER BY mastery_score ASC, card_count DESC, topic ASC"
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
