@@ -26,6 +26,8 @@ const DEFAULT_BATCH_SIZE: u32 = 3;
 pub(crate) const DEFAULT_CLEANUP_INTERVAL_HOURS: i64 = 24;
 /// Topics examined per cleanup sweep (one LLM call each).
 const CLEANUP_TOPICS_PER_RUN: i64 = 10;
+/// Workspaces examined per topic-quality sweep (one LLM call each).
+const TOPIC_CLEANUP_WORKSPACES_PER_RUN: i64 = 5;
 
 /// Rough parameter count (in billions) parsed from a model name like
 /// "qwen3:4b" or "gemma3:27b"; 0.0 when unknown so unknown provenance loses
@@ -438,6 +440,234 @@ pub async fn tick_for_workspaces(
     Ok(())
 }
 
+/// One topic row as seen by the topic-quality sweep.
+struct TopicQualityRow {
+    id: String,
+    topic: String,
+    card_count: i64,
+    reviewed_count: i64,
+}
+
+/// Parsed LLM verdict for one workspace's topics. Indices are 0-based after
+/// [`parse_topic_cleanup_response`] converts them from the 1-based prompt
+/// numbering.
+#[derive(Debug, Default, serde::Deserialize)]
+struct TopicCleanupPlan {
+    #[serde(default)]
+    junk: Vec<usize>,
+    #[serde(default)]
+    duplicates: Vec<Vec<usize>>,
+}
+
+fn parse_topic_cleanup_response(raw: &str) -> Result<TopicCleanupPlan, String> {
+    let trimmed = raw.trim();
+    let json_str = match (trimmed.find('{'), trimmed.rfind('}')) {
+        (Some(start), Some(end)) if end > start => &trimmed[start..=end],
+        _ => return Err("response contained no JSON object".to_string()),
+    };
+    let mut plan: TopicCleanupPlan =
+        serde_json::from_str(json_str).map_err(|e| format!("unparseable plan: {e}"))?;
+    plan.junk = plan
+        .junk
+        .iter()
+        .filter_map(|n| n.checked_sub(1))
+        .collect();
+    plan.duplicates = plan
+        .duplicates
+        .iter()
+        .map(|group| group.iter().filter_map(|n| n.checked_sub(1)).collect())
+        .collect();
+    Ok(plan)
+}
+
+/// Apply a parsed topic-cleanup plan. Junk topics are deleted together with
+/// their cards, but only when no card has been reviewed — SM-2 progress marks
+/// a topic the user actually studies, and deleting it would be destructive.
+/// Duplicate groups are merged into the group's most-studied topic; the
+/// losers' cards are reassigned to the keeper so the card-level dedup sweep
+/// can collapse any resulting same-question cards on a later pass.
+/// Returns (junk_topics_deleted, duplicate_groups_merged).
+fn apply_topic_cleanup(
+    conn: &mut Connection,
+    topics: &[TopicQualityRow],
+    plan: &TopicCleanupPlan,
+) -> Result<(usize, usize), String> {
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let mut claimed = vec![false; topics.len()];
+    let mut junk_deleted = 0usize;
+    for &i in &plan.junk {
+        if i >= topics.len() || claimed[i] || topics[i].reviewed_count > 0 {
+            continue;
+        }
+        claimed[i] = true;
+        tx.execute(
+            "DELETE FROM learning_cards WHERE topic_id = ?1",
+            rusqlite::params![topics[i].id],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.execute(
+            "DELETE FROM flashcard_topics WHERE id = ?1",
+            rusqlite::params![topics[i].id],
+        )
+        .map_err(|e| e.to_string())?;
+        junk_deleted += 1;
+    }
+
+    let mut groups_merged = 0usize;
+    for group in &plan.duplicates {
+        let mut indices: Vec<usize> = group
+            .iter()
+            .copied()
+            .filter(|&i| i < topics.len() && !claimed[i])
+            .collect();
+        indices.sort_unstable();
+        indices.dedup();
+        if indices.len() < 2 {
+            continue;
+        }
+        for &i in &indices {
+            claimed[i] = true;
+        }
+        // Keeper: most reviewed cards, then most cards, then the oldest
+        // (lowest index — rows are ordered by created_at ASC).
+        let keeper = *indices
+            .iter()
+            .max_by(|&&a, &&b| {
+                topics[a]
+                    .reviewed_count
+                    .cmp(&topics[b].reviewed_count)
+                    .then_with(|| topics[a].card_count.cmp(&topics[b].card_count))
+                    .then_with(|| b.cmp(&a))
+            })
+            .unwrap_or(&indices[0]);
+        for &i in &indices {
+            if i == keeper {
+                continue;
+            }
+            tx.execute(
+                "UPDATE learning_cards SET topic_id = ?1 WHERE topic_id = ?2",
+                rusqlite::params![topics[keeper].id, topics[i].id],
+            )
+            .map_err(|e| e.to_string())?;
+            tx.execute(
+                "DELETE FROM flashcard_topics WHERE id = ?1",
+                rusqlite::params![topics[i].id],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        recompute_mastery(&tx, &topics[keeper].id)?;
+        groups_merged += 1;
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok((junk_deleted, groups_merged))
+}
+
+/// LLM-assisted topic-quality sweep: per workspace, ask the model which
+/// topics are junk (bare question words, fragments) and which groups name the
+/// same subject, then delete/merge accordingly. Workspaces are sampled
+/// randomly so every workspace is eventually covered across sweeps.
+async fn topic_quality_pass(
+    state: &DbState,
+    client: &crate::ollama::client::OllamaClient,
+    model: &str,
+) -> Result<(), String> {
+    let workspaces: Vec<String> = {
+        let conn = state.0.get().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT DISTINCT ft.workspace_id
+                 FROM flashcard_topics ft
+                 JOIN workspaces w ON w.id = ft.workspace_id
+                 WHERE w.is_hidden = 0
+                 ORDER BY random()
+                 LIMIT ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        let ids: Vec<String> = stmt
+            .query_map(rusqlite::params![TOPIC_CLEANUP_WORKSPACES_PER_RUN], |r| {
+                r.get::<_, String>(0)
+            })
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .collect();
+        ids
+    };
+
+    for ws_id in &workspaces {
+        let topics: Vec<TopicQualityRow> = {
+            let conn = state.0.get().map_err(|e| e.to_string())?;
+            let mut stmt = conn
+                .prepare(
+                    "SELECT ft.id, ft.topic, ft.card_count,
+                            COALESCE(SUM(CASE WHEN lc.repetitions > 0 THEN 1 ELSE 0 END), 0)
+                     FROM flashcard_topics ft
+                     LEFT JOIN learning_cards lc ON lc.topic_id = ft.id
+                     WHERE ft.workspace_id = ?1
+                     GROUP BY ft.id
+                     ORDER BY ft.created_at ASC",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows: Vec<TopicQualityRow> = stmt
+                .query_map(rusqlite::params![ws_id], |r| {
+                    Ok(TopicQualityRow {
+                        id: r.get(0)?,
+                        topic: r.get(1)?,
+                        card_count: r.get(2)?,
+                        reviewed_count: r.get(3)?,
+                    })
+                })
+                .map_err(|e| e.to_string())?
+                .filter_map(Result::ok)
+                .collect();
+            rows
+        };
+        if topics.is_empty() {
+            continue;
+        }
+
+        let listing = topics
+            .iter()
+            .enumerate()
+            .map(|(i, t)| {
+                let truncated: String = t.topic.chars().take(80).collect();
+                format!("{}. {}", i + 1, truncated)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let prompt = format!(
+            "These are the flashcard study topics in one workspace:\n{listing}\n\n\
+            Return ONLY a JSON object of the form {{\"junk\": [], \"duplicates\": []}}.\n\
+            - \"junk\": numbers of entries that are not meaningful standalone study \
+            topics (bare question words, filler, or fragments — e.g. \"what\", \"stuff\").\n\
+            - \"duplicates\": groups of numbers whose topics name the same subject \
+            (spelling variants, singular/plural), e.g. [[1,4],[2,7]]. Group ONLY topics \
+            that are genuinely the same subject; similar-looking but distinct concepts \
+            (e.g. \"jaccard\" the similarity index vs \"jacquard\" the loom) must NOT \
+            be grouped.\n\
+            Use empty arrays when nothing applies. No markdown, no explanation."
+        );
+        let raw = client
+            .send_message(
+                "flashcard_cleanup",
+                model,
+                vec![crate::ollama::client::OllamaMessage {
+                    role: "user".to_string(),
+                    content: prompt,
+                }],
+            )
+            .await
+            .map_err(|e| format!("Topic cleanup for workspace {ws_id} failed: {e}"))?;
+        let plan = parse_topic_cleanup_response(&raw)
+            .map_err(|e| format!("Topic cleanup for workspace {ws_id} failed: {e}"))?;
+        if plan.junk.is_empty() && plan.duplicates.is_empty() {
+            continue;
+        }
+        let mut conn = state.0.get().map_err(|e| e.to_string())?;
+        apply_topic_cleanup(&mut conn, &topics, &plan)?;
+    }
+    Ok(())
+}
+
 /// One card row as seen by the cleanup sweep.
 struct CleanupCard {
     id: String,
@@ -479,6 +709,12 @@ pub async fn cleanup_tick(state: &DbState, ollama_url: Option<String>) -> Result
     }
 
     let client = crate::ollama::client::OllamaClient::new(ollama_url)?;
+
+    // Topic-quality pass first: junk topics deleted here won't waste a
+    // card-dedup LLM call below, and merged topics concentrate their cards
+    // so the card sweep sees the duplicates in one place.
+    topic_quality_pass(state, &client, &model).await?;
+
     for (topic_id, topic_name) in &topics {
         let cards: Vec<CleanupCard> = {
             let conn = state.0.get().map_err(|e| e.to_string())?;
@@ -695,6 +931,170 @@ mod next_due_topic_tests {
         // A workspace filter excludes topics outside it entirely.
         let filter = vec!["ws_a".to_string()];
         assert!(next_due_topic(&conn, Some(&filter), 20, 60, None).is_none());
+    }
+}
+
+#[cfg(test)]
+mod topic_cleanup_tests {
+    use super::*;
+    use crate::db::test_utils::tests::setup_test_db;
+
+    #[test]
+    fn parses_plan_and_converts_to_zero_based() {
+        let plan = parse_topic_cleanup_response(
+            "Sure! {\"junk\": [1, 5], \"duplicates\": [[2, 4], [3, 6]]} done",
+        )
+        .unwrap();
+        assert_eq!(plan.junk, vec![0, 4]);
+        assert_eq!(plan.duplicates, vec![vec![1, 3], vec![2, 5]]);
+
+        // Missing keys default to empty; zero entries are dropped.
+        let plan = parse_topic_cleanup_response("{\"junk\": [0]}").unwrap();
+        assert!(plan.junk.is_empty());
+        assert!(plan.duplicates.is_empty());
+
+        assert!(parse_topic_cleanup_response("no json here").is_err());
+    }
+
+    fn insert_ws(conn: &Connection, id: &str) {
+        conn.execute(
+            "INSERT INTO workspaces (id, name, created_at, updated_at)
+             VALUES (?1, ?1, datetime('now'), datetime('now'))",
+            rusqlite::params![id],
+        )
+        .unwrap();
+    }
+
+    fn insert_topic(conn: &Connection, id: &str, ws: &str) {
+        conn.execute(
+            "INSERT INTO flashcard_topics (id, workspace_id, topic, card_count)
+             VALUES (?1, ?2, ?1, 0)",
+            rusqlite::params![id, ws],
+        )
+        .unwrap();
+    }
+
+    fn insert_card(conn: &Connection, id: &str, ws: &str, topic_id: &str, repetitions: i64) {
+        conn.execute(
+            "INSERT INTO learning_cards (id, workspace_id, front, back, topic_id, repetitions)
+             VALUES (?1, ?2, 'f', 'b', ?3, ?4)",
+            rusqlite::params![id, ws, topic_id, repetitions],
+        )
+        .unwrap();
+    }
+
+    fn quality_rows(conn: &Connection, ws: &str) -> Vec<TopicQualityRow> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT ft.id, ft.topic, ft.card_count,
+                        COALESCE(SUM(CASE WHEN lc.repetitions > 0 THEN 1 ELSE 0 END), 0)
+                 FROM flashcard_topics ft
+                 LEFT JOIN learning_cards lc ON lc.topic_id = ft.id
+                 WHERE ft.workspace_id = ?1
+                 GROUP BY ft.id
+                 ORDER BY ft.created_at ASC, ft.id ASC",
+            )
+            .unwrap();
+        stmt.query_map(rusqlite::params![ws], |r| {
+            Ok(TopicQualityRow {
+                id: r.get(0)?,
+                topic: r.get(1)?,
+                card_count: r.get(2)?,
+                reviewed_count: r.get(3)?,
+            })
+        })
+        .unwrap()
+        .filter_map(Result::ok)
+        .collect()
+    }
+
+    #[test]
+    fn junk_topics_are_deleted_with_their_cards_unless_reviewed() {
+        let pool = setup_test_db();
+        let mut conn = pool.get().unwrap();
+        insert_ws(&conn, "ws");
+        insert_topic(&conn, "t_what", "ws");
+        insert_topic(&conn, "t_studied", "ws");
+        insert_card(&conn, "c1", "ws", "t_what", 0);
+        insert_card(&conn, "c2", "ws", "t_studied", 3);
+
+        let topics = quality_rows(&conn, "ws");
+        let what_idx = topics.iter().position(|t| t.id == "t_what").unwrap();
+        let studied_idx = topics.iter().position(|t| t.id == "t_studied").unwrap();
+        let plan = TopicCleanupPlan {
+            junk: vec![what_idx, studied_idx],
+            duplicates: vec![],
+        };
+        let (deleted, merged) = apply_topic_cleanup(&mut conn, &topics, &plan).unwrap();
+        assert_eq!((deleted, merged), (1, 0));
+
+        // "what" and its card are gone; the reviewed topic survived intact.
+        let remaining: i64 = conn
+            .query_row("SELECT COUNT(*) FROM flashcard_topics", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(remaining, 1);
+        let cards: i64 = conn
+            .query_row("SELECT COUNT(*) FROM learning_cards", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(cards, 1);
+    }
+
+    #[test]
+    fn duplicate_topics_merge_into_most_studied_keeper() {
+        let pool = setup_test_db();
+        let mut conn = pool.get().unwrap();
+        insert_ws(&conn, "ws");
+        insert_topic(&conn, "t_memoisation", "ws");
+        insert_topic(&conn, "t_memoization", "ws");
+        insert_card(&conn, "c1", "ws", "t_memoisation", 0);
+        insert_card(&conn, "c2", "ws", "t_memoization", 2);
+        insert_card(&conn, "c3", "ws", "t_memoization", 0);
+
+        let topics = quality_rows(&conn, "ws");
+        let plan = TopicCleanupPlan {
+            junk: vec![],
+            duplicates: vec![vec![0, 1]],
+        };
+        let (deleted, merged) = apply_topic_cleanup(&mut conn, &topics, &plan).unwrap();
+        assert_eq!((deleted, merged), (0, 1));
+
+        // The reviewed topic won; the loser's card moved over.
+        let keeper_cards: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM learning_cards WHERE topic_id = 't_memoization'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(keeper_cards, 3);
+        let topics_left: i64 = conn
+            .query_row("SELECT COUNT(*) FROM flashcard_topics", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(topics_left, 1);
+        // card_count was recomputed for the keeper.
+        let count: i64 = conn
+            .query_row(
+                "SELECT card_count FROM flashcard_topics WHERE id = 't_memoization'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 3);
+    }
+
+    #[test]
+    fn out_of_range_and_singleton_groups_are_ignored() {
+        let pool = setup_test_db();
+        let mut conn = pool.get().unwrap();
+        insert_ws(&conn, "ws");
+        insert_topic(&conn, "t_a", "ws");
+        let topics = quality_rows(&conn, "ws");
+        let plan = TopicCleanupPlan {
+            junk: vec![99],
+            duplicates: vec![vec![0], vec![0, 99]],
+        };
+        let (deleted, merged) = apply_topic_cleanup(&mut conn, &topics, &plan).unwrap();
+        assert_eq!((deleted, merged), (0, 0));
     }
 }
 
