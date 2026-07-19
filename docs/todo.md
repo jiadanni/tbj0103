@@ -9,13 +9,16 @@ Legend: [x] Complete · [/] Partial · [ ] Not started
 ## 🔄 Core UX & Navigation
 - [x] **Topic Management**: Full topic editing in WorkspaceSettingsView—view auto-detected topics, add custom topics, remove/blacklist topics to prevent regeneration.
 - [x] **Quick Search tray icon behavior**: Left-click opens search; right-click opens the menu.
+- [x] **Chat title hover tooltips**: Rich tooltips with dynamic viewport-aware positioning (flip and clamp within bounds).
+- [x] **Empty-state chat prompts**: Redesigned as glass cards with cycling 6-card arcs; users can blacklist prompts.
+- [x] **Workspace icons**: Icon picker and workspace icon display in workspace settings.
+- [x] **BoomScroll companion app**: Mobile-optimized flashcard review app (`boomscroll/`) with multi-workspace selective export.
 - [ ] **Project Scratchpad**: A persistent per-project markdown canvas/note for manual dumping of context that remains visible or easily accessible during chat.
 - [/] **Unified 'Source' model**: Migrated Documents and Web Captures to a single `sources` table. (Backend complete; specialized views still being phased out).
 - [ ] **Onboarding tooltips**: First-run tour highlighting the sidebar, model selection, and workspace switcher.
-- [ ] **Progress Indicators**: Real progress bars (not just boolean spinners) for embedding, large document imports, and graph rebuilds.
+- [/] **Progress Indicators**: Per-workspace progress bars for background processing; boolean spinners still used for some operations (embedding, large document imports).
 - [ ] **Configurable keyboard shortcuts**: UI to remap Quick Search and Command Palette triggers.
 - [ ] **Bulk operations**: Expand multi-select session handling beyond the current "Move Sessions" dialog.
-- [ ] **Chat title hover tooltips**: Chat titles truncate too aggressively in narrow sidebars; add title/tooltips so the full name is available on hover.
 
 ## 📈 Observability & System Health
 
@@ -25,13 +28,24 @@ Legend: [x] Complete · [/] Partial · [ ] Not started
 
 ## 🚀 AI & RAG Enhancements
 - [x] **Model fit fallback guidance**: Avoid misleading "fits/doesn't fit" guidance for model names like `gemma4` that do not expose a parsable parameter size.
-- [/] **Adaptive Context Window**: Show an indicator of current chat token count vs. estimated window limits.
+- [x] **Model selection guardrails**: Block sub-4B models from structured inference jobs and background default; warn when undersized models back structured jobs.
+- [/] **Adaptive Context Window**: Show an indicator of current chat token count vs. estimated window limits. Rich tooltips now explain context-window limits.
 - [/] **Auto-summarization**: Generate 1-sentence summaries for documents/web captures on upload (DB field exists; automation pending).
 - [/] **Recursive Semantic Search**: Pull in outbound `[[wiki-links]]` for highly relevant RAG results to expand discovery.
 - [ ] **Audio Transcription**: Frontend for transcribing audio content via local STT models (e.g., Whisper).
 - [ ] **Calendar Alarms**: Dedicated view for managing AI-triggered reminders (backend commands ready).
 - [ ] **Sub-workspace AI containment**: A sub-workspace's content should not influence its parent's (or siblings') AI-derived state — topic signatures, suggested prompts, cross-workspace recommendations. Example: a "Sandbox" child under "Frontend" used for throwaway debugging shouldn't pollute Frontend's topic chips. Currently `collect_workspace_text` only reads `chat_sessions` directly scoped to the workspace_id, so messages already don't bleed up; the open question is whether cross-workspace recommendation queries (`services/topic_signature.rs` around the SELECT over all workspaces' `topic_signature`) should filter children out of a parent's "similar workspaces" set, and whether parent-level topic signatures should aggregate descendants at all. Needs its own design pass before implementation. NOT the same as a per-workspace "exclude from AI analysis" opt-out (considered and rejected — local-first already gives privacy, and a half-implemented opt-out would imply a guarantee we can't deliver without also gating RAG, semantic search, and document chunking).
 - [ ] **Stretch — Claude-style artifact canvas (model-emitted)**: Bring back a dedicated artifact panel, but driven by the model rather than a manual "save" button. Requires four pieces working together: (1) a system prompt instructing the chat model to wrap substantial standalone content in a structured tag like `<artifact id="..." title="..." type="..." language="...">...</artifact>`, with explicit framing for update-vs-create; (2) **grammar-constrained decoding** so the tag format is essentially never malformed — Ollama's JSON-mode `format` param for JSON-shaped artifacts, llama.cpp GBNF for XML-shaped (decide one wire format and commit); (3) a streaming parser that detects the open tag mid-stream and routes subsequent tokens into the panel instead of the message bubble, persisting on close tag; (4) an "open artifacts" context block injected into every turn (`Currently open artifact: id=..., content: ...`) so the model can update by id. Heuristic fallback: if a fenced code block ≥ N lines arrives without a wrapper, auto-promote per the old `artifactDetection.ts` rules. Feasibility note: local 14B-class models (Qwen 2.5 14B, Phi-4) handle structured emission and short-context updates well; 7B models break the format ~5–15% without grammar constraints and confuse create-vs-update ~20% of the time even with them, so this is gated on the user running ≥14B. Streaming + partial-tag parsing is the real engineering cost, not the model side. Only worth building if instrumentation on the existing `artifacts` table shows users actually want to iterate on saved content — until then, the tagged-note path (formerly "Save as Artifact", now "Save as Snippet") covers the one-shot save case. Backend (`artifacts` table, `commands::artifact::*`, `create_artifact_version`) is still registered and unused; this stretch goal would reuse it instead of building a parallel system.
+
+## 🔧 Inference Jobs & Background Processing
+- [x] **Background job coordinator**: Replaced manual "Analyze Workspace" with a unified background-job scheduler running topic analysis, flashcard generation, knowledge graph, etc.
+- [x] **Inference Jobs settings tab**: Configurable run modes (auto/manual/disabled) per job, cadence settings, and progress column with per-run history and monitoring stats.
+- [x] **Per-workspace progress**: Background batch runner shows per-workspace progress and handles cleanup jobs.
+- [x] **Flashcard model provenance**: Track which model generated each flashcard; LLM duplicate-cleanup job removes redundant cards.
+- [x] **Flashcard topic quality**: LLM pass prunes junk topics, merges duplicates, hides empty topics from quiz/review pickers.
+- [x] **Memory cleanup**: LLM cleanup pass for stored memories; tightened fact deduplication.
+- [x] **Last-failure retention**: In-memory last-failure message per background task for debugging.
+- [x] **Scoped graph refresh**: "Refresh Knowledge Map" now targets only the graph job, not all seven jobs.
 
 ## ⚡ Frontend Performance — Phase 2
 - [ ] **H3 — Extract SessionSidebar from ChatView**: Pull the session list (the JSX block rendering grouped chat sessions, currently inline inside `ChatView.tsx`) into its own component subscribing only to `sessions` from `useChatStore`. The sidebar today re-renders on every message commit and every streaming tick because it lives inside `ChatView`'s render tree. After extraction, memoize the grouping logic. Render-scope fix first, memo second.
@@ -48,15 +62,15 @@ Legend: [x] Complete · [/] Partial · [ ] Not started
 - [ ] **B4 — Audit graph algorithm call sites for `spawn_blocking`**: PageRank and community detection in `services/graph_algorithms.rs` are CPU-bound. Grep all callers and confirm each async path wraps them in `tokio::task::spawn_blocking` — anything missing is a real bug (blocks the Tauri runtime and starves IPC).
 
 ## 🛠️ Technical Debt & Architecture
-- [ ] **ChatView Componentization**: Refactor the 5k+ line `ChatView.tsx` into smaller, maintainable units: `MessageList`, `Composer`, `ChatSidebar`, and `GenerationStats`.
-- [ ] **Api.ts Splitting**: Divide the 1.3k+ line monolithic IPC wrapper into domain-specific modules (e.g., `api.chat`, `api.workspace`, `api.system`).
+- [ ] **ChatView Componentization**: Refactor the 6.4k+ line `ChatView.tsx` into smaller, maintainable units: `MessageList`, `Composer`, `ChatSidebar`, and `GenerationStats`.
+- [ ] **Api.ts Splitting**: Divide the 2.3k+ line monolithic IPC wrapper into domain-specific modules (e.g., `api.chat`, `api.workspace`, `api.system`).
 - [ ] **Surgical FTS Triggers**: Optimize SQLite triggers to only update specific FTS rows on change, rather than full session re-indexing.
 - [ ] **SQL Migrations**: Transition from monolithic `schema.sql` to a directory of versioned, incremental migration files.
 - [ ] **Robust Stream Handling**: Refactor backend streaming to use stateful UTF-8 decoding to handle split multi-byte characters and JSON fragments reliably.
-- [/] **Real-snapshot migration upgrade test**: Capture tool + dormant CI workflow are in place. `cargo run --bin snapshot-db` (from `tauri/src-tauri/`) reads the live DB's schema version from `_migrations`, sanitizes content into `tauri/src-tauri/tests/snapshots/snapshot_vN.sqlite`, and exits idempotently. `.github/workflows/migration-upgrade.yml` runs on `workflow_dispatch` only and skips cleanly when there's no test file. Cadence: capture a snapshot *before* writing each new `vN_*` migration so CI has a fresh upgrade starting point. **Still pending:** (a) implement `tauri/src-tauri/tests/migration_upgrade.rs` — walk every `*.sqlite`, call `initialize_database`, assert all migrations end up in `_migrations`; (b) activate the workflow's `push`/`pull_request` triggers once the test exists; (c) keep `CONTENT_COLUMNS` in `src/bin/snapshot_db.rs` in sync as new content-bearing tables land.
+- [/] **Real-snapshot migration upgrade test**: Capture tool + dormant CI workflow are in place. First snapshot captured at v73 (`tests/snapshots/snapshot_v73.sqlite`). `cargo run --bin snapshot-db` (from `tauri/src-tauri/`) reads the live DB's schema version from `_migrations`, sanitizes content into `tauri/src-tauri/tests/snapshots/snapshot_vN.sqlite`, and exits idempotently. `.github/workflows/migration-upgrade.yml` runs on `workflow_dispatch` only and skips cleanly when there's no test file. Cadence: capture a snapshot *before* writing each new `vN_*` migration so CI has a fresh upgrade starting point. **Still pending:** (a) implement `tauri/src-tauri/tests/migration_upgrade.rs` — walk every `*.sqlite`, call `initialize_database`, assert all migrations end up in `_migrations`; (b) activate the workflow's `push`/`pull_request` triggers once the test exists; (c) keep `CONTENT_COLUMNS` in `src/bin/snapshot_db.rs` in sync as new content-bearing tables land.
 - [ ] **Wrap each migration in a transaction**: Each `vN_*` block in `src-tauri/src/db/mod.rs` runs `conn.execute_batch(...)` directly. DML batches are implicitly transactional in SQLite, but multi-statement DDL is murkier — v71's `ALTER TABLE … RENAME` succeeded while downstream cleanup left a dangling `quick_search_chat_sessions_au` trigger, blocking startup until v73 was added to repair it. Audit whether `BEGIN; … INSERT INTO _migrations …; COMMIT;` around each block would make a half-failed migration self-rollback. Verify SQLite DDL-in-transaction semantics first (some DDL implicitly commits in other engines; SQLite is more forgiving but the edge cases need confirmation).
 - [ ] **Prevent duplicate migration version numbers**: Two pairs of migrations share a number (`v26_thought_session_id` / `v26_sources_unification`; `v27_switch_workspace_to_chat` / `v27_sources_folder_tokens`) from parallel branches both grabbing the next free index. Harmless today because dispatch keys on the full name string, but it's a signal there's no "reserve a number" gate. Options: (a) switch to timestamp-prefixed names (`20260315120000_add_x`) so collisions are impossible, or (b) extend `tauri/scripts/lint-migrations.mjs` to fail when two entries in `ALL_MIGRATION_NAMES` share a numeric prefix.
-- [ ] **Split `db/mod.rs` into per-migration files**: `db/mod.rs` is at 2700 lines with 75 migrations; each new one means scrolling past everything that came before and merge conflicts on `ALL_MIGRATION_NAMES` get more likely as devs work in parallel. Move each migration into its own file under `src-tauri/src/db/migrations/vN_*.rs`, with `mod.rs` reduced to a registry that lists them in order. Not urgent — defer until the file size actively bites during work.
+- [ ] **Split `db/mod.rs` into per-migration files**: `db/mod.rs` is at 3.2k lines with 76 migrations (through v76); each new one means scrolling past everything that came before and merge conflicts on `ALL_MIGRATION_NAMES` get more likely as devs work in parallel. Move each migration into its own file under `src-tauri/src/db/migrations/vN_*.rs`, with `mod.rs` reduced to a registry that lists them in order. Not urgent — defer until the file size actively bites during work.
 
 ## 🛡️ Security & Privacy
 - [x] **Database Encryption**: SQLCipher integration with PIN-tied DEK wrapping (Argon2id KEK, AES-256-GCM, sidecar key-wrap file). Enable/disable stages a pending action that runs at next launch via a pre-DB unlock view. Default off. See `services/db_encryption.rs`, `commands/boot.rs`, `views/BootUnlockView.tsx`.
@@ -99,11 +113,11 @@ Empty-table audit of the live DB (`aetherium.db`) revealed tables with no rows i
 - [ ] **`document_chunks` empty**: 1 insert site, 3 selects. Likely tied to broken `sources` ingestion.
 - [ ] **`uploaded_documents` empty**: 1 insert site, 3 selects. Verify upload IPC fires end-to-end.
 - [ ] **`web_captures` empty**: 1 insert site, 5 selects. Web-capture save path needs runtime trace.
-- [ ] **`concept_mentions` empty**: 5 insert sites, 10 selects. Knowledge graph extraction is not running on chat/notes.
-- [ ] **`concept_change_proposals` empty**: 4 insert sites, 7 selects. Concept-edit proposal flow not firing.
-- [ ] **`graph_statistics` empty**: 3 insert sites, 5 selects. Graph stats job not running or not persisting.
-- [ ] **`flashcard_topics` empty**: 1 insert, 12 selects. Flashcard topic creation broken; UI almost certainly reads empty arrays.
-- [ ] **Quiz subsystem dark**: `quizzes` (1 insert, 3 selects), `quiz_questions` (1 insert, 2 selects), `quiz_answers` (1 insert, 5 selects). Quiz generation pipeline never produces output.
+- [/] **`concept_mentions` wired but verify production rows**: Insert sites exist in `knowledge_graph.rs` (4) and `ai_knowledge.rs`. Background knowledge graph jobs now run; verify rows land in production.
+- [/] **`concept_change_proposals` wired but verify production rows**: Insert sites in `ai_knowledge.rs` (3) and `knowledge_graph.rs` (1). Flow depends on knowledge graph background job running.
+- [/] **`graph_statistics` wired but verify production rows**: 3 insert sites in `knowledge_graph.rs`. Graph stats job tied to background scheduler; verify rows land after a full graph rebuild.
+- [x] **`flashcard_topics` now populated**: Flashcard topic service creates and manages topics via dedup-aware generation, LLM quality passes, and cleanup jobs. Multiple insert sites across `flashcard_topic_service.rs`, `knowledge_graph.rs`, and `export.rs`.
+- [x] **Quiz subsystem active**: Quiz generation pipeline (`commands/quiz.rs`) now inserts into `quizzes`, `quiz_questions`, `quiz_answers`. Quiz UI available in Learning hub.
 - [ ] **`calendar_alarms` empty**: 1 insert, 4 selects. Calendar alarm creation path not exercised.
 - [ ] **`note_templates` empty**: 1 insert, 6 selects. Template creation UI may be missing or unwired.
 
@@ -117,3 +131,6 @@ Empty-table audit of the live DB (`aetherium.db`) revealed tables with no rows i
 - [ ] **Focus Drift**: Command Palette/Search Box closing sometimes scrolls the main window to the top on macOS.
 - [ ] **Navigation Stalling**: Occasional view update failure when clicking a search result despite URL changes.
 - [ ] **FTS Multi-word Tags**: Improved quoting needed for complex topic filters (Partially fixed).
+- [x] **Web AI stream cancellation**: Fixed stream cleanup evicting newer stream's cancel sender.
+- [x] **Orphaned `memories_old` recovery**: v72 migration crash left dangling table; recovery added.
+- [x] **Drifted workspace FKs**: v75 migration repairs workspace foreign key shapes on upgraded databases.
