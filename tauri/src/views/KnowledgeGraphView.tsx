@@ -1480,7 +1480,7 @@ export default function KnowledgeGraphView({
                   className={
                     isFullscreen
                       ? "fixed inset-0 z-50 flex flex-col bg-[var(--bg-primary)] p-6 overflow-hidden"
-                      : "relative h-[320px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[linear-gradient(180deg,rgba(var(--accent-color-rgb),0.04),rgba(255,255,255,0)),var(--bg-primary)] 2xl:h-[380px]"
+                      : "relative h-[clamp(360px,55vh,720px)] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[linear-gradient(180deg,rgba(var(--accent-color-rgb),0.04),rgba(255,255,255,0)),var(--bg-primary)]"
                   }
                   data-testid="knowledge-map"
                 >

@@ -112,7 +112,10 @@ function RoadmapGraphInner(
     };
   }, []);
 
-  // Compute layout via d3.tree() — top-down (root at top, children below)
+  // Compute layout via d3.tree() — top-down (root at top, children below).
+  // Each chapter subtree is laid out independently, then the subtrees are
+  // wrapped into rows (like word-wrap) so the overall shape tracks the
+  // container's aspect ratio instead of one endless horizontal strip.
   const layout = useMemo(() => {
     if (nodes.length === 0) { return null; }
 
@@ -123,49 +126,125 @@ function RoadmapGraphInner(
     const effectiveExpanded = new Set<string>();
     expandedSections.forEach((id) => { if (sectionIds.has(id)) { effectiveExpanded.add(id); } });
     const pruned = pruneCollapsedSections(forest, effectiveExpanded);
-    const root = d3.hierarchy<RoadmapNode>(pruned);
+    const chapterTrees = pruned.children ?? [];
+    if (chapterTrees.length === 0) { return null; }
+
+    type PositionedNode = d3.HierarchyPointNode<RoadmapNode>;
+    type PositionedLink = d3.HierarchyPointLink<RoadmapNode>;
 
     // node size: [horizontal between siblings, vertical between levels]
     // Chapter boxes are 220 wide; add a 40px gutter so siblings cannot overlap.
     const treeLayout = d3.tree<RoadmapNode>().nodeSize([260, 110]);
-    treeLayout(root);
 
-    // Drop the synthetic root from visible output, but keep its children's positions
-    type PositionedNode = d3.HierarchyPointNode<RoadmapNode>;
-    const visibleNodes: PositionedNode[] = root
-      .descendants()
-      .filter((d) => d.data.id !== "__root__") as PositionedNode[];
+    interface LaidTree {
+      treeNodes: PositionedNode[];
+      treeLinks: PositionedLink[];
+      minX: number;
+      maxX: number;
+      minY: number;
+      maxY: number;
+      width: number;
+      height: number;
+    }
 
-    // Collect bounding box
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    visibleNodes.forEach((d) => {
-      const dim = dimsFor(d.data.hierarchy_level);
-      const left = d.x - dim.width / 2;
-      const right = d.x + dim.width / 2;
-      const top = d.y - dim.height / 2;
-      const bottom = d.y + dim.height / 2;
-      if (left < minX) { minX = left; }
-      if (right > maxX) { maxX = right; }
-      if (top < minY) { minY = top; }
-      if (bottom > maxY) { maxY = bottom; }
+    const laidTrees: LaidTree[] = chapterTrees.map((tree) => {
+      const root = d3.hierarchy<RoadmapNode>(tree);
+      treeLayout(root);
+      const treeNodes = root.descendants() as PositionedNode[];
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      treeNodes.forEach((d) => {
+        const dim = dimsFor(d.data.hierarchy_level);
+        if (d.x - dim.width / 2 < minX) { minX = d.x - dim.width / 2; }
+        if (d.x + dim.width / 2 > maxX) { maxX = d.x + dim.width / 2; }
+        if (d.y - dim.height / 2 < minY) { minY = d.y - dim.height / 2; }
+        if (d.y + dim.height / 2 > maxY) { maxY = d.y + dim.height / 2; }
+      });
+      return {
+        treeNodes,
+        treeLinks: root.links() as PositionedLink[],
+        minX, maxX, minY, maxY,
+        width: maxX - minX,
+        height: maxY - minY,
+      };
     });
+
+    // Pack the chapter subtrees into rows. Try every row-count and keep the
+    // packing whose overall bounds fit the container at the largest scale
+    // (fall back to a 2:1 aspect target before dims are measured).
+    const colGap = 80;
+    const rowGap = 100;
+    const targetAspect = dims.width > 0 && dims.height > 0 ? dims.width / dims.height : 2;
+
+    interface Packing { rows: LaidTree[][]; width: number; height: number; }
+    const packInto = (rowCount: number): Packing => {
+      const totalWidth = laidTrees.reduce((sum, t) => sum + t.width + colGap, 0) - colGap;
+      const targetRowWidth = totalWidth / rowCount;
+      const rows: LaidTree[][] = [[]];
+      let cursor = 0;
+      laidTrees.forEach((tree) => {
+        const row = rows[rows.length - 1];
+        const nextWidth = cursor === 0 ? tree.width : cursor + colGap + tree.width;
+        if (row.length > 0 && nextWidth > targetRowWidth && rows.length < rowCount) {
+          rows.push([tree]);
+          cursor = tree.width;
+        } else {
+          row.push(tree);
+          cursor = nextWidth;
+        }
+      });
+      const width = Math.max(
+        ...rows.map((row) => row.reduce((sum, t) => sum + t.width + colGap, 0) - colGap),
+      );
+      const height = rows.reduce((sum, row) => sum + Math.max(...row.map((t) => t.height)) + rowGap, 0) - rowGap;
+      return { rows, width, height };
+    };
+
+    let best: Packing | null = null;
+    let bestScore = -Infinity;
+    for (let rowCount = 1; rowCount <= laidTrees.length; rowCount++) {
+      const candidate = packInto(rowCount);
+      const score = dims.width > 0 && dims.height > 0
+        ? Math.min(dims.width / candidate.width, dims.height / candidate.height)
+        : -Math.abs(Math.log((candidate.width / candidate.height) / targetAspect));
+      if (score > bestScore) {
+        bestScore = score;
+        best = candidate;
+      }
+    }
+    const packed = best ?? packInto(1);
+
+    // Apply row/column offsets by shifting the freshly-built hierarchy nodes
+    // in place (links reference the same node objects, so they follow).
+    let rowY = 0;
+    packed.rows.forEach((row) => {
+      const rowWidth = row.reduce((sum, t) => sum + t.width + colGap, 0) - colGap;
+      const rowHeight = Math.max(...row.map((t) => t.height));
+      let cursorX = (packed.width - rowWidth) / 2;
+      row.forEach((tree) => {
+        const dx = cursorX - tree.minX;
+        const dy = rowY - tree.minY;
+        tree.treeNodes.forEach((n) => {
+          n.x += dx;
+          n.y += dy;
+        });
+        cursorX += tree.width + colGap;
+      });
+      rowY += rowHeight + rowGap;
+    });
+
+    const visibleNodes: PositionedNode[] = laidTrees.flatMap((t) => t.treeNodes);
+    const hierarchyLinks: PositionedLink[] = laidTrees.flatMap((t) => t.treeLinks);
 
     const padding = 40;
     const bbox = {
-      minX: minX - padding,
-      maxX: maxX + padding,
-      minY: minY - padding,
-      maxY: maxY + padding,
+      minX: -padding,
+      maxX: packed.width + padding,
+      minY: -padding,
+      maxY: packed.height + padding,
     };
 
-    // hierarchy links — excluding edges to synthetic root
-    type PositionedLink = d3.HierarchyPointLink<RoadmapNode>;
-    const hierarchyLinks: PositionedLink[] = (root.links() as PositionedLink[]).filter(
-      (l) => l.source.data.id !== "__root__",
-    );
-
     return { visibleNodes, hierarchyLinks, bbox };
-  }, [nodes, links, expandedSections]);
+  }, [nodes, links, expandedSections, dims]);
 
   // Auto-fit when layout or dims change
   useEffect(() => {
@@ -178,7 +257,11 @@ function RoadmapGraphInner(
     const fitScale = Math.min(dims.width / w, dims.height / h);
     const scale = Math.min(Math.max(fitScale, 0.6), 1.5);
     const tx = dims.width / 2 - ((layout.bbox.minX + layout.bbox.maxX) / 2) * scale;
-    const ty = -layout.bbox.minY * scale + 40;
+    // Center vertically when the map fits; otherwise pin the top edge in view.
+    const contentHeight = h * scale;
+    const ty = contentHeight <= dims.height
+      ? (dims.height - contentHeight) / 2 - layout.bbox.minY * scale
+      : -layout.bbox.minY * scale;
 
     const newTransform = d3.zoomIdentity.translate(tx, ty).scale(scale);
 
