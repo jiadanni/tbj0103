@@ -674,12 +674,14 @@ fn has_auto_work(conn: &rusqlite::Connection, job_key: &str) -> bool {
                 .ok()
                 .and_then(|value| value.trim_matches('"').parse::<i64>().ok())
                 .unwrap_or(60);
+            let target_cards =
+                crate::services::flashcard_topic_service::topic_target_cards(conn);
             eligible_count(
                 conn,
                 &format!(
                     "SELECT COUNT(*)
                      FROM flashcard_topics
-                     WHERE card_count < 8
+                     WHERE card_count < {target_cards}
                        AND (
                          last_generated_at IS NULL
                          OR datetime(last_generated_at) < datetime('now', '-{min_interval} minutes')

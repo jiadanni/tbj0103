@@ -59,15 +59,18 @@ impl CardDifficulty {
 
 /// Calls Ollama with a topic + difficulty descriptor and returns parsed front/back pairs.
 /// Used by both the manual `generate_flashcards` command and the background topic service.
+/// `existing_fronts` are questions the topic already has — the model is told to
+/// cover new ground instead of repeating them.
 pub(crate) async fn generate_card_pairs(
     topic: &str,
     model: &str,
     count: u32,
     difficulty: CardDifficulty,
+    existing_fronts: &[String],
     ollama_url: Option<String>,
 ) -> Result<Vec<(String, String)>, String> {
     let count = count.clamp(1, 20);
-    let prompt = format!(
+    let mut prompt = format!(
         "Generate exactly {count} {difficulty} flashcards about: \"{topic}\"\n\n\
         Output ONLY a JSON array of objects, each with \"front\" (question) and \"back\" (answer) keys.\n\
         No markdown, no explanation, no code fences — just the raw JSON array.\n\
@@ -76,6 +79,20 @@ pub(crate) async fn generate_card_pairs(
         difficulty = difficulty.descriptor(),
         topic = topic,
     );
+    if !existing_fronts.is_empty() {
+        let list = existing_fronts
+            .iter()
+            .take(30)
+            .map(|front| {
+                let truncated: String = front.chars().take(100).collect();
+                format!("- {truncated}")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        prompt.push_str(&format!(
+            "\n\nThese flashcards already exist for this topic. Do NOT repeat or trivially rephrase any of them — cover different facts, angles, or edge cases:\n{list}"
+        ));
+    }
     let client = OllamaClient::new(ollama_url)?;
     let messages = vec![OllamaMessage {
         role: "user".to_string(),
@@ -270,11 +287,36 @@ pub async fn generate_flashcards(
     req: GenerateCardsRequest,
 ) -> Result<Vec<LearningCard>, String> {
     let count = req.count.unwrap_or(5);
+    let existing_fronts: Vec<String> = {
+        let conn = state.0.get().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT front FROM learning_cards
+                 WHERE workspace_id = ?1
+                   AND (
+                     topic_id IN (SELECT id FROM flashcard_topics
+                                  WHERE workspace_id = ?1 AND LOWER(topic) = LOWER(?2))
+                     OR (topic_id IS NULL AND source_type = 'ai_generated')
+                   )
+                 ORDER BY created_at DESC
+                 LIMIT 30",
+            )
+            .map_err(|e| e.to_string())?;
+        let fronts: Vec<String> = stmt
+            .query_map(rusqlite::params![req.workspace_id, req.topic], |r| {
+                r.get::<_, String>(0)
+            })
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .collect();
+        fronts
+    };
     let pairs = generate_card_pairs(
         &req.topic,
         &req.model,
         count,
         CardDifficulty::Applied,
+        &existing_fronts,
         req.ollama_url,
     )
     .await?;

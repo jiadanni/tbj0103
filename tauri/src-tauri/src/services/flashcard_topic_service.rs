@@ -17,9 +17,23 @@ pub struct FlashcardTopicRow {
     pub card_count: i64,
 }
 
-const TARGET_CARDS_PER_TOPIC: i64 = 8;
+const DEFAULT_TARGET_CARDS_PER_TOPIC: i64 = 20;
 const DEFAULT_MIN_INTERVAL_MINUTES: i64 = 60;
 const DEFAULT_BATCH_SIZE: u32 = 3;
+
+/// How many cards a topic accumulates before background generation stops
+/// adding to it. Overridable via the `flashcard_topic_target_cards` setting.
+pub(crate) fn topic_target_cards(conn: &Connection) -> i64 {
+    conn.query_row(
+        "SELECT value FROM settings WHERE key = 'flashcard_topic_target_cards'",
+        [],
+        |r| r.get::<_, String>(0),
+    )
+    .ok()
+    .and_then(|v| v.trim_matches('"').parse::<i64>().ok())
+    .map(|v| v.clamp(1, 200))
+    .unwrap_or(DEFAULT_TARGET_CARDS_PER_TOPIC)
+}
 
 /// DEPRECATED: legacy bridge from `workspaces.topic_signature` to `flashcard_topics`.
 /// Now a no-op so that `flashcard_topics` stops growing. Callers should use
@@ -200,7 +214,34 @@ pub async fn generate_for_topic(
     ollama_url: Option<String>,
 ) -> Result<Vec<LearningCard>, String> {
     let difficulty = CardDifficulty::from_mastery(topic.mastery_score);
-    let pairs = generate_card_pairs(&topic.topic, model, count, difficulty, ollama_url).await?;
+    // Feed the topic's existing questions into the prompt so regeneration
+    // extends coverage instead of duplicating cards.
+    let existing_fronts: Vec<String> = {
+        let conn = state.0.get().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT front FROM learning_cards
+                 WHERE topic_id = ?1
+                 ORDER BY created_at DESC
+                 LIMIT 30",
+            )
+            .map_err(|e| e.to_string())?;
+        let fronts: Vec<String> = stmt
+            .query_map(rusqlite::params![topic.id], |r| r.get::<_, String>(0))
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .collect();
+        fronts
+    };
+    let pairs = generate_card_pairs(
+        &topic.topic,
+        model,
+        count,
+        difficulty,
+        &existing_fronts,
+        ollama_url,
+    )
+    .await?;
 
     let mut conn = state.0.get().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
@@ -232,9 +273,10 @@ pub async fn tick_for_workspaces(
     ollama_url: Option<String>,
     workspace_filter: Option<&[String]>,
 ) -> Result<(), String> {
-    let (workspace_ids, model, min_interval) = {
+    let (workspace_ids, model, min_interval, target_cards) = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
         let model = get_model_for_job(&conn, "flashcard_model").unwrap_or_default();
+        let target_cards = topic_target_cards(&conn);
         let interval = conn
             .query_row(
                 "SELECT value FROM settings WHERE key = 'flashcard_topic_min_interval_minutes'",
@@ -257,7 +299,7 @@ pub async fn tick_for_workspaces(
                 None => true,
             })
             .collect();
-        (ids, model, interval)
+        (ids, model, interval, target_cards)
     };
 
     if model.is_empty() {
@@ -287,7 +329,7 @@ pub async fn tick_for_workspaces(
                 .map_err(|e| e.to_string())?;
             let cooldown = format!("-{min_interval} minutes");
             stmt.query_row(
-                rusqlite::params![ws_id, TARGET_CARDS_PER_TOPIC, cooldown],
+                rusqlite::params![ws_id, target_cards, cooldown],
                 |r| {
                     Ok(FlashcardTopicRow {
                         id: r.get(0)?,
