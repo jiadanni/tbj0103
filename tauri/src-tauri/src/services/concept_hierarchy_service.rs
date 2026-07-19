@@ -415,6 +415,29 @@ pub async fn tick_for_workspaces(
         tokio::task::spawn_blocking(
             move || -> Result<(Vec<Candidate>, Option<String>), String> {
                 let conn = pool.get().map_err(|e| e.to_string())?;
+                // Seed concept nodes from each workspace's topic signature
+                // before collecting candidates, so a graph-scoped refresh
+                // creates nodes and proposes links in the same pass instead
+                // of depending on the flashcard tick having run first.
+                let ws_ids: Vec<String> = match workspace_filter.as_deref() {
+                    Some(ids) => ids.to_vec(),
+                    None => {
+                        let mut stmt = conn
+                            .prepare("SELECT id FROM workspaces WHERE is_hidden = 0")
+                            .map_err(|e| e.to_string())?;
+                        let ids = stmt
+                            .query_map([], |r| r.get::<_, String>(0))
+                            .map_err(|e| e.to_string())?
+                            .filter_map(Result::ok)
+                            .collect();
+                        ids
+                    }
+                };
+                for ws_id in &ws_ids {
+                    let _ = crate::services::flashcard_topic_service::sync_concepts_from_signatures(
+                        &conn, ws_id,
+                    );
+                }
                 let model = resolve_model(&conn);
                 let cands = collect_candidates(&conn, workspace_filter.as_deref())
                     .map_err(|e| e.to_string())?;

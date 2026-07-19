@@ -2068,9 +2068,13 @@ export const api = {
      *  event stream to refetch the graph as each job completes;
      *  `mode: "sync"` blocks until every enqueued job reaches a terminal
      *  status (used by the "Refresh and wait" progress modal). */
-    refreshWorkspace: (workspaceId: string, mode: "async" | "sync" = "async") =>
+    refreshWorkspace: (
+      workspaceId: string,
+      mode: "async" | "sync" = "async",
+      taskTypes?: RefreshWorkspaceTaskType[],
+    ) =>
       invoke<RefreshWorkspaceResult>("refresh_workspace_knowledge", {
-        req: { workspace_id: workspaceId, mode },
+        req: { workspace_id: workspaceId, mode, task_types: taskTypes ?? [] },
       }),
     checkWorkspaceAnalyzable: (workspaceId: string) =>
       invoke<{ ready: boolean; item_count: number; char_count: number }>("check_workspace_analyzable", {

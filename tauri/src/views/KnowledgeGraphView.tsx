@@ -243,6 +243,11 @@ export default function KnowledgeGraphView({
   // Per-task status snapshot driven by `background-task` events. Used by the
   // sync-mode progress modal and the async-mode passive refetch.
   type RefreshJobState = "idle" | "queued" | "running" | "completed" | "failed" | "cancelled";
+  // The map button runs only the graph-feeding job. The full seven-job
+  // workspace refresh lives in Preferences > Data Controls > Run Background
+  // Processing Now. The hierarchy tick seeds concept nodes from topic
+  // signatures itself, so this single job both creates nodes and links them.
+  const GRAPH_REFRESH_TASK_TYPES: RefreshWorkspaceTaskType[] = ["concept_hierarchy"];
   const [refreshJobStatus, setRefreshJobStatus] = useState<Record<RefreshWorkspaceTaskType, RefreshJobState>>(
     () => Object.fromEntries(
       REFRESH_WORKSPACE_TASK_TYPES.map((t) => [t, "idle" as RefreshJobState]),
@@ -583,12 +588,15 @@ export default function KnowledgeGraphView({
     setAnalyzeResult(null);
     setRefreshMode(mode);
 
-    // Reset per-task state for the seven coordinator jobs and mark them
-    // active so async-mode event callbacks know to refetch.
-    activeRefreshSetRef.current = new Set(REFRESH_WORKSPACE_TASK_TYPES);
+    // Reset per-task state for the graph-scoped jobs and mark them active
+    // so async-mode event callbacks know to refetch.
+    activeRefreshSetRef.current = new Set(GRAPH_REFRESH_TASK_TYPES);
     setRefreshJobStatus(
       Object.fromEntries(
-        REFRESH_WORKSPACE_TASK_TYPES.map((t) => [t, "queued" as RefreshJobState]),
+        REFRESH_WORKSPACE_TASK_TYPES.map((t) => [
+          t,
+          (GRAPH_REFRESH_TASK_TYPES.includes(t) ? "queued" : "idle") as RefreshJobState,
+        ]),
       ) as Record<RefreshWorkspaceTaskType, RefreshJobState>,
     );
     if (mode === "sync") {
@@ -596,7 +604,7 @@ export default function KnowledgeGraphView({
     }
 
     try {
-      const result = await api.knowledge.refreshWorkspace(activeWorkspaceId, mode);
+      const result = await api.knowledge.refreshWorkspace(activeWorkspaceId, mode, GRAPH_REFRESH_TASK_TYPES);
       if (result.failed_to_enqueue.length > 0) {
         const failed = result.failed_to_enqueue.map((f) => `${f.task_type}: ${f.error}`).join("; ");
         setAnalyzeError(`Some jobs could not be queued — ${failed}`);
@@ -877,7 +885,7 @@ export default function KnowledgeGraphView({
     concept_hierarchy: "Topic hierarchy",
     workspace_prompt_bank: "Starter prompts",
   };
-  const refreshWatchedTasks = REFRESH_WORKSPACE_TASK_TYPES;
+  const refreshWatchedTasks = GRAPH_REFRESH_TASK_TYPES;
   const refreshCompletedCount = refreshWatchedTasks.filter(
     (t) => refreshJobStatus[t] === "completed",
   ).length;

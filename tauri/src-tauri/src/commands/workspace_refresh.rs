@@ -59,6 +59,11 @@ pub struct RefreshWorkspaceRequest {
     /// "async" (default — return after enqueue) or "sync" (wait for all
     /// enqueued jobs to reach a terminal status).
     pub mode: String,
+    /// Optional subset of [`REFRESH_TASK_TYPES`] to run. Empty (the default)
+    /// runs all seven — the full workspace refresh used by Data Controls.
+    /// The Knowledge Graph view passes only the graph-feeding jobs.
+    #[serde(default)]
+    pub task_types: Vec<String>,
 }
 
 #[tauri::command]
@@ -71,6 +76,23 @@ pub async fn refresh_workspace_knowledge(
     }
     let sync_mode = matches!(req.mode.as_str(), "sync");
 
+    let selected: Vec<&'static str> = if req.task_types.is_empty() {
+        REFRESH_TASK_TYPES.to_vec()
+    } else {
+        let mut subset = Vec::new();
+        for requested in &req.task_types {
+            match REFRESH_TASK_TYPES.iter().find(|known| *known == requested) {
+                Some(known) => {
+                    if !subset.contains(known) {
+                        subset.push(*known);
+                    }
+                }
+                None => return Err(format!("Unknown refresh task type: {requested}")),
+            }
+        }
+        subset
+    };
+
     // Subscribe BEFORE enqueue so we cannot miss a fast job's completion.
     // The scheduler also writes every event to its in-process broadcast bus
     // immediately on emit.
@@ -81,12 +103,12 @@ pub async fn refresh_workspace_knowledge(
     };
 
     let pending: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(
-        REFRESH_TASK_TYPES.iter().map(|s| s.to_string()).collect(),
+        selected.iter().map(|s| s.to_string()).collect(),
     ));
 
     let mut enqueued = Vec::new();
     let mut failed_to_enqueue = Vec::new();
-    for task_type in REFRESH_TASK_TYPES {
+    for task_type in &selected {
         match background_scheduler::queue_manual_job(app.clone(), task_type.to_string()) {
             Ok(()) => enqueued.push((*task_type).to_string()),
             Err(error) => {
@@ -131,7 +153,7 @@ pub async fn refresh_workspace_knowledge(
                 if !terminal {
                     continue;
                 }
-                if !REFRESH_TASK_TYPES.contains(&event.task_type.as_str()) {
+                if !selected.contains(&event.task_type.as_str()) {
                     continue;
                 }
                 if let Ok(mut set) = pending.lock() {
