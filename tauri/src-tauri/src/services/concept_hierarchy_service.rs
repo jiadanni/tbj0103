@@ -21,6 +21,7 @@
 //! `tokio::task::spawn_blocking` so the async runtime is never blocked.
 
 use crate::db::DbState;
+use crate::models::workspace::TopicSignature;
 use crate::ollama::client::{OllamaClient, OllamaMessage};
 use crate::services::concept_hierarchy::is_valid_parent_pair;
 use crate::services::model_settings::{get_model_for_job, get_string_setting};
@@ -609,6 +610,31 @@ fn sweep_orphan_concepts(conn: &Connection, workspace_id: &str) -> rusqlite::Res
     Ok(linked)
 }
 
+/// Rebuild the heuristic topic signature for `workspace_id` when the stored
+/// one has no tags to seed from.
+///
+/// A knowledge reset (Data Controls) clears `workspaces.topic_signature`, and
+/// nothing else in the graph-scoped refresh path recreates it — the AI
+/// signature loop only fires every `topic_analysis_interval_minutes`. Since
+/// concept seeding reads the signature, "Refresh Knowledge Map" would
+/// otherwise stay stuck on an empty map (only the Uncategorized scaffold) no
+/// matter how often it runs. The heuristic rebuild is pure text processing
+/// over existing chat messages; the periodic AI pass upgrades it later.
+fn ensure_signature_seed(conn: &Connection, workspace_id: &str) {
+    let sig_json: String = match conn.query_row(
+        "SELECT topic_signature FROM workspaces WHERE id = ?1",
+        rusqlite::params![workspace_id],
+        |r| r.get(0),
+    ) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    let sig: TopicSignature = serde_json::from_str(&sig_json).unwrap_or_default();
+    if sig.auto_detected_tags.is_empty() && sig.custom_tags.is_empty() {
+        let _ = crate::services::topic_signature::recompute_workspace_signature(conn, workspace_id);
+    }
+}
+
 /// Background scheduler tick. Picks up to `MAX_CANDIDATES_PER_TICK`
 /// unparented concepts (across all workspaces) and asks the configured
 /// model for a parent for each. Resilient to LLM failures — a failed call
@@ -655,6 +681,7 @@ pub async fn tick_for_workspaces(
                     }
                 };
                 for ws_id in &ws_ids {
+                    ensure_signature_seed(&conn, ws_id);
                     let _ = crate::services::flashcard_topic_service::sync_concepts_from_signatures(
                         &conn, ws_id,
                     );
@@ -855,6 +882,90 @@ mod tests {
             rusqlite::params![uuid::Uuid::new_v4().to_string(), child, parent],
         )
         .unwrap();
+    }
+
+    #[test]
+    fn ensure_signature_seed_rebuilds_cleared_signature_from_chat_text() {
+        // Regression: after a knowledge reset wipes `topic_signature` to '{}',
+        // the graph refresh must be able to rebuild the seed on its own
+        // instead of waiting for the periodic AI signature loop.
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        insert_ws(&conn, "w1");
+        conn.execute(
+            "INSERT INTO chat_sessions (id, workspace_id) VALUES ('s1', 'w1')",
+            [],
+        )
+        .unwrap();
+        for (id, content) in [
+            ("m1", "How do I tune postgresql indexes for large tables?"),
+            ("m2", "Explain postgresql vacuum and autovacuum tuning"),
+            ("m3", "Set up postgresql replication and failover"),
+        ] {
+            conn.execute(
+                "INSERT INTO messages (id, session_id, role, content) VALUES (?1, 's1', 'user', ?2)",
+                rusqlite::params![id, content],
+            )
+            .unwrap();
+        }
+
+        ensure_signature_seed(&conn, "w1");
+
+        let sig_json: String = conn
+            .query_row(
+                "SELECT topic_signature FROM workspaces WHERE id = 'w1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let sig: TopicSignature = serde_json::from_str(&sig_json).unwrap();
+        assert!(
+            !sig.auto_detected_tags.is_empty(),
+            "heuristic signature should be rebuilt from chat text"
+        );
+
+        crate::services::flashcard_topic_service::sync_concepts_from_signatures(&conn, "w1")
+            .unwrap();
+        let seeded: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = 'w1' AND hierarchy_level = 'concept'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(seeded > 0, "sync should seed concepts from the rebuilt signature");
+    }
+
+    #[test]
+    fn ensure_signature_seed_leaves_populated_signature_alone() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        insert_ws(&conn, "w1");
+        let populated = serde_json::to_string(&TopicSignature {
+            auto_detected_tags: vec![crate::models::workspace::TopicTag {
+                tag: "rust".to_string(),
+                weight: 5,
+                source: "heuristic".to_string(),
+            }],
+            ..TopicSignature::default()
+        })
+        .unwrap();
+        conn.execute(
+            "UPDATE workspaces SET topic_signature = ?1 WHERE id = 'w1'",
+            rusqlite::params![populated],
+        )
+        .unwrap();
+
+        ensure_signature_seed(&conn, "w1");
+
+        let sig_json: String = conn
+            .query_row(
+                "SELECT topic_signature FROM workspaces WHERE id = 'w1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(sig_json, populated, "populated signatures must not be recomputed");
     }
 
     #[test]
