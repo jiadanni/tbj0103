@@ -521,12 +521,10 @@ export default function KnowledgeGraphView({
       orphans: concepts.filter((c) => !parentOf.has(c.id)),
     };
   }, [nodes, links]);
-  // The hierarchy job can only link existing concepts under existing
-  // chapters — it never invents chapters/sections itself. When the only
-  // chapter is the "Uncategorized" sweep scaffold, the roadmap has nothing
-  // real to show even though concepts exist; only "Analyze Workspace" (which
-  // reads source material) creates actual chapters.
-  const hasRealChapters = hierarchyTree.chapters.some(
+  // True once at least one real topic group exists (i.e. something other
+  // than the flat "Uncategorized" sweep bucket the hierarchy job falls
+  // back to for topics it couldn't cluster).
+  const hasRealTopicGroups = hierarchyTree.chapters.some(
     (ch) => ch.name.trim().toLowerCase() !== "uncategorized",
   );
 
@@ -933,17 +931,18 @@ export default function KnowledgeGraphView({
               message: "The last refresh completed but found no topics to map. Add more source material and try again.",
             }
           : null;
-  // "Refresh Knowledge Map" (concept_hierarchy) can only link concepts under
-  // chapters that already exist — it never creates new ones. If every
-  // concept landed in the "Uncategorized" sweep bucket, the roadmap has
-  // nothing structured to show even though nodes.length > 0. Only "Analyze
-  // Workspace" (which reads source material) creates real chapters.
-  const uncategorizedOnlyNotice = !isAnalyzing && nodes.length > 0 && !hasRealChapters
+  // "Refresh Knowledge Map" tries to cluster ungrouped topics into new
+  // groups from chat/notes/document content, falling back to the flat
+  // "Uncategorized" bucket for whatever it couldn't place. If every topic
+  // is still uncategorized after a refresh, either there wasn't enough
+  // content to work with, or the topics genuinely didn't cluster — refresh
+  // again to retry.
+  const uncategorizedOnlyNotice = !isAnalyzing && nodes.length > 0 && !hasRealTopicGroups
     ? {
         kind: "info" as const,
         message: insufficientData
-          ? `All topics here are still uncategorized — refreshing can only sort concepts into chapters that already exist. There isn't enough source material yet to build real chapters${sourceMaterialSummary ? ` (${sourceMaterialSummary})` : ""}. Add more chat, notes, or documents, then use Analyze Workspace.`
-          : "All topics here are still uncategorized — refreshing can only sort concepts into chapters that already exist. Run Analyze Workspace to build real chapters from your source material.",
+          ? `Your topics haven't been grouped yet. There isn't enough chat, notes, or document content in this workspace yet to build groups${sourceMaterialSummary ? ` (${sourceMaterialSummary})` : ""} — add more content, then refresh again.`
+          : "Your topics haven't been grouped yet. Refresh again to retry — grouping needs at least two related topics to work with.",
       }
     : null;
   const analyzeHelpText = isDemoWithoutModels
@@ -965,7 +964,7 @@ export default function KnowledgeGraphView({
   const analyzeResultSummary = isDemoWithoutModels
     ? "Demo analysis refreshed the seeded sample content."
     : analyzeResult
-      ? `+${analyzeResult.chapters_created} chapters, +${analyzeResult.sections_created} sections, +${analyzeResult.concepts_created} concepts, +${analyzeResult.links_created} links added`
+      ? `+${analyzeResult.chapters_created} groups, +${analyzeResult.sections_created} subgroups, +${analyzeResult.concepts_created} concepts, +${analyzeResult.links_created} links added`
       : "";
   const modelSelectOptions = availableModels.length === 0
     ? [{ value: "", label: isDemoWithoutModels ? "Demo simulation only" : "No models found" }]
@@ -1405,7 +1404,7 @@ export default function KnowledgeGraphView({
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
                   <p className="max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
-                    A top-down roadmap of your concepts. Chapters anchor the spine; sections branch beneath them. Click a section&apos;s +N badge to reveal its concepts. Scroll to zoom, drag to pan.
+                    A top-down roadmap of your concepts. Topics anchor the spine; subtopics branch beneath them. Click a subtopic&apos;s +N badge to reveal its concepts. Scroll to zoom, drag to pan.
                   </p>
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="relative w-48 sm:w-64">

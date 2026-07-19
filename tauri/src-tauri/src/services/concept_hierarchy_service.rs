@@ -1,11 +1,19 @@
-//! concept_hierarchy_service — LLM-assisted parent detection for `concept_nodes`.
+//! concept_hierarchy_service — LLM-assisted parent detection and topic-group
+//! synthesis for `concept_nodes`.
 //!
-//! Periodically asks the configured background model to nominate a parent
-//! concept for any `concept_nodes` row that has no outgoing `part_of` link
-//! and has not been evaluated recently. Accepted suggestions are written as
-//! a single `concept_links` row (`link_type='part_of'`,
-//! `source_id=child, target_id=parent`), which the existing sidebar tree
-//! code (`buildForest` in `src/lib/conceptTree.ts`) then renders as nesting.
+//! Two passes per tick:
+//! 1. For each unparented `concept_nodes` row not recently evaluated, ask
+//!    the configured background model to nominate a parent from its
+//!    existing workspace peers. Accepted suggestions are written as a
+//!    single `concept_links` row (`link_type='part_of'`,
+//!    `source_id=child, target_id=parent`), which the sidebar tree code
+//!    (`buildForest` in `src/lib/conceptTree.ts`) then renders as nesting.
+//! 2. For concepts still unparented afterwards (no suitable existing peer),
+//!    `synthesize_topic_groups` asks the model to cluster them into new
+//!    named topic groups and materializes each as a real chapter/section
+//!    pair, so a refresh can build structure even in a workspace with no
+//!    pre-existing groups. Whatever still can't be placed falls through to
+//!    `sweep_orphan_concepts`'s flat "Uncategorized" bucket as a last resort.
 //!
 //! Designed to be invoked from the background scheduler — see
 //! `services::background_scheduler` — and to be safe to run alongside the
@@ -17,7 +25,7 @@ use crate::ollama::client::{OllamaClient, OllamaMessage};
 use crate::services::concept_hierarchy::is_valid_parent_pair;
 use crate::services::model_settings::{get_model_for_job, get_string_setting};
 use rusqlite::Connection;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 /// Max concepts considered per tick across all workspaces. Keeps total LLM
@@ -26,6 +34,11 @@ const MAX_CANDIDATES_PER_TICK: usize = 20;
 /// Max sibling concept names included in the prompt as candidate parents.
 /// Workspaces are usually well under this; the cap exists as a guard rail.
 const MAX_PROMPT_PEERS: usize = 200;
+/// Max still-orphaned concept names sent to the group-synthesis prompt per
+/// workspace per tick. Keeps the prompt small and the response fast; any
+/// remainder is picked up by `sweep_orphan_concepts` and re-considered on a
+/// later tick once earlier orphans have groups.
+const MAX_GROUP_SYNTHESIS_CANDIDATES: usize = 40;
 
 /// Lightweight summary of work performed in one tick. Surfaced through the
 /// scheduler's `emit_task` lifecycle event so the Activity panel reflects
@@ -336,6 +349,212 @@ fn ensure_part_of_link(
     Ok(inserted > 0)
 }
 
+#[derive(Debug, Deserialize)]
+struct ProposedGroup {
+    name: String,
+    #[serde(default)]
+    concepts: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProposedGroups {
+    #[serde(default)]
+    groups: Vec<ProposedGroup>,
+}
+
+fn strip_code_fences(input: &str) -> &str {
+    let trimmed = input.trim();
+    if let Some(rest) = trimmed.strip_prefix("```") {
+        let rest = rest
+            .trim_start_matches(|c: char| c.is_alphanumeric())
+            .trim_start_matches('\n');
+        if let Some(end) = rest.rfind("```") {
+            return rest[..end].trim();
+        }
+        return rest.trim();
+    }
+    trimmed
+}
+
+/// Load up to `MAX_GROUP_SYNTHESIS_CANDIDATES` concepts in `workspace_id`
+/// that still have no `part_of` link — i.e. the per-candidate nomination
+/// pass above found no suitable existing parent for them.
+fn collect_still_orphaned(
+    conn: &Connection,
+    workspace_id: &str,
+) -> rusqlite::Result<Vec<Candidate>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, workspace_id, name, hierarchy_level
+         FROM concept_nodes
+         WHERE workspace_id = ?1
+           AND hierarchy_level = 'concept'
+           AND NOT EXISTS (
+               SELECT 1 FROM concept_links cl
+               WHERE cl.source_id = concept_nodes.id AND cl.link_type = 'part_of'
+           )
+         ORDER BY created_at ASC
+         LIMIT ?2",
+    )?;
+    let rows = stmt
+        .query_map(
+            rusqlite::params![workspace_id, MAX_GROUP_SYNTHESIS_CANDIDATES as i64],
+            |r| {
+                Ok(Candidate {
+                    id: r.get(0)?,
+                    workspace_id: r.get(1)?,
+                    name: r.get(2)?,
+                    hierarchy_level: r.get(3)?,
+                })
+            },
+        )?
+        .filter_map(Result::ok)
+        .collect();
+    Ok(rows)
+}
+
+fn build_group_synthesis_prompt(names: &[String]) -> String {
+    let joined = names
+        .iter()
+        .map(|n| format!("- {n}"))
+        .collect::<Vec<String>>()
+        .join("\n");
+    format!(
+        "You are organising a knowledge map. Group the following concepts into a small \
+         number of clearly named topic groups (2-6 words each, e.g. \"Databases\", \
+         \"Python Fundamentals\"). Every concept must appear in exactly one group. \
+         Group concepts that are meaningfully related; do not create a group for a single \
+         unrelated concept unless there is no better fit — prefer fewer, broader groups \
+         over many narrow ones.\n\n\
+         Concepts:\n{joined}\n\n\
+         Reply with ONLY a JSON object of this exact shape, no explanation, no markdown \
+         fences:\n\
+         {{\"groups\": [{{\"name\": \"Group Name\", \"concepts\": [\"concept 1\", \"concept 2\"]}}]}}"
+    )
+}
+
+/// Ask the LLM to cluster still-unparented concepts in `workspace_id` into
+/// named topic groups, then materialize each proposed group as a real
+/// chapter + section pair and link the matched concepts underneath.
+///
+/// This is what lets "Refresh Knowledge Map" build actual structure instead
+/// of only being able to sort concepts under groups a human (or the old
+/// single-shot Analyze flow) already created. Concepts the model doesn't
+/// place, or that don't match by name, are left for `sweep_orphan_concepts`
+/// to catch so nothing silently disappears from the map.
+async fn synthesize_topic_groups(
+    state: &DbState,
+    ollama_url: Option<String>,
+    workspace_id: &str,
+    model: &str,
+) -> Result<usize, String> {
+    let orphans = {
+        let pool = state.0.clone();
+        let ws = workspace_id.to_string();
+        tokio::task::spawn_blocking(move || -> rusqlite::Result<Vec<Candidate>> {
+            let conn = pool.get().map_err(|e| {
+                rusqlite::Error::InvalidParameterName(e.to_string())
+            })?;
+            collect_still_orphaned(&conn, &ws)
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking join error: {e}"))?
+        .map_err(|e| e.to_string())?
+    };
+
+    if orphans.len() < 2 {
+        // Not enough ungrouped concepts to justify a synthesis call — a
+        // single leftover concept goes to the Uncategorized sweep instead.
+        return Ok(0);
+    }
+
+    let names: Vec<String> = orphans.iter().map(|c| c.name.clone()).collect();
+    let prompt = build_group_synthesis_prompt(&names);
+    let client = OllamaClient::new(ollama_url)?;
+    let msgs = vec![OllamaMessage {
+        role: "user".to_string(),
+        content: prompt,
+    }];
+    let reply = client
+        .send_message_with_options("concept_hierarchy_service_groups", model, msgs, Some("0s"))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let cleaned = strip_code_fences(&reply);
+    let parsed: ProposedGroups = serde_json::from_str(cleaned)
+        .map_err(|e| format!("could not parse group synthesis reply: {e}"))?;
+
+    if parsed.groups.is_empty() {
+        return Ok(0);
+    }
+
+    let by_name: std::collections::HashMap<String, String> = orphans
+        .into_iter()
+        .map(|c| (c.name.trim().to_lowercase(), c.id))
+        .collect();
+
+    let pool = state.0.clone();
+    let workspace_id = workspace_id.to_string();
+    let linked = tokio::task::spawn_blocking(move || -> rusqlite::Result<usize> {
+        let conn = pool.get().map_err(|e| {
+            rusqlite::Error::InvalidParameterName(e.to_string())
+        })?;
+        let mut linked = 0usize;
+        for group in &parsed.groups {
+            let group_name = group.name.trim();
+            if group_name.is_empty() || group_name.eq_ignore_ascii_case("uncategorized") {
+                continue;
+            }
+            let matched: Vec<&String> = group
+                .concepts
+                .iter()
+                .filter_map(|name| by_name.get(&name.trim().to_lowercase()))
+                .collect();
+            if matched.is_empty() {
+                continue;
+            }
+
+            let chapter_id = ensure_node(
+                &conn,
+                &workspace_id,
+                group_name,
+                "chapter",
+                "topic",
+                "",
+            )?;
+            let section_id = ensure_node(
+                &conn,
+                &workspace_id,
+                group_name,
+                "section",
+                "topic",
+                "",
+            )?;
+            let _ = ensure_part_of_link(
+                &conn,
+                &section_id,
+                &chapter_id,
+                "auto: hierarchy group synthesis",
+            )?;
+            for concept_id in matched {
+                if ensure_part_of_link(
+                    &conn,
+                    concept_id,
+                    &section_id,
+                    "auto: hierarchy group synthesis",
+                )? {
+                    linked += 1;
+                }
+            }
+        }
+        Ok(linked)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
+    .map_err(|e| e.to_string())?;
+
+    Ok(linked)
+}
+
 fn sweep_orphan_concepts(conn: &Connection, workspace_id: &str) -> rusqlite::Result<usize> {
     let chapter_id = ensure_node(
         conn,
@@ -455,6 +674,7 @@ pub async fn tick_for_workspaces(
         return Ok(report);
     }
 
+    let ollama_url_for_synthesis = ollama_url.clone();
     let Ok(client) = OllamaClient::new(ollama_url) else {
         return Ok(report);
     };
@@ -539,8 +759,23 @@ pub async fn tick_for_workspaces(
     }
 
     if !touched_workspaces.is_empty() {
-        let pool = state.0.clone();
         let workspaces: Vec<String> = touched_workspaces.into_iter().collect();
+
+        // Try to cluster whatever is still unparented into real topic
+        // groups before falling back to the flat Uncategorized bucket, so
+        // a refresh can build structure even when nothing pre-existing was
+        // there to link against.
+        for ws in &workspaces {
+            let _ = synthesize_topic_groups(
+                state,
+                ollama_url_for_synthesis.clone(),
+                ws,
+                &model,
+            )
+            .await;
+        }
+
+        let pool = state.0.clone();
         let _ = tokio::task::spawn_blocking(move || -> Result<(), String> {
             let conn = pool.get().map_err(|e| e.to_string())?;
             for ws in &workspaces {
@@ -706,5 +941,99 @@ mod tests {
             value.is_some(),
             "parent_checked_at should be populated after stamp"
         );
+    }
+
+    #[test]
+    fn strip_code_fences_removes_markdown_wrapping() {
+        let wrapped = "```json\n{\"groups\": []}\n```";
+        assert_eq!(strip_code_fences(wrapped), "{\"groups\": []}");
+        assert_eq!(strip_code_fences("{\"groups\": []}"), "{\"groups\": []}");
+    }
+
+    #[test]
+    fn parses_proposed_groups_json() {
+        let raw = r#"{"groups": [{"name": "Databases", "concepts": ["postgresql", "psql"]}]}"#;
+        let parsed: ProposedGroups = serde_json::from_str(raw).unwrap();
+        assert_eq!(parsed.groups.len(), 1);
+        assert_eq!(parsed.groups[0].name, "Databases");
+        assert_eq!(parsed.groups[0].concepts, vec!["postgresql", "psql"]);
+    }
+
+    #[test]
+    fn collect_still_orphaned_only_returns_unparented_concepts() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        insert_ws(&conn, "w1");
+        insert_concept(&conn, "c_orphan", "w1", "postgresql");
+        insert_concept(&conn, "c_linked", "w1", "cargo.toml");
+        insert_node_at_level(&conn, "parent", "w1", "cargo", "section");
+        insert_part_of(&conn, "c_linked", "parent");
+
+        let orphans = collect_still_orphaned(&conn, "w1").unwrap();
+        let names: Vec<_> = orphans.iter().map(|c| c.name.as_str()).collect();
+        assert!(names.contains(&"postgresql"));
+        assert!(!names.contains(&"cargo.toml"));
+    }
+
+    #[test]
+    fn group_synthesis_materializes_chapter_section_and_links() {
+        // Exercises the DB-writing half of `synthesize_topic_groups` directly
+        // (the LLM call itself isn't exercised here — no Ollama in tests) by
+        // replicating its matching + materialization logic against a fixed
+        // parsed response, the same way the function does after parsing.
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        insert_ws(&conn, "w1");
+        insert_concept(&conn, "c1", "w1", "postgresql");
+        insert_concept(&conn, "c2", "w1", "psql");
+
+        let parsed: ProposedGroups = serde_json::from_str(
+            r#"{"groups": [{"name": "Databases", "concepts": ["postgresql", "psql"]}]}"#,
+        )
+        .unwrap();
+
+        let by_name: std::collections::HashMap<String, String> = [
+            ("postgresql".to_string(), "c1".to_string()),
+            ("psql".to_string(), "c2".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        for group in &parsed.groups {
+            let group_name = group.name.trim();
+            let matched: Vec<&String> = group
+                .concepts
+                .iter()
+                .filter_map(|name| by_name.get(&name.trim().to_lowercase()))
+                .collect();
+            assert!(!matched.is_empty());
+
+            let chapter_id = ensure_node(&conn, "w1", group_name, "chapter", "topic", "").unwrap();
+            let section_id = ensure_node(&conn, "w1", group_name, "section", "topic", "").unwrap();
+            ensure_part_of_link(&conn, &section_id, &chapter_id, "test").unwrap();
+            for concept_id in matched {
+                ensure_part_of_link(&conn, concept_id, &section_id, "test").unwrap();
+            }
+        }
+
+        let chapter_name: String = conn
+            .query_row(
+                "SELECT name FROM concept_nodes WHERE workspace_id = 'w1' AND hierarchy_level = 'chapter'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(chapter_name, "Databases");
+
+        let linked_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM concept_links cl
+                 JOIN concept_nodes cn ON cn.id = cl.source_id
+                 WHERE cn.workspace_id = 'w1' AND cl.link_type = 'part_of' AND cn.hierarchy_level = 'concept'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(linked_count, 2, "both concepts should be linked under the new section");
     }
 }

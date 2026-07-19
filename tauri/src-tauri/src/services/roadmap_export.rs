@@ -147,8 +147,8 @@ pub fn render_markdown_outline(tree: &RoadmapTree) -> String {
 
 fn write_markdown(out: &mut String, node: &RoadmapTreeNode, depth: usize) {
     match node.hierarchy_level.as_str() {
-        "chapter" => out.push_str(&format!("\n## {} _(chapter)_\n\n", node.name)),
-        "section" => out.push_str(&format!("\n### {} _(section)_\n\n", node.name)),
+        "chapter" => out.push_str(&format!("\n## {} _(group)_\n\n", node.name)),
+        "section" => out.push_str(&format!("\n### {} _(subgroup)_\n\n", node.name)),
         _ => {
             let indent = "  ".repeat(depth.saturating_sub(2));
             out.push_str(&format!(
