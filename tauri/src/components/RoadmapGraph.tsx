@@ -443,10 +443,13 @@ function RoadmapGraphInner(
             // Section expansion affordance: pill hanging off the bottom of the
             // section box, showing chevron-down + count when collapsed, or
             // chevron-up when expanded. Sized large enough to be obvious on
-            // first paint.
-            const isExpanded = isSection && expandedSections.has(d.data.id);
+            // first paint. Chapters that absorbed a redundant same-named
+            // section carry the section's id as `collapseId` and get the same
+            // affordance.
+            const collapseKey = isSection ? d.data.id : d.data.collapseId;
+            const isExpanded = collapseKey !== undefined && expandedSections.has(collapseKey);
             const hiddenCount = d.data.hiddenChildCount ?? 0;
-            const showBadge = isSection && (hiddenCount > 0 || isExpanded);
+            const showBadge = collapseKey !== undefined && (hiddenCount > 0 || isExpanded);
             const badgeText = isExpanded ? "Hide" : `Show ${hiddenCount}`;
             const badgeHeight = 22;
             const badgeWidth = Math.max(64, badgeText.length * 7 + 22);
@@ -498,7 +501,7 @@ function RoadmapGraphInner(
                   <g
                     onClick={(event) => {
                       event.stopPropagation();
-                      toggleSection(d.data.id);
+                      if (collapseKey !== undefined) { toggleSection(collapseKey); }
                     }}
                     style={{ cursor: "pointer" }}
                   >

@@ -12,6 +12,12 @@ export interface RoadmapNode {
   concept_type: string;
   children?: RoadmapNode[];
   hiddenChildCount?: number;
+  /**
+   * Set when a redundant same-named section was merged into this chapter.
+   * Holds the merged section's node id — the key used for expand/collapse
+   * state, since collapse tracking predates the merge and stores section ids.
+   */
+  collapseId?: string;
 }
 
 function isLegacyUncategorizedScaffold(node: Pick<RoadmapNode, "name" | "hierarchy_level">): boolean {
@@ -48,6 +54,30 @@ function mergeDuplicateSiblings(nodes: RoadmapNode[]): RoadmapNode[] {
   return orderedKeys
     .map((key) => merged.get(key))
     .filter((node): node is RoadmapNode => Boolean(node));
+}
+
+/**
+ * Auto-synthesized topic groups are materialized as a chapter plus a single
+ * section with the exact same name (the hierarchy rules require concepts to
+ * hang off a section). Rendering both boxes reads as duplication, so when a
+ * chapter's only child is a same-named section, fold the section away and
+ * hoist its children onto the chapter. The section's id is kept as
+ * `collapseId` so expand/collapse state (keyed by section id) still applies.
+ */
+function collapseRedundantSections(nodes: RoadmapNode[]): RoadmapNode[] {
+  return nodes.map((node) => {
+    const children = collapseRedundantSections(node.children ?? []);
+    const only = children.length === 1 ? children[0] : null;
+    if (
+      node.hierarchy_level === "chapter" &&
+      only &&
+      only.hierarchy_level === "section" &&
+      only.name.trim().toLowerCase() === node.name.trim().toLowerCase()
+    ) {
+      return { ...node, children: only.children ?? [], collapseId: only.id };
+    }
+    return { ...node, children };
+  });
 }
 
 /** Build a single virtual root with the chapter/section/concept forest as children.
@@ -93,7 +123,7 @@ export function buildForest(nodes: ConceptNode[], links: ConceptLink[]): Roadmap
     }
   });
 
-  const mergedRoots = mergeDuplicateSiblings(roots);
+  const mergedRoots = collapseRedundantSections(mergeDuplicateSiblings(roots));
 
   // Hide the "Uncategorized" scaffold only when there is other categorized
   // content to show in its place — otherwise every concept the hierarchy job
@@ -124,7 +154,8 @@ export function pruneCollapsedSections(
 ): RoadmapNode {
   const visit = (node: RoadmapNode): RoadmapNode => {
     const children = node.children ?? [];
-    if (node.hierarchy_level === "section" && !expandedSectionIds.has(node.id)) {
+    const collapseKey = node.hierarchy_level === "section" ? node.id : node.collapseId;
+    if (collapseKey !== undefined && !expandedSectionIds.has(collapseKey)) {
       const hiddenChildCount = children.length;
       return { ...node, children: [], hiddenChildCount };
     }
