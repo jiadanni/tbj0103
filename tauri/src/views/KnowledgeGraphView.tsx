@@ -521,6 +521,14 @@ export default function KnowledgeGraphView({
       orphans: concepts.filter((c) => !parentOf.has(c.id)),
     };
   }, [nodes, links]);
+  // The hierarchy job can only link existing concepts under existing
+  // chapters — it never invents chapters/sections itself. When the only
+  // chapter is the "Uncategorized" sweep scaffold, the roadmap has nothing
+  // real to show even though concepts exist; only "Analyze Workspace" (which
+  // reads source material) creates actual chapters.
+  const hasRealChapters = hierarchyTree.chapters.some(
+    (ch) => ch.name.trim().toLowerCase() !== "uncategorized",
+  );
 
   // Listen to background-task events for the seven refresh jobs and trigger
   // a graph/summary/proposals refetch every time a watched job completes.
@@ -925,6 +933,19 @@ export default function KnowledgeGraphView({
               message: "The last refresh completed but found no topics to map. Add more source material and try again.",
             }
           : null;
+  // "Refresh Knowledge Map" (concept_hierarchy) can only link concepts under
+  // chapters that already exist — it never creates new ones. If every
+  // concept landed in the "Uncategorized" sweep bucket, the roadmap has
+  // nothing structured to show even though nodes.length > 0. Only "Analyze
+  // Workspace" (which reads source material) creates real chapters.
+  const uncategorizedOnlyNotice = !isAnalyzing && nodes.length > 0 && !hasRealChapters
+    ? {
+        kind: "info" as const,
+        message: insufficientData
+          ? `All topics here are still uncategorized — refreshing can only sort concepts into chapters that already exist. There isn't enough source material yet to build real chapters${sourceMaterialSummary ? ` (${sourceMaterialSummary})` : ""}. Add more chat, notes, or documents, then use Analyze Workspace.`
+          : "All topics here are still uncategorized — refreshing can only sort concepts into chapters that already exist. Run Analyze Workspace to build real chapters from your source material.",
+      }
+    : null;
   const analyzeHelpText = isDemoWithoutModels
     ? "Demo data is preloaded. No local models are installed on this machine, so AI actions use simulated demo output."
     : insufficientData
@@ -1445,6 +1466,16 @@ export default function KnowledgeGraphView({
                     </div>
                   </div>
                 </div>
+
+                {uncategorizedOnlyNotice && (
+                  <div
+                    role="status"
+                    className="mb-3 flex items-start gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-left text-xs leading-5 text-[var(--text-secondary)]"
+                  >
+                    <Info size={14} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
+                    <span>{uncategorizedOnlyNotice.message}</span>
+                  </div>
+                )}
 
                 <div
                   className={
