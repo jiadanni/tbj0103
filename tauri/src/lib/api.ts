@@ -1463,9 +1463,9 @@ export const api = {
       ),
     importClaudeFiles: (args: {
       folderPath: string;
-      folderMappings: Record<string, string>;
-      projectMemoryTargets: Record<string, string>;
-      orphansFolderId: string | null;
+      folderMappings: Record<string, { workspaceId: string; folderId: string }>;
+      projectMemoryTargets: Record<string, { workspaceId: string; folderId: string }>;
+      orphansDestination: { workspaceId: string; folderId: string } | null;
       selectedConversationIds?: string[];
       selectedProjectIds?: string[];
       chatProjectOverrides?: Record<string, string>;
@@ -1485,7 +1485,7 @@ export const api = {
         folderPath: args.folderPath,
         folderMappings: args.folderMappings,
         projectMemoryTargets: args.projectMemoryTargets,
-        orphansFolderId: args.orphansFolderId ?? null,
+        orphansDestination: args.orphansDestination ?? null,
         selectedConversationIds: args.selectedConversationIds ?? null,
         selectedProjectIds: args.selectedProjectIds ?? null,
         chatProjectOverrides: args.chatProjectOverrides ?? null,

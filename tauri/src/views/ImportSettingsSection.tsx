@@ -890,20 +890,22 @@ export default function ImportSettingsSection() {
       const freshWs = await api.workspace.list();
       setWorkspaces(freshWs);
 
-      const mappedFolderMappings: Record<string, string> = {};
+      const mappedFolderMappings: Record<string, { workspaceId: string; folderId: string }> = {};
       for (const [uuid, target] of Object.entries(folderMappings)) {
-        mappedFolderMappings[uuid] = target.folder_id;
+        mappedFolderMappings[uuid] = { workspaceId: target.workspace_id, folderId: target.folder_id };
       }
-      const mappedProjectMemoryTargets: Record<string, string> = {};
+      const mappedProjectMemoryTargets: Record<string, { workspaceId: string; folderId: string }> = {};
       for (const [uuid, target] of Object.entries(projectMemoryTargets)) {
-        mappedProjectMemoryTargets[uuid] = target.folder_id;
+        mappedProjectMemoryTargets[uuid] = { workspaceId: target.workspace_id, folderId: target.folder_id };
       }
 
       const result = await api.chatFile.importClaudeFiles({
         folderPath: claudeFolderPath,
         folderMappings: mappedFolderMappings,
         projectMemoryTargets: mappedProjectMemoryTargets,
-        orphansFolderId: orphansDestination?.folder_id ?? null,
+        orphansDestination: orphansDestination
+          ? { workspaceId: orphansDestination.workspace_id, folderId: orphansDestination.folder_id }
+          : null,
         selectedConversationIds: conversationIdsToImport.size > 0 ? [...conversationIdsToImport] : undefined,
         selectedProjectIds: [...claudeSelectedFolders],
         chatProjectOverrides: Object.keys(chatProjectOverrides).length > 0 ? chatProjectOverrides : undefined,

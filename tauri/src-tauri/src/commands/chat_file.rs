@@ -1791,13 +1791,22 @@ pub async fn match_claude_with_embeddings(
     Ok(serde_json::json!(suggestions))
 }
 
+/// Destination for imported chats/memories: a workspace, optionally with a folder inside it.
+/// An empty `folder_id` means "insert directly into the workspace, no folder" —
+/// this is the case for projects imported as a new (sub-)workspace.
+#[derive(serde::Deserialize)]
+pub struct ClaudeImportDestination {
+    workspace_id: String,
+    folder_id: String,
+}
+
 /// Import Claude Desktop conversations and memories from a folder.
 /// The frontend resolves destinations (creates workspaces/folders) before calling this —
-/// the backend is a pure inserter that accepts pre-resolved folder IDs.
+/// the backend is a pure inserter that accepts pre-resolved workspace/folder IDs.
 ///
-/// - `folder_mappings`: claude project_uuid → aetherium folder_id
-/// - `project_memory_targets`: claude project_uuid → aetherium folder_id (subset of above)
-/// - `orphans_folder_id`: folder to place conversations that have no project mapping
+/// - `folder_mappings`: claude project_uuid → aetherium destination
+/// - `project_memory_targets`: claude project_uuid → aetherium destination (subset of above)
+/// - `orphans_destination`: destination for conversations that have no project mapping
 /// - `selected_conversation_ids`: only import these conversation UUIDs (empty = all)
 /// - `selected_project_ids`: only import project chats from these project UUIDs (empty = all in folder_mappings)
 #[allow(clippy::too_many_arguments)]
@@ -1805,9 +1814,9 @@ pub async fn match_claude_with_embeddings(
 #[allow(clippy::too_many_arguments)]
 pub async fn import_claude_files(
     folder_path: String,
-    folder_mappings: std::collections::HashMap<String, String>,
-    project_memory_targets: std::collections::HashMap<String, String>,
-    orphans_folder_id: Option<String>,
+    folder_mappings: std::collections::HashMap<String, ClaudeImportDestination>,
+    project_memory_targets: std::collections::HashMap<String, ClaudeImportDestination>,
+    orphans_destination: Option<ClaudeImportDestination>,
     selected_conversation_ids: Option<Vec<String>>,
     selected_project_ids: Option<Vec<String>>,
     // chat_uuid → claude project_uuid. Routes an otherwise-orphan chat into
@@ -1850,30 +1859,21 @@ pub async fn import_claude_files(
     // Helper: insert one conversation. Routing precedence:
     //   1. embedded project_uuid → folder_mappings
     //   2. chat_project_overrides[chat.id] → folder_mappings
-    //   3. orphans_folder_id (fallback)
+    //   3. orphans_destination (fallback)
     let mut insert_chat =
         |data: &chat_file_store::ChatFileData, project_uuid: Option<&str>| -> Result<(), String> {
-            let folder_id = if let Some(uuid) = project_uuid {
-                folder_mappings.get(uuid).cloned().unwrap_or_default()
+            let dest = if let Some(uuid) = project_uuid {
+                folder_mappings.get(uuid)
             } else if let Some(target_project) = overrides.get(&data.id) {
-                folder_mappings
-                    .get(target_project)
-                    .cloned()
-                    .unwrap_or_default()
+                folder_mappings.get(target_project)
             } else {
-                orphans_folder_id.clone().unwrap_or_default()
+                orphans_destination.as_ref()
             };
-            if folder_id.is_empty() {
+            let Some(dest) = dest else {
                 return Ok(()); // no destination → skip
-            }
-            // Look up workspace_id from folder
-            let workspace_id: String = conn
-                .query_row(
-                    "SELECT workspace_id FROM folders WHERE id = ?1",
-                    rusqlite::params![folder_id],
-                    |row| row.get(0),
-                )
-                .map_err(|e| format!("Folder {} not found: {e}", folder_id))?;
+            };
+            let workspace_id = dest.workspace_id.clone();
+            let folder_id = dest.folder_id.clone();
 
             // Dedup by (workspace, folder, title, created_at) on imported sessions.
             // (The historical `WHERE id = data.id` check was a no-op because
@@ -1941,7 +1941,7 @@ pub async fn import_claude_files(
 
         // Import orphan conversations from conversations.json
         let conv_path = folder.join("conversations.json");
-        if conv_path.is_file() && orphans_folder_id.is_some() {
+        if conv_path.is_file() && orphans_destination.is_some() {
             let bytes = std::fs::read(&conv_path)
                 .map_err(|e| format!("Failed to read conversations.json: {e}"))?;
             let orphans = chat_file_store::parse_claude_conversations_filtered(
@@ -1986,19 +1986,12 @@ pub async fn import_claude_files(
                 let name_map = claude_v2::load_v2_project_name_map(&folder);
                 let (_, preview) = claude_v2::parse_v2_memories(&folder, &name_map)?;
                 for pm in &preview.folder_memories {
-                    if let Some(folder_id) = project_memory_targets.get(&pm.project_uuid) {
-                        let workspace_id: String = conn
-                            .query_row(
-                                "SELECT workspace_id FROM folders WHERE id = ?1",
-                                rusqlite::params![folder_id],
-                                |row| row.get(0),
-                            )
-                            .map_err(|e| format!("Folder {folder_id} not found: {e}"))?;
+                    if let Some(dest) = project_memory_targets.get(&pm.project_uuid) {
                         let mem_id = uuid::Uuid::new_v4().to_string();
                         conn.execute(
                             "INSERT INTO memories (id, workspace_id, folder_id, content, memory_type, scope, is_pinned, is_active, created_at, updated_at)
                              VALUES (?1, ?2, ?3, ?4, 'context', 'workspace', 0, 1, ?5, ?5)",
-                            rusqlite::params![mem_id, workspace_id, folder_id, pm.memory, now],
+                            rusqlite::params![mem_id, dest.workspace_id, dest.folder_id, pm.memory, now],
                         ).map_err(|e| e.to_string())?;
                         memories_imported += 1;
                     }
@@ -2013,19 +2006,12 @@ pub async fn import_claude_files(
                     chat_file_store::preview_claude_memories(&mem_bytes, proj_bytes.as_deref())
                 {
                     for pm in &preview.folder_memories {
-                        if let Some(folder_id) = project_memory_targets.get(&pm.project_uuid) {
-                            let workspace_id: String = conn
-                                .query_row(
-                                    "SELECT workspace_id FROM folders WHERE id = ?1",
-                                    rusqlite::params![folder_id],
-                                    |row| row.get(0),
-                                )
-                                .map_err(|e| format!("Folder {folder_id} not found: {e}"))?;
+                        if let Some(dest) = project_memory_targets.get(&pm.project_uuid) {
                             let mem_id = uuid::Uuid::new_v4().to_string();
                             conn.execute(
                                 "INSERT INTO memories (id, workspace_id, folder_id, content, memory_type, scope, is_pinned, is_active, created_at, updated_at)
                                  VALUES (?1, ?2, ?3, ?4, 'context', 'workspace', 0, 1, ?5, ?5)",
-                                rusqlite::params![mem_id, workspace_id, folder_id, pm.memory, now],
+                                rusqlite::params![mem_id, dest.workspace_id, dest.folder_id, pm.memory, now],
                             ).map_err(|e| e.to_string())?;
                             memories_imported += 1;
                         }
