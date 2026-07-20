@@ -1181,7 +1181,7 @@ export default function WorkspaceSettingsView() {
                       </div>
 
                       <div
-                        className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-[var(--bg-secondary)] rounded px-0.5"
+                        className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity rounded px-0.5"
                         onClick={e => e.stopPropagation()}
                       >
                         {!isActive && (
@@ -1272,7 +1272,7 @@ export default function WorkspaceSettingsView() {
                               </div>
 
                               <div
-                                className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-[var(--bg-secondary)] rounded px-0.5"
+                                className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity rounded px-0.5"
                                 onClick={e => e.stopPropagation()}
                               >
                                 {!isChildActive && (
