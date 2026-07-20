@@ -193,32 +193,35 @@ pub fn get_chat_file_info(
 }
 
 #[tauri::command]
-pub fn reveal_chat_file(
+pub async fn reveal_chat_file(
     session_id: String,
-    chats_dir_state: State<ChatsDirState>,
-    crypto: State<ChatCryptoState>,
-    db_state: State<DbState>,
+    chats_dir_state: State<'_, ChatsDirState>,
+    crypto: State<'_, ChatCryptoState>,
+    db_state: State<'_, DbState>,
 ) -> Result<(), String> {
-    let conn = db_state.0.get().map_err(|e| e.to_string())?;
+    let chats_dir = chats_dir_state.0.clone();
     let encrypted = crypto.0.lock().map_err(|e| e.to_string())?.is_some();
+    let pool = db_state.0.clone();
+    tokio::task::spawn_blocking(move || {
+    let conn = pool.get().map_err(|e| e.to_string())?;
     // Try the workspace/folder subdirectory path first
     let path = chat_file_store::session_file_path_for_session(
         &conn,
-        &chats_dir_state.0,
+        &chats_dir,
         &session_id,
         encrypted,
     );
     let fallback_path = chat_file_store::session_file_path_for_session(
         &conn,
-        &chats_dir_state.0,
+        &chats_dir,
         &session_id,
         !encrypted,
     );
     // Legacy flat-directory paths as final fallback
     let legacy_path =
-        chat_file_store::session_file_path(&chats_dir_state.0, &session_id, encrypted);
+        chat_file_store::session_file_path(&chats_dir, &session_id, encrypted);
     let legacy_fallback =
-        chat_file_store::session_file_path(&chats_dir_state.0, &session_id, !encrypted);
+        chat_file_store::session_file_path(&chats_dir, &session_id, !encrypted);
     let reveal_path = if path.exists() {
         path
     } else if fallback_path.exists() {
@@ -261,116 +264,145 @@ pub fn reveal_chat_file(
 
     #[allow(unreachable_code)]
     Err("Show in explorer is not supported on this platform".to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Enable (or rotate) encryption for all chat JSON files.
 /// Stores the passphrase in the system keychain.
 #[tauri::command]
-pub fn setup_chat_encryption(
-    auth: State<AuthState>,
+pub async fn setup_chat_encryption(
+    auth: State<'_, AuthState>,
     passphrase: String,
-    chats_dir_state: State<ChatsDirState>,
-    crypto: State<ChatCryptoState>,
-    db_state: State<DbState>,
+    chats_dir_state: State<'_, ChatsDirState>,
+    crypto: State<'_, ChatCryptoState>,
+    db_state: State<'_, DbState>,
 ) -> Result<usize, String> {
     require_auth(&auth, &db_state)?;
     if passphrase.is_empty() {
         return Err("Passphrase must not be empty".to_string());
     }
-    // Get old passphrase to re-encrypt existing files
+    let chats_dir = chats_dir_state.0.clone();
     let old_pass = crypto.0.lock().map_err(|e| e.to_string())?.clone();
+    let pool = db_state.0.clone();
+    let passphrase_clone = passphrase.clone();
 
-    // Re-encrypt / encrypt all existing files
-    let count = chat_file_store::reencrypt_all_files(
-        &chats_dir_state.0,
-        old_pass.as_deref(),
-        Some(&passphrase),
-    )?;
+    let count = tokio::task::spawn_blocking(move || {
+        // Re-encrypt / encrypt all existing files
+        let count = chat_file_store::reencrypt_all_files(
+            &chats_dir,
+            old_pass.as_deref(),
+            Some(&passphrase_clone),
+        )?;
 
-    // Persist new passphrase
-    keyring_store(&passphrase)?;
+        // Persist new passphrase
+        keyring_store(&passphrase_clone)?;
 
-    // Update in-memory state
-    *crypto.0.lock().map_err(|e| e.to_string())? = Some(passphrase.clone());
+        // Persist flag in settings DB
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('chat_encryption_enabled', 'true')",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
 
-    // Persist flag in settings DB
-    let conn = db_state.0.get().map_err(|e| e.to_string())?;
-    conn.execute(
-        "INSERT OR REPLACE INTO settings (key, value) VALUES ('chat_encryption_enabled', 'true')",
-        [],
-    )
-    .map_err(|e| e.to_string())?;
+        // Sync any sessions that don't yet have a file
+        sync_all_to_files_internal(&conn, &chats_dir, Some(&passphrase_clone))?;
 
-    // Sync any sessions that don't yet have a file
-    sync_all_to_files_internal(&conn, &chats_dir_state.0, Some(&passphrase))?;
+        Ok::<usize, String>(count)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    // Update in-memory state (must hold the lock briefly on the async task)
+    *crypto.0.lock().map_err(|e| e.to_string())? = Some(passphrase);
 
     Ok(count)
 }
 
 /// Disable encryption — decrypt all files and clear the keychain entry.
 #[tauri::command]
-pub fn disable_chat_encryption(
-    auth: State<AuthState>,
-    chats_dir_state: State<ChatsDirState>,
-    crypto: State<ChatCryptoState>,
-    db_state: State<DbState>,
+pub async fn disable_chat_encryption(
+    auth: State<'_, AuthState>,
+    chats_dir_state: State<'_, ChatsDirState>,
+    crypto: State<'_, ChatCryptoState>,
+    db_state: State<'_, DbState>,
 ) -> Result<usize, String> {
     require_auth(&auth, &db_state)?;
+    let chats_dir = chats_dir_state.0.clone();
     let pass = crypto.0.lock().map_err(|e| e.to_string())?.clone();
-    let count = chat_file_store::reencrypt_all_files(&chats_dir_state.0, pass.as_deref(), None)?;
+    let pool = db_state.0.clone();
 
-    keyring_delete();
+    let count = tokio::task::spawn_blocking(move || {
+        let count = chat_file_store::reencrypt_all_files(&chats_dir, pass.as_deref(), None)?;
+        keyring_delete();
+
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('chat_encryption_enabled', 'false')",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+
+        Ok::<usize, String>(count)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
     *crypto.0.lock().map_err(|e| e.to_string())? = None;
-
-    let conn = db_state.0.get().map_err(|e| e.to_string())?;
-    conn.execute(
-        "INSERT OR REPLACE INTO settings (key, value) VALUES ('chat_encryption_enabled', 'false')",
-        [],
-    )
-    .map_err(|e| e.to_string())?;
 
     Ok(count)
 }
 
 /// Export a single chat session to a specific file path (always plaintext).
 #[tauri::command]
-pub fn export_chat_as_json(
-    auth: State<AuthState>,
+pub async fn export_chat_as_json(
+    auth: State<'_, AuthState>,
     session_id: String,
     dest_path: String,
-    db_state: State<DbState>,
+    db_state: State<'_, DbState>,
 ) -> Result<(), String> {
     require_auth(&auth, &db_state)?;
-    let dest = validate_user_path(&dest_path, false)?;
-    let conn = db_state.0.get().map_err(|e| e.to_string())?;
-    chat_file_store::write_session_file(&conn, dest.parent().unwrap_or(&dest), &session_id, None)?;
-    // The above writes to parent/<session_id>.json — rename to dest_path
-    let auto_path = dest
-        .parent()
-        .unwrap_or(std::path::Path::new("."))
-        .join(format!("{}.json", session_id));
-    if auto_path != dest {
-        std::fs::rename(&auto_path, &dest).map_err(|e| e.to_string())?;
-    }
-    Ok(())
+    let pool = db_state.0.clone();
+    tokio::task::spawn_blocking(move || {
+        let dest = validate_user_path(&dest_path, false)?;
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        chat_file_store::write_session_file(&conn, dest.parent().unwrap_or(&dest), &session_id, None)?;
+        // The above writes to parent/<session_id>.json — rename to dest_path
+        let auto_path = dest
+            .parent()
+            .unwrap_or(std::path::Path::new("."))
+            .join(format!("{}.json", session_id));
+        if auto_path != dest {
+            std::fs::rename(&auto_path, &dest).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Import a chat JSON (plain or encrypted) into the database.
 /// Returns the imported chat session.
 #[tauri::command]
-pub fn import_chat_from_json(
-    auth: State<AuthState>,
+pub async fn import_chat_from_json(
+    auth: State<'_, AuthState>,
     path: String,
     workspace_id: String,
     folder_id: Option<String>,
     passphrase: Option<String>,
-    chats_dir_state: State<ChatsDirState>,
-    crypto: State<ChatCryptoState>,
-    db_state: State<DbState>,
+    chats_dir_state: State<'_, ChatsDirState>,
+    crypto: State<'_, ChatCryptoState>,
+    db_state: State<'_, DbState>,
 ) -> Result<ChatSession, String> {
     require_auth(&auth, &db_state)?;
+    let chats_dir = chats_dir_state.0.clone();
+    let pass = crypto.0.lock().ok().and_then(|g| g.clone());
+    let pool = db_state.0.clone();
+    tokio::task::spawn_blocking(move || {
     let validated_path = validate_user_path(&path, true)?;
-    let conn = db_state.0.get().map_err(|e| e.to_string())?;
+    let conn = pool.get().map_err(|e| e.to_string())?;
     let session_id = chat_file_store::import_session_from_file(
         &conn,
         &validated_path,
@@ -379,10 +411,9 @@ pub fn import_chat_from_json(
         passphrase.as_deref(),
     )?;
 
-    let pass = crypto.0.lock().ok().and_then(|g| g.clone());
     let _ = chat_file_store::write_session_file(
         &conn,
-        &chats_dir_state.0,
+        &chats_dir,
         &session_id,
         pass.as_deref(),
     );
@@ -417,13 +448,24 @@ pub fn import_chat_from_json(
         },
     )
     .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Import all LM Studio `.conversation.json` files from a folder (recursively).
 /// Root folder name → workspace, subfolders → folders, conversations → sessions.
 /// Returns the workspace ID and count of imported sessions.
 #[tauri::command]
-pub fn preview_lmstudio_folder(folder_path: String) -> Result<serde_json::Value, String> {
+pub async fn preview_lmstudio_folder(folder_path: String) -> Result<serde_json::Value, String> {
+    tokio::task::spawn_blocking(move || {
+    preview_lmstudio_folder_inner(folder_path)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn preview_lmstudio_folder_inner(folder_path: String) -> Result<serde_json::Value, String> {
     let folder = validate_user_path(&folder_path, true)?;
     if !folder.is_dir() {
         return Err(format!("{} is not a directory", folder_path));
@@ -522,7 +564,7 @@ pub fn preview_lmstudio_folder(folder_path: String) -> Result<serde_json::Value,
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
-pub fn import_lmstudio_folder(
+pub async fn import_lmstudio_folder(
     folder_path: String,
     workspace_name: Option<String>,
     selected_ids: Option<Vec<String>>,
@@ -533,13 +575,17 @@ pub fn import_lmstudio_folder(
     // locally, import the source as a fresh session with a new UUID instead of skipping.
     merge_existing: Option<bool>,
     clone_edited: Option<bool>,
-    chats_dir_state: State<ChatsDirState>,
-    crypto: State<ChatCryptoState>,
-    db_state: State<DbState>,
+    chats_dir_state: State<'_, ChatsDirState>,
+    crypto: State<'_, ChatCryptoState>,
+    db_state: State<'_, DbState>,
 ) -> Result<serde_json::Value, String> {
+    let chats_dir = chats_dir_state.0.clone();
+    let passphrase = crypto.0.lock().ok().and_then(|g| g.clone());
+    let pool = db_state.0.clone();
+    tokio::task::spawn_blocking(move || {
     let merge_existing = merge_existing.unwrap_or(false);
     let clone_edited = clone_edited.unwrap_or(false);
-    let conn = db_state.0.get().map_err(|e| e.to_string())?;
+    let conn = pool.get().map_err(|e| e.to_string())?;
     let folder = validate_user_path(&folder_path, true)?;
     if !folder.is_dir() {
         return Err(format!("{} is not a directory", folder_path));
@@ -701,9 +747,8 @@ pub fn import_lmstudio_folder(
     }
 
     // Sync imported sessions to chat files (best-effort)
-    let pass = crypto.0.lock().ok().and_then(|g| g.clone());
     for id in &session_ids {
-        let _ = chat_file_store::write_session_file(&conn, &chats_dir_state.0, id, pass.as_deref());
+        let _ = chat_file_store::write_session_file(&conn, &chats_dir, id, passphrase.as_deref());
     }
 
     if session_ids.is_empty() && skipped == 0 {
@@ -747,22 +792,28 @@ pub fn import_lmstudio_folder(
         "errors": errors.len(),
         "error_messages": errors.iter().take(10).cloned().collect::<Vec<_>>(),
     }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Import multiple folders as separate workspaces.
 /// Each folder becomes its own workspace with the folder name.
 #[tauri::command]
-pub fn import_multiple_folders(
+pub async fn import_multiple_folders(
     folder_paths: Vec<String>,
-    chats_dir_state: State<ChatsDirState>,
-    crypto: State<ChatCryptoState>,
-    db_state: State<DbState>,
+    chats_dir_state: State<'_, ChatsDirState>,
+    crypto: State<'_, ChatCryptoState>,
+    db_state: State<'_, DbState>,
 ) -> Result<serde_json::Value, String> {
     if folder_paths.is_empty() {
         return Err("No folders selected".to_string());
     }
-
-    let conn = db_state.0.get().map_err(|e| e.to_string())?;
+    let chats_dir = chats_dir_state.0.clone();
+    let passphrase = crypto.0.lock().ok().and_then(|g| g.clone());
+    let pool = db_state.0.clone();
+    tokio::task::spawn_blocking(move || {
+    let conn = pool.get().map_err(|e| e.to_string())?;
     let total_folder_count = folder_paths.len();
     let mut results = Vec::new();
     let mut total_imported = 0;
@@ -917,13 +968,12 @@ pub fn import_multiple_folders(
                 }
 
                 // Sync imported sessions to chat files
-                let pass = crypto.0.lock().ok().and_then(|g| g.clone());
                 for id in &session_ids {
                     let _ = chat_file_store::write_session_file(
                         &conn,
-                        &chats_dir_state.0,
+                        &chats_dir,
                         id,
-                        pass.as_deref(),
+                        passphrase.as_deref(),
                     );
                 }
 
@@ -960,11 +1010,22 @@ pub fn import_multiple_folders(
         "total_errors": total_errors,
         "results": results,
     }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Preview a Gemini Takeout HTML file — returns conversation summaries for selection.
 #[tauri::command]
-pub fn preview_gemini_takeout(file_path: String) -> Result<serde_json::Value, String> {
+pub async fn preview_gemini_takeout(file_path: String) -> Result<serde_json::Value, String> {
+    tokio::task::spawn_blocking(move || {
+    preview_gemini_takeout_inner(file_path)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn preview_gemini_takeout_inner(file_path: String) -> Result<serde_json::Value, String> {
     let html_file = validate_user_path(&file_path, true)?;
     if !html_file.is_file() {
         return Err(format!("{} is not a file", file_path));
@@ -1025,15 +1086,19 @@ pub fn preview_gemini_takeout(file_path: String) -> Result<serde_json::Value, St
 /// Import a Gemini Takeout file into a new or existing workspace.
 /// Accepts optional `selected_ids` to import only chosen conversations.
 #[tauri::command]
-pub fn import_gemini_takeout(
+pub async fn import_gemini_takeout(
     file_path: String,
     workspace_name: Option<String>,
     selected_ids: Option<Vec<String>>,
-    chats_dir_state: State<ChatsDirState>,
-    crypto: State<ChatCryptoState>,
-    db_state: State<DbState>,
+    chats_dir_state: State<'_, ChatsDirState>,
+    crypto: State<'_, ChatCryptoState>,
+    db_state: State<'_, DbState>,
 ) -> Result<serde_json::Value, String> {
-    let conn = db_state.0.get().map_err(|e| e.to_string())?;
+    let chats_dir = chats_dir_state.0.clone();
+    let crypto_pass = crypto.0.lock().map_err(|e| e.to_string())?.clone();
+    let pool = db_state.0.clone();
+    tokio::task::spawn_blocking(move || {
+    let conn = pool.get().map_err(|e| e.to_string())?;
     let html_file = validate_user_path(&file_path, true)?;
     if !html_file.is_file() {
         return Err(format!("{} is not a file", file_path));
@@ -1115,9 +1180,8 @@ pub fn import_gemini_takeout(
     }
 
     // Write to disk for file-based consistency
-    let pass = crypto.0.lock().map_err(|e| e.to_string())?.clone();
     for id in &session_ids {
-        let _ = chat_file_store::write_session_file(&conn, &chats_dir_state.0, id, pass.as_deref());
+        let _ = chat_file_store::write_session_file(&conn, &chats_dir, id, crypto_pass.as_deref());
     }
 
     Ok(serde_json::json!({
@@ -1129,6 +1193,9 @@ pub fn import_gemini_takeout(
         "errors": errors.len(),
         "error_messages": errors.iter().take(10).cloned().collect::<Vec<_>>(),
     }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Preview a ChatGPT export folder — returns conversation summaries for selection.
@@ -1400,7 +1467,15 @@ pub async fn import_chatgpt_folder(
 /// Detect the format of a Claude Desktop export folder.
 /// Returns "legacy" if `projects.json` is present, "v2" if `projects/` directory is present.
 #[tauri::command]
-pub fn detect_claude_format(folder_path: String) -> Result<serde_json::Value, String> {
+pub async fn detect_claude_format(folder_path: String) -> Result<serde_json::Value, String> {
+    tokio::task::spawn_blocking(move || {
+    detect_claude_format_inner(folder_path)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn detect_claude_format_inner(folder_path: String) -> Result<serde_json::Value, String> {
     let folder = validate_user_path(&folder_path, true)?;
     if !folder.is_dir() {
         return Err("Selected path is not a folder.".to_string());
@@ -1433,12 +1508,14 @@ pub fn detect_claude_format(folder_path: String) -> Result<serde_json::Value, St
 
 /// Preview a Claude Desktop export folder. Auto-detects v2 vs legacy format.
 #[tauri::command]
-pub fn preview_claude_files(
+pub async fn preview_claude_files(
     folder_path: String,
     include_conversations: bool,
     include_projects: bool,
     include_memories: bool,
 ) -> Result<serde_json::Value, String> {
+    tokio::task::spawn_blocking(move || {
+
     use chat_file_store::claude_v2;
 
     let folder = validate_user_path(&folder_path, true)?;
@@ -1639,6 +1716,9 @@ pub fn preview_claude_files(
             }
         }))
     }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Re-run project matching for a set of orphan conversations using Ollama
@@ -1722,7 +1802,8 @@ pub async fn match_claude_with_embeddings(
 /// - `selected_project_ids`: only import project chats from these project UUIDs (empty = all in folder_mappings)
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
-pub fn import_claude_files(
+#[allow(clippy::too_many_arguments)]
+pub async fn import_claude_files(
     folder_path: String,
     folder_mappings: std::collections::HashMap<String, String>,
     project_memory_targets: std::collections::HashMap<String, String>,
@@ -1735,16 +1816,20 @@ pub fn import_claude_files(
     // Re-import behavior — see `import_lmstudio_folder` for the semantics.
     merge_existing: Option<bool>,
     clone_edited: Option<bool>,
-    chats_dir_state: State<ChatsDirState>,
-    crypto: State<ChatCryptoState>,
-    db_state: State<DbState>,
+    chats_dir_state: State<'_, ChatsDirState>,
+    crypto: State<'_, ChatCryptoState>,
+    db_state: State<'_, DbState>,
 ) -> Result<serde_json::Value, String> {
+    let chats_dir = chats_dir_state.0.clone();
+    let passphrase = crypto.0.lock().ok().and_then(|g| g.clone());
+    let pool = db_state.0.clone();
+    tokio::task::spawn_blocking(move || {
     use chat_file_store::claude_v2;
 
     let merge_existing = merge_existing.unwrap_or(false);
     let clone_edited = clone_edited.unwrap_or(false);
 
-    let conn = db_state.0.get().map_err(|e| e.to_string())?;
+    let conn = pool.get().map_err(|e| e.to_string())?;
     let folder = validate_user_path(&folder_path, true)?;
     if !folder.is_dir() {
         return Err("Selected path is not a folder.".to_string());
@@ -1883,9 +1968,9 @@ pub fn import_claude_files(
         }
     }
 
-    let pass = crypto.0.lock().ok().and_then(|g| g.clone());
+    let pass = passphrase;
     for id in &session_ids {
-        let _ = chat_file_store::write_session_file(&conn, &chats_dir_state.0, id, pass.as_deref());
+        let _ = chat_file_store::write_session_file(&conn, &chats_dir, id, pass.as_deref());
     }
 
     // Import per-project memories
@@ -1960,19 +2045,28 @@ pub fn import_claude_files(
         "errors": errors.len(),
         "error_messages": errors.iter().take(10).cloned().collect::<Vec<_>>(),
     }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Sync every session in the DB to the chats directory.
 /// Useful after a cold start to ensure files are up to date.
 #[tauri::command]
-pub fn sync_all_chats_to_files(
-    chats_dir_state: State<ChatsDirState>,
-    crypto: State<ChatCryptoState>,
-    db_state: State<DbState>,
+pub async fn sync_all_chats_to_files(
+    chats_dir_state: State<'_, ChatsDirState>,
+    crypto: State<'_, ChatCryptoState>,
+    db_state: State<'_, DbState>,
 ) -> Result<usize, String> {
-    let conn = db_state.0.get().map_err(|e| e.to_string())?;
+    let chats_dir = chats_dir_state.0.clone();
     let pass = crypto.0.lock().map_err(|e| e.to_string())?.clone();
-    sync_all_to_files_internal(&conn, &chats_dir_state.0, pass.as_deref())
+    let pool = db_state.0.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        sync_all_to_files_internal(&conn, &chats_dir, pass.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────────

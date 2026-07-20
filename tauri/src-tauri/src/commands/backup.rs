@@ -214,13 +214,15 @@ const RESTORE_TABLE_ORDER: [&str; 21] = [
 ];
 
 #[tauri::command]
-pub fn create_backup(
-    auth: State<AuthState>,
-    state: State<DbState>,
+pub async fn create_backup(
+    auth: State<'_, AuthState>,
+    state: State<'_, DbState>,
     workspace_id: String,
 ) -> Result<String, String> {
     require_auth(&auth, &state)?;
-    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let pool = state.0.clone();
+    tokio::task::spawn_blocking(move || {
+    let conn = pool.get().map_err(|e| e.to_string())?;
 
     let workspace = query_optional_json_row(
         &conn,
@@ -265,6 +267,9 @@ pub fn create_backup(
     });
 
     serde_json::to_string_pretty(&backup).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -273,13 +278,15 @@ pub fn list_backups(_state: State<DbState>) -> Result<Vec<BackupInfo>, String> {
 }
 
 #[tauri::command]
-pub fn restore_backup(
-    auth: State<AuthState>,
-    state: State<DbState>,
+pub async fn restore_backup(
+    auth: State<'_, AuthState>,
+    state: State<'_, DbState>,
     backup_json: String,
 ) -> Result<String, String> {
     require_auth(&auth, &state)?;
-    let mut conn = state.0.get().map_err(|e| e.to_string())?;
+    let pool = state.0.clone();
+    tokio::task::spawn_blocking(move || {
+    let mut conn = pool.get().map_err(|e| e.to_string())?;
     let backup: serde_json::Value =
         serde_json::from_str(&backup_json).map_err(|e| format!("Invalid backup JSON: {e}"))?;
 
@@ -322,6 +329,9 @@ pub fn restore_backup(
 
     tx.commit().map_err(|e| e.to_string())?;
     Ok(workspace_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -547,12 +557,14 @@ fn json_to_sql_value(value: &serde_json::Value) -> Result<Value, String> {
 
 /// Create a global backup containing all workspaces
 #[tauri::command]
-pub fn create_global_backup(
-    auth: State<AuthState>,
-    state: State<DbState>,
+pub async fn create_global_backup(
+    auth: State<'_, AuthState>,
+    state: State<'_, DbState>,
 ) -> Result<String, String> {
     require_auth(&auth, &state)?;
-    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let pool = state.0.clone();
+    tokio::task::spawn_blocking(move || {
+    let conn = pool.get().map_err(|e| e.to_string())?;
 
     // Get all workspaces
     let mut stmt = conn
@@ -654,17 +666,22 @@ pub fn create_global_backup(
     });
 
     serde_json::to_string_pretty(&backup).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Restore from a global backup (all workspaces)
 #[tauri::command]
-pub fn restore_global_backup(
-    auth: State<AuthState>,
-    state: State<DbState>,
+pub async fn restore_global_backup(
+    auth: State<'_, AuthState>,
+    state: State<'_, DbState>,
     backup_json: String,
 ) -> Result<Vec<String>, String> {
     require_auth(&auth, &state)?;
-    let mut conn = state.0.get().map_err(|e| e.to_string())?;
+    let pool = state.0.clone();
+    tokio::task::spawn_blocking(move || {
+    let mut conn = pool.get().map_err(|e| e.to_string())?;
     let backup: serde_json::Value =
         serde_json::from_str(&backup_json).map_err(|e| format!("Invalid backup JSON: {e}"))?;
 
@@ -725,4 +742,7 @@ pub fn restore_global_backup(
 
     tx.commit().map_err(|e| e.to_string())?;
     Ok(restored_ids)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
