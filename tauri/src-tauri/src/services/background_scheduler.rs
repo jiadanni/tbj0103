@@ -1155,13 +1155,42 @@ async fn run_manual_processing_job(
     let workspace_total = u32::try_from(workspace_ids.len()).unwrap_or(u32::MAX);
     match task_type {
         "memory_extraction" => {
-            memory_pipeline::process_memory_extraction_for_workspaces(
-                &db,
-                workspace_ids,
-                include_imported,
-                ollama_url,
-            )
-            .await
+            let mut any_failed = false;
+            for (idx, workspace_id) in workspace_ids.iter().enumerate() {
+                if is_cancelled("manual_data_processing") {
+                    return Err("cancelled".to_string());
+                }
+                let workspace_index = u32::try_from(idx + 1).unwrap_or(u32::MAX);
+                emit_batch_workspace_progress(
+                    app,
+                    &format!(
+                        "Running {}… (workspace {workspace_index} of {workspace_total})",
+                        job_label(task_type)
+                    ),
+                    workspace_id,
+                    task_type,
+                    job_current,
+                    job_total,
+                    workspace_index,
+                    workspace_total,
+                );
+                if memory_pipeline::process_memory_extraction_for_workspaces(
+                    &db,
+                    &[workspace_id.clone()],
+                    include_imported,
+                    ollama_url.clone(),
+                )
+                .await
+                .is_err()
+                {
+                    any_failed = true;
+                }
+            }
+            if any_failed {
+                Err("Memory extraction failed".to_string())
+            } else {
+                Ok(())
+            }
         }
         "workspace_glossary" => {
             let mut any_failed = false;
@@ -1201,55 +1230,84 @@ async fn run_manual_processing_job(
             }
         }
         "hover_definition_scan" => {
-            workspace_glossary::scan_sessions_for_missing_terms_with_options(
-                &db,
-                Some(workspace_ids),
-                include_imported,
-            )
-            .await
-            .map(|_| ())
-        }
-        "summarization" => {
-            let sessions =
-                collect_summary_sessions_for_workspaces(&db, workspace_ids, include_imported).await;
             let mut any_failed = false;
-            // Sessions for the same workspace are contiguous (sessions are
-            // collected one workspace at a time), so bump the workspace
-            // index only when it changes rather than per session.
-            let mut last_workspace: Option<String> = None;
-            let mut workspace_index: u32 = 0;
-            for (session_id, workspace_id) in sessions {
+            for (idx, workspace_id) in workspace_ids.iter().enumerate() {
                 if is_cancelled("manual_data_processing") {
                     return Err("cancelled".to_string());
                 }
-                if last_workspace.as_deref() != Some(workspace_id.as_str()) {
-                    workspace_index += 1;
-                    last_workspace = Some(workspace_id.clone());
-                    emit_batch_workspace_progress(
-                        app,
-                        &format!(
-                            "Running {}… (workspace {workspace_index} of {workspace_total})",
-                            job_label(task_type)
-                        ),
-                        &workspace_id,
-                        task_type,
-                        job_current,
-                        job_total,
-                        workspace_index,
-                        workspace_total,
-                    );
-                }
-                if summarization_service::generate_info_summary_with_imported(
+                let workspace_index = u32::try_from(idx + 1).unwrap_or(u32::MAX);
+                emit_batch_workspace_progress(
+                    app,
+                    &format!(
+                        "Running {}… (workspace {workspace_index} of {workspace_total})",
+                        job_label(task_type)
+                    ),
+                    workspace_id,
+                    task_type,
+                    job_current,
+                    job_total,
+                    workspace_index,
+                    workspace_total,
+                );
+                if workspace_glossary::scan_sessions_for_missing_terms_with_options(
                     &db,
-                    &session_id,
-                    &workspace_id,
-                    ollama_url.clone(),
+                    Some(&[workspace_id.clone()]),
                     include_imported,
                 )
                 .await
                 .is_err()
                 {
                     any_failed = true;
+                }
+            }
+            if any_failed {
+                Err("Hover definition scan failed".to_string())
+            } else {
+                Ok(())
+            }
+        }
+        "summarization" => {
+            let mut any_failed = false;
+            for (idx, workspace_id) in workspace_ids.iter().enumerate() {
+                if is_cancelled("manual_data_processing") {
+                    return Err("cancelled".to_string());
+                }
+                let workspace_index = u32::try_from(idx + 1).unwrap_or(u32::MAX);
+                emit_batch_workspace_progress(
+                    app,
+                    &format!(
+                        "Running {}… (workspace {workspace_index} of {workspace_total})",
+                        job_label(task_type)
+                    ),
+                    workspace_id,
+                    task_type,
+                    job_current,
+                    job_total,
+                    workspace_index,
+                    workspace_total,
+                );
+                let sessions = collect_summary_sessions_for_workspaces(
+                    &db,
+                    &[workspace_id.clone()],
+                    include_imported,
+                )
+                .await;
+                for (session_id, ws_id) in sessions {
+                    if is_cancelled("manual_data_processing") {
+                        return Err("cancelled".to_string());
+                    }
+                    if summarization_service::generate_info_summary_with_imported(
+                        &db,
+                        &session_id,
+                        &ws_id,
+                        ollama_url.clone(),
+                        include_imported,
+                    )
+                    .await
+                    .is_err()
+                    {
+                        any_failed = true;
+                    }
                 }
             }
             if any_failed {
