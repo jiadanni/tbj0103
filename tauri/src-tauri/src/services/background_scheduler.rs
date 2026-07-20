@@ -1259,24 +1259,111 @@ async fn run_manual_processing_job(
             }
         }
         "flashcard_generation" => {
-            crate::services::flashcard_topic_service::tick_for_workspaces(
-                &db,
-                ollama_url,
-                Some(workspace_ids),
-            )
-            .await
-        }
-        "concept_hierarchy" => crate::services::concept_hierarchy_service::tick_for_workspaces(
-            &db,
-            ollama_url,
-            Some(workspace_ids),
-        )
-        .await
-        .map(|_| ()),
-        "workspace_prompt_bank" => {
-            crate::services::prompt_bank::tick_for_workspaces(&db, Some(workspace_ids))
+            let mut any_failed = false;
+            for (idx, workspace_id) in workspace_ids.iter().enumerate() {
+                if is_cancelled("manual_data_processing") {
+                    return Err("cancelled".to_string());
+                }
+                let workspace_index = u32::try_from(idx + 1).unwrap_or(u32::MAX);
+                emit_batch_workspace_progress(
+                    app,
+                    &format!(
+                        "Running {}… (workspace {workspace_index} of {workspace_total})",
+                        job_label(task_type)
+                    ),
+                    workspace_id,
+                    task_type,
+                    job_current,
+                    job_total,
+                    workspace_index,
+                    workspace_total,
+                );
+                if crate::services::flashcard_topic_service::tick_for_workspaces(
+                    &db,
+                    ollama_url.clone(),
+                    Some(&[workspace_id.clone()]),
+                )
                 .await
-                .map(|_| ())
+                .is_err()
+                {
+                    any_failed = true;
+                }
+            }
+            if any_failed {
+                Err("Flashcard generation failed".to_string())
+            } else {
+                Ok(())
+            }
+        }
+        "concept_hierarchy" => {
+            let mut any_failed = false;
+            for (idx, workspace_id) in workspace_ids.iter().enumerate() {
+                if is_cancelled("manual_data_processing") {
+                    return Err("cancelled".to_string());
+                }
+                let workspace_index = u32::try_from(idx + 1).unwrap_or(u32::MAX);
+                emit_batch_workspace_progress(
+                    app,
+                    &format!(
+                        "Running {}… (workspace {workspace_index} of {workspace_total})",
+                        job_label(task_type)
+                    ),
+                    workspace_id,
+                    task_type,
+                    job_current,
+                    job_total,
+                    workspace_index,
+                    workspace_total,
+                );
+                if crate::services::concept_hierarchy_service::tick_for_workspaces(
+                    &db,
+                    ollama_url.clone(),
+                    Some(&[workspace_id.clone()]),
+                )
+                .await
+                .is_err()
+                {
+                    any_failed = true;
+                }
+            }
+            if any_failed {
+                Err("Concept hierarchy failed".to_string())
+            } else {
+                Ok(())
+            }
+        }
+        "workspace_prompt_bank" => {
+            let mut any_failed = false;
+            for (idx, workspace_id) in workspace_ids.iter().enumerate() {
+                if is_cancelled("manual_data_processing") {
+                    return Err("cancelled".to_string());
+                }
+                let workspace_index = u32::try_from(idx + 1).unwrap_or(u32::MAX);
+                emit_batch_workspace_progress(
+                    app,
+                    &format!(
+                        "Running {}… (workspace {workspace_index} of {workspace_total})",
+                        job_label(task_type)
+                    ),
+                    workspace_id,
+                    task_type,
+                    job_current,
+                    job_total,
+                    workspace_index,
+                    workspace_total,
+                );
+                if crate::services::prompt_bank::tick_for_workspaces(&db, Some(&[workspace_id.clone()]))
+                    .await
+                    .is_err()
+                {
+                    any_failed = true;
+                }
+            }
+            if any_failed {
+                Err("Workspace prompt bank failed".to_string())
+            } else {
+                Ok(())
+            }
         }
         "flashcard_cleanup" => {
             let mut any_failed = false;

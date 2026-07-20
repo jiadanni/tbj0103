@@ -17,6 +17,21 @@ pub struct FlashcardTopicRow {
     pub card_count: i64,
 }
 
+/// A `concept_nodes` leaf concept due for background flashcard generation.
+/// Mirrors [`FlashcardTopicRow`]'s shape but is derived entirely from
+/// `concept_nodes` + `learning_cards (source_type='concept')` — there is no
+/// separate row to update, since `card_count`/`last_generated_at` are just
+/// aggregates over that concept's existing cards.
+#[derive(Debug, Clone)]
+pub struct DueConceptRow {
+    pub concept_id: String,
+    pub workspace_id: String,
+    pub name: String,
+    pub description: String,
+    pub mastery_score: f64,
+    pub card_count: i64,
+}
+
 const DEFAULT_TARGET_CARDS_PER_TOPIC: i64 = 20;
 const DEFAULT_MIN_INTERVAL_MINUTES: i64 = 60;
 const DEFAULT_BATCH_SIZE: u32 = 3;
@@ -305,6 +320,70 @@ pub async fn generate_for_topic(
     Ok(cards)
 }
 
+/// Generate one batch of cards for the given concept and insert them.
+/// Cards are tagged `source_type='concept'`/`source_id=concept.concept_id`,
+/// the same convention `generate_flashcards_from_concept` (manual, on-demand
+/// generation) already uses — `card_count`/`last_generated_at` need no
+/// separate write since [`next_due_concept`] derives them from these cards.
+pub(crate) async fn generate_for_concept(
+    state: &DbState,
+    concept: &DueConceptRow,
+    model: &str,
+    count: u32,
+    ollama_url: Option<String>,
+) -> Result<Vec<LearningCard>, String> {
+    let difficulty = CardDifficulty::from_mastery(concept.mastery_score);
+    let topic = if concept.description.is_empty() {
+        concept.name.clone()
+    } else {
+        format!("{}: {}", concept.name, concept.description)
+    };
+    // Feed the concept's existing questions into the prompt so regeneration
+    // extends coverage instead of duplicating cards.
+    let existing_fronts: Vec<String> = {
+        let conn = state.0.get().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT front FROM learning_cards
+                 WHERE source_type = 'concept' AND source_id = ?1
+                 ORDER BY created_at DESC
+                 LIMIT 30",
+            )
+            .map_err(|e| e.to_string())?;
+        let fronts: Vec<String> = stmt
+            .query_map(rusqlite::params![concept.concept_id], |r| {
+                r.get::<_, String>(0)
+            })
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .collect();
+        fronts
+    };
+    let pairs = generate_card_pairs(
+        &topic,
+        model,
+        count,
+        difficulty,
+        &existing_fronts,
+        ollama_url,
+    )
+    .await?;
+
+    let mut conn = state.0.get().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let mut cards = Vec::new();
+    for (front, back) in pairs {
+        let mut card = LearningCard::new(concept.workspace_id.clone(), front, back);
+        card.source_type = "concept".to_string();
+        card.source_id = Some(concept.concept_id.clone());
+        card.generated_by_model = Some(model.to_string());
+        insert_card(&tx, &card).map_err(|e| e.to_string())?;
+        cards.push(card);
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(cards)
+}
+
 /// Background scheduler tick. Generates at most one batch per call across all workspaces.
 pub async fn tick(state: &DbState, ollama_url: Option<String>) -> Result<(), String> {
     tick_for_workspaces(state, ollama_url, None).await
@@ -316,6 +395,14 @@ pub async fn tick(state: &DbState, ollama_url: Option<String>) -> Result<(), Str
 /// unfilled topics cannot monopolize the one-batch-per-tick budget while
 /// every other workspace stays at zero cards. The user's active workspace
 /// wins ties first; after that, the topic with the fewest cards.
+///
+/// No longer called by the background tick (see [`next_due_concept`]), since
+/// `flashcard_topics` is frozen and stays empty on fresh installs. Kept for
+/// `flashcard_topics` rows that predate the migration to `concept_nodes`;
+/// `generate_flashcards_for_topic` (manual, explicit topic_id) still reads
+/// legacy rows directly rather than through this selector, so this is
+/// currently dead code kept for the query logic + its test coverage.
+#[allow(dead_code)]
 pub(crate) fn next_due_topic(
     conn: &Connection,
     workspace_filter: Option<&[String]>,
@@ -370,6 +457,77 @@ pub(crate) fn next_due_topic(
     .ok()
 }
 
+/// Pick the single most-starved due concept across all eligible workspaces,
+/// mirroring [`next_due_topic`] but sourced from `concept_nodes` (the
+/// taxonomy `sync_concepts_from_signatures` actually writes to — see that
+/// function's doc comment) instead of the frozen `flashcard_topics` table.
+/// Only leaf concepts are eligible; `chapter`/`section` nodes are structural
+/// groupings, not quizzable topics.
+pub(crate) fn next_due_concept(
+    conn: &Connection,
+    workspace_filter: Option<&[String]>,
+    target_cards: i64,
+    min_interval_minutes: i64,
+    current_workspace: Option<&str>,
+) -> Option<DueConceptRow> {
+    let cooldown = format!("-{min_interval_minutes} minutes");
+    let mut sql = String::from(
+        "SELECT cn.id, cn.workspace_id, cn.name, cn.concept_description,
+                COUNT(lc.id) AS card_count,
+                COALESCE(AVG(lc.ease_factor), 2.5) AS avg_ease,
+                MAX(lc.created_at) AS last_generated_at
+         FROM concept_nodes cn
+         JOIN workspaces w ON w.id = cn.workspace_id
+         LEFT JOIN learning_cards lc
+           ON lc.source_type = 'concept' AND lc.source_id = cn.id
+         WHERE w.is_hidden = 0
+           AND (cn.hierarchy_level IS NULL OR cn.hierarchy_level = 'concept')
+           AND cn.superseded_by IS NULL",
+    );
+    let mut values: Vec<rusqlite::types::Value> = vec![
+        rusqlite::types::Value::Text(current_workspace.unwrap_or("").to_string()),
+        rusqlite::types::Value::Integer(target_cards),
+        rusqlite::types::Value::Text(cooldown),
+    ];
+    if let Some(filter) = workspace_filter {
+        let placeholders: Vec<String> = filter
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", values.len() + 1 + i))
+            .collect();
+        sql.push_str(&format!(
+            " AND cn.workspace_id IN ({})",
+            placeholders.join(", ")
+        ));
+        for ws in filter {
+            values.push(rusqlite::types::Value::Text(ws.clone()));
+        }
+    }
+    sql.push_str(
+        " GROUP BY cn.id
+          HAVING card_count < ?2
+             AND (last_generated_at IS NULL
+                  OR datetime(last_generated_at) < datetime('now', ?3))
+          ORDER BY (cn.workspace_id = ?1) DESC, card_count ASC, avg_ease ASC
+          LIMIT 1",
+    );
+
+    let mut stmt = conn.prepare(&sql).ok()?;
+    stmt.query_row(rusqlite::params_from_iter(values.iter()), |r| {
+        let avg_ease: f64 = r.get(5)?;
+        let mastery_score = ((avg_ease - 1.3) / (2.5 - 1.3)).clamp(0.0, 1.0);
+        Ok(DueConceptRow {
+            concept_id: r.get(0)?,
+            workspace_id: r.get(1)?,
+            name: r.get(2)?,
+            description: r.get(3)?,
+            mastery_score,
+            card_count: r.get(4)?,
+        })
+    })
+    .ok()
+}
+
 pub async fn tick_for_workspaces(
     state: &DbState,
     ollama_url: Option<String>,
@@ -413,32 +571,33 @@ pub async fn tick_for_workspaces(
         let _ = sync_concepts_from_signatures(&conn, ws_id);
     }
 
-    let due = {
-        let conn = state.0.get().map_err(|e| e.to_string())?;
-        let current = crate::services::model_settings::get_current_workspace_id(&conn);
-        next_due_topic(
-            &conn,
-            workspace_filter,
-            target_cards,
-            min_interval,
-            current.as_deref(),
-        )
-    };
+    let max_iterations = if workspace_filter.is_some() { 50 } else { 1 };
+    for _ in 0..max_iterations {
+        let due = {
+            let conn = state.0.get().map_err(|e| e.to_string())?;
+            let current = crate::services::model_settings::get_current_workspace_id(&conn);
+            next_due_concept(
+                &conn,
+                workspace_filter,
+                target_cards,
+                min_interval,
+                current.as_deref(),
+            )
+        };
 
-    if let Some(topic) = due {
-        // Propagate generation failures so the scheduler records a failed
-        // run with the real error (e.g. model missing, unparseable JSON).
-        // Swallowing them here made every run report "completed" while
-        // producing zero cards.
-        generate_for_topic(
+        let Some(concept) = due else {
+            break;
+        };
+
+        generate_for_concept(
             state,
-            &topic,
+            &concept,
             &model,
             DEFAULT_BATCH_SIZE,
             ollama_url.clone(),
         )
         .await
-        .map_err(|e| format!("Flashcard generation for topic \"{}\" failed: {e}", topic.topic))?;
+        .map_err(|e| format!("Flashcard generation for \"{}\" failed: {e}", concept.name))?;
     }
 
     Ok(())
@@ -984,6 +1143,140 @@ mod next_due_topic_tests {
         // A workspace filter excludes topics outside it entirely.
         let filter = vec!["ws_a".to_string()];
         assert!(next_due_topic(&conn, Some(&filter), 20, 60, None).is_none());
+    }
+}
+
+#[cfg(test)]
+mod next_due_concept_tests {
+    use super::*;
+    use crate::commands::flashcard::INSERT_CARD_SQL;
+    use crate::db::test_utils::tests::setup_test_db;
+
+    fn insert_ws(conn: &Connection, id: &str) {
+        conn.execute(
+            "INSERT INTO workspaces (id, name, created_at, updated_at)
+             VALUES (?1, ?1, datetime('now'), datetime('now'))",
+            rusqlite::params![id],
+        )
+        .unwrap();
+    }
+
+    fn insert_concept(conn: &Connection, id: &str, ws: &str) {
+        conn.execute(
+            "INSERT INTO concept_nodes (id, workspace_id, name, hierarchy_level, created_at, updated_at)
+             VALUES (?1, ?2, ?1, 'concept', datetime('now'), datetime('now'))",
+            rusqlite::params![id, ws],
+        )
+        .unwrap();
+    }
+
+    fn insert_card_for_concept(conn: &Connection, id: &str, ws: &str, concept_id: &str) {
+        conn.execute(
+            INSERT_CARD_SQL,
+            rusqlite::params![
+                id,
+                ws,
+                format!("Front {id}"),
+                format!("Back {id}"),
+                "concept",
+                concept_id,
+                Option::<String>::None,
+                2.5_f64,
+                1_i64,
+                0_i64,
+                "2026-01-01",
+                Option::<String>::None,
+                "2020-01-01T00:00:00Z",
+                Option::<String>::None
+            ],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn earlier_workspace_does_not_starve_later_ones() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        insert_ws(&conn, "ws_first");
+        insert_ws(&conn, "ws_second");
+        insert_concept(&conn, "c_first", "ws_first");
+        insert_concept(&conn, "c_second", "ws_second");
+        insert_card_for_concept(&conn, "card1", "ws_first", "c_first");
+        insert_card_for_concept(&conn, "card2", "ws_first", "c_first");
+        insert_card_for_concept(&conn, "card3", "ws_first", "c_first");
+        // c_second has zero cards — more starved despite ws_first coming first.
+
+        let due = next_due_concept(&conn, None, 20, 60, None).unwrap();
+        assert_eq!(due.concept_id, "c_second");
+        assert_eq!(due.card_count, 0);
+    }
+
+    #[test]
+    fn active_workspace_wins_over_card_count() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        insert_ws(&conn, "ws_other");
+        insert_ws(&conn, "ws_active");
+        insert_concept(&conn, "c_other", "ws_other");
+        insert_concept(&conn, "c_active", "ws_active");
+        for i in 0..5 {
+            insert_card_for_concept(&conn, &format!("card_active_{i}"), "ws_active", "c_active");
+        }
+
+        let due = next_due_concept(&conn, None, 20, 60, Some("ws_active")).unwrap();
+        assert_eq!(due.concept_id, "c_active");
+    }
+
+    #[test]
+    fn respects_target_cooldown_and_filter() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        insert_ws(&conn, "ws_a");
+        insert_ws(&conn, "ws_b");
+        // At target — never due.
+        insert_concept(&conn, "c_full", "ws_a");
+        for i in 0..20 {
+            insert_card_for_concept(&conn, &format!("full_{i}"), "ws_a", "c_full");
+        }
+        // Generated moments ago — cooling down.
+        insert_concept(&conn, "c_cooling", "ws_a");
+        insert_card_for_concept(&conn, "cooling_card", "ws_a", "c_cooling");
+        conn.execute(
+            "UPDATE learning_cards SET created_at = datetime('now') WHERE id = 'cooling_card'",
+            [],
+        )
+        .unwrap();
+        insert_concept(&conn, "c_b", "ws_b");
+        insert_card_for_concept(&conn, "card_b1", "ws_b", "c_b");
+        insert_card_for_concept(&conn, "card_b2", "ws_b", "c_b");
+
+        let due = next_due_concept(&conn, None, 20, 60, None).unwrap();
+        assert_eq!(due.concept_id, "c_b");
+
+        // A workspace filter excludes concepts outside it entirely.
+        let filter = vec!["ws_a".to_string()];
+        assert!(next_due_concept(&conn, Some(&filter), 20, 60, None).is_none());
+    }
+
+    #[test]
+    fn ignores_chapter_and_section_nodes() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        insert_ws(&conn, "ws_a");
+        conn.execute(
+            "INSERT INTO concept_nodes (id, workspace_id, name, hierarchy_level, created_at, updated_at)
+             VALUES ('chapter1', 'ws_a', 'Chapter', 'chapter', datetime('now'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO concept_nodes (id, workspace_id, name, hierarchy_level, created_at, updated_at)
+             VALUES ('section1', 'ws_a', 'Section', 'section', datetime('now'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+
+        assert!(next_due_concept(&conn, None, 20, 60, None).is_none());
     }
 }
 
