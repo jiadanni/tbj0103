@@ -1267,6 +1267,21 @@ function DataControlsPreferences() {
     };
   }, []);
 
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const [availableModels, setAvailableModels] = useState<Array<{ id: string; name: string }>>([]);
+
+  useEffect(() => {
+    let active = true;
+    api.aiModel.list().then((models) => {
+      if (active) {
+        setAvailableModels(
+          models.map((m) => ({ id: m.model_id, name: m.name || m.model_id })),
+        );
+      }
+    }).catch(() => {});
+    return () => { active = false; };
+  }, []);
+
   const busy = loadingPreview || running;
   const totalRows = totalKnowledgeResetRows(preview);
   const batchInFlight = batchStatus !== null
@@ -1303,16 +1318,57 @@ function DataControlsPreferences() {
                     Catch up imported chats and source material once without changing automatic scheduling.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => { void queueBackgroundProcessing(); }}
-                  disabled={processingDisabled}
-                  title={isDefaultSelection ? `Runs the default refresh (${DEFAULT_PROCESSING_JOBS.length} jobs)` : "Runs only the jobs you have selected"}
-                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[var(--accent-color)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {processingRunning || batchInFlight ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
-                  {isDefaultSelection ? "Run Now" : "Run Custom"}
-                </button>
+                <div className="relative inline-flex shrink-0 items-center rounded-xl bg-[var(--accent-color)] text-white shadow-sm font-medium text-sm">
+                  <button
+                    type="button"
+                    onClick={() => { void queueBackgroundProcessing(); }}
+                    disabled={processingDisabled}
+                    title={isDefaultSelection ? `Runs the default refresh (${DEFAULT_PROCESSING_JOBS.length} jobs)` : "Runs only the jobs you have selected"}
+                    className="inline-flex items-center gap-2 rounded-l-xl px-4 py-2 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {processingRunning || batchInFlight ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+                    <span>{isDefaultSelection ? "Run Now" : "Run Custom"}</span>
+                  </button>
+                  <div className="h-5 w-[1px] bg-white/30" />
+                  <button
+                    type="button"
+                    onClick={() => { setModelDropdownOpen((prev) => !prev); }}
+                    disabled={processingDisabled}
+                    title="Select model to run background processing with"
+                    className="inline-flex items-center justify-center rounded-r-xl px-2.5 py-2 hover:bg-black/15 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <ChevronDown size={14} className={`transition-transform duration-200 ${modelDropdownOpen ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {modelDropdownOpen && (
+                    <div className="absolute right-0 top-full mt-1.5 z-50 min-w-[220px] max-h-60 overflow-y-auto rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-xl text-xs text-[var(--text-primary)]">
+                      <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] border-b border-[var(--border-color)] mb-1">
+                        Select Model to Run
+                      </div>
+                      {availableModels.length === 0 ? (
+                        <div className="px-2 py-1.5 text-[var(--text-muted)]">No models configured</div>
+                      ) : (
+                        availableModels.map((m) => (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => {
+                              setModelDropdownOpen(false);
+                              void (async () => {
+                                await api.backgroundJobs.setInferenceJobSetting("background_model", m.id);
+                                setSuccess(`Set background model to ${m.name} and queued processing.`);
+                                void queueBackgroundProcessing();
+                              })();
+                            }}
+                            className="w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-left text-[var(--text-secondary)] hover:bg-[var(--accent-color)]/15 hover:text-[var(--text-primary)] transition-colors"
+                          >
+                            <span className="truncate">{m.name}</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {!isDefaultSelection && (
@@ -1835,6 +1891,7 @@ function InferenceJobsCard({
   const [timeoutSeconds, setTimeoutSec] = useState<number>(20);
   const [loading, setLoading] = useState<boolean>(true);
   const [queueingJob, setQueueingJob] = useState<string | null>(null);
+  const [openJobModelMenu, setOpenJobModelMenu] = useState<string | null>(null);
   const lastErrors = useBackgroundJobsStore((s) => s.lastErrors);
   const dismissError = useBackgroundJobsStore((s) => s.dismissError);
 
@@ -2292,16 +2349,55 @@ function InferenceJobsCard({
                       </div>
 
                       {/* Column 6: Action */}
-                      <div className="flex justify-end w-full md:w-[88px]">
+                      <div className="flex justify-end w-full md:w-[110px]">
                         {!isManualTask ? (
-                          <button
-                            type="button"
-                            onClick={() => void queueJobNow(job.job_key)}
-                            disabled={queueingJob === job.job_key || status?.state === "running" || status?.state === "queued"}
-                            className="h-7 w-full shrink-0 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50 text-center"
-                          >
-                            {queueingJob === job.job_key ? "Queueing…" : status?.state === "queued" ? "Queued" : "Run next"}
-                          </button>
+                          <div className="relative inline-flex shrink-0 items-center rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--accent-color)] transition-colors">
+                            <button
+                              type="button"
+                              onClick={() => void queueJobNow(job.job_key)}
+                              disabled={queueingJob === job.job_key || status?.state === "running" || status?.state === "queued"}
+                              className="px-2.5 py-1 hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50 rounded-l-lg"
+                            >
+                              {queueingJob === job.job_key ? "Queueing…" : status?.state === "queued" ? "Queued" : "Run next"}
+                            </button>
+                            <div className="h-3.5 w-[1px] bg-[var(--border-color)]" />
+                            <button
+                              type="button"
+                              onClick={() => { setOpenJobModelMenu(openJobModelMenu === job.job_key ? null : job.job_key); }}
+                              disabled={queueingJob === job.job_key || status?.state === "running" || status?.state === "queued"}
+                              title="Select model to run job with"
+                              className="px-1.5 py-1 hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50 rounded-r-lg"
+                            >
+                              <ChevronDown size={12} className={`transition-transform duration-200 ${openJobModelMenu === job.job_key ? "rotate-180" : ""}`} />
+                            </button>
+
+                            {openJobModelMenu === job.job_key && (
+                              <div className="absolute right-0 top-full mt-1 z-50 min-w-[200px] max-h-56 overflow-y-auto rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-xl text-xs text-[var(--text-primary)]">
+                                <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] border-b border-[var(--border-color)] mb-1">
+                                  Run {job.label} with Model
+                                </div>
+                                {eligibleModels.map((m) => {
+                                  const isSelected = (heavyModel || smallModel) === m.model_id;
+                                  return (
+                                    <button
+                                      key={m.model_id}
+                                      type="button"
+                                      onClick={() => {
+                                        setOpenJobModelMenu(null);
+                                        updateHeavyModel(job.job_key, m.model_id);
+                                        void queueJobNow(job.job_key);
+                                      }}
+                                      className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg text-left transition-colors ${
+                                        isSelected ? "bg-[var(--accent-color)]/20 text-[var(--accent-color)] font-medium" : "text-[var(--text-secondary)] hover:bg-[var(--accent-color)]/15 hover:text-[var(--text-primary)]"
+                                      }`}
+                                    >
+                                      <span className="truncate">{resolveModelDisplayName(m.model_id, modelLabels, aiModels)}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
                         ) : null}
                       </div>
                     </div>
