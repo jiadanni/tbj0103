@@ -145,3 +145,91 @@ export function reshuffleAvoidingRepeat(cards: DeckCard[], lastShownId: string):
   }
   return next;
 }
+
+/**
+ * Merges an existing deck with an incoming deck.
+ * De-duplicates workspaces by workspaceId and de-duplicates cards by ID or matching content.
+ */
+export function mergeDecks(existing: Deck, incoming: Deck): Deck {
+  const workspaceMap = new Map<string, DeckWorkspace>();
+  for (const ws of existing.workspaces) {
+    workspaceMap.set(ws.id, { ...ws });
+  }
+  for (const ws of incoming.workspaces) {
+    if (!workspaceMap.has(ws.id)) {
+      workspaceMap.set(ws.id, { ...ws });
+    } else {
+      const prev = workspaceMap.get(ws.id)!;
+      workspaceMap.set(ws.id, { ...prev, name: ws.name || prev.name });
+    }
+  }
+
+  const cardMap = new Map<string, DeckCard>();
+  const cardContentSet = new Set<string>();
+
+  for (const card of existing.cards) {
+    cardMap.set(card.id, card);
+    cardContentSet.add(`${card.workspaceId}:${card.front.trim()}:${card.back.trim()}`);
+  }
+
+  for (const card of incoming.cards) {
+    const contentKey = `${card.workspaceId}:${card.front.trim()}:${card.back.trim()}`;
+    if (!cardMap.has(card.id) && !cardContentSet.has(contentKey)) {
+      cardMap.set(card.id, card);
+      cardContentSet.add(contentKey);
+    }
+  }
+
+  const mergedCards = Array.from(cardMap.values());
+
+  const counts = new Map<string, number>();
+  for (const card of mergedCards) {
+    counts.set(card.workspaceId, (counts.get(card.workspaceId) ?? 0) + 1);
+  }
+
+  const mergedWorkspaces = Array.from(workspaceMap.values()).map((ws) => ({
+    ...ws,
+    cardCount: counts.get(ws.id) ?? 0,
+  }));
+
+  const title =
+    mergedWorkspaces.length === 1
+      ? mergedWorkspaces[0].name
+      : `${mergedWorkspaces.length} workspaces`;
+
+  return {
+    title,
+    workspaces: mergedWorkspaces,
+    cards: mergedCards,
+  };
+}
+
+/**
+ * Serializes a Deck object back to standard deck JSON (format v2).
+ */
+export function exportDeckToRaw(deck: Deck): string {
+  return JSON.stringify(
+    {
+      format: DECK_FORMAT,
+      version: 2,
+      exported_at: new Date().toISOString(),
+      card_count: deck.cards.length,
+      workspaces: deck.workspaces.map((ws) => ({
+        id: ws.id,
+        name: ws.name,
+        card_count: ws.cardCount,
+      })),
+      cards: deck.cards.map((c) => ({
+        id: c.id,
+        kind: c.kind,
+        front: c.front,
+        back: c.back,
+        topic: c.topic,
+        workspace_id: c.workspaceId,
+      })),
+    },
+    null,
+    2,
+  );
+}
+
