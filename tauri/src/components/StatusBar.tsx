@@ -10,6 +10,7 @@ import {
 import { useChatStore } from "../stores/chatStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useBackgroundJobsStore } from "../stores/backgroundJobs";
+import { useWorkspaceStore } from "../stores/workspaceStore";
 import { Tooltip } from "./Tooltip";
 
 const ZOOM_MIN = 11;
@@ -236,73 +237,117 @@ function JobPill({
   taskType,
   detail,
   model,
+  workspaceName,
+  current,
+  total,
   onStop,
 }: {
   taskType: string;
   detail?: string;
   model?: string;
+  workspaceName?: string;
+  current?: number;
+  total?: number;
   onStop?: () => void;
 }) {
+  const formattedName = formatTaskName(taskType);
+  const hasProgress = current !== undefined && total !== undefined && total > 0;
+  const progressText = hasProgress ? `${current}/${total}` : undefined;
+
+  const tooltipLines = [
+    `Task: ${formattedName}`,
+    workspaceName ? `Workspace: ${workspaceName}` : null,
+    model ? `Model: ${model}` : null,
+    progressText ? `Progress: ${progressText}` : null,
+    detail ? `Details: ${detail}` : null,
+  ].filter(Boolean);
+
   return (
-    <div className="flex shrink-0 items-center gap-2">
-      {/* Pulsing dot */}
-      <span className="relative flex h-2 w-2" aria-hidden="true">
-        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-      </span>
-      <span className="text-xs text-emerald-400 leading-none font-medium">
-        {formatTaskName(taskType)}
-      </span>
-      {detail && (
-        <span className="text-[10px] text-[var(--text-muted)] leading-none truncate max-w-[140px]" title={detail}>
-          {detail}
+    <Tooltip content={tooltipLines.join("\n")}>
+      <div className="flex shrink-0 items-center gap-2">
+        {/* Pulsing dot */}
+        <span className="relative flex h-2 w-2" aria-hidden="true">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
         </span>
-      )}
-      {model && (
-        <span className="text-[10px] text-[var(--text-muted)] leading-none truncate max-w-[100px]" title={model}>
-          {model}
+        <span className="text-xs text-emerald-400 leading-none font-medium">
+          {formattedName}
         </span>
-      )}
-      {onStop && (
-        <Tooltip content="Stop this task">
+        {workspaceName && (
+          <span className="text-[10px] text-emerald-400/80 leading-none font-medium truncate max-w-[90px]" title={`Workspace: ${workspaceName}`}>
+            [{workspaceName}]
+          </span>
+        )}
+        {progressText && (
+          <span className="text-[10px] text-[var(--text-secondary)] leading-none font-mono tabular-nums">
+            {progressText}
+          </span>
+        )}
+        {detail && (
+          <span className="text-[10px] text-[var(--text-muted)] leading-none truncate max-w-[140px]" title={detail}>
+            {detail}
+          </span>
+        )}
+        {model && (
+          <span className="text-[10px] text-[var(--text-muted)] leading-none truncate max-w-[100px]" title={model}>
+            {model}
+          </span>
+        )}
+        {onStop && (
           <button
             type="button"
             onClick={onStop}
-            aria-label={`Stop ${formatTaskName(taskType)}`}
+            aria-label={`Stop ${formattedName}`}
             className="flex h-3.5 w-3.5 items-center justify-center rounded-sm text-[var(--text-muted)] hover:text-red-400 hover:bg-[color-mix(in_srgb,var(--border-color),transparent_60%)] transition-colors"
           >
             <svg viewBox="0 0 8 8" className="h-2 w-2 fill-current" aria-hidden="true">
               <rect x="0" y="0" width="8" height="8" rx="1" />
             </svg>
           </button>
-        </Tooltip>
-      )}
-    </div>
+        )}
+      </div>
+    </Tooltip>
   );
 }
 
 function QueuedJobPill({
   taskType,
   model,
+  workspaceName,
 }: {
   taskType: string;
   model?: string;
+  workspaceName?: string;
 }) {
+  const formattedName = formatTaskName(taskType);
+  const tooltipLines = [
+    `Queued Task: ${formattedName}`,
+    workspaceName ? `Workspace: ${workspaceName}` : null,
+    model ? `Model: ${model}` : null,
+  ].filter(Boolean);
+
   return (
-    <div className="flex shrink-0 items-center gap-2 opacity-80">
-      <span className="relative inline-flex h-2 w-2 rounded-full border border-[var(--border-color)] bg-transparent" aria-hidden="true" />
-      <span className="text-xs text-[var(--text-secondary)] leading-none font-medium">
-        {formatTaskName(taskType)}
-      </span>
-      <span className="rounded-full border border-[var(--border-color)] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] text-[var(--text-muted)] leading-none">
-        Queued
-      </span>
-      {model && (
-        <span className="text-[10px] text-[var(--text-muted)] leading-none truncate max-w-[100px]" title={model}>
-          {model}
+    <Tooltip content={tooltipLines.join("\n")}>
+      <div className="flex shrink-0 items-center gap-2 opacity-80">
+        <span className="relative inline-flex h-2 w-2 rounded-full border border-[var(--border-color)] bg-transparent" aria-hidden="true" />
+        <span className="text-xs text-[var(--text-secondary)] leading-none font-medium">
+          {formattedName}
         </span>
-      )}
-    </div>
+        {workspaceName && (
+          <span className="text-[10px] text-[var(--text-muted)] leading-none font-medium truncate max-w-[90px]" title={`Workspace: ${workspaceName}`}>
+            [{workspaceName}]
+          </span>
+        )}
+        <span className="rounded-full border border-[var(--border-color)] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] text-[var(--text-muted)] leading-none">
+          Queued
+        </span>
+        {model && (
+          <span className="text-[10px] text-[var(--text-muted)] leading-none truncate max-w-[100px]" title={model}>
+            {model}
+          </span>
+        )}
+      </div>
+    </Tooltip>
   );
 }
 
@@ -753,6 +798,39 @@ export default function StatusBar() {
       .finally(() => setScheduledJobsLoading(false));
   }, [scheduledPopoverRect]);
 
+  const navigate = useNavigate();
+  const workspaces = useWorkspaceStore((s) => s.workspaces);
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const splitMode = useWorkspaceStore((s) => s.splitMode);
+  const activePaneId = useWorkspaceStore((s) => s.activePaneId);
+  const panes = useWorkspaceStore((s) => s.panes);
+
+  const primaryWs = workspaces.find((w) => w.id === panes.primary.workspaceId);
+  const secondaryWs = workspaces.find((w) => w.id === panes.secondary.workspaceId);
+  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId);
+
+  let workspaceLabel = "No Workspace";
+  let workspaceTooltip = "No active workspace selected";
+
+  if (splitMode) {
+    const activePaneWs = activePaneId === "primary" ? primaryWs : secondaryWs;
+    const activeName = activePaneWs?.name ?? activeWorkspace?.name ?? (workspaces.length > 0 ? workspaces[0].name : "No Workspace");
+    if (primaryWs && secondaryWs && primaryWs.id !== secondaryWs.id) {
+      workspaceLabel = `P1: ${primaryWs.name} | P2: ${secondaryWs.name}`;
+      workspaceTooltip = `Split mode active.\nPane 1: ${primaryWs.name}\nPane 2: ${secondaryWs.name}\nFocused: ${activeName}`;
+    } else {
+      workspaceLabel = activeName;
+      workspaceTooltip = `Active workspace: ${activeName} (${activePaneId === "primary" ? "Pane 1" : "Pane 2"})`;
+    }
+  } else {
+    const activeName = activeWorkspace?.name ?? (workspaces.length > 0 ? workspaces[0].name : "No Workspace");
+    workspaceLabel = activeName;
+    workspaceTooltip = activeWorkspace ? `Active workspace: ${activeWorkspace.name}` : "No workspace selected";
+  }
+
+  const totalActiveCount = runningJobs.length + queuedJobs.length + (isAiStreaming ? 1 : 0);
+  const hasAnyJobOrPrompt = promptList.length > 0 || isAiStreaming || runningJobs.length > 0 || queuedJobs.length > 0;
+
   // [P2] Build a screen-reader announcement string for active tasks only —
   // the continuously-updating metrics are not announced.
   const runningTypes = [...(isAiStreaming ? ["ai_generating"] : []), ...runningJobs.map(([t]) => t)];
@@ -784,18 +862,42 @@ export default function StatusBar() {
         {jobAnnouncement}
       </span>
 
-      {/* Left — pending confirmations, active tasks, AI streaming */}
-      <div className="flex min-w-0 items-center gap-4 overflow-x-auto overflow-y-hidden">
+      {/* Left — active workspace, pending confirmations, active tasks, AI streaming */}
+      <div className="flex min-w-0 items-center gap-3 overflow-x-auto overflow-y-hidden">
+        {/* Workspace Pill */}
+        <Tooltip content={workspaceTooltip}>
+          <button
+            type="button"
+            onClick={() => navigate("/")}
+            className="flex shrink-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+            aria-label={`Active workspace: ${workspaceLabel}`}
+          >
+            <svg viewBox="0 0 16 16" className="h-3 w-3 fill-current text-[var(--accent-color)]" aria-hidden="true">
+              <path d="M1.75 2.5A1.75 1.75 0 000 4.25v7.5C0 12.716.784 13.5 1.75 13.5h12.5A1.75 1.75 0 0016 11.75v-6A1.75 1.75 0 0014.25 4h-5.464l-1.63-1.63A1.75 1.75 0 005.918 2.5H1.75z" />
+            </svg>
+            <span className="truncate max-w-[140px] font-semibold">{workspaceLabel}</span>
+          </button>
+        </Tooltip>
+
+        <span className="h-3.5 w-px shrink-0 bg-[var(--border-color)]" />
+
+        {/* Scheduled Jobs Trigger */}
         <button
           type="button"
           data-scheduled-jobs-trigger
           onClick={toggleScheduledJobsPopover}
-          className="flex shrink-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          className="flex shrink-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors"
           aria-label="Show scheduled jobs"
         >
-          <span className="h-1.5 w-1.5 rounded-full bg-[var(--text-muted)]" aria-hidden="true" />
+          <span className={`h-1.5 w-1.5 rounded-full ${totalActiveCount > 0 ? "bg-emerald-500 animate-pulse" : "bg-[var(--text-muted)]"}`} aria-hidden="true" />
           Jobs
+          {totalActiveCount > 0 && (
+            <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.2 text-[10px] text-emerald-400 font-semibold leading-none">
+              {totalActiveCount}
+            </span>
+          )}
         </button>
+
         {promptList.map(([type, meta]) => (
           <JobPromptPill
             key={`prompt-${type}`}
@@ -808,22 +910,38 @@ export default function StatusBar() {
           />
         ))}
         {isAiStreaming && <JobPill taskType="ai_generating" model={streamingModel ?? undefined} />}
-        {runningJobs.map(([type, meta]) => (
-          <JobPill
-            key={type}
-            taskType={type}
-            detail={type === "workspace_analysis" ? meta.message : undefined}
-            model={meta.model}
-            onStop={() => handleStopJob(type)}
-          />
-        ))}
-        {queuedJobs.map(([type, meta]) => (
-          <QueuedJobPill
-            key={type}
-            taskType={type}
-            model={meta.model}
-          />
-        ))}
+        {runningJobs.map(([type, meta]) => {
+          const ws = meta.workspace_id ? workspaces.find((w) => w.id === meta.workspace_id) : undefined;
+          return (
+            <JobPill
+              key={type}
+              taskType={type}
+              detail={meta.message}
+              model={meta.model}
+              workspaceName={ws?.name}
+              current={meta.current}
+              total={meta.total}
+              onStop={() => handleStopJob(type)}
+            />
+          );
+        })}
+        {queuedJobs.map(([type, meta]) => {
+          const ws = meta.workspace_id ? workspaces.find((w) => w.id === meta.workspace_id) : undefined;
+          return (
+            <QueuedJobPill
+              key={type}
+              taskType={type}
+              model={meta.model}
+              workspaceName={ws?.name}
+            />
+          );
+        })}
+        {!hasAnyJobOrPrompt && (
+          <div className="flex shrink-0 items-center gap-1.5 text-xs text-[var(--text-muted)]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--text-muted)]/50" aria-hidden="true" />
+            <span>Idle</span>
+          </div>
+        )}
       </div>
       {scheduledPopoverRect && (
         <ScheduledJobsPopover

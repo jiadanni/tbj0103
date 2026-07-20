@@ -9,6 +9,7 @@ import type {
 } from "@/lib/api";
 import { useChatStore } from "@/stores/chatStore";
 import { useBackgroundJobsStore } from "@/stores/backgroundJobs";
+import { useWorkspaceStore } from "@/stores/workspaceStore";
 
 const { getPerformanceStats, listenBackgroundTask, listenBackgroundTaskPrompt, listenWorkspaceProgress, listActiveBackgroundJobs } =
   vi.hoisted(() => ({
@@ -413,5 +414,74 @@ describe("StatusBar", () => {
 
     expect(await screen.findByText("Workspace Analysis")).toBeInTheDocument();
     expect(screen.queryByText("Glossary Refresh")).not.toBeInTheDocument();
+  });
+
+  it("renders active workspace name and idle indicator when no jobs are active", async () => {
+    act(() => {
+      useWorkspaceStore.setState({
+        workspaces: [
+          {
+            id: "ws-test",
+            name: "Research Hub",
+            description: "",
+            prompt_instructions: "",
+            topic_signature: { primary_domain: "", subdomains: [], key_concepts: [], complexity_level: "intermediate" },
+            signature_updated_at: null,
+            is_hidden: false,
+            created_at: "",
+            updated_at: "",
+            parent_workspace_id: null,
+            icon: "folder",
+            order_index: 0,
+            last_message_at: null,
+            survey_data: null,
+          },
+        ],
+        activeWorkspaceId: "ws-test",
+      });
+    });
+
+    render(<StatusBar />);
+
+    expect(screen.getByText("Research Hub")).toBeInTheDocument();
+    expect(screen.getByText("Idle")).toBeInTheDocument();
+  });
+
+  it("displays workspace name tag on a job pill when workspace_id is present", async () => {
+    act(() => {
+      useWorkspaceStore.setState({
+        workspaces: [
+          {
+            id: "ws-101",
+            name: "Deep Learning",
+            description: "",
+            prompt_instructions: "",
+            topic_signature: { primary_domain: "", subdomains: [], key_concepts: [], complexity_level: "intermediate" },
+            signature_updated_at: null,
+            is_hidden: false,
+            created_at: "",
+            updated_at: "",
+            parent_workspace_id: null,
+            icon: "folder",
+            order_index: 0,
+            last_message_at: null,
+            survey_data: null,
+          },
+        ],
+        activeWorkspaceId: "ws-101",
+      });
+      useBackgroundJobsStore.getState().applyEvent({
+        task_type: "memory_extraction",
+        status: "started",
+        workspace_id: "ws-101",
+        model: "llama3",
+      });
+    });
+
+    render(<StatusBar />);
+
+    expect(screen.getByText("Memory Extraction")).toBeInTheDocument();
+    expect(screen.getByText("[Deep Learning]")).toBeInTheDocument();
+    expect(screen.queryByText("Idle")).not.toBeInTheDocument();
   });
 });
