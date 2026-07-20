@@ -40,6 +40,20 @@ export default function App() {
     }
   }, [isLastCard, current, order]);
 
+  // Restore deck from localStorage on mount if available
+  useEffect(() => {
+    const savedDeck = localStorage.getItem("boomscroll_active_deck");
+    if (!savedDeck) {return;}
+    try {
+      const savedIdsRaw = localStorage.getItem("boomscroll_enabled_ids");
+      const savedIds = savedIdsRaw ? new Set<string>(JSON.parse(savedIdsRaw)) : undefined;
+      loadDeckFromText(savedDeck, savedIds);
+    } catch {
+      localStorage.removeItem("boomscroll_active_deck");
+      localStorage.removeItem("boomscroll_enabled_ids");
+    }
+  }, []);
+
   const next: DeckCard | null = isLastCard
     ? (nextOrderRef.current?.[0] ?? null)
     : (order[index + 1] ?? null);
@@ -51,16 +65,19 @@ export default function App() {
     setRevealed(false);
     setShowFilter(false);
     nextOrderRef.current = null;
+    localStorage.setItem("boomscroll_enabled_ids", JSON.stringify(Array.from(ids)));
   }
 
-  function loadDeckFromText(raw: string) {
+  function loadDeckFromText(raw: string, initialEnabledIds?: Set<string>) {
     try {
       const parsed = parseDeck(raw);
-      const allIds = new Set(parsed.workspaces.map((ws) => ws.id));
+      const allIds = initialEnabledIds ?? new Set(parsed.workspaces.map((ws) => ws.id));
       setDeck(parsed);
       setEnabledIds(allIds);
       setError(null);
-      if (parsed.workspaces.length > 1) {
+      localStorage.setItem("boomscroll_active_deck", raw);
+      localStorage.setItem("boomscroll_enabled_ids", JSON.stringify(Array.from(allIds)));
+      if (parsed.workspaces.length > 1 && !initialEnabledIds) {
         setShowFilter(true);
         setOrder([]);
       } else {
@@ -121,6 +138,8 @@ export default function App() {
     setOrder([]);
     setShowFilter(false);
     nextOrderRef.current = null;
+    localStorage.removeItem("boomscroll_active_deck");
+    localStorage.removeItem("boomscroll_enabled_ids");
   }
 
   function advance() {
