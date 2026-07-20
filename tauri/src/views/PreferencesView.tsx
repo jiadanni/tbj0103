@@ -2631,8 +2631,18 @@ export default function PreferencesView() {
 
   const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([]);
   const [activeTab, setActiveTab] = useState<PreferencesSection>(() => (window.localStorage.getItem("preferencesActiveTab") as PreferencesSection) || "app");
+  const [visitedTabs, setVisitedTabs] = useState<Set<string>>(() => new Set([activeTab]));
   const [tabFilter, setTabFilter] = useState("");
   const contentRootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setVisitedTabs((prev) => {
+      if (prev.has(activeTab)) { return prev; }
+      const next = new Set(prev);
+      next.add(activeTab);
+      return next;
+    });
+  }, [activeTab]);
 
   // Handle external tab switching via router state
   useEffect(() => {
@@ -6428,23 +6438,23 @@ export default function PreferencesView() {
             </div>
           )}
 
-          {/* ── Full-bleed tabs (workspaces, backup, import) ── */}
-          {activeTab === "workspaces" && (
-            <div className="flex-1 min-h-0 overflow-hidden">
+          {/* ── Full-bleed tabs (workspaces, backup, import, logs, memory) ── */}
+          {visitedTabs.has("workspaces") && (
+            <div className={activeTab === "workspaces" ? "flex-1 min-h-0 overflow-hidden" : "hidden"}>
               <React.Suspense fallback={null}>
                 <WorkspaceSettingsView />
               </React.Suspense>
             </div>
           )}
 
-          {activeTab === "data" && (
-            <div className="flex-1 min-h-0 overflow-hidden">
+          {visitedTabs.has("data") && (
+            <div className={activeTab === "data" ? "flex-1 min-h-0 overflow-hidden" : "hidden"}>
               <DataControlsPreferences />
             </div>
           )}
 
-          {activeTab === "backup" && (
-            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+          {visitedTabs.has("backup") && (
+            <div className={activeTab === "backup" ? "flex-1 min-h-0 overflow-hidden flex flex-col" : "hidden"}>
               <div className="flex-1 min-h-0 overflow-y-auto">
                 <div className="space-y-8 p-5">
                   {/* Workspace backup section */}
@@ -6473,16 +6483,16 @@ export default function PreferencesView() {
             </div>
           )}
 
-          {activeTab === "import" && (
-            <div className="flex-1 min-h-0 overflow-hidden">
+          {visitedTabs.has("import") && (
+            <div className={activeTab === "import" ? "flex-1 min-h-0 overflow-hidden" : "hidden"}>
               <React.Suspense fallback={null}>
                 <ImportSettingsSection />
               </React.Suspense>
             </div>
           )}
 
-          {activeTab === "logs" && (
-            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+          {visitedTabs.has("logs") && (
+            <div className={activeTab === "logs" ? "flex-1 min-h-0 overflow-hidden flex flex-col" : "hidden"}>
               <div className="border-b border-[var(--border-color)] px-5 py-3 space-y-2">
                 <div className="flex items-start gap-3 py-0.5">
                   <Toggle
@@ -6517,8 +6527,8 @@ export default function PreferencesView() {
             </div>
           )}
 
-          {activeTab === "memory" && (
-            <div className="flex-1 min-h-0 overflow-hidden">
+          {visitedTabs.has("memory") && (
+            <div className={activeTab === "memory" ? "flex-1 min-h-0 overflow-hidden" : "hidden"}>
               <React.Suspense fallback={null}>
                 <GlobalMemoryView />
               </React.Suspense>

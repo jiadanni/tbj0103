@@ -578,14 +578,16 @@ pub async fn create_global_backup(
 
     let mut workspaces = Vec::new();
     for workspace_id in workspace_ids {
-        let workspace = query_optional_json_row(
+        let workspace = match query_optional_json_row(
             &conn,
             "SELECT id, name, description, prompt_instructions, topic_signature, signature_updated_at, is_hidden, created_at, updated_at, about_you, survey_data
              FROM workspaces
              WHERE id = ?1",
             &workspace_id,
-        )?
-        .ok_or_else(|| format!("Workspace {workspace_id} not found"))?;
+        ) {
+            Ok(Some(w)) => w,
+            _ => continue,
+        };
 
         let mut data = serde_json::Map::new();
         for (table, query) in BACKUP_TABLES {

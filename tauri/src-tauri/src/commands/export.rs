@@ -1,5 +1,6 @@
 use crate::commands::security::{require_auth, AuthState};
 use crate::db::DbState;
+use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -229,13 +230,18 @@ pub(crate) fn build_feed_deck(
         .map_err(|e| e.to_string())?;
 
     for workspace_id in workspace_ids {
-        let (ws_id, ws_name): (String, String) = conn
+        let ws_info = conn
             .query_row(
                 "SELECT id, name FROM workspaces WHERE id = ?1",
                 rusqlite::params![workspace_id],
-                |r| Ok((r.get(0)?, r.get(1)?)),
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
             )
+            .optional()
             .map_err(|e| e.to_string())?;
+
+        let Some((ws_id, ws_name)) = ws_info else {
+            continue;
+        };
 
         let ws_cards: Vec<serde_json::Value> = card_stmt
             .query_map(rusqlite::params![workspace_id], |r| {
