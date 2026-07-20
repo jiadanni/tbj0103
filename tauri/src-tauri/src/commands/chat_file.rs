@@ -1811,7 +1811,6 @@ pub struct ClaudeImportDestination {
 /// - `selected_project_ids`: only import project chats from these project UUIDs (empty = all in folder_mappings)
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn import_claude_files(
     folder_path: String,
     folder_mappings: std::collections::HashMap<String, ClaudeImportDestination>,

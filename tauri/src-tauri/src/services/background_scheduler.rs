@@ -1191,7 +1191,7 @@ async fn run_manual_processing_job(
                 );
                 if memory_pipeline::process_memory_extraction_for_workspaces(
                     &db,
-                    &[workspace_id.clone()],
+                    std::slice::from_ref(workspace_id),
                     include_imported,
                     ollama_url.clone(),
                 )
@@ -1266,7 +1266,7 @@ async fn run_manual_processing_job(
                 );
                 if workspace_glossary::scan_sessions_for_missing_terms_with_options(
                     &db,
-                    Some(&[workspace_id.clone()]),
+                    Some(std::slice::from_ref(workspace_id)),
                     include_imported,
                 )
                 .await
@@ -1303,7 +1303,7 @@ async fn run_manual_processing_job(
                 );
                 let sessions = collect_summary_sessions_for_workspaces(
                     &db,
-                    &[workspace_id.clone()],
+                    std::slice::from_ref(workspace_id),
                     include_imported,
                 )
                 .await;
@@ -1354,7 +1354,7 @@ async fn run_manual_processing_job(
                 if crate::services::flashcard_topic_service::tick_for_workspaces(
                     &db,
                     ollama_url.clone(),
-                    Some(&[workspace_id.clone()]),
+                    Some(std::slice::from_ref(workspace_id)),
                 )
                 .await
                 .is_err()
@@ -1391,7 +1391,7 @@ async fn run_manual_processing_job(
                 if crate::services::concept_hierarchy_service::tick_for_workspaces(
                     &db,
                     ollama_url.clone(),
-                    Some(&[workspace_id.clone()]),
+                    Some(std::slice::from_ref(workspace_id)),
                 )
                 .await
                 .is_err()
@@ -1425,7 +1425,7 @@ async fn run_manual_processing_job(
                     workspace_index,
                     workspace_total,
                 );
-                if crate::services::prompt_bank::tick_for_workspaces(&db, Some(&[workspace_id.clone()]))
+                if crate::services::prompt_bank::tick_for_workspaces(&db, Some(std::slice::from_ref(workspace_id)))
                     .await
                     .is_err()
                 {
