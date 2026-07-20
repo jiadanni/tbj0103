@@ -1,8 +1,8 @@
 {
   "format": "aetherium.boomscroll.deck",
   "version": 2,
-  "exported_at": "2026-07-19T03:11:10Z",
-  "card_count": 24,
+  "exported_at": "2026-07-20T11:05:00Z",
+  "card_count": 64,
   "workspaces": [
     {
       "id": "demo-workspace-ai-ml-000000000000000",
@@ -17,6 +17,31 @@
     {
       "id": "demo-workspace-rome-000000000000000",
       "name": "🏛️ Roman Empire",
+      "card_count": 8
+    },
+    {
+      "id": "demo-workspace-quantum-000000000000",
+      "name": "⚡ Quantum Computing & Physics",
+      "card_count": 8
+    },
+    {
+      "id": "demo-workspace-biology-00000000000",
+      "name": "🌱 Biology & Genetics",
+      "card_count": 8
+    },
+    {
+      "id": "demo-workspace-python-000000000000",
+      "name": "🐍 Software Architecture & Python",
+      "card_count": 8
+    },
+    {
+      "id": "demo-workspace-geography-0000000000",
+      "name": "🌐 Earth Science & Geography",
+      "card_count": 8
+    },
+    {
+      "id": "demo-workspace-economics-000000000",
+      "name": "💰 Macro & Micro Economics",
       "card_count": 8
     }
   ],
@@ -212,6 +237,326 @@
       "back": "Julius Caesar, Octavian (Augustus), Pompey, Marius, Cicero, Antony. All played roles in the ~100 year decline.",
       "topic": "Republican Collapse",
       "workspace_id": "demo-workspace-rome-000000000000000"
+    },
+    {
+      "id": "demo-card-quantum-1",
+      "kind": "flashcard",
+      "front": "What is Quantum Superposition?",
+      "back": "A fundamental principle where a physical system exists in a linear combination of multiple state basis vectors (|0⟩ and |1⟩) until measured.",
+      "topic": "Quantum Foundations",
+      "workspace_id": "demo-workspace-quantum-000000000000"
+    },
+    {
+      "id": "demo-card-quantum-2",
+      "kind": "flashcard",
+      "front": "What is Quantum Entanglement?",
+      "back": "A phenomenon where quantum states of two or more particles become inextricably linked, so that measuring one instantly determines the state of the other.",
+      "topic": "Quantum Foundations",
+      "workspace_id": "demo-workspace-quantum-000000000000"
+    },
+    {
+      "id": "demo-card-quantum-3",
+      "kind": "flashcard",
+      "front": "What does a Hadamard gate (H) do?",
+      "back": "Maps basis states |0⟩ and |1⟩ into equal superposition states (|0⟩+|1⟩)/√2 and (|0⟩-|1⟩)/√2, creating quantum randomness.",
+      "topic": "Quantum Gates",
+      "workspace_id": "demo-workspace-quantum-000000000000"
+    },
+    {
+      "id": "demo-card-quantum-4",
+      "kind": "flashcard",
+      "front": "Explain Shor's Algorithm speedup.",
+      "back": "Factors large integers in polynomial time O((log N)³), exponentially faster than classical number field sieve algorithms, threatening RSA encryption.",
+      "topic": "Quantum Algorithms",
+      "workspace_id": "demo-workspace-quantum-000000000000"
+    },
+    {
+      "id": "demo-card-quantum-5",
+      "kind": "flashcard",
+      "front": "What is Grover's Algorithm?",
+      "back": "A quantum search algorithm providing quadratic speedup O(√N) for searching unsorted databases with N items.",
+      "topic": "Quantum Algorithms",
+      "workspace_id": "demo-workspace-quantum-000000000000"
+    },
+    {
+      "id": "demo-card-quantum-6",
+      "kind": "flashcard",
+      "front": "What is Decoherence in quantum computing?",
+      "back": "Loss of quantum coherence caused by environmental interaction, causing qubits to collapse into classical states and introducing computational noise.",
+      "topic": "Hardware & Error Correction",
+      "workspace_id": "demo-workspace-quantum-000000000000"
+    },
+    {
+      "id": "demo-card-quantum-7",
+      "kind": "flashcard",
+      "front": "State Heisenberg's Uncertainty Principle.",
+      "back": "Impossibility of simultaneously measuring position (x) and momentum (p) with arbitrary precision: Δx · Δp ≥ ℏ/2.",
+      "topic": "Quantum Physics",
+      "workspace_id": "demo-workspace-quantum-000000000000"
+    },
+    {
+      "id": "demo-card-quantum-8",
+      "kind": "flashcard",
+      "front": "What is a CNOT gate?",
+      "back": "Controlled-NOT gate — flips the target qubit if and only if the control qubit is in state |1⟩. Crucial for generating entanglement.",
+      "topic": "Quantum Gates",
+      "workspace_id": "demo-workspace-quantum-000000000000"
+    },
+    {
+      "id": "demo-card-bio-1",
+      "kind": "flashcard",
+      "front": "What are the central steps of Molecular Biology?",
+      "back": "Central Dogma: DNA is transcribed into RNA in the nucleus, which is then translated into proteins by ribosomes in the cytoplasm.",
+      "topic": "Molecular Biology",
+      "workspace_id": "demo-workspace-biology-00000000000"
+    },
+    {
+      "id": "demo-card-bio-2",
+      "kind": "flashcard",
+      "front": "How does CRISPR-Cas9 edit DNA?",
+      "back": "Uses a guide RNA to locate specific genomic sequences and the Cas9 endonuclease enzyme to make targeted double-strand breaks for precise editing.",
+      "topic": "Biotechnology",
+      "workspace_id": "demo-workspace-biology-00000000000"
+    },
+    {
+      "id": "demo-card-bio-3",
+      "kind": "flashcard",
+      "front": "What is the net ATP yield of Cellular Respiration?",
+      "back": "~30-32 ATP molecules per glucose molecule, produced via Glycolysis, Krebs Cycle, and Oxidative Phosphorylation.",
+      "topic": "Cellular Energy",
+      "workspace_id": "demo-workspace-biology-00000000000"
+    },
+    {
+      "id": "demo-card-bio-4",
+      "kind": "flashcard",
+      "front": "Difference between Mitosis and Meiosis?",
+      "back": "Mitosis produces 2 identical diploid somatic cells. Meiosis produces 4 genetically unique haploid gametes with crossover variation.",
+      "topic": "Cell Division",
+      "workspace_id": "demo-workspace-biology-00000000000"
+    },
+    {
+      "id": "demo-card-bio-5",
+      "kind": "flashcard",
+      "front": "What is Mendel's Law of Segregation?",
+      "back": "Allele pairs separate during gamete formation, so each gamete carries only one allele for each gene locus.",
+      "topic": "Genetics",
+      "workspace_id": "demo-workspace-biology-00000000000"
+    },
+    {
+      "id": "demo-card-bio-6",
+      "kind": "flashcard",
+      "front": "What is Epigenetics?",
+      "back": "Heritable changes in gene expression (e.g. DNA methylation, histone modification) that do not alter the underlying DNA sequence.",
+      "topic": "Genetics",
+      "workspace_id": "demo-workspace-biology-00000000000"
+    },
+    {
+      "id": "demo-card-bio-7",
+      "kind": "flashcard",
+      "front": "Role of Ribosomes in the cell?",
+      "back": "Cellular organelle structures that read mRNA codons and assemble amino acids into polypeptide chains (proteins).",
+      "topic": "Cell Biology",
+      "workspace_id": "demo-workspace-biology-00000000000"
+    },
+    {
+      "id": "demo-card-bio-8",
+      "kind": "flashcard",
+      "front": "What occurs in the Light Reactions of Photosynthesis?",
+      "back": "Chlorophyll absorbs light energy to split H₂O, releasing oxygen gas while generating ATP and NADPH for the Calvin Cycle.",
+      "topic": "Cellular Energy",
+      "workspace_id": "demo-workspace-biology-00000000000"
+    },
+    {
+      "id": "demo-card-python-1",
+      "kind": "flashcard",
+      "front": "What is the Global Interpreter Lock (GIL) in Python?",
+      "back": "A mutex in CPython preventing multiple native threads from executing Python bytecode simultaneously, limiting multi-core CPU parallelism.",
+      "topic": "Python Concurrency",
+      "workspace_id": "demo-workspace-python-000000000000"
+    },
+    {
+      "id": "demo-card-python-2",
+      "kind": "flashcard",
+      "front": "Difference between Generator and List Comprehension?",
+      "back": "List comprehensions create full in-memory lists `[x for x in data]`. Generators `(x for x in data)` evaluate lazily on-demand using `yield`.",
+      "topic": "Python Fundamentals",
+      "workspace_id": "demo-workspace-python-000000000000"
+    },
+    {
+      "id": "demo-card-python-3",
+      "kind": "flashcard",
+      "front": "What does SOLID stand for in Software Architecture?",
+      "back": "Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, and Dependency Inversion principles.",
+      "topic": "Software Architecture",
+      "workspace_id": "demo-workspace-python-000000000000"
+    },
+    {
+      "id": "demo-card-python-4",
+      "kind": "flashcard",
+      "front": "How do Python Decorators `@decorator` work?",
+      "back": "Functions that take another function as an argument, wrap it with extra functionality, and return the wrapper without altering original code.",
+      "topic": "Python Design Patterns",
+      "workspace_id": "demo-workspace-python-000000000000"
+    },
+    {
+      "id": "demo-card-python-5",
+      "kind": "flashcard",
+      "front": "What is Dependency Inversion Principle?",
+      "back": "High-level modules should not depend on low-level modules; both should depend on abstractions (interfaces/protocols).",
+      "topic": "Software Architecture",
+      "workspace_id": "demo-workspace-python-000000000000"
+    },
+    {
+      "id": "demo-card-python-6",
+      "kind": "flashcard",
+      "front": "Explain Python `asyncio` event loop.",
+      "back": "A single-threaded event loop that schedules co-routines, suspending I/O-bound tasks at `await` keywords so other tasks execute asynchronously.",
+      "topic": "Python Concurrency",
+      "workspace_id": "demo-workspace-python-000000000000"
+    },
+    {
+      "id": "demo-card-python-7",
+      "kind": "flashcard",
+      "front": "What is reference counting in Python memory management?",
+      "back": "Python automatically deallocates objects when their reference count reaches 0, supported by a cyclic garbage collector for circular references.",
+      "topic": "Python Internals",
+      "workspace_id": "demo-workspace-python-000000000000"
+    },
+    {
+      "id": "demo-card-python-8",
+      "kind": "flashcard",
+      "front": "Difference between `__str__` and `__repr__`?",
+      "back": "`__str__` is intended to be user-friendly/readable. `__repr__` should be unambiguous, developer-oriented, ideally valid Python code.",
+      "topic": "Python OOP",
+      "workspace_id": "demo-workspace-python-000000000000"
+    },
+    {
+      "id": "demo-card-geo-1",
+      "kind": "flashcard",
+      "front": "What causes Plate Tectonics?",
+      "back": "Thermal convection currents within Earth's semi-fluid asthenosphere driving movement of rigid lithospheric plates.",
+      "topic": "Geology",
+      "workspace_id": "demo-workspace-geography-0000000000"
+    },
+    {
+      "id": "demo-card-geo-2",
+      "kind": "flashcard",
+      "front": "What is Thermohaline Circulation?",
+      "back": "Deep ocean circulation driven by global density gradients created by surface temperature (thermo) and salinity (haline).",
+      "topic": "Oceanography",
+      "workspace_id": "demo-workspace-geography-0000000000"
+    },
+    {
+      "id": "demo-card-geo-3",
+      "kind": "flashcard",
+      "front": "What is the Coriolis Effect?",
+      "back": "Apparent deflection of moving objects (winds, currents) due to Earth's rotation: to the right in Northern Hemisphere, left in Southern.",
+      "topic": "Climatology",
+      "workspace_id": "demo-workspace-geography-0000000000"
+    },
+    {
+      "id": "demo-card-geo-4",
+      "kind": "flashcard",
+      "front": "What is the Pacific Ring of Fire?",
+      "back": "A 40,000 km horseshoe-shaped basin around the Pacific Ocean characterized by frequent earthquakes and active volcanoes.",
+      "topic": "Geology",
+      "workspace_id": "demo-workspace-geography-0000000000"
+    },
+    {
+      "id": "demo-card-geo-5",
+      "kind": "flashcard",
+      "front": "Name the primary layers of Earth's atmosphere.",
+      "back": "Troposphere (weather), Stratosphere (ozone layer), Mesosphere (meteors burn), Thermosphere (auroras), Exosphere (outer space transition).",
+      "topic": "Atmospheric Science",
+      "workspace_id": "demo-workspace-geography-0000000000"
+    },
+    {
+      "id": "demo-card-geo-6",
+      "kind": "flashcard",
+      "front": "What creates Glacial U-shaped valleys?",
+      "back": "Glacial erosion via plucking and abrasion as heavy glaciers carve through pre-existing V-shaped river valleys.",
+      "topic": "Geomorphology",
+      "workspace_id": "demo-workspace-geography-0000000000"
+    },
+    {
+      "id": "demo-card-geo-7",
+      "kind": "flashcard",
+      "front": "What is the Rain Shadow Effect?",
+      "back": "Moist air rises over a mountain range, cools and drops rain on windward side; dry air descends leeward creating arid conditions.",
+      "topic": "Climatology",
+      "workspace_id": "demo-workspace-geography-0000000000"
+    },
+    {
+      "id": "demo-card-geo-8",
+      "kind": "flashcard",
+      "front": "What defines a Mediterranean Climate biome?",
+      "back": "Warm to hot, dry summers and mild, wet winters, typically found on western coasts between 30° and 45° latitude.",
+      "topic": "Biomes",
+      "workspace_id": "demo-workspace-geography-0000000000"
+    },
+    {
+      "id": "demo-card-econ-1",
+      "kind": "flashcard",
+      "front": "What is Price Elasticity of Demand?",
+      "back": "Measure of how much quantity demanded responds to a change in price: % change in Quantity / % change in Price.",
+      "topic": "Microeconomics",
+      "workspace_id": "demo-workspace-economics-000000000"
+    },
+    {
+      "id": "demo-card-econ-2",
+      "kind": "flashcard",
+      "front": "What is Opportunity Cost?",
+      "back": "The loss of potential gain from alternative choices when one alternative is chosen over others.",
+      "topic": "Core Principles",
+      "workspace_id": "demo-workspace-economics-000000000"
+    },
+    {
+      "id": "demo-card-econ-3",
+      "kind": "flashcard",
+      "front": "Difference between Fiscal and Monetary policy?",
+      "back": "Fiscal policy uses government spending and taxation (Congress/Parliament). Monetary policy controls money supply and interest rates (Central Bank).",
+      "topic": "Macroeconomics",
+      "workspace_id": "demo-workspace-economics-000000000"
+    },
+    {
+      "id": "demo-card-econ-4",
+      "kind": "flashcard",
+      "front": "What is a Nash Equilibrium in Game Theory?",
+      "back": "A set of strategies where no player has an incentive to unilaterally change their strategy given the strategies of opponents.",
+      "topic": "Game Theory",
+      "workspace_id": "demo-workspace-economics-000000000"
+    },
+    {
+      "id": "demo-card-econ-5",
+      "kind": "flashcard",
+      "front": "What is Comparative Advantage?",
+      "back": "The ability of an economy/producer to produce a good at a lower opportunity cost than competitors, forming the basis of free trade.",
+      "topic": "International Trade",
+      "workspace_id": "demo-workspace-economics-000000000"
+    },
+    {
+      "id": "demo-card-econ-6",
+      "kind": "flashcard",
+      "front": "Difference between GDP and GNP?",
+      "back": "GDP measures value created within a country's physical borders. GNP measures value created by citizens and businesses of a nation globally.",
+      "topic": "Macroeconomics",
+      "workspace_id": "demo-workspace-economics-000000000"
+    },
+    {
+      "id": "demo-card-econ-7",
+      "kind": "flashcard",
+      "front": "What is the Law of Diminishing Marginal Utility?",
+      "back": "As a consumer consumes more units of a specific good, the additional satisfaction (utility) derived from each additional unit decreases.",
+      "topic": "Consumer Theory",
+      "workspace_id": "demo-workspace-economics-000000000"
+    },
+    {
+      "id": "demo-card-econ-8",
+      "kind": "flashcard",
+      "front": "What is inflation and how is it measured?",
+      "back": "General increase in prices and fall in purchasing power, commonly measured via the Consumer Price Index (CPI) basket of goods.",
+      "topic": "Macroeconomics",
+      "workspace_id": "demo-workspace-economics-000000000"
     }
   ]
 }
