@@ -1269,6 +1269,7 @@ function DataControlsPreferences() {
 
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [availableModels, setAvailableModels] = useState<Array<{ id: string; name: string }>>([]);
+  const modelMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -1281,6 +1282,25 @@ function DataControlsPreferences() {
     }).catch(() => {});
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (!modelDropdownOpen) { return; }
+    function handlePointerDown(event: MouseEvent) {
+      if (modelMenuRef.current?.contains(event.target as Node)) { return; }
+      setModelDropdownOpen(false);
+    }
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setModelDropdownOpen(false);
+      }
+    }
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [modelDropdownOpen]);
 
   const busy = loadingPreview || running;
   const totalRows = totalKnowledgeResetRows(preview);
@@ -1318,7 +1338,7 @@ function DataControlsPreferences() {
                     Catch up imported chats and source material once without changing automatic scheduling.
                   </p>
                 </div>
-                <div className="relative inline-flex shrink-0 items-center rounded-xl bg-[var(--accent-color)] text-white shadow-sm font-medium text-sm">
+                <div ref={modelMenuRef} className="relative inline-flex shrink-0 items-center rounded-xl bg-[var(--accent-color)] text-white shadow-sm font-medium text-sm">
                   <button
                     type="button"
                     onClick={() => { void queueBackgroundProcessing(); }}
@@ -1892,8 +1912,28 @@ function InferenceJobsCard({
   const [loading, setLoading] = useState<boolean>(true);
   const [queueingJob, setQueueingJob] = useState<string | null>(null);
   const [openJobModelMenu, setOpenJobModelMenu] = useState<string | null>(null);
+  const jobMenuRef = useRef<HTMLDivElement | null>(null);
   const lastErrors = useBackgroundJobsStore((s) => s.lastErrors);
   const dismissError = useBackgroundJobsStore((s) => s.dismissError);
+
+  useEffect(() => {
+    if (!openJobModelMenu) { return; }
+    function handlePointerDown(event: MouseEvent) {
+      if (jobMenuRef.current?.contains(event.target as Node)) { return; }
+      setOpenJobModelMenu(null);
+    }
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpenJobModelMenu(null);
+      }
+    }
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [openJobModelMenu]);
 
   const loadScheduledStatus = () => {
     return api.backgroundJobs.getInferenceJobStatuses().then((items) => {
@@ -2351,7 +2391,7 @@ function InferenceJobsCard({
                       {/* Column 6: Action */}
                       <div className="flex justify-end w-full md:w-[110px]">
                         {!isManualTask ? (
-                          <div className="relative inline-flex shrink-0 items-center rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--accent-color)] transition-colors">
+                          <div ref={openJobModelMenu === job.job_key ? jobMenuRef : null} className="relative inline-flex shrink-0 items-center rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--accent-color)] transition-colors">
                             <button
                               type="button"
                               onClick={() => void queueJobNow(job.job_key)}
