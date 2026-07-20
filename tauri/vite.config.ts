@@ -52,7 +52,11 @@ export default defineConfig(async () => ({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/tests/setup.ts"],
+    // *.ollama.test.ts requires a live Ollama instance and is run separately
+    // via `npm run test:ollama` (see vitest.ollama.config.ts) so the default
+    // suite stays fast and offline.
     include: ["src/tests/**/*.test.ts", "src/tests/**/*.test.tsx"],
+    exclude: ["src/tests/**/*.ollama.test.ts"],
     pool: "forks",
     poolOptions: {
       forks: {

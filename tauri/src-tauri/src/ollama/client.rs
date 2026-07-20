@@ -1830,3 +1830,32 @@ mod tests {
         assert_eq!(cosine_similarity(&[], &[]), 0.0);
     }
 }
+
+/// Tests that exercise a real, running Ollama instance instead of pure logic.
+/// Kept in their own module and `#[ignore]`d so `cargo test` stays offline —
+/// run explicitly with `npm run test:ollama:rust`. See
+/// `crate::ollama::test_utils::tests::require_ollama` for the convention.
+#[cfg(test)]
+mod live_ollama_tests {
+    use super::*;
+    use crate::ollama::test_utils::tests::require_ollama;
+
+    #[tokio::test]
+    #[ignore = "requires live Ollama instance on localhost:11434"]
+    async fn list_models_returns_at_least_one_model() {
+        if !require_ollama().await {
+            return;
+        }
+
+        let client = OllamaClient::new(None).expect("client construction should not fail");
+        let models = client
+            .list_models("test")
+            .await
+            .expect("list_models should succeed against a live Ollama instance");
+
+        assert!(
+            !models.is_empty(),
+            "expected at least one pulled model — run `ollama pull <model>` first"
+        );
+    }
+}

@@ -19,6 +19,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:ollama": "vitest run --config vitest.ollama.config.ts",
+    "test:ollama:rust": "cargo test --manifest-path src-tauri/Cargo.toml -- --ignored",
     "analyze": "npx vite-bundle-visualizer",
     "prepare": "cd .. && git config core.hooksPath .husky"
   },
