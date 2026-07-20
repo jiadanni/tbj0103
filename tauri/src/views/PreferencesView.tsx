@@ -1457,7 +1457,26 @@ function DataControlsPreferences() {
                 <div className="space-y-3">
                   {processingScope === "selected_workspaces" && (
                     <div className="space-y-2">
-                      <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Workspaces</div>
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Workspaces</div>
+                        <div className="flex items-center gap-2 text-xs">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedWorkspaceIds([])}
+                            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                          >
+                            Clear all
+                          </button>
+                          <span className="text-[var(--border-color)]">|</span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedWorkspaceIds(workspaces.map((w) => w.id))}
+                            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                          >
+                            Select all
+                          </button>
+                        </div>
+                      </div>
                       <div className="grid gap-2 sm:grid-cols-2">
                         {workspaces.map((workspace) => (
                           <label key={workspace.id} className="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-secondary)]">
@@ -1475,7 +1494,26 @@ function DataControlsPreferences() {
                   )}
 
                   <div className="space-y-2">
-                    <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Jobs</div>
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Jobs</div>
+                      <div className="flex items-center gap-2 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedProcessingJobs([])}
+                          className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                        >
+                          Clear all
+                        </button>
+                        <span className="text-[var(--border-color)]">|</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedProcessingJobs(INFERENCE_JOBS_CATALOG.map((j) => j.job_key))}
+                          className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                        >
+                          Select all
+                        </button>
+                      </div>
+                    </div>
                     <div className="grid gap-2 sm:grid-cols-2">
                       {INFERENCE_JOBS_CATALOG.map((job) => {
                         const rowStatus = batchStatus?.[job.job_key];
