@@ -19,6 +19,11 @@ function sanitizeFilenamePart(value: string) {
     .replace(/^-|-$/g, "") || "deck";
 }
 
+function timestampForFilename(date: Date) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}`;
+}
+
 /** Parents first, each followed by its sub-workspaces (marked with a depth of 1). */
 function orderForPicker(workspaces: Workspace[]): Array<{ workspace: Workspace; depth: number }> {
   const visible = workspaces.filter((w) => !w.is_hidden);
@@ -70,21 +75,22 @@ export default function BoomScrollExportSection() {
 
   async function exportDeck() {
     const ids = picker.map((entry) => entry.workspace.id).filter((id) => selected.has(id));
-    if (ids.length === 0) {return;}
+    if (ids.length === 0) { return; }
 
     setError(null);
-    const single = ids.length === 1 ? workspaces.find((w) => w.id === ids[0]) : null;
-    const baseName = single ? sanitizeFilenamePart(single.name) : "aetherium";
-    const destination = await save({
-      title: "Save Boom Scroll deck",
-      defaultPath: `${baseName}-boomscroll.json`,
-      filters: [{ name: "Boom Scroll Deck", extensions: ["json"] }],
-    });
-    if (!destination) {return;}
-
     setExporting(true);
     try {
       const deckJson = await api.export.feedDeck(ids);
+      const single = ids.length === 1 ? workspaces.find((w) => w.id === ids[0]) : null;
+      const baseName = single ? sanitizeFilenamePart(single.name) : "aetherium";
+      const timestamp = timestampForFilename(new Date());
+      const destination = await save({
+        title: "Save Boom Scroll deck",
+        defaultPath: `${baseName}-boomscroll-${timestamp}.json`,
+        filters: [{ name: "Boom Scroll Deck", extensions: ["json"] }],
+      });
+      if (!destination) { return; }
+
       await writeTextFile(destination, deckJson);
       setSuccessDialog({
         title: "Deck exported",

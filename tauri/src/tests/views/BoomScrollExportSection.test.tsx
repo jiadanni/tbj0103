@@ -120,20 +120,21 @@ describe("BoomScrollExportSection", () => {
   });
 
   it("does nothing when the save dialog is cancelled", async () => {
+    const deckJson = JSON.stringify({ format: "aetherium.boomscroll.deck", version: 2 });
+    vi.mocked(api.export.feedDeck).mockResolvedValue(deckJson);
     vi.mocked(saveDialog).mockResolvedValue(null);
 
     render(<BoomScrollExportSection />);
     fireEvent.click(screen.getByRole("button", { name: /export/i }));
 
     await waitFor(() => {
+      expect(api.export.feedDeck).toHaveBeenCalled();
       expect(saveDialog).toHaveBeenCalled();
     });
-    expect(api.export.feedDeck).not.toHaveBeenCalled();
     expect(writeTextFile).not.toHaveBeenCalled();
   });
 
   it("shows the backend error when export fails", async () => {
-    vi.mocked(saveDialog).mockResolvedValue("/exports/deck.json");
     vi.mocked(api.export.feedDeck).mockRejectedValue("No flashcards in the selected workspaces");
 
     render(<BoomScrollExportSection />);
@@ -145,6 +146,7 @@ describe("BoomScrollExportSection", () => {
         { title: "Export failed", kind: "error" },
       );
     });
+    expect(saveDialog).not.toHaveBeenCalled();
     expect(writeTextFile).not.toHaveBeenCalled();
     expect(screen.getByText("No flashcards in the selected workspaces")).toBeInTheDocument();
   });
