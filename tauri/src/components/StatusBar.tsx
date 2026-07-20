@@ -798,35 +798,7 @@ export default function StatusBar() {
       .finally(() => setScheduledJobsLoading(false));
   }, [scheduledPopoverRect]);
 
-  const navigate = useNavigate();
   const workspaces = useWorkspaceStore((s) => s.workspaces);
-  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
-  const splitMode = useWorkspaceStore((s) => s.splitMode);
-  const activePaneId = useWorkspaceStore((s) => s.activePaneId);
-  const panes = useWorkspaceStore((s) => s.panes);
-
-  const primaryWs = workspaces.find((w) => w.id === panes.primary.workspaceId);
-  const secondaryWs = workspaces.find((w) => w.id === panes.secondary.workspaceId);
-  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId);
-
-  let workspaceLabel = "No Workspace";
-  let workspaceTooltip = "No active workspace selected";
-
-  if (splitMode) {
-    const activePaneWs = activePaneId === "primary" ? primaryWs : secondaryWs;
-    const activeName = activePaneWs?.name ?? activeWorkspace?.name ?? (workspaces.length > 0 ? workspaces[0].name : "No Workspace");
-    if (primaryWs && secondaryWs && primaryWs.id !== secondaryWs.id) {
-      workspaceLabel = `P1: ${primaryWs.name} | P2: ${secondaryWs.name}`;
-      workspaceTooltip = `Split mode active.\nPane 1: ${primaryWs.name}\nPane 2: ${secondaryWs.name}\nFocused: ${activeName}`;
-    } else {
-      workspaceLabel = activeName;
-      workspaceTooltip = `Active workspace: ${activeName} (${activePaneId === "primary" ? "Pane 1" : "Pane 2"})`;
-    }
-  } else {
-    const activeName = activeWorkspace?.name ?? (workspaces.length > 0 ? workspaces[0].name : "No Workspace");
-    workspaceLabel = activeName;
-    workspaceTooltip = activeWorkspace ? `Active workspace: ${activeWorkspace.name}` : "No workspace selected";
-  }
 
   const totalActiveCount = runningJobs.length + queuedJobs.length + (isAiStreaming ? 1 : 0);
   const hasAnyJobOrPrompt = promptList.length > 0 || isAiStreaming || runningJobs.length > 0 || queuedJobs.length > 0;
@@ -862,25 +834,8 @@ export default function StatusBar() {
         {jobAnnouncement}
       </span>
 
-      {/* Left — active workspace, pending confirmations, active tasks, AI streaming */}
+      {/* Left — pending confirmations, active tasks, AI streaming */}
       <div className="flex min-w-0 items-center gap-3 overflow-x-auto overflow-y-hidden">
-        {/* Workspace Pill */}
-        <Tooltip content={workspaceTooltip}>
-          <button
-            type="button"
-            onClick={() => navigate("/")}
-            className="flex shrink-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
-            aria-label={`Active workspace: ${workspaceLabel}`}
-          >
-            <svg viewBox="0 0 16 16" className="h-3 w-3 fill-current text-[var(--accent-color)]" aria-hidden="true">
-              <path d="M1.75 2.5A1.75 1.75 0 000 4.25v7.5C0 12.716.784 13.5 1.75 13.5h12.5A1.75 1.75 0 0016 11.75v-6A1.75 1.75 0 0014.25 4h-5.464l-1.63-1.63A1.75 1.75 0 005.918 2.5H1.75z" />
-            </svg>
-            <span className="truncate max-w-[140px] font-semibold">{workspaceLabel}</span>
-          </button>
-        </Tooltip>
-
-        <span className="h-3.5 w-px shrink-0 bg-[var(--border-color)]" />
-
         {/* Scheduled Jobs Trigger */}
         <button
           type="button"

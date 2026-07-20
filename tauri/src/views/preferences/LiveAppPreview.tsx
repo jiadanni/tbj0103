@@ -826,13 +826,8 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
 
           {showStatusBar && (
             <div className="h-5 px-2 border-t border-[var(--border-color)] bg-[var(--bg-sidebar)] flex items-center justify-between gap-2 text-[0.55em] text-[var(--text-muted)] shrink-0 select-none overflow-hidden">
-              {/* Left: Active workspace + Jobs trigger + running job pills (mirrors StatusBar.tsx) */}
+              {/* Left: Jobs trigger + running job pills (mirrors StatusBar.tsx) */}
               <div className="flex items-center gap-2 shrink-0">
-                <div className="flex items-center gap-1 font-medium text-[var(--text-primary)]">
-                  <span className="text-[var(--accent-color)]">📁</span>
-                  <span className="font-semibold truncate max-w-[80px]">Workspace</span>
-                </div>
-                <span className="h-2 w-px bg-[var(--border-color)]" />
                 <div className="flex items-center gap-1">
                   <span className="h-1.5 w-1.5 rounded-full bg-[var(--text-muted)]" />
                   <span className="font-medium text-[var(--text-secondary)]">Jobs</span>
