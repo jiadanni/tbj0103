@@ -2,7 +2,7 @@
  * BoomScrollExportSection — export flashcards from selected workspaces as a
  * Boom Scroll deck file for the mobile companion app.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { message, save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { RefreshCw, Smartphone } from "lucide-react";
@@ -48,11 +48,36 @@ export default function BoomScrollExportSection() {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successDialog, setSuccessDialog] = useState<{ title: string; description: string } | null>(null);
+  const [cardCounts, setCardCounts] = useState<Record<string, number>>({});
 
   const picker = useMemo(() => orderForPicker(workspaces), [workspaces]);
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(picker.map((entry) => entry.workspace.id)),
   );
+
+  useEffect(() => {
+    let active = true;
+    async function loadCounts() {
+      const counts: Record<string, number> = {};
+      await Promise.all(
+        picker.map(async ({ workspace }) => {
+          try {
+            const stats = await api.flashcard.getStats(workspace.id);
+            counts[workspace.id] = stats.total_cards;
+          } catch {
+            counts[workspace.id] = 0;
+          }
+        }),
+      );
+      if (active) {
+        setCardCounts(counts);
+      }
+    }
+    void loadCounts();
+    return () => {
+      active = false;
+    };
+  }, [picker]);
 
   const allSelected = picker.length > 0 && picker.every((entry) => selected.has(entry.workspace.id));
   const selectedCount = picker.filter((entry) => selected.has(entry.workspace.id)).length;
@@ -143,18 +168,26 @@ export default function BoomScrollExportSection() {
             <span className="text-[var(--text-muted)]">({selectedCount} of {picker.length} selected)</span>
           </label>
           <ul className="mt-2 max-h-56 space-y-1 overflow-y-auto">
-            {picker.map(({ workspace, depth }) => (
-              <li key={workspace.id} style={{ paddingLeft: depth * 20 }}>
-                <label className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-                  <input
-                    type="checkbox"
-                    checked={selected.has(workspace.id)}
-                    onChange={() => toggle(workspace.id)}
-                  />
-                  {workspace.name}
-                </label>
-              </li>
-            ))}
+            {picker.map(({ workspace, depth }) => {
+              const count = cardCounts[workspace.id];
+              return (
+                <li key={workspace.id} style={{ paddingLeft: depth * 20 }}>
+                  <label className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(workspace.id)}
+                      onChange={() => toggle(workspace.id)}
+                    />
+                    <span>{workspace.name}</span>
+                    {count !== undefined && (
+                      <span className="text-[var(--text-muted)] text-[10px]">
+                        ({count} {count === 1 ? "card" : "cards"})
+                      </span>
+                    )}
+                  </label>
+                </li>
+              );
+            })}
           </ul>
         </div>
       </section>

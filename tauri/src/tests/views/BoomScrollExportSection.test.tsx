@@ -29,6 +29,9 @@ vi.mock("@/lib/api", () => ({
     export: {
       feedDeck: vi.fn(),
     },
+    flashcard: {
+      getStats: vi.fn(() => Promise.resolve({ total_cards: 5, due_cards: 0, reviewed_cards: 0, avg_ease_factor: 2.5 })),
+    },
   },
 }));
 
