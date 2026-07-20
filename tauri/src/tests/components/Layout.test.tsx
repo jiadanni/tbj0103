@@ -179,8 +179,8 @@ describe("Layout", () => {
     const dragHandle = document.querySelector("[data-window-drag-handle]");
 
     expect(dragHandle).not.toBeNull();
-    expect(dragHandle).toHaveClass("flex-1");
-    expect(dragHandle).toHaveClass("min-w-16");
+    expect(dragHandle).toHaveClass("shrink-0");
+    expect(dragHandle).toHaveClass("w-16");
   });
 
   it("renders the sidebar in sidebar navigation mode", () => {
