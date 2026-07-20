@@ -227,10 +227,17 @@ pub fn resolve_prompt(task_type: &str, confirmed: bool) -> bool {
 /// flag was set (i.e., the job was known). Jobs check this between stages.
 pub fn request_cancel(task_type: &str) -> bool {
     if let Ok(mut map) = CANCEL_FLAGS.lock() {
+        let mut cancelled_any = false;
         if map.contains_key(task_type) {
             map.insert(task_type.to_string(), true);
-            return true;
+            cancelled_any = true;
         }
+        // Cancel all currently registered jobs (including manual_data_processing)
+        for (_key, val) in map.iter_mut() {
+            *val = true;
+            cancelled_any = true;
+        }
+        return cancelled_any;
     }
     false
 }
@@ -248,10 +255,18 @@ fn unregister_running(task_type: &str) {
 }
 
 pub fn is_cancelled(task_type: &str) -> bool {
-    CANCEL_FLAGS
-        .lock()
-        .map(|m| m.get(task_type).copied().unwrap_or(false))
-        .unwrap_or(false)
+    if let Ok(m) = CANCEL_FLAGS.lock() {
+        if m.get(task_type).copied().unwrap_or(false) {
+            return true;
+        }
+        if m.get("manual_data_processing").copied().unwrap_or(false) {
+            return true;
+        }
+        if m.values().any(|&cancelled| cancelled) {
+            return true;
+        }
+    }
+    false
 }
 
 /// Read run-mode and heavy-model for a job from settings.

@@ -781,8 +781,11 @@ export default function StatusBar() {
     void api.backgroundJobs.dismiss(taskType).catch(() => undefined);
   }, []);
 
-  const handleStopJob = useCallback((taskType: string) => {
+  const handleStopJob = useCallback((taskType: string, currentTaskType?: string) => {
     void api.backgroundJobs.cancel(taskType).catch(() => undefined);
+    if (currentTaskType && currentTaskType !== taskType) {
+      void api.backgroundJobs.cancel(currentTaskType).catch(() => undefined);
+    }
   }, []);
 
   const toggleScheduledJobsPopover = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
@@ -876,7 +879,7 @@ export default function StatusBar() {
               workspaceName={ws?.name}
               current={meta.current}
               total={meta.total}
-              onStop={() => handleStopJob(type)}
+              onStop={() => handleStopJob(type, meta.current_task_type)}
             />
           );
         })}

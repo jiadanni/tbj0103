@@ -149,6 +149,9 @@ pub async fn process_memory_extraction_for_workspaces(
     };
 
     for (session_id, workspace_id, folder_id, last_count) in sessions {
+        if crate::services::background_scheduler::is_cancelled("memory_extraction") {
+            return Err("cancelled".to_string());
+        }
         let messages = {
             let conn = state.0.get().map_err(|e| e.to_string())?;
             let mut msg_stmt = conn.prepare(
