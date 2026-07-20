@@ -53,6 +53,14 @@ export default defineConfig(async () => ({
     globals: true,
     setupFiles: ["./src/tests/setup.ts"],
     include: ["src/tests/**/*.test.ts", "src/tests/**/*.test.tsx"],
+    pool: "forks",
+    poolOptions: {
+      forks: {
+        minForks: 1,
+        maxForks: 1,
+        execArgv: ["--max-old-space-size=4096"],
+      },
+    },
     coverage: {
       provider: "v8",
       include: ["src/stores/**", "src/hooks/**", "src/lib/platform.ts"],
