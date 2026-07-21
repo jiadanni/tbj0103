@@ -65,14 +65,36 @@ export default function App() {
     ? (nextOrderRef.current?.[0] ?? null)
     : (order[index + 1] ?? null);
 
-  function startFeed(sourceDeck: Deck, ids: Set<string>) {
-    const cards = sourceDeck.cards.filter((card) => ids.has(card.workspaceId));
-    setOrder(shuffle(cards));
+  function filterCardsForMode(cards: DeckCard[], activeMode: FeedMode): DeckCard[] {
+    const hasInfoCards = cards.some((c) => c.kind === "info");
+    const hasTestCards = cards.some((c) => c.kind !== "info");
+
+    if (activeMode === "info" && hasInfoCards) {
+      return cards.filter((c) => c.kind === "info");
+    }
+    if (activeMode === "test" && hasTestCards) {
+      return cards.filter((c) => c.kind !== "info");
+    }
+    return cards;
+  }
+
+  function startFeed(sourceDeck: Deck, ids: Set<string>, activeMode: FeedMode = mode) {
+    const wsCards = sourceDeck.cards.filter((card) => ids.has(card.workspaceId));
+    const modeCards = filterCardsForMode(wsCards, activeMode);
+    setOrder(shuffle(modeCards));
     setIndex(0);
     setRevealed(false);
     setShowFilter(false);
     nextOrderRef.current = null;
     localStorage.setItem("boomscroll_enabled_ids", JSON.stringify(Array.from(ids)));
+  }
+
+  function switchFeedMode(newMode: FeedMode) {
+    setMode(newMode);
+    setRevealed(false);
+    if (deck) {
+      startFeed(deck, enabledIds, newMode);
+    }
   }
 
   function loadDeckFromText(raw: string, initialEnabledIds?: Set<string>, forceDirect = false) {
@@ -336,23 +358,26 @@ export default function App() {
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
     >
-      {/* top-12 keeps the controls clear of the Android status bar (the app draws edge-to-edge). */}
-      <div className="pointer-events-none absolute left-0 right-0 top-12 z-10 flex items-center justify-between px-4">
-        <div className="pointer-events-auto flex overflow-hidden rounded-full border border-zinc-800 text-xs">
+      {/* Safe area top margin keeps controls clear of Android status bar / camera cutout */}
+      <div className="pointer-events-none absolute left-0 right-0 top-[max(3.75rem,calc(env(safe-area-inset-top)+1rem))] z-10 flex items-center justify-between px-4">
+        <div className="pointer-events-auto flex overflow-hidden rounded-full border border-zinc-800 text-xs bg-zinc-950/80 backdrop-blur-md">
           <button
-            onClick={() => setMode("info")}
-            className={`px-3 py-1 ${mode === "info" ? "bg-zinc-800 text-zinc-100" : "text-zinc-500"}`}
-          >
-            Info
-          </button>
-          <button
-            onClick={() => {
-              setMode("test");
-              setRevealed(false);
-            }}
-            className={`px-3 py-1 ${mode === "test" ? "bg-zinc-800 text-zinc-100" : "text-zinc-500"}`}
+            onClick={() => switchFeedMode("test")}
+            className={`px-3 py-1.5 font-medium transition-colors ${mode === "test" ? "bg-zinc-800 text-zinc-100 font-semibold" : "text-zinc-400 hover:text-zinc-200"}`}
           >
             Test
+          </button>
+          <button
+            onClick={() => switchFeedMode("study")}
+            className={`px-3 py-1.5 font-medium transition-colors ${mode === "study" ? "bg-zinc-800 text-zinc-100 font-semibold" : "text-zinc-400 hover:text-zinc-200"}`}
+          >
+            Study
+          </button>
+          <button
+            onClick={() => switchFeedMode("info")}
+            className={`px-3 py-1.5 font-medium transition-colors ${mode === "info" ? "bg-purple-900/60 text-purple-200 font-semibold" : "text-zinc-400 hover:text-zinc-200"}`}
+          >
+            Info
           </button>
         </div>
         <div className="pointer-events-auto flex items-center gap-1.5">
