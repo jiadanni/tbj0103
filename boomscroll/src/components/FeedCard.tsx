@@ -18,7 +18,7 @@ export default function FeedCard({ card, mode, revealed }: FeedCardProps) {
   const showBack = mode !== "test" || revealed;
 
   return (
-    <div className="flex h-full w-full flex-col items-center justify-between px-6 pt-[max(7.5rem,calc(env(safe-area-inset-top)+5rem))] pb-[max(4rem,calc(env(safe-area-inset-bottom)+2.5rem))] text-center select-none overflow-y-auto">
+    <div className="flex h-full w-full flex-col items-center justify-between bg-zinc-950 px-6 pt-[max(7.5rem,calc(env(safe-area-inset-top)+5rem))] pb-[max(4rem,calc(env(safe-area-inset-bottom)+2.5rem))] text-center select-none overflow-y-auto">
       <div className="flex flex-col items-center gap-3 w-full max-w-lg my-auto">
         <div className="flex flex-wrap items-center justify-center gap-2 mb-2">
           <span className="rounded-full bg-purple-950/60 border border-purple-800/50 px-3 py-1 text-[11px] font-semibold tracking-wider text-purple-300 uppercase">
