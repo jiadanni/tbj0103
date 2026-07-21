@@ -917,6 +917,29 @@ export default function WorkspaceSettingsView() {
     }
   }
 
+  async function toggleIgnoreNameInAiContext(workspace: Workspace) {
+    const nextValue = !workspace.ignore_name_in_ai_context;
+    setWorkspaces(workspaces.map((item) =>
+      item.id === workspace.id ? { ...item, ignore_name_in_ai_context: nextValue } : item
+    ));
+    try {
+      await api.workspace.update(
+        workspace.id,
+        workspace.name,
+        workspace.description,
+        workspace.prompt_instructions,
+        undefined,
+        undefined,
+        undefined,
+        nextValue
+      );
+    } catch (err) {
+      console.error("Failed to update workspace AI context setting:", err);
+      const current = await api.workspace.list();
+      setWorkspaces(current);
+    }
+  }
+
   function resolveWorkspaceActivation(workspaceId: string) {
     const workspace = workspaces.find((item) => item.id === workspaceId);
     if (!workspace) {
@@ -1451,6 +1474,37 @@ export default function WorkspaceSettingsView() {
                       </button>
                     );
                   })}
+                </div>
+              </div>
+
+              {/* AI Context: Ignore Workspace Name */}
+              <div className="space-y-3 py-5">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">
+                      Ignore Name in AI Context
+                    </h3>
+                    <p className="mt-1 text-xs text-[var(--text-muted)]">
+                      Exclude this workspace&apos;s name from prompts and context sent to the AI. Useful if the name
+                      has sentimental meaning but isn&apos;t useful signal for generation.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-label="Ignore name in AI context"
+                    aria-checked={!!selectedWorkspace.ignore_name_in_ai_context}
+                    onClick={() => void toggleIgnoreNameInAiContext(selectedWorkspace)}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
+                      selectedWorkspace.ignore_name_in_ai_context ? "bg-[var(--accent-color)]" : "bg-[var(--bg-elevated)] border border-[var(--border-color)]"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        selectedWorkspace.ignore_name_in_ai_context ? "translate-x-6" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
                 </div>
               </div>
 

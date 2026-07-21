@@ -38,6 +38,8 @@ pub struct Workspace {
     pub survey_data: Option<String>,
     #[serde(default)]
     pub about_you: String,
+    #[serde(default)]
+    pub ignore_name_in_ai_context: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,6 +63,7 @@ pub struct UpdateWorkspaceRequest {
     pub prompt_instructions: Option<String>,
     pub survey_data: Option<String>,
     pub about_you: Option<String>,
+    pub ignore_name_in_ai_context: Option<bool>,
 }
 
 impl Workspace {
@@ -82,6 +85,7 @@ impl Workspace {
             last_message_at: None,
             survey_data: None,
             about_you: String::new(),
+            ignore_name_in_ai_context: false,
         }
     }
 }

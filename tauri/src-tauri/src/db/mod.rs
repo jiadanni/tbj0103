@@ -92,6 +92,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v76_learning_cards_generated_by_model",
     "v77_blocked_topics",
     "v78_learning_cards_kind",
+    "v79_workspace_ignore_name_in_ai_context",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -2347,6 +2348,36 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         }
         conn.execute(
             "INSERT INTO _migrations(name) VALUES('v78_learning_cards_kind')",
+            [],
+        )?;
+    }
+
+    // v79: add per-workspace flag to exclude the workspace name from AI
+    // prompt/context construction (e.g. sentimental workspace names that
+    // aren't useful signal for generation).
+    let applied_v79: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v79_workspace_ignore_name_in_ai_context'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v79 == 0 {
+        let mut pragma = conn.prepare("PRAGMA table_info(workspaces);")?;
+        let columns = pragma.query_map([], |r| r.get::<_, String>(1))?;
+        let mut has_column = false;
+        for col in columns {
+            if col? == "ignore_name_in_ai_context" {
+                has_column = true;
+                break;
+            }
+        }
+        if !has_column {
+            conn.execute_batch(
+                "ALTER TABLE workspaces ADD COLUMN ignore_name_in_ai_context INTEGER NOT NULL DEFAULT 0;",
+            )?;
+        }
+        conn.execute(
+            "INSERT INTO _migrations(name) VALUES('v79_workspace_ignore_name_in_ai_context')",
             [],
         )?;
     }

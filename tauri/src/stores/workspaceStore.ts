@@ -18,6 +18,7 @@ export interface Workspace {
   last_message_at: string | null;
   survey_data: string | null;
   about_you?: string;
+  ignore_name_in_ai_context?: boolean;
 }
 
 export interface Folder {
