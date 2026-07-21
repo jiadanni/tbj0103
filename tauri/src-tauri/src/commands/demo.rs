@@ -2,6 +2,7 @@ use crate::db::DbState;
 use crate::models::workspace::CreateWorkspaceRequest;
 use crate::services::workspace_service;
 use tauri::State;
+use rusqlite::OptionalExtension;
 
 /// Demo mode: seeds temporary workspaces with sample data.
 /// Each workspace showcases a different subject area with rich content.
@@ -228,21 +229,42 @@ pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
     }
 
     // Flashcards for AI workspace — expanded
-    let ai_cards: Vec<(&str, &str)> = vec![
-        ("What does Q, K, V stand for in attention?", "Query, Key, Value — Q asks 'what to look for', K advertises 'what I am', V states 'what I contain'."),
-        ("What is the scaling factor in attention and why?", "√d_k — prevents dot products from growing too large in high dimensions, keeping softmax gradients stable."),
-        ("What are scaling laws?", "Empirical observation that performance improves predictably as N^(-α) where N is model/data size and α ≈ 0.07-0.1."),
-        ("Name three emergent abilities in LLMs.", "In-context learning, chain-of-thought reasoning, instruction following. These appear only above certain scales."),
-        ("What is the compute-optimal model size?", "For fixed compute, optimal model size is ~20x smaller than data tokens. Violates early intuitions about model vs data trade-offs."),
-        ("What is tokenization?", "Process of breaking text into atomic units (tokens) that transformers process. Can be characters, words, or subwords."),
-        ("Explain multi-head attention.", "Running N parallel attention heads with different projections, then concatenating. Each head specializes in different patterns."),
-        ("What is fine-tuning?", "Continuing training of a pre-trained model on domain-specific data with low learning rates to adapt to new tasks."),
+    let ai_cards: Vec<(&str, &str, &str)> = vec![
+        ("What does Q, K, V stand for in attention?", "Query, Key, Value — Q asks 'what to look for', K advertises 'what I am', V states 'what I contain'.", "Attention Mechanism"),
+        ("What is the scaling factor in attention and why?", "√d_k — prevents dot products from growing too large in high dimensions, keeping softmax gradients stable.", "Attention Mechanism"),
+        ("What are scaling laws?", "Empirical observation that performance improves predictably as N^(-α) where N is model/data size and α ≈ 0.07-0.1.", "Scaling Laws"),
+        ("Name three emergent abilities in LLMs.", "In-context learning, chain-of-thought reasoning, instruction following. These appear only above certain scales.", "Emergent Abilities"),
+        ("What is the compute-optimal model size?", "For fixed compute, optimal model size is ~20x smaller than data tokens. Violates early intuitions about model vs data trade-offs.", "Scaling Laws"),
+        ("What is tokenization?", "Process of breaking text into atomic units (tokens) that transformers process. Can be characters, words, or subwords.", "Tokenization"),
+        ("Explain multi-head attention.", "Running N parallel attention heads with different projections, then concatenating. Each head specializes in different patterns.", "Attention Mechanism"),
+        ("What is fine-tuning?", "Continuing training of a pre-trained model on domain-specific data with low learning rates to adapt to new tasks.", "Fine-tuning"),
     ];
-    for (front, back) in &ai_cards {
+    for (front, back, topic_name) in &ai_cards {
+        let existing_id: Option<String> = conn
+            .query_row(
+                "SELECT id FROM flashcard_topics WHERE workspace_id = ?1 AND topic = ?2",
+                rusqlite::params![DEMO_WS_AI, topic_name],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|e: rusqlite::Error| e.to_string())?;
+
+        let topic_id = match existing_id {
+            Some(id) => id,
+            None => {
+                let new_id = uuid::Uuid::new_v4().to_string();
+                conn.execute(
+                    "INSERT INTO flashcard_topics (id, workspace_id, topic, source, created_at) VALUES (?1, ?2, ?3, 'manual', ?4)",
+                    rusqlite::params![new_id, DEMO_WS_AI, topic_name, now],
+                ).map_err(|e| e.to_string())?;
+                new_id
+            }
+        };
+
         let cid = uuid::Uuid::new_v4().to_string();
         conn.execute(
-            "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, ease_factor, interval, repetitions, next_review_date, created_at) VALUES (?1, ?2, ?3, ?4, 'ai_generated', 2.5, 1, 0, ?5, ?6)",
-            rusqlite::params![cid, DEMO_WS_AI, front, back, today, now],
+            "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, topic_id, ease_factor, interval, repetitions, next_review_date, created_at) VALUES (?1, ?2, ?3, ?4, 'ai_generated', ?5, 2.5, 1, 0, ?6, ?7)",
+            rusqlite::params![cid, DEMO_WS_AI, front, back, topic_id, today, now],
         ).map_err(|e| e.to_string())?;
     }
 
@@ -363,7 +385,7 @@ Compared to RNNs ($O(n \\cdot d^2)$), self-attention is $O(n^2 \\cdot d)$, makin
 
     // ── Workspace 2: Music Theory ────────────────────────────────────
     conn.execute(
-        "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES (?1, '🎵 Music Theory', ?2, ?3)",
+        "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES (?1, '🎼 Music Theory', ?2, ?3)",
         rusqlite::params![DEMO_WS_MUSIC, now, now],
     ).map_err(|e| e.to_string())?;
 
@@ -544,21 +566,42 @@ Compared to RNNs ($O(n \\cdot d^2)$), self-attention is $O(n^2 \\cdot d)$, makin
     }
 
     // Flashcards for Music Theory workspace — expanded
-    let music_cards: Vec<(&str, &str)> = vec![
-        ("What interval is a tritone?", "Three whole steps (6 half-steps) — e.g. C to F#. Divides octave exactly in half, drives V-I resolution."),
-        ("What are chord qualities in a major key?", "I=Major, ii=minor, iii=minor, IV=Major, V=Major, vi=minor, vii°=diminished."),
-        ("What is a perfect cadence?", "V → I (or V7 → I). Strongest resolution, signaling definitive phrase end."),
-        ("What is the relative minor of C major?", "A minor — same white keys but starts on A, giving different tonal center."),
-        ("What does 4/4 time signature mean?", "4 beats per measure, quarter note gets the beat. Most common signature in Western music."),
-        ("Define polyrhythm.", "Layering different rhythmic patterns: 3:2, 4:3, etc. Creates tension through metric conflict."),
-        ("What is syncopation?", "Emphasizing offbeats or unexpected rhythmic placement, creating swing and rhythmic interest."),
-        ("What is the most common chord progression?", "I→V→vi→IV (C→G→Am→F). Appears in hundreds of pop songs because of its satisfying arc."),
+    let music_cards: Vec<(&str, &str, &str)> = vec![
+        ("What interval is a tritone?", "Three whole steps (6 half-steps) — e.g. C to F#. Divides octave exactly in half, drives V-I resolution.", "Intervals"),
+        ("What are the chord qualities in a major key?", "I=Major, ii=minor, iii=minor, IV=Major, V=Major, vi=minor, vii°=diminished.", "Chords"),
+        ("What is a perfect cadence?", "V → I (or V7 → I). Strongest resolution, signaling definitive phrase end.", "Cadences"),
+        ("What is the relative minor of C major?", "A minor — same white keys but starts on A, giving different tonal center.", "Scales"),
+        ("What does 4/4 time signature mean?", "4 beats per measure, quarter note gets the beat. Most common signature in Western music.", "Rhythm"),
+        ("Define polyrhythm.", "Layering different rhythmic patterns: 3:2, 4:3, etc. Creates tension through metric conflict.", "Rhythm"),
+        ("What is syncopation?", "Emphasizing offbeats or unexpected rhythmic placement, creating swing and rhythmic interest.", "Rhythm"),
+        ("What is the most common chord progression?", "I→V→vi→IV (C→G→Am→F). Appears in hundreds of pop songs because of its satisfying arc.", "Chords"),
     ];
-    for (front, back) in &music_cards {
+    for (front, back, topic_name) in &music_cards {
+        let existing_id: Option<String> = conn
+            .query_row(
+                "SELECT id FROM flashcard_topics WHERE workspace_id = ?1 AND topic = ?2",
+                rusqlite::params![DEMO_WS_MUSIC, topic_name],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|e: rusqlite::Error| e.to_string())?;
+
+        let topic_id = match existing_id {
+            Some(id) => id,
+            None => {
+                let new_id = uuid::Uuid::new_v4().to_string();
+                conn.execute(
+                    "INSERT INTO flashcard_topics (id, workspace_id, topic, source, created_at) VALUES (?1, ?2, ?3, 'manual', ?4)",
+                    rusqlite::params![new_id, DEMO_WS_MUSIC, topic_name, now],
+                ).map_err(|e| e.to_string())?;
+                new_id
+            }
+        };
+
         let cid = uuid::Uuid::new_v4().to_string();
         conn.execute(
-            "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, ease_factor, interval, repetitions, next_review_date, created_at) VALUES (?1, ?2, ?3, ?4, 'ai_generated', 2.5, 1, 0, ?5, ?6)",
-            rusqlite::params![cid, DEMO_WS_MUSIC, front, back, today, now],
+            "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, topic_id, ease_factor, interval, repetitions, next_review_date, created_at) VALUES (?1, ?2, ?3, ?4, 'ai_generated', ?5, 2.5, 1, 0, ?6, ?7)",
+            rusqlite::params![cid, DEMO_WS_MUSIC, front, back, topic_id, today, now],
         ).map_err(|e| e.to_string())?;
     }
 
@@ -666,9 +709,9 @@ Key topics:
         rusqlite::params![uuid::Uuid::new_v4().to_string(), "demo-concept-jazz-harmony-000000001", "demo-concept-chord-progression-00000001", now],
     ).map_err(|e| e.to_string())?;
 
-    // ── Workspace 3: Roman History ──────────────────────────────────────
+    // ── Workspace 3: Roman Empire ──────────────────────────────────────
     conn.execute(
-        "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES (?1, '🏛️ Roman History', ?2, ?3)",
+        "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES (?1, '🏛️ Roman Empire', ?2, ?3)",
         rusqlite::params![DEMO_WS_ROME, now, now],
     ).map_err(|e| e.to_string())?;
 
@@ -844,21 +887,42 @@ Key topics:
     }
 
     // Flashcards for Rome workspace — expanded
-    let rome_cards: Vec<(&str, &str)> = vec![
-        ("What ended the Roman Republic?", "Civil wars culminating in Augustus defeating Antony at Actium (31 BC), becoming first Emperor (27 BC)."),
-        ("When did Caesar cross the Rubicon?", "49 BC. Bringing his army past Rome's pomerium was act of war, triggering civil war with Pompey."),
-        ("What was Marius's military reform?", "Professionalized legions by recruiting poor citizens and paying them. Soldiers became loyal to generals, destabilizing the state."),
-        ("Describe a Roman legion.", "~5,500 troops organized: 10 cohorts, each with maniples/centuries. Centurions (professional NCOs) enforced discipline."),
-        ("What is a centurion?", "Professional military officer commanding century (~80 troops). The backbone of Roman military organization and discipline."),
-        ("Why were Roman tactics superior?", "Formation discipline, centurion command, standardized weapons, fortifications, logistics, and years of training vs seasonal warriors."),
-        ("What did Augustus accomplish?", "Ended civil wars, became first Emperor. Kept republican institutions as cover while consolidating absolute power."),
-        ("Name three figures in the Republic's fall.", "Julius Caesar, Octavian (Augustus), Pompey, Marius, Cicero, Antony. All played roles in the ~100 year decline."),
+    let rome_cards: Vec<(&str, &str, &str)> = vec![
+        ("What ended the Roman Republic?", "Civil wars culminating in Augustus defeating Antony at Actium (31 BC), becoming first Emperor (27 BC).", "Republican Collapse"),
+        ("When did Caesar cross the Rubicon?", "49 BC. Bringing his army past Rome's pomerium was act of war, triggering civil war with Pompey.", "Julius Caesar"),
+        ("What was Marius's military reform?", "Professionalized legions by recruiting poor citizens and paying them. Soldiers became loyal to generals, destabilizing the state.", "Military Reforms"),
+        ("Describe a Roman legion.", "~5,500 troops organized: 10 cohorts, each with maniples/centuries. Centurions (professional NCOs) enforced discipline.", "Military Reforms"),
+        ("What is a centurion?", "Professional military officer commanding century (~80 troops). The backbone of Roman military organization and discipline.", "Military Reforms"),
+        ("Why were Roman tactics superior?", "Formation discipline, centurion command, standardized weapons, fortifications, logistics, and years of training vs seasonal warriors.", "Military Reforms"),
+        ("What did Augustus accomplish?", "Ended civil wars, became first Emperor. Kept republican institutions as cover while consolidating absolute power.", "Augustus"),
+        ("Name three figures in the Republic's fall.", "Julius Caesar, Octavian (Augustus), Pompey, Marius, Cicero, Antony. All played roles in the ~100 year decline.", "Republican Collapse"),
     ];
-    for (front, back) in &rome_cards {
+    for (front, back, topic_name) in &rome_cards {
+        let existing_id: Option<String> = conn
+            .query_row(
+                "SELECT id FROM flashcard_topics WHERE workspace_id = ?1 AND topic = ?2",
+                rusqlite::params![DEMO_WS_ROME, topic_name],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|e: rusqlite::Error| e.to_string())?;
+
+        let topic_id = match existing_id {
+            Some(id) => id,
+            None => {
+                let new_id = uuid::Uuid::new_v4().to_string();
+                conn.execute(
+                    "INSERT INTO flashcard_topics (id, workspace_id, topic, source, created_at) VALUES (?1, ?2, ?3, 'manual', ?4)",
+                    rusqlite::params![new_id, DEMO_WS_ROME, topic_name, now],
+                ).map_err(|e| e.to_string())?;
+                new_id
+            }
+        };
+
         let cid = uuid::Uuid::new_v4().to_string();
         conn.execute(
-            "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, ease_factor, interval, repetitions, next_review_date, created_at) VALUES (?1, ?2, ?3, ?4, 'ai_generated', 2.5, 1, 0, ?5, ?6)",
-            rusqlite::params![cid, DEMO_WS_ROME, front, back, today, now],
+            "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, topic_id, ease_factor, interval, repetitions, next_review_date, created_at) VALUES (?1, ?2, ?3, ?4, 'ai_generated', ?5, 2.5, 1, 0, ?6, ?7)",
+            rusqlite::params![cid, DEMO_WS_ROME, front, back, topic_id, today, now],
         ).map_err(|e| e.to_string())?;
     }
 

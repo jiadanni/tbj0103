@@ -221,7 +221,7 @@ pub(crate) fn build_feed_deck(
 
     let mut card_stmt = conn
         .prepare(
-            "SELECT lc.id, lc.front, lc.back, ft.topic
+            "SELECT lc.id, lc.front, lc.back, ft.topic, lc.kind
              FROM learning_cards lc
              LEFT JOIN flashcard_topics ft ON ft.id = lc.topic_id
              WHERE lc.workspace_id = ?1
@@ -247,10 +247,10 @@ pub(crate) fn build_feed_deck(
             .query_map(rusqlite::params![workspace_id], |r| {
                 Ok(serde_json::json!({
                     "id": r.get::<_, String>(0)?,
-                    "kind": "flashcard",
                     "front": r.get::<_, String>(1)?,
                     "back": r.get::<_, String>(2)?,
                     "topic": r.get::<_, Option<String>>(3)?,
+                    "kind": r.get::<_, String>(4)?,
                     "workspace_id": ws_id,
                 }))
             })

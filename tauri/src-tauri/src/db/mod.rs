@@ -91,6 +91,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v75_fix_workspace_fk_shapes",
     "v76_learning_cards_generated_by_model",
     "v77_blocked_topics",
+    "v78_learning_cards_kind",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -2320,6 +2321,32 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
         conn.execute(
             "INSERT INTO _migrations(name) VALUES('v77_blocked_topics')",
+            [],
+        )?;
+    }
+
+    // v78: add kind column to learning_cards
+    let applied_v78: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v78_learning_cards_kind'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v78 == 0 {
+        let mut pragma = conn.prepare("PRAGMA table_info(learning_cards);")?;
+        let columns = pragma.query_map([], |r| r.get::<_, String>(1))?;
+        let mut has_kind = false;
+        for col in columns {
+            if col? == "kind" {
+                has_kind = true;
+                break;
+            }
+        }
+        if !has_kind {
+            conn.execute_batch("ALTER TABLE learning_cards ADD COLUMN kind TEXT NOT NULL DEFAULT 'flashcard';")?;
+        }
+        conn.execute(
+            "INSERT INTO _migrations(name) VALUES('v78_learning_cards_kind')",
             [],
         )?;
     }
