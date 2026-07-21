@@ -30,6 +30,7 @@ export default function App() {
   const [mode, setMode] = useState<FeedMode>("info");
   const [error, setError] = useState<string | null>(null);
   const [pendingDeck, setPendingDeck] = useState<{ raw: string; deck: Deck } | null>(null);
+  const [useTransition, setUseTransition] = useState(false);
 
   const nextOrderRef = useRef<DeckCard[] | null>(null);
   const startYRef = useRef(0);
@@ -212,11 +213,13 @@ export default function App() {
     }
     setRevealed(false);
     setCommitting(false);
+    setUseTransition(false);
     setDrag(0);
   }
 
   function onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if (committing || !current) {return;}
+    setUseTransition(false);
     startYRef.current = event.clientY;
     movedRef.current = false;
     setDragging(true);
@@ -246,6 +249,7 @@ export default function App() {
       // Element might have unmounted during commit
     }
 
+    setUseTransition(true);
     if (!movedRef.current) {
       if (mode === "test") {setRevealed((r) => !r);}
       setDrag(0);
@@ -348,7 +352,7 @@ export default function App() {
     );
   }
 
-  const transition = dragging ? "none" : "transform 250ms ease-out";
+  const transition = useTransition && !dragging ? "transform 250ms ease-out" : "none";
 
   return (
     <main
