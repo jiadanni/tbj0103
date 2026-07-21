@@ -415,6 +415,7 @@ export default function App() {
 
       {/* Active card (top of stack) */}
       <div
+        key={current.id}
         style={{
           transform: `translate3d(0, ${drag}px, 0)`,
           transition,
