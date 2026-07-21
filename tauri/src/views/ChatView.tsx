@@ -3132,7 +3132,7 @@ export default function ChatView() {
                 <div className="relative flex-1 min-w-0 flex flex-col items-center justify-center gap-6 text-center overflow-hidden">
                   <WaterfallSuggestions
                     suggestions={waterfallSuggestions}
-                    onSelect={(suggestion) => void handleComposerSuggestion(suggestion, false)}
+                    onSelect={(suggestion) => void handleComposerSuggestion(suggestion, true)}
                     onDismiss={handleDismissSuggestion}
                   />
                   <div className="relative z-10 flex flex-col items-center gap-5">
