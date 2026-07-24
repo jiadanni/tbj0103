@@ -46,7 +46,7 @@ interface ChatSuggestion {
   conversation_uuid: string;
   project_uuid: string | null;
   score: number;
-  reason: "title" | "keywords" | "embedding" | "none";
+  reason: "title" | "keywords" | "topics" | "llm" | "embedding" | "none";
 }
 
 type MergeChoice = "merge-this" | "merge-all" | "rename" | "cancel";
@@ -176,6 +176,8 @@ export default function ImportSettingsSection() {
   const [focusedConvUuid, setFocusedConvUuid] = useState<string | null>(null);
   const [orphansExpanded, setOrphansExpanded] = useState(false);
   const [claudeSuggestions, setClaudeSuggestions] = useState<ChatSuggestion[]>([]);
+  // How many projects the topic pass successfully enriched (null = not run yet).
+  const [topicCoverage, setTopicCoverage] = useState<{ enriched: number; total: number } | null>(null);
   const [claudeMemoriesByProject, setClaudeMemoriesByProject] = useState<Record<string, string>>({});
   // chat_uuid → project_uuid (or null = unassigned). Initialised from server suggestions on scan.
   const [chatAssignments, setChatAssignments] = useState<Record<string, string | null>>({});
@@ -622,6 +624,7 @@ export default function ImportSettingsSection() {
     setExpandedMemories(new Set());
     setOrphansExpanded(false);
     setClaudeSuggestions([]);
+    setTopicCoverage(null);
     setClaudeMemoriesByProject({});
     setChatAssignments({});
     setFocusedProjectUuid(null);
@@ -746,7 +749,23 @@ export default function ImportSettingsSection() {
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, [showMatchModelMenu]);
 
+  /// Distil project prompts into topic lists, then re-match deterministically.
+  /// Cost scales with project count (~20 calls' worth) rather than chat count,
+  /// so this is the default for large exports.
+  async function runTopicMatch(opts?: { rerunAll?: boolean; modelOverride?: string }) {
+    return runMatch("topics", opts);
+  }
+
+  /// Classify each chat directly with the LLM. Accurate but expensive — one call
+  /// per ~10 chats, so ~100 sequential calls for a 1000-chat export.
   async function runEmbeddingMatch(opts?: { rerunAll?: boolean; modelOverride?: string }) {
+    return runMatch("llm", opts);
+  }
+
+  async function runMatch(
+    strategy: "topics" | "llm",
+    opts?: { rerunAll?: boolean; modelOverride?: string },
+  ) {
     if (claudeOrphans.length === 0 || claudeProjects.length === 0) { return; }
     setError(null);
     setClaudeEmbeddingMatching(true);
@@ -756,21 +775,44 @@ export default function ImportSettingsSection() {
       const targetConvs = opts?.rerunAll
         ? claudeOrphans
         : claudeOrphans.filter((c) => !chatAssignments[c.uuid]);
-      const suggestions = await api.chatFile.matchClaudeWithLlm({
-        conversations: targetConvs.map((c) => ({
-          uuid: c.uuid,
-          name: c.name,
-          first_user_message: c.first_user_message ?? "",
-        })),
-        projects: claudeProjects.map((p) => ({
-          uuid: p.uuid,
-          name: p.name,
-          prompt_template: p.prompt_template ?? "",
-          description: p.description,
-        })),
-        memoriesByProject: claudeMemoriesByProject,
-        modelOverride: effectiveModel || undefined,
-      });
+      const projectArgs = claudeProjects.map((p) => ({
+        uuid: p.uuid,
+        name: p.name,
+        prompt_template: p.prompt_template ?? "",
+        description: p.description,
+      }));
+
+      let suggestions: ChatSuggestion[];
+      if (strategy === "topics") {
+        const result = await api.chatFile.matchClaudeWithTopics({
+          // Pass full transcripts so matching can look past a vague opener.
+          conversations: targetConvs.map((c) => ({
+            uuid: c.uuid,
+            name: c.name,
+            first_user_message: c.first_user_message ?? "",
+            messages: c.messages,
+          })),
+          projects: projectArgs,
+          memoriesByProject: claudeMemoriesByProject,
+          modelOverride: effectiveModel || undefined,
+        });
+        suggestions = result.suggestions as ChatSuggestion[];
+        setTopicCoverage({
+          enriched: result.projects_with_topics,
+          total: result.projects_total,
+        });
+      } else {
+        suggestions = (await api.chatFile.matchClaudeWithLlm({
+          conversations: targetConvs.map((c) => ({
+            uuid: c.uuid,
+            name: c.name,
+            first_user_message: c.first_user_message ?? "",
+          })),
+          projects: projectArgs,
+          memoriesByProject: claudeMemoriesByProject,
+          modelOverride: effectiveModel || undefined,
+        })) as ChatSuggestion[];
+      }
 
       // If re-running all, start fresh; otherwise merge into existing.
       const newAssignments = opts?.rerunAll
@@ -803,7 +845,7 @@ export default function ImportSettingsSection() {
       setChatAssignments(newAssignments);
       setClaudeSuggestions(newSuggestions);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "Embedding match failed";
+      const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "AI matching failed";
       setError(msg);
     } finally {
       setClaudeEmbeddingMatching(false);
@@ -1850,6 +1892,11 @@ export default function ImportSettingsSection() {
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-medium text-[var(--text-primary)]">
                           Unassigned conversations ({unassignedTotal} of {claudeOrphans.length} · {assignedTotal} already routed to projects)
+                          {topicCoverage && (
+                            <span className="ml-2 font-normal text-[var(--text-muted)]">
+                              topics generated for {topicCoverage.enriched}/{topicCoverage.total} projects
+                            </span>
+                          )}
                         </span>
                         <div className="flex gap-2">
                           {claudeOrphans.length >= 1 && claudeProjects.length >= 1 && unassignedTotal > 0 && (
@@ -1858,10 +1905,10 @@ export default function ImportSettingsSection() {
                               <div className="flex items-center rounded border border-[var(--border-color)] overflow-hidden">
                                 <button
                                   type="button"
-                                  onClick={() => void runEmbeddingMatch()}
+                                  onClick={() => void runTopicMatch()}
                                   disabled={claudeEmbeddingMatching || claudeScanning}
                                   className="inline-flex items-center gap-1 px-2 py-0.5 text-xs text-[var(--accent-color)] hover:bg-[var(--bg-hover)] disabled:opacity-40 disabled:pointer-events-none transition-colors"
-                                  title={importMatchModel ? `Using: ${importMatchModel}` : "Using your configured chat/background model"}
+                                  title={`Summarises each project's instructions into topic keywords, then re-matches every chat locally. Cost scales with projects (${claudeProjects.length}), not chats — expect a few minutes. ${importMatchModel ? `Using: ${importMatchModel}` : "Using your configured chat/background model"}`}
                                 >
                                   {claudeEmbeddingMatching ? <RefreshCw size={11} className="animate-spin" /> : null}
                                   {claudeEmbeddingMatching ? "Matching\u2026" : "Improve with AI matching"}
@@ -1911,10 +1958,18 @@ export default function ImportSettingsSection() {
                                   <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Actions</div>
                                   <button
                                     type="button"
-                                    onClick={() => void runEmbeddingMatch({ rerunAll: true })}
+                                    onClick={() => void runTopicMatch({ rerunAll: true })}
                                     className="w-full text-left px-3 py-1.5 text-xs text-[var(--text-primary)] hover:bg-[var(--bg-hover)] ml-0"
                                   >
                                     Re-run all matching
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void runEmbeddingMatch()}
+                                    title={`Classifies each chat individually — roughly ${Math.ceil(unassignedTotal / 10)} AI calls. Slower, but can catch chats topics miss.`}
+                                    className="w-full text-left px-3 py-1.5 text-xs text-[var(--text-primary)] hover:bg-[var(--bg-hover)] ml-0"
+                                  >
+                                    Classify each chat (slow)
                                   </button>
                                 </div>
                               )}

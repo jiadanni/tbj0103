@@ -1465,6 +1465,31 @@ export const api = {
           modelOverride: args.modelOverride ?? null,
         },
       ),
+    /// Distil project prompts/memories into topic lists (a few LLM calls, scaling
+    /// with project count) then re-run deterministic matching with them. Much
+    /// cheaper than matchClaudeWithLlm, which costs one call per ~10 chats.
+    matchClaudeWithTopics: (args: {
+      conversations: {
+        uuid: string;
+        name: string;
+        first_user_message: string;
+        messages?: { role: string; content: string }[];
+      }[];
+      projects: { uuid: string; name: string; prompt_template: string; description: string }[];
+      memoriesByProject: Record<string, string>;
+      modelOverride?: string;
+    }) =>
+      invoke<{
+        suggestions: { conversation_uuid: string; project_uuid: string | null; score: number; reason: string }[];
+        topics_by_project: Record<string, string[]>;
+        projects_with_topics: number;
+        projects_total: number;
+      }>("match_claude_with_topics", {
+        conversations: args.conversations,
+        projects: args.projects,
+        memoriesByProject: args.memoriesByProject,
+        modelOverride: args.modelOverride ?? null,
+      }),
     importClaudeFiles: (args: {
       folderPath: string;
       folderMappings: Record<string, { workspaceId: string; folderId: string }>;

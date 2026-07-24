@@ -1752,6 +1752,112 @@ pub async fn preview_claude_files(
     .map_err(|e| e.to_string())?
 }
 
+/// Re-run deterministic project matching after distilling each project's
+/// prompt/description/memory into a topic list with one LLM call per few projects.
+///
+/// This is the cheap path: inference cost scales with the number of *projects*
+/// (~20) rather than conversations (~1000), and the per-chat matching stays
+/// deterministic. Prefer this over `match_claude_with_llm` for large exports.
+///
+/// Returns `{ suggestions, topics_by_project, projects_with_topics }` so the UI
+/// can report how many projects were successfully enriched.
+#[tauri::command]
+pub async fn match_claude_with_topics(
+    conversations: Vec<serde_json::Value>,
+    projects: Vec<serde_json::Value>,
+    memories_by_project: std::collections::HashMap<String, String>,
+    model_override: Option<String>,
+    db_state: State<'_, DbState>,
+) -> Result<serde_json::Value, String> {
+    use crate::services::model_settings::{
+        get_configured_background_model, get_configured_chat_model,
+    };
+    use chat_file_store::{ClaudeConversationPreview, ClaudeMessagePreview, ClaudeProjectPreview};
+
+    let model = if let Some(m) = model_override.filter(|s| !s.is_empty()) {
+        m
+    } else {
+        let conn = db_state.0.get().map_err(|e| e.to_string())?;
+        get_configured_background_model(&conn)
+            .or_else(|| get_configured_chat_model(&conn))
+            .ok_or("No AI model configured. Set one in Settings \u{2192} AI Models.")?
+    };
+
+    let ollama = crate::ollama::client::OllamaClient::new(None)?;
+
+    let conv_previews: Vec<ClaudeConversationPreview> = conversations
+        .iter()
+        .filter_map(|v| {
+            // `messages` is optional — when present it widens the matchable text
+            // beyond the first user turn.
+            let messages = v["messages"]
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|m| {
+                            Some(ClaudeMessagePreview {
+                                role: m["role"].as_str()?.to_string(),
+                                content: m["content"].as_str().unwrap_or("").to_string(),
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            Some(ClaudeConversationPreview {
+                uuid: v["uuid"].as_str()?.to_string(),
+                name: v["name"].as_str().unwrap_or("").to_string(),
+                message_count: 0,
+                created_at: String::new(),
+                updated_at: String::new(),
+                project_uuid: None,
+                first_user_message: v["first_user_message"].as_str().unwrap_or("").to_string(),
+                messages,
+            })
+        })
+        .collect();
+
+    let proj_previews: Vec<ClaudeProjectPreview> = projects
+        .iter()
+        .filter_map(|v| {
+            Some(ClaudeProjectPreview {
+                uuid: v["uuid"].as_str()?.to_string(),
+                name: v["name"].as_str().unwrap_or("").to_string(),
+                description: v["description"].as_str().unwrap_or("").to_string(),
+                has_prompt: false,
+                doc_count: 0,
+                conversation_count: 0,
+                has_memory: false,
+                prompt_template: v["prompt_template"].as_str().unwrap_or("").to_string(),
+            })
+        })
+        .collect();
+
+    let topics = chat_file_store::claude_v2_match::generate_project_topics(
+        &proj_previews,
+        &memories_by_project,
+        &ollama,
+        &model,
+    )
+    .await;
+
+    // Deterministic re-match with the enriched vocabulary. Projects the model
+    // failed on are simply absent from `topics` and score on base vocabulary.
+    let suggestions =
+        chat_file_store::claude_v2_match::suggest_project_for_conversations_with_topics(
+            &conv_previews,
+            &proj_previews,
+            &memories_by_project,
+            &topics,
+        );
+
+    Ok(serde_json::json!({
+        "suggestions": suggestions,
+        "topics_by_project": topics,
+        "projects_with_topics": topics.len(),
+        "projects_total": proj_previews.len(),
+    }))
+}
+
 /// Re-run project matching for a set of orphan conversations using an LLM.
 /// Called on demand from the import UI — the scan completes with keyword
 /// suggestions first; the user can then request a more accurate LLM pass.
