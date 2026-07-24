@@ -1149,6 +1149,28 @@ pub async fn import_gemini_takeout(
         new_id
     };
 
+    // Find or create subworkspace (folder) "Gemini"
+    let folder_name = "Gemini";
+    let existing_folder_id: Option<String> = conn
+        .query_row(
+            "SELECT id FROM folders WHERE workspace_id = ?1 AND lower(trim(name)) = lower(trim(?2)) AND is_deleted = 0 LIMIT 1",
+            rusqlite::params![workspace_id, folder_name],
+            |row| row.get(0),
+        )
+        .ok();
+
+    let folder_id = if let Some(id) = existing_folder_id {
+        id
+    } else {
+        let new_folder_id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO folders (id, workspace_id, name, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?4)",
+            rusqlite::params![new_folder_id, workspace_id, folder_name, now],
+        ).map_err(|e| e.to_string())?;
+        new_folder_id
+    };
+
     let mut session_ids = Vec::new();
     let mut skipped = 0usize;
     let mut errors = Vec::new();
@@ -1161,10 +1183,10 @@ pub async fn import_gemini_takeout(
             }
         }
 
-        // Duplicate detection: same title + created_at in same workspace (like LM Studio)
+        // Duplicate detection: same title + created_at in same workspace & folder
         let duplicate: bool = conn.query_row(
-            "SELECT 1 FROM chat_sessions WHERE workspace_id = ?1 AND title = ?2 AND created_at = ?3 AND is_imported = 1 LIMIT 1",
-            rusqlite::params![workspace_id, data.title, data.created_at],
+            "SELECT 1 FROM chat_sessions WHERE workspace_id = ?1 AND folder_id = ?2 AND title = ?3 AND created_at = ?4 AND is_imported = 1 LIMIT 1",
+            rusqlite::params![workspace_id, folder_id, data.title, data.created_at],
             |_| Ok(true),
         ).unwrap_or(false);
 
@@ -1173,7 +1195,7 @@ pub async fn import_gemini_takeout(
             continue;
         }
 
-        match chat_file_store::import_chat_data(&conn, data, &workspace_id, "") {
+        match chat_file_store::import_chat_data(&conn, data, &workspace_id, &folder_id) {
             Ok(sid) => session_ids.push(sid),
             Err(e) => errors.push(format!("{}: {e}", data.title)),
         }
@@ -1190,6 +1212,7 @@ pub async fn import_gemini_takeout(
         "skipped": skipped,
         "workspace_id": workspace_id,
         "workspace_name": workspace_name,
+        "folder_id": folder_id,
         "errors": errors.len(),
         "error_messages": errors.iter().take(10).cloned().collect::<Vec<_>>(),
     }))

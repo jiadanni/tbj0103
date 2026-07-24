@@ -1216,11 +1216,9 @@ fn create_session_from_messages(messages: Vec<ChatFileMessage>) -> ChatFileData 
 
     let trimmed = raw_title.trim();
     let title = if trimmed.is_empty() {
-        "Gemini - Untitled".to_string()
-    } else if trimmed.to_lowercase().starts_with("gemini") {
-        trimmed.to_string()
+        "Untitled".to_string()
     } else {
-        format!("Gemini - {trimmed}")
+        trimmed.to_string()
     };
 
     ChatFileData {
@@ -2289,7 +2287,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_gemini_takeout_title_prefix() {
+    fn test_parse_gemini_takeout_unprefixed_title() {
         let html_sample = r#"
         <div class="outer-cell">
           Prompted How do I configure Vite?<br>24 Jul 2026, 12:00:00
@@ -2298,17 +2296,7 @@ mod tests {
         "#;
         let sessions = parse_gemini_takeout(html_sample).unwrap();
         assert_eq!(sessions.len(), 1);
-        assert_eq!(sessions[0].title, "Gemini - How do I configure Vite?");
+        assert_eq!(sessions[0].title, "How do I configure Vite?");
         assert_eq!(sessions[0].model, "gemini");
-
-        let html_sample_already_prefixed = r#"
-        <div class="outer-cell">
-          Prompted Gemini - How do I configure Vite?<br>24 Jul 2026, 12:00:00
-          <p>You configure Vite in vite.config.ts</p>
-        </div>
-        "#;
-        let sessions2 = parse_gemini_takeout(html_sample_already_prefixed).unwrap();
-        assert_eq!(sessions2.len(), 1);
-        assert_eq!(sessions2[0].title, "Gemini - How do I configure Vite?");
     }
 }

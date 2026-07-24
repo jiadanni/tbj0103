@@ -441,13 +441,13 @@ export default function ImportSettingsSection() {
       const [freshWorkspaces, importedProjects, firstSession] = await Promise.all([
         api.workspace.list(),
         api.folder.list(result.workspace_id),
-        api.chat.listSessions(result.workspace_id, null, { limit: 1, offset: 0 }),
+        api.chat.listSessions(result.workspace_id, result.folder_id ?? null, { limit: 1, offset: 0 }),
       ]);
 
       setWorkspaces(freshWorkspaces);
       setFoldersForWorkspace(result.workspace_id, importedProjects);
       setActiveWorkspaceId(result.workspace_id);
-      setActiveFolderId(null);
+      setActiveFolderId(result.folder_id ?? null);
 
       const lines = [
         `${result.imported_sessions} conversation${result.imported_sessions === 1 ? "" : "s"} imported.`,

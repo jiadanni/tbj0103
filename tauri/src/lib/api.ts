@@ -1375,6 +1375,7 @@ export const api = {
         skipped: number;
         workspace_id: string;
         workspace_name: string;
+        folder_id?: string;
         errors: number;
         error_messages: string[];
       }>("import_gemini_takeout", { filePath, workspaceName: workspaceName ?? null, selectedIds: selectedIds ?? null }),
