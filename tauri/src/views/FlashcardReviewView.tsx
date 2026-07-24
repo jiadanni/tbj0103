@@ -119,6 +119,12 @@ export default function FlashcardReviewView({
   const [newFront, setNewFront] = useState("");
   const [newBack, setNewBack] = useState("");
 
+  // Generate modal state
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [modalTopic, setModalTopic] = useState("");
+  const [modalTopicId, setModalTopicId] = useState<string | null>(null);
+  const [modalMode, setModalMode] = useState<"topic" | "custom">("custom");
+
   // Topic list state (chat-derived)
   const [topics, setTopics] = useState<FlashcardTopic[]>([]);
   const [generatingTopicId, setGeneratingTopicId] = useState<string | null>(null);
@@ -270,14 +276,16 @@ export default function FlashcardReviewView({
     }
   }
 
-  async function generateCards() {
-    if (!topic.trim() || !activeWorkspaceId || !selectedModel || isGenerating) {return;}
+  async function generateCards(customTopicName?: string) {
+    const targetTopic = customTopicName ?? topic;
+    if (!targetTopic.trim() || !activeWorkspaceId || !selectedModel || isGenerating) {return;}
     setIsGenerating(true);
     setGenerateError("");
     try {
-      const generated = await api.flashcard.generate(activeWorkspaceId, topic.trim(), selectedModel, cardCount, ollamaUrl);
+      const generated = await api.flashcard.generate(activeWorkspaceId, targetTopic.trim(), selectedModel, cardCount, ollamaUrl);
       setCards((prev) => [...prev, ...generated]);
-      setTopic("");
+      if (!customTopicName) { setTopic(""); }
+      refreshTopics();
       // Refresh stats
       api.flashcard.getStats(activeWorkspaceId).then(setStats).catch(() => {});
     } catch (err) {
@@ -306,14 +314,24 @@ export default function FlashcardReviewView({
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-color)]">
           <h2 className="text-sm font-semibold text-[var(--text-primary)]">Flashcards</h2>
-          <Tooltip content="Add card manually">
-            <button
-              onClick={() => setShowCreate(true)}
-              className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-            >
-              <Plus size={14} />
-            </button>
-          </Tooltip>
+          <div className="flex items-center gap-1">
+            <Tooltip content="Generate flashcards with AI">
+              <button
+                onClick={() => setShowGenerateModal(true)}
+                className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--accent-color)]"
+              >
+                <Sparkles size={14} />
+              </button>
+            </Tooltip>
+            <Tooltip content="Add card manually">
+              <button
+                onClick={() => setShowCreate(true)}
+                className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                <Plus size={14} />
+              </button>
+            </Tooltip>
+          </div>
         </div>
 
         {/* Stats — compact, with progress */}
@@ -446,7 +464,7 @@ export default function FlashcardReviewView({
                 className="w-full px-2 py-1 text-[11px] rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
               />
               <button
-                onClick={generateCards}
+                onClick={() => generateCards()}
                 disabled={isGenerating || !topic.trim() || !selectedModel}
                 className="w-full flex items-center justify-center gap-1 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-secondary)] text-[10px] hover:border-[var(--accent-color)] disabled:opacity-40"
               >
@@ -557,10 +575,32 @@ export default function FlashcardReviewView({
             <Sparkles size={40} className="text-[var(--accent-color)] opacity-50" />
             <h2 className="text-lg font-semibold text-[var(--text-primary)]">No cards due right now</h2>
             <p className="text-sm text-[var(--text-muted)]">
-              {topics.length > 0
-                ? "Pick a topic in the sidebar to generate more cards, or add one manually with the + button."
-                : "Topics will appear here as you chat. You can also add a card manually with the + button or use Custom topic in the sidebar."}
+              Generate new flashcards using AI from workspace topics or any custom topic of your choice.
             </p>
+            <div className="flex flex-wrap items-center justify-center gap-3 mt-2">
+              <button
+                onClick={() => setShowGenerateModal(true)}
+                disabled={!selectedModel || isGenerating}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--accent-color)] text-white text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                <Sparkles size={16} /> Generate Flashcards
+              </button>
+              {suggested && (
+                <button
+                  onClick={startSuggested}
+                  disabled={!!generatingTopicId}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--accent-color)]/10 border border-[var(--accent-color)]/30 text-[var(--accent-color)] text-sm font-medium hover:bg-[var(--accent-color)]/20 transition-colors disabled:opacity-50"
+                >
+                  <Play size={14} /> Study {suggested.topic.topic}
+                </button>
+              )}
+              <button
+                onClick={() => setShowCreate(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[var(--border-color)] text-[var(--text-secondary)] text-sm font-medium hover:bg-[var(--bg-hover)] transition-colors"
+              >
+                <Plus size={16} /> Add Card Manually
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -598,6 +638,162 @@ export default function FlashcardReviewView({
               </button>
               <button onClick={createCard} className="flex-1 py-2 rounded-lg bg-[var(--accent-color)] text-white text-sm hover:opacity-90">
                 Add Card
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Generate flashcards modal */}
+      {showGenerateModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          onClick={() => setShowGenerateModal(false)}
+          onKeyDown={(e) => { if (e.key === "Escape") { setShowGenerateModal(false); } }}
+        >
+          <div
+            className="w-[420px] bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-2xl p-6 shadow-2xl flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3">
+              <div className="flex items-center gap-2">
+                <Sparkles size={18} className="text-[var(--accent-color)]" />
+                <h3 className="text-base font-semibold text-[var(--text-primary)]">Generate Flashcards with AI</h3>
+              </div>
+              <button
+                onClick={() => setShowGenerateModal(false)}
+                className="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-sm px-1.5 py-0.5 rounded hover:bg-[var(--bg-hover)]"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Mode selection tabs */}
+            <div className="flex gap-2 rounded-lg bg-[var(--bg-primary)] p-1 border border-[var(--border-color)]">
+              <button
+                onClick={() => setModalMode("custom")}
+                className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  modalMode === "custom"
+                    ? "bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                }`}
+              >
+                Custom Topic
+              </button>
+              {topics.length > 0 && (
+                <button
+                  onClick={() => {
+                    setModalMode("topic");
+                    if (!modalTopicId && topics.length > 0) { setModalTopicId(topics[0].id); }
+                  }}
+                  className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                    modalMode === "topic"
+                      ? "bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm"
+                      : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                  }`}
+                >
+                  Workspace Topic ({topics.length})
+                </button>
+              )}
+            </div>
+
+            {modalMode === "custom" ? (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-[var(--text-secondary)]">Topic or Subject</label>
+                <input
+                  autoFocus
+                  value={modalTopic}
+                  onChange={(e) => setModalTopic(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && modalTopic.trim() && selectedModel && !isGenerating) {
+                      generateCards(modalTopic).then(() => {
+                        setModalTopic("");
+                        setShowGenerateModal(false);
+                      });
+                    }
+                  }}
+                  placeholder="e.g. Memory safety in Rust, French grammar rules"
+                  disabled={isGenerating}
+                  className="w-full px-3 py-2 text-xs rounded-lg bg-[var(--bg-input)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                />
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-[var(--text-secondary)]">Select Workspace Topic</label>
+                <select
+                  value={modalTopicId ?? ""}
+                  onChange={(e) => setModalTopicId(e.target.value)}
+                  disabled={isGenerating}
+                  className="w-full px-3 py-2 text-xs rounded-lg bg-[var(--bg-input)] border border-[var(--border-color)] text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                >
+                  {topics.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.topic} ({t.card_count} existing card{t.card_count === 1 ? "" : "s"})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-[var(--text-secondary)]">AI Model</label>
+                <CompactMenuSelect
+                  label="Model"
+                  value={selectedModel}
+                  options={groupedModelOptions.options}
+                  groups={groupedModelOptions.groups}
+                  onChange={(val) => setSelectedModel(val)}
+                  widthClassName="w-full"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-[var(--text-secondary)]">Card Count</label>
+                <CompactMenuSelect
+                  label="Cards"
+                  value={cardCount.toString()}
+                  options={[3, 5, 8, 10, 15, 20].map((n) => ({ value: n.toString(), label: `${n} cards` }))}
+                  onChange={(val) => setCardCount(Number(val))}
+                  widthClassName="w-full"
+                />
+              </div>
+            </div>
+
+            {generateError && (
+              <p className="text-xs text-red-400 font-medium">{generateError}</p>
+            )}
+
+            <div className="flex gap-2 pt-2 border-t border-[var(--border-color)]">
+              <button
+                onClick={() => setShowGenerateModal(false)}
+                className="flex-1 py-2 rounded-xl border border-[var(--border-color)] text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (modalMode === "topic" && modalTopicId) {
+                    await generateForTopic(modalTopicId);
+                    setShowGenerateModal(false);
+                  } else if (modalMode === "custom" && modalTopic.trim()) {
+                    await generateCards(modalTopic);
+                    setModalTopic("");
+                    setShowGenerateModal(false);
+                  }
+                }}
+                disabled={
+                  isGenerating ||
+                  !selectedModel ||
+                  (modalMode === "custom" && !modalTopic.trim()) ||
+                  (modalMode === "topic" && !modalTopicId)
+                }
+                className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-[var(--accent-color)] text-white text-xs font-medium hover:opacity-90 disabled:opacity-40"
+              >
+                {isGenerating ? (
+                  <><Loader2 size={14} className="animate-spin" /> Generating…</>
+                ) : (
+                  <><Sparkles size={14} /> Generate Cards</>
+                )}
               </button>
             </div>
           </div>

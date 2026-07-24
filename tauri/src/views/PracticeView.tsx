@@ -68,7 +68,7 @@ export default function PracticeView() {
 
       <div className="flex-1 min-h-0 overflow-hidden">
         <Suspense fallback={<div className="p-4 text-sm text-[var(--text-muted)]">Loading…</div>}>
-          {practiceMode === "review" && <ReviewPane hideSidebar />}
+          {practiceMode === "review" && <ReviewPane />}
           {practiceMode === "quiz" && (
             <QuizzesPane
               hideSidebar
