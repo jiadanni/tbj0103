@@ -1207,11 +1207,20 @@ fn create_session_from_messages(messages: Vec<ChatFileMessage>) -> ChatFileData 
 
     // Create a title from the first prompt (limit to ~120 chars, char-safe)
     let flat_prompt = first_prompt.replace('\n', " ");
-    let title = if flat_prompt.chars().count() > 120 {
+    let raw_title = if flat_prompt.chars().count() > 120 {
         let truncated: String = flat_prompt.chars().take(117).collect();
         format!("{truncated}...")
     } else {
         flat_prompt
+    };
+
+    let trimmed = raw_title.trim();
+    let title = if trimmed.is_empty() {
+        "Gemini - Untitled".to_string()
+    } else if trimmed.to_lowercase().starts_with("gemini") {
+        trimmed.to_string()
+    } else {
+        format!("Gemini - {trimmed}")
     };
 
     ChatFileData {
@@ -2277,5 +2286,29 @@ mod tests {
                 "parsed orphan conversations should not be empty"
             );
         }
+    }
+
+    #[test]
+    fn test_parse_gemini_takeout_title_prefix() {
+        let html_sample = r#"
+        <div class="outer-cell">
+          Prompted 24 Jul 2026, 12:00:00<br>How do I configure Vite?
+          <p>You configure Vite in vite.config.ts</p>
+        </div>
+        "#;
+        let sessions = parse_gemini_takeout(html_sample).unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].title, "Gemini - How do I configure Vite?");
+        assert_eq!(sessions[0].model, "gemini");
+
+        let html_sample_already_prefixed = r#"
+        <div class="outer-cell">
+          Prompted 24 Jul 2026, 12:00:00<br>Gemini - How do I configure Vite?
+          <p>You configure Vite in vite.config.ts</p>
+        </div>
+        "#;
+        let sessions2 = parse_gemini_takeout(html_sample_already_prefixed).unwrap();
+        assert_eq!(sessions2.len(), 1);
+        assert_eq!(sessions2[0].title, "Gemini - How do I configure Vite?");
     }
 }
