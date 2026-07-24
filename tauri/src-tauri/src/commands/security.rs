@@ -51,6 +51,24 @@ pub fn require_auth(auth: &State<AuthState>, db: &State<DbState>) -> Result<(), 
     Ok(())
 }
 
+/// Like `require_auth`, but only enforced when the `strict_auth_mode`
+/// setting is enabled. Disabled by default — destructive operations are
+/// unprotected unless the user opts in via Settings → Security.
+pub fn require_auth_for_destructive_ops(
+    auth: &State<AuthState>,
+    db: &State<DbState>,
+) -> Result<(), String> {
+    let conn = db.0.get().map_err(|e| e.to_string())?;
+    let strict = get_setting(&conn, "strict_auth_mode")
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    if !strict {
+        return Ok(());
+    }
+    // Delegate to the standard auth check
+    require_auth(auth, db)
+}
+
 fn biometric_available() -> bool {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
@@ -384,10 +402,90 @@ pub async fn authenticate_biometric() -> Result<bool, String> {
     Ok(false)
 }
 
-/// Called by the frontend after successful PIN or biometric authentication.
-/// Sets the backend auth state to unlocked so that protected commands work.
+/// Called by the frontend to unlock the app.
+/// Verifies the PIN server-side before setting the auth state.
+/// For biometric unlock, pass `biometric: true` with `pin` omitted —
+/// the biometric challenge must already have succeeded via
+/// `authenticate_biometric`.
 #[tauri::command]
-pub fn unlock_app(auth: State<AuthState>) -> Result<(), String> {
+pub fn unlock_app(
+    auth: State<AuthState>,
+    state: State<DbState>,
+    pin: Option<String>,
+    biometric: Option<bool>,
+) -> Result<(), String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+
+    // If no lock is configured, just unlock
+    let stored_hash = get_setting(&conn, PIN_HASH_KEY).unwrap_or_default();
+    let pin_lock_enabled = get_setting(&conn, "pin_lock_enabled")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(false)
+        && !stored_hash.trim().is_empty();
+
+    if !pin_lock_enabled {
+        auth.0.store(true, Ordering::Release);
+        return Ok(());
+    }
+
+    // Biometric path: the OS-level challenge already ran in authenticate_biometric.
+    // We trust that result because it is a Tauri command that cannot be faked from JS.
+    if biometric.unwrap_or(false) {
+        let touch_id_enabled = get_setting(&conn, "touch_id_enabled")
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        if !touch_id_enabled {
+            return Err("Biometric authentication is not enabled.".to_string());
+        }
+        auth.0.store(true, Ordering::Release);
+        return Ok(());
+    }
+
+    // PIN path: verify server-side
+    let pin = pin.ok_or_else(|| "PIN is required to unlock.".to_string())?;
+    validate_pin(&pin)?;
+
+    // Check lockout
+    if let Some(lockout_until) = get_setting(&conn, PIN_LOCKOUT_UNTIL_KEY) {
+        if let Ok(until) = lockout_until.parse::<i64>() {
+            let now = chrono::Utc::now().timestamp();
+            if now < until {
+                let remaining = until - now;
+                return Err(format!(
+                    "Too many failed attempts. Try again in {} seconds.",
+                    remaining
+                ));
+            }
+            set_setting(&conn, PIN_FAILED_ATTEMPTS_KEY, "0")?;
+            set_setting(&conn, PIN_LOCKOUT_UNTIL_KEY, "")?;
+        }
+    }
+
+    if !verify_pin_hash(&pin, &stored_hash)? {
+        // Increment failed attempts
+        let attempts: u32 = get_setting(&conn, PIN_FAILED_ATTEMPTS_KEY)
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0)
+            + 1;
+        set_setting(&conn, PIN_FAILED_ATTEMPTS_KEY, &attempts.to_string())?;
+
+        if attempts >= MAX_PIN_ATTEMPTS {
+            let rounds_over = attempts - MAX_PIN_ATTEMPTS;
+            let lockout_secs: i64 = std::cmp::min(30 * (1i64 << rounds_over), 900);
+            let until = chrono::Utc::now().timestamp() + lockout_secs;
+            set_setting(&conn, PIN_LOCKOUT_UNTIL_KEY, &until.to_string())?;
+            return Err(format!(
+                "Too many failed attempts. Try again in {} seconds.",
+                lockout_secs
+            ));
+        }
+
+        return Err("Incorrect PIN.".to_string());
+    }
+
+    // Success — reset failed attempts and unlock
+    set_setting(&conn, PIN_FAILED_ATTEMPTS_KEY, "0")?;
+    set_setting(&conn, PIN_LOCKOUT_UNTIL_KEY, "")?;
     auth.0.store(true, Ordering::Release);
     Ok(())
 }

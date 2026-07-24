@@ -1,3 +1,4 @@
+use crate::commands::security::{require_auth_for_destructive_ops, AuthState};
 use crate::db::DbState;
 use crate::models::note::{
     CreateNoteRequest, GetOrCreateDailyNoteRequest, NoteTemplate, ProjectNote, UpdateNoteRequest,
@@ -152,7 +153,8 @@ pub fn update_note(state: State<DbState>, req: UpdateNoteRequest) -> Result<(), 
 }
 
 #[tauri::command]
-pub fn delete_note(state: State<DbState>, id: String) -> Result<(), String> {
+pub fn delete_note(auth: State<AuthState>, state: State<DbState>, id: String) -> Result<(), String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute(
         "DELETE FROM project_notes WHERE id = ?1",
@@ -384,7 +386,8 @@ pub fn update_daily_note(
 
 /// Delete a custom (non-built-in) note template.
 #[tauri::command]
-pub fn delete_template(state: State<DbState>, id: String) -> Result<(), String> {
+pub fn delete_template(auth: State<AuthState>, state: State<DbState>, id: String) -> Result<(), String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     // Prevent deletion of built-in templates
     let is_built_in: i32 = conn

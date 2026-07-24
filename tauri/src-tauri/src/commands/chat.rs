@@ -2,6 +2,7 @@ use tauri::State;
 
 use crate::commands::chat_file::{ChatCryptoState, ChatsDirState};
 use crate::commands::quick_search::QuickSearchRuntimeState;
+use crate::commands::security::{require_auth_for_destructive_ops, AuthState};
 use crate::db::DbState;
 use crate::logging;
 use crate::models::chat::{AddMessageRequest, ChatSession, CreateChatSessionRequest, Message};
@@ -148,21 +149,25 @@ pub fn get_related_chats(
 
 #[tauri::command]
 pub fn delete_chat_session(
+    auth: State<AuthState>,
     state: State<DbState>,
     workspace_id: String,
     id: String,
 ) -> Result<(), String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     chat_service::soft_delete(&conn, &workspace_id, &id)
 }
 
 #[tauri::command]
 pub fn hard_delete_chat_session(
+    auth: State<AuthState>,
     state: State<DbState>,
     workspace_id: String,
     id: String,
     chats_dir_state: State<ChatsDirState>,
 ) -> Result<(), String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     chat_service::hard_delete(&conn, &workspace_id, &id, &chats_dir_state.0)
 }
@@ -189,10 +194,12 @@ pub fn restore_chat_session(
 
 #[tauri::command]
 pub fn empty_recycle_bin(
+    auth: State<AuthState>,
     state: State<DbState>,
     workspace_id: String,
     chats_dir_state: State<ChatsDirState>,
 ) -> Result<(), String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     chat_service::empty_recycle_bin(&conn, &workspace_id, &chats_dir_state.0)
 }
@@ -378,10 +385,12 @@ pub fn refresh_message(
 
 #[tauri::command]
 pub fn delete_message_and_following(
+    auth: State<AuthState>,
     state: State<DbState>,
     session_id: String,
     message_id: String,
 ) -> Result<usize, String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     chat_service::delete_message_and_following(&conn, &session_id, &message_id)
 }

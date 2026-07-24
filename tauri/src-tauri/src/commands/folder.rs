@@ -1,4 +1,5 @@
 use crate::commands::chat_file::{ChatCryptoState, ChatsDirState};
+use crate::commands::security::{require_auth_for_destructive_ops, AuthState};
 use crate::db::DbState;
 use crate::models::folder::{CreateFolderRequest, Folder, UpdateFolderRequest};
 use crate::services::folder_service;
@@ -40,7 +41,8 @@ pub fn update_folder(
 }
 
 #[tauri::command]
-pub fn delete_folder(state: State<DbState>, id: String) -> Result<(), String> {
+pub fn delete_folder(auth: State<AuthState>, state: State<DbState>, id: String) -> Result<(), String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     folder_service::delete(&conn, &id)
 }

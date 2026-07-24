@@ -1,3 +1,4 @@
+use crate::commands::security::{require_auth_for_destructive_ops, AuthState};
 use crate::db::DbState;
 use crate::models::memory::{
     CreateMemoryRequest, ExtractMemoriesRequest, Memory, MemorySummary, MemorySummarySnapshot,
@@ -199,7 +200,8 @@ pub async fn update_memory(
 }
 
 #[tauri::command]
-pub fn delete_memory(state: State<DbState>, id: String) -> Result<(), String> {
+pub fn delete_memory(auth: State<AuthState>, state: State<DbState>, id: String) -> Result<(), String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM memories WHERE id = ?1", rusqlite::params![id])
         .map_err(|e| e.to_string())?;
@@ -207,7 +209,8 @@ pub fn delete_memory(state: State<DbState>, id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn delete_workspace_facts(state: State<DbState>, workspace_id: String) -> Result<i64, String> {
+pub fn delete_workspace_facts(auth: State<AuthState>, state: State<DbState>, workspace_id: String) -> Result<i64, String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute(
         "DELETE FROM memories WHERE workspace_id = ?1 AND scope = 'workspace' AND memory_type = 'fact'",
@@ -239,10 +242,12 @@ pub fn get_active_memories(
 
 #[tauri::command]
 pub fn delete_all_memories(
+    auth: State<AuthState>,
     state: State<DbState>,
     workspace_id: String,
     scope: String,
 ) -> Result<(), String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     if scope == "global" {
         conn.execute("DELETE FROM memories WHERE scope = 'global'", [])
@@ -259,10 +264,12 @@ pub fn delete_all_memories(
 
 #[tauri::command]
 pub fn deactivate_all_memories(
+    auth: State<AuthState>,
     state: State<DbState>,
     workspace_id: String,
     scope: String,
 ) -> Result<(), String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     if scope == "global" {

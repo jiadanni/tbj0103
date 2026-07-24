@@ -1,3 +1,4 @@
+use crate::commands::security::{require_auth_for_destructive_ops, AuthState};
 use crate::db::DbState;
 use crate::models::source::{CreateSourceRequest, Source};
 use crate::services::ai_content_generator::generate_summary;
@@ -187,7 +188,8 @@ pub fn update_source(
 }
 
 #[tauri::command]
-pub fn delete_source(state: State<DbState>, id: String) -> Result<(), String> {
+pub fn delete_source(auth: State<AuthState>, state: State<DbState>, id: String) -> Result<(), String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM sources WHERE id = ?1", rusqlite::params![id])
         .map_err(|e| e.to_string())?;

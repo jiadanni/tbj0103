@@ -1,3 +1,4 @@
+use crate::commands::security::{require_auth_for_destructive_ops, AuthState};
 use crate::db::DbState;
 use crate::models::quiz::{Quiz, QuizAnswer, QuizDetail, QuizQuestion, QuizSummary};
 use crate::services::model_settings::{get_model_for_job, get_ollama_base_url};
@@ -373,7 +374,8 @@ pub fn finalize_quiz(state: State<DbState>, quiz_id: String) -> Result<Quiz, Str
 }
 
 #[tauri::command]
-pub fn delete_quiz(state: State<DbState>, quiz_id: String) -> Result<(), String> {
+pub fn delete_quiz(auth: State<AuthState>, state: State<DbState>, quiz_id: String) -> Result<(), String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM quizzes WHERE id = ?1", params![quiz_id])
         .map_err(|e| e.to_string())?;

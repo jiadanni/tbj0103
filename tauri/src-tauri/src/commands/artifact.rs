@@ -1,3 +1,4 @@
+use crate::commands::security::{require_auth_for_destructive_ops, AuthState};
 use crate::db::DbState;
 use crate::models::artifact::{Artifact, ArtifactSummary, CreateArtifactRequest};
 use crate::services::artifact_service;
@@ -171,7 +172,8 @@ pub async fn create_artifact_version(
 }
 
 #[tauri::command]
-pub async fn delete_artifact(state: State<'_, DbState>, id: String) -> Result<(), String> {
+pub async fn delete_artifact(auth: State<'_, AuthState>, state: State<'_, DbState>, id: String) -> Result<(), String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     artifact_service::delete_artifact(&conn, &id)
 }

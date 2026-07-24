@@ -1,3 +1,4 @@
+use crate::commands::security::{require_auth_for_destructive_ops, AuthState};
 use crate::db::DbState;
 use crate::models::workspace::CreateWorkspaceRequest;
 use crate::services::workspace_service;
@@ -39,7 +40,8 @@ const DEMO_GOAL_ROME_PUNIC: &str = "demo-goal-rome-punic-wars-00000000001";
 const DEMO_NOTE_ROME_LEGATE: &str = "demo-note-rome-legate-duties-000000001";
 
 #[tauri::command]
-pub fn activate_demo_mode(state: State<DbState>) -> Result<String, String> {
+pub fn activate_demo_mode(auth: State<AuthState>, state: State<DbState>) -> Result<String, String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
@@ -1021,7 +1023,8 @@ Notable achievements:
 }
 
 #[tauri::command]
-pub fn deactivate_demo_mode(state: State<DbState>) -> Result<(), String> {
+pub fn deactivate_demo_mode(auth: State<AuthState>, state: State<DbState>) -> Result<(), String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
 
     // Disable foreign keys temporarily so we can purge demo data even if some

@@ -679,7 +679,7 @@ export interface GraphStatistics {
 }
 
 export interface AppSettings {
-  preferred_model: string; backup_enabled: boolean; touch_id_enabled: boolean; pin_lock_enabled: boolean;
+  preferred_model: string; backup_enabled: boolean; touch_id_enabled: boolean; pin_lock_enabled: boolean; strict_auth_mode: boolean;
   auto_lock_minutes: number; theme: string; accent_color: string;
   font_size: number; sidebar_width: number; ollama_base_url: string;
   ollama_remote_enabled: boolean;
@@ -818,6 +818,7 @@ export interface AdvancedSettings {
   backup_enabled: boolean;
   touch_id_enabled: boolean;
   pin_lock_enabled: boolean;
+  strict_auth_mode: boolean;
   auto_lock_minutes: number;
   start_at_login: boolean;
   open_in_background: boolean;
@@ -1503,7 +1504,8 @@ export const api = {
     verifyPin: (pin: string) => invoke<boolean>("verify_pin_passcode", { pin }),
     removePin: (currentPin: string) => invoke<void>("remove_pin_passcode", { currentPin }),
     authenticateBiometric: () => invoke<boolean>("authenticate_biometric"),
-    unlockApp: () => invoke<void>("unlock_app"),
+    unlockApp: (args?: { pin?: string; biometric?: boolean }) =>
+      invoke<void>("unlock_app", { pin: args?.pin ?? null, biometric: args?.biometric ?? null }),
     lockApp: () => invoke<void>("lock_app"),
     getDbEncryptionStatus: () => invoke<DbEncryptionStatus>("get_db_encryption_status"),
     enableDbEncryption: (pin: string) => invoke<void>("enable_db_encryption", { pin }),

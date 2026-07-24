@@ -1,3 +1,5 @@
+use crate::commands::security::{require_auth_for_destructive_ops, AuthState};
+use crate::db::DbState;
 use crate::mcp_client::MCPClientManager;
 use crate::models::mcp::{MCPResource, MCPResourceTemplate, MCPServerConfig, MCPTool};
 use serde_json::Value;
@@ -81,9 +83,12 @@ pub async fn update_mcp_server(
 
 #[tauri::command]
 pub async fn delete_mcp_server(
+    auth: State<'_, AuthState>,
+    state: State<'_, DbState>,
     mcp_manager: State<'_, Arc<Mutex<MCPClientManager>>>,
     name: String,
 ) -> Result<(), String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let mut manager = mcp_manager.lock().await;
     manager.delete_server(&name)
 }

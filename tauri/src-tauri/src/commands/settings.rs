@@ -26,6 +26,7 @@ pub struct Settings {
     pub backup_enabled: bool,
     pub touch_id_enabled: bool,
     pub pin_lock_enabled: bool,
+    pub strict_auth_mode: bool,
     pub auto_lock_minutes: i64,
     pub theme: String,
     pub accent_color: String,
@@ -114,6 +115,7 @@ impl Default for Settings {
             backup_enabled: true,
             touch_id_enabled: false,
             pin_lock_enabled: false,
+            strict_auth_mode: false,
             auto_lock_minutes: 0,
             theme: "system".to_string(),
             accent_color: "#007AFF".to_string(),
@@ -383,6 +385,9 @@ pub async fn get_settings(app: AppHandle, state: State<'_, DbState>) -> Result<S
             && biometric_available
             && pin_lock_enabled,
         pin_lock_enabled,
+        strict_auth_mode: get_setting(&conn, "strict_auth_mode")
+            .map(|v| v == "true")
+            .unwrap_or(def.strict_auth_mode),
         auto_lock_minutes: get_setting(&conn, "auto_lock_minutes")
             .and_then(|v| v.parse().ok())
             .unwrap_or(def.auto_lock_minutes),
@@ -678,6 +683,11 @@ pub fn update_settings(
         &conn,
         "pin_lock_enabled",
         &effective_pin_lock_enabled.to_string(),
+    )?;
+    set_setting(
+        &conn,
+        "strict_auth_mode",
+        &settings.strict_auth_mode.to_string(),
     )?;
     set_setting(
         &conn,
@@ -1156,6 +1166,7 @@ pub struct AdvancedSettings {
     pub backup_enabled: bool,
     pub touch_id_enabled: bool,
     pub pin_lock_enabled: bool,
+    pub strict_auth_mode: bool,
     pub auto_lock_minutes: i64,
     pub start_at_login: bool,
     pub open_in_background: bool,
@@ -1445,6 +1456,9 @@ pub async fn get_advanced_settings(
                 && biometric_available
                 && pin_lock_enabled,
             pin_lock_enabled,
+            strict_auth_mode: lookup("strict_auth_mode")
+                .map(|v| v == "true")
+                .unwrap_or(def.strict_auth_mode),
             auto_lock_minutes: lookup("auto_lock_minutes")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(def.auto_lock_minutes),

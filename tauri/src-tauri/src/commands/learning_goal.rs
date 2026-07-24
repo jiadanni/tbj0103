@@ -1,3 +1,4 @@
+use crate::commands::security::{require_auth_for_destructive_ops, AuthState};
 use crate::db::DbState;
 use crate::models::learning_goal::{
     CreateLearningGoalRequest, LearningGoal, UpdateLearningGoalRequest,
@@ -101,7 +102,8 @@ pub fn update_learning_goal(
 }
 
 #[tauri::command]
-pub fn delete_learning_goal(state: State<DbState>, id: String) -> Result<(), String> {
+pub fn delete_learning_goal(auth: State<AuthState>, state: State<DbState>, id: String) -> Result<(), String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute(
         "DELETE FROM learning_goals WHERE id = ?1",

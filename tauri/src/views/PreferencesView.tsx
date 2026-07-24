@@ -293,6 +293,7 @@ function mergeSplitSettings(
     backup_enabled: advanced.backup_enabled,
     touch_id_enabled: advanced.touch_id_enabled,
     pin_lock_enabled: advanced.pin_lock_enabled,
+    strict_auth_mode: advanced.strict_auth_mode,
     auto_lock_minutes: advanced.auto_lock_minutes,
     start_at_login: advanced.start_at_login,
     open_in_background: advanced.open_in_background,
@@ -5939,6 +5940,22 @@ export default function PreferencesView() {
                               <p className="text-sm font-semibold text-[var(--text-primary)]">{biometricLabel}</p>
                               <p className="text-xs text-[var(--text-muted)] mt-1">
                                 Use {biometricLabel} as a quick unlock. PIN is always available as a fallback.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* ── Strict auth for destructive ops ── */}
+                        {dbSettings.pin_lock_enabled && (
+                          <div className="flex items-start gap-3 py-0.5">
+                            <Toggle
+                              on={dbSettings.strict_auth_mode}
+                              onToggle={() => set("strict_auth_mode", !dbSettings.strict_auth_mode)}
+                              />
+                            <div>
+                              <p className="text-sm font-semibold text-[var(--text-primary)]">Require auth for destructive actions</p>
+                              <p className="text-xs text-[var(--text-muted)] mt-1">
+                                When enabled, deleting items and importing data require authentication. Disabled by default.
                               </p>
                             </div>
                           </div>

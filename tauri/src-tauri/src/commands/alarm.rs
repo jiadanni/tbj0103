@@ -1,3 +1,4 @@
+use crate::commands::security::{require_auth_for_destructive_ops, AuthState};
 use crate::db::DbState;
 use crate::models::alarm::{CalendarAlarm, CreateAlarmRequest};
 use crate::services::workspace_hierarchy::workspace_filter_sql;
@@ -72,7 +73,8 @@ pub fn list_alarms(
 }
 
 #[tauri::command]
-pub fn delete_alarm(state: State<DbState>, id: String) -> Result<(), String> {
+pub fn delete_alarm(auth: State<AuthState>, state: State<DbState>, id: String) -> Result<(), String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute(
         "UPDATE calendar_alarms SET is_dismissed = 1 WHERE id = ?1",

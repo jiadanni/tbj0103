@@ -1,6 +1,6 @@
 //! Tauri commands for file-based chat storage and optional encryption.
 
-use crate::commands::security::{require_auth, AuthState};
+use crate::commands::security::{require_auth, require_auth_for_destructive_ops, AuthState};
 use crate::db::DbState;
 use crate::models::chat::ChatSession;
 use crate::services::chat_file_store;
@@ -565,6 +565,7 @@ fn preview_lmstudio_folder_inner(folder_path: String) -> Result<serde_json::Valu
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn import_lmstudio_folder(
+    auth: State<'_, AuthState>,
     folder_path: String,
     workspace_name: Option<String>,
     selected_ids: Option<Vec<String>>,
@@ -579,6 +580,7 @@ pub async fn import_lmstudio_folder(
     crypto: State<'_, ChatCryptoState>,
     db_state: State<'_, DbState>,
 ) -> Result<serde_json::Value, String> {
+    require_auth_for_destructive_ops(&auth, &db_state)?;
     let chats_dir = chats_dir_state.0.clone();
     let passphrase = crypto.0.lock().ok().and_then(|g| g.clone());
     let pool = db_state.0.clone();
@@ -801,11 +803,13 @@ pub async fn import_lmstudio_folder(
 /// Each folder becomes its own workspace with the folder name.
 #[tauri::command]
 pub async fn import_multiple_folders(
+    auth: State<'_, AuthState>,
     folder_paths: Vec<String>,
     chats_dir_state: State<'_, ChatsDirState>,
     crypto: State<'_, ChatCryptoState>,
     db_state: State<'_, DbState>,
 ) -> Result<serde_json::Value, String> {
+    require_auth_for_destructive_ops(&auth, &db_state)?;
     if folder_paths.is_empty() {
         return Err("No folders selected".to_string());
     }
@@ -1087,6 +1091,7 @@ fn preview_gemini_takeout_inner(file_path: String) -> Result<serde_json::Value, 
 /// Accepts optional `selected_ids` to import only chosen conversations.
 #[tauri::command]
 pub async fn import_gemini_takeout(
+    auth: State<'_, AuthState>,
     file_path: String,
     workspace_name: Option<String>,
     selected_ids: Option<Vec<String>>,
@@ -1094,6 +1099,7 @@ pub async fn import_gemini_takeout(
     crypto: State<'_, ChatCryptoState>,
     db_state: State<'_, DbState>,
 ) -> Result<serde_json::Value, String> {
+    require_auth_for_destructive_ops(&auth, &db_state)?;
     let chats_dir = chats_dir_state.0.clone();
     let crypto_pass = crypto.0.lock().map_err(|e| e.to_string())?.clone();
     let pool = db_state.0.clone();
@@ -1300,6 +1306,7 @@ pub async fn preview_chatgpt_folder(
 /// Import conversations from a ChatGPT export folder into a new or existing workspace.
 #[tauri::command]
 pub async fn import_chatgpt_folder(
+    auth: State<'_, AuthState>,
     folder_path: String,
     workspace_id: Option<String>,
     workspace_name: Option<String>,
@@ -1308,6 +1315,7 @@ pub async fn import_chatgpt_folder(
     crypto: State<'_, ChatCryptoState>,
     db_state: State<'_, DbState>,
 ) -> Result<serde_json::Value, String> {
+    require_auth_for_destructive_ops(&auth, &db_state)?;
     let chats_dir = chats_dir_state.0.clone();
     let passphrase = crypto.0.lock().ok().and_then(|g| g.clone());
     let pool = db_state.0.clone();
@@ -1840,6 +1848,7 @@ pub struct ClaudeImportDestination {
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn import_claude_files(
+    auth: State<'_, AuthState>,
     folder_path: String,
     folder_mappings: std::collections::HashMap<String, ClaudeImportDestination>,
     project_memory_targets: std::collections::HashMap<String, ClaudeImportDestination>,
@@ -1856,6 +1865,7 @@ pub async fn import_claude_files(
     crypto: State<'_, ChatCryptoState>,
     db_state: State<'_, DbState>,
 ) -> Result<serde_json::Value, String> {
+    require_auth_for_destructive_ops(&auth, &db_state)?;
     let chats_dir = chats_dir_state.0.clone();
     let passphrase = crypto.0.lock().ok().and_then(|g| g.clone());
     let pool = db_state.0.clone();
@@ -2067,10 +2077,12 @@ pub async fn import_claude_files(
 /// Useful after a cold start to ensure files are up to date.
 #[tauri::command]
 pub async fn sync_all_chats_to_files(
+    auth: State<'_, AuthState>,
     chats_dir_state: State<'_, ChatsDirState>,
     crypto: State<'_, ChatCryptoState>,
     db_state: State<'_, DbState>,
 ) -> Result<usize, String> {
+    require_auth_for_destructive_ops(&auth, &db_state)?;
     let chats_dir = chats_dir_state.0.clone();
     let pass = crypto.0.lock().map_err(|e| e.to_string())?.clone();
     let pool = db_state.0.clone();

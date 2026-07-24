@@ -1,3 +1,4 @@
+use crate::commands::security::{require_auth_for_destructive_ops, AuthState};
 use crate::db::DbState;
 use crate::services::git_sync;
 use serde::{Deserialize, Serialize};
@@ -37,11 +38,13 @@ pub fn get_git_sync_status(state: State<DbState>) -> Result<GitSyncStatus, Strin
 
 #[tauri::command]
 pub fn configure_git_sync(
+    auth: State<AuthState>,
     app: AppHandle,
     state: State<DbState>,
     remote_url: String,
     enabled: bool,
 ) -> Result<(), String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     if enabled && !remote_url.is_empty() && !is_ssh_remote(&remote_url) {
         return Err("Git sync requires an SSH remote URL (for example git@github.com:you/aetherium-sync.git).".to_string());
     }

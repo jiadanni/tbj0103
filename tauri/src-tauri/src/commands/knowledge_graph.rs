@@ -1,3 +1,4 @@
+use crate::commands::security::{require_auth_for_destructive_ops, AuthState};
 use crate::db::DbState;
 use crate::models::knowledge_graph::{
     ConceptLink, ConceptMention, ConceptNode, CreateConceptRequest, CreateLinkRequest,
@@ -189,7 +190,8 @@ pub fn update_concept(
 }
 
 #[tauri::command]
-pub fn delete_concept(state: State<DbState>, id: String) -> Result<(), String> {
+pub fn delete_concept(auth: State<AuthState>, state: State<DbState>, id: String) -> Result<(), String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute(
         "DELETE FROM concept_nodes WHERE id = ?1",
@@ -431,7 +433,8 @@ pub fn list_concept_links(
 }
 
 #[tauri::command]
-pub fn delete_concept_link(state: State<DbState>, id: String) -> Result<(), String> {
+pub fn delete_concept_link(auth: State<AuthState>, state: State<DbState>, id: String) -> Result<(), String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute(
         "DELETE FROM concept_links WHERE id = ?1",

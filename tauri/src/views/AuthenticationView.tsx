@@ -33,7 +33,7 @@ export default function AuthenticationView({ onAuthenticated }: Props) {
     try {
       const success = await api.security.authenticateBiometric();
       if (success) {
-        await api.security.unlockApp();
+        await api.security.unlockApp({ biometric: true });
         onAuthenticated();
       } else {
         setError("Touch ID was not recognised. Try your PIN instead.");
@@ -58,7 +58,7 @@ export default function AuthenticationView({ onAuthenticated }: Props) {
     try {
       const verified = await api.security.verifyPin(secret);
       if (verified) {
-        await api.security.unlockApp();
+        await api.security.unlockApp({ pin: secret });
         onAuthenticated();
       } else {
         setError("Incorrect PIN.");

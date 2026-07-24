@@ -8,7 +8,7 @@ use rusqlite::{
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use crate::commands::security::{require_auth, AuthState};
+use crate::commands::security::{require_auth, require_auth_for_destructive_ops, AuthState};
 use crate::db::DbState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -335,7 +335,8 @@ pub async fn restore_backup(
 }
 
 #[tauri::command]
-pub fn delete_backup(_id: String) -> Result<(), String> {
+pub fn delete_backup(auth: State<AuthState>, state: State<DbState>, _id: String) -> Result<(), String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     Ok(())
 }
 

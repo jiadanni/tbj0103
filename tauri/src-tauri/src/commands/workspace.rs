@@ -1,4 +1,5 @@
 use crate::commands::chat_file::{ChatCryptoState, ChatsDirState};
+use crate::commands::security::{require_auth_for_destructive_ops, AuthState};
 use crate::db::DbState;
 use crate::models::workspace::{
     CreateChildWorkspaceRequest, CreateWorkspaceRequest, UpdateWorkspaceRequest, Workspace,
@@ -160,10 +161,12 @@ pub fn update_workspace<R: Runtime>(
 
 #[tauri::command]
 pub fn delete_workspace<R: Runtime>(
+    auth: State<AuthState>,
     app: AppHandle<R>,
     state: State<DbState>,
     id: String,
 ) -> Result<(), String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     workspace_service::delete(&conn, &id)?;
     let _ = app.emit("workspaces-changed", ());
