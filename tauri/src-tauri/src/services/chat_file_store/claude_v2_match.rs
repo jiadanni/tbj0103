@@ -43,10 +43,20 @@ const MIN_TOKEN_LEN: usize = 4;
 /// Project names shorter than this are too generic to trust as a title match
 /// ("40", "Misc"). They still participate in keyword/topic scoring.
 const MIN_TITLE_MATCH_NAME_LEN: usize = 4;
-/// Weight applied to tokens sourced from an LLM-generated topic list. Topics are
-/// distilled and on-topic by construction, unlike prompt boilerplate, so a topic
-/// hit is stronger evidence than a prompt-text hit.
+/// Weight applied to *discriminative* tokens from an LLM-generated topic list.
+/// Topics are distilled and on-topic, so a topic hit is stronger evidence than a
+/// prompt-text hit — but only when the term actually separates projects. See
+/// `TOPIC_BOOST_MAX_DF_RATIO`.
 const TOPIC_WEIGHT: f32 = 1.6;
+/// A topic term is only boosted when it appears in at most this fraction of
+/// projects. Distilling ~20 projects of one person's life produces recurring
+/// cross-cutting terms — locations they live ("amsterdam"), their field
+/// ("software engineering") — which describe the *user*, not any one project.
+/// Boosting those amplifies precisely what IDF exists to suppress, and was the
+/// mechanism behind off-topic matches (a peak-oil chat landing in a driving
+/// project on shared "netherlands" mass). Above this ratio a topic term still
+/// counts, at plain base weight.
+const TOPIC_BOOST_MAX_DF_RATIO: f32 = 0.25;
 /// How many leading user messages contribute to a chat's matchable text. Chats
 /// that open with "quick question" need more than the first turn to score.
 const CHAT_CONTEXT_MESSAGES: usize = 3;
@@ -59,6 +69,9 @@ struct ProjectVocab {
     uuid: String,
     base: HashSet<String>,
     topics: HashSet<String>,
+    /// Divisor applied to this project's matched mass, damping projects whose
+    /// vocabulary is far larger than the pool median. See `build_vocabs`.
+    breadth_damping: f32,
 }
 
 impl ProjectVocab {
@@ -66,17 +79,37 @@ impl ProjectVocab {
         self.base.is_empty() && self.topics.is_empty()
     }
 
-    /// Weight for a chat token against this project: topic hits outrank base hits,
-    /// and a token present in both counts once at the higher weight.
-    fn weight_for(&self, token: &str) -> f32 {
+    /// Weight for a chat token against this project. A topic hit outranks a base
+    /// hit only when the term is discriminative (`boostable`); cross-cutting
+    /// topic terms fall back to base weight so they can't dominate scoring.
+    fn weight_for(&self, token: &str, boostable: &HashSet<String>) -> f32 {
         if self.topics.contains(token) {
-            TOPIC_WEIGHT
+            if boostable.contains(token) {
+                TOPIC_WEIGHT
+            } else {
+                1.0
+            }
         } else if self.base.contains(token) {
             1.0
         } else {
             0.0
         }
     }
+}
+
+/// Topic terms rare enough across the project pool to earn the topic boost.
+fn boostable_topic_tokens(vocabs: &[ProjectVocab]) -> HashSet<String> {
+    let n = vocabs.len().max(1) as f32;
+    let mut df: HashMap<&str, usize> = HashMap::new();
+    for v in vocabs {
+        for token in &v.topics {
+            *df.entry(token.as_str()).or_insert(0) += 1;
+        }
+    }
+    df.into_iter()
+        .filter(|(_, count)| (*count as f32 / n) <= TOPIC_BOOST_MAX_DF_RATIO)
+        .map(|(token, _)| token.to_string())
+        .collect()
 }
 
 pub fn suggest_project_for_conversations(
@@ -110,12 +143,13 @@ pub fn suggest_project_for_conversations_with_topics(
     // "code", "explain") and must not decide the match. This is what stops a
     // project with a long prompt from absorbing unrelated chats by surface area.
     let idf = build_idf(&vocabs);
+    let boostable = boostable_topic_tokens(&vocabs);
 
     let title_candidates = title_match_candidates(projects);
 
     conversations
         .iter()
-        .map(|conv| score_conversation(conv, &title_candidates, &vocabs, &idf))
+        .map(|conv| score_conversation(conv, &title_candidates, &vocabs, &idf, &boostable))
         .collect()
 }
 
@@ -124,7 +158,7 @@ fn build_vocabs(
     memories_by_project: &HashMap<String, String>,
     topics_by_project: &HashMap<String, Vec<String>>,
 ) -> Vec<ProjectVocab> {
-    projects
+    let mut vocabs: Vec<ProjectVocab> = projects
         .iter()
         .map(|p| {
             let memory = memories_by_project
@@ -153,9 +187,48 @@ fn build_vocabs(
                 uuid: p.uuid.clone(),
                 base: tokenize(&text),
                 topics,
+                breadth_damping: 1.0, // filled in below, once all sizes are known
             }
         })
-        .collect()
+        .collect();
+
+    apply_breadth_damping(&mut vocabs);
+    vocabs
+}
+
+/// Penalise projects whose vocabulary is far broader than the pool median.
+///
+/// IDF suppresses vocabulary *shared* across projects, but not vocabulary that
+/// is merely voluminous and unique. A project whose instructions are a long
+/// personal narrative rather than a topic description contributes hundreds of
+/// df=1 tokens — each scoring maximum IDF — covering generic life and planning
+/// vocabulary that appears in almost any reflective chat. Measured on a real
+/// export: one project held 178 base tokens while 13 of 22 held 5 or fewer, and
+/// it captured 255 of 539 matches, including chats about height loss, XSS, and
+/// bitcoin.
+///
+/// Dividing matched mass by `(size / median)^0.5` removes that surface-area
+/// advantage without punishing projects that are merely well-described: projects
+/// at or below the median are untouched.
+fn apply_breadth_damping(vocabs: &mut [ProjectVocab]) {
+    let mut sizes: Vec<usize> = vocabs
+        .iter()
+        .map(|v| v.base.union(&v.topics).count())
+        .collect();
+    if sizes.is_empty() {
+        return;
+    }
+    sizes.sort_unstable();
+    let median = sizes[sizes.len() / 2].max(1) as f32;
+
+    for v in vocabs.iter_mut() {
+        let size = v.base.union(&v.topics).count().max(1) as f32;
+        v.breadth_damping = if size > median {
+            (size / median).sqrt()
+        } else {
+            1.0
+        };
+    }
 }
 
 /// Project names eligible for whole-word title matching, longest first so that
@@ -194,15 +267,26 @@ fn score_conversation(
     title_candidates: &[(String, String)],
     vocabs: &[ProjectVocab],
     idf: &HashMap<String, f32>,
+    boostable: &HashSet<String>,
 ) -> MatchSuggestion {
-    score_conversation_inner(conv, title_candidates, vocabs, idf, COVERAGE_MIN, MARGIN_MIN)
+    score_conversation_inner(
+        conv,
+        title_candidates,
+        vocabs,
+        idf,
+        boostable,
+        COVERAGE_MIN,
+        MARGIN_MIN,
+    )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn score_conversation_inner(
     conv: &ClaudeConversationPreview,
     title_candidates: &[(String, String)],
     vocabs: &[ProjectVocab],
     idf: &HashMap<String, f32>,
+    boostable: &HashSet<String>,
     coverage_min: f32,
     margin_min: f32,
 ) -> MatchSuggestion {
@@ -235,7 +319,7 @@ fn score_conversation_inner(
     // for every project should not score highly for the one word it shares.
     let total_mass: f32 = chat_tokens
         .iter()
-        .map(|t| idf.get(t).copied().unwrap_or_else(|| unknown_token_idf(vocabs)))
+        .map(|t| idf.get(t).copied().unwrap_or(UNKNOWN_TOKEN_IDF))
         .sum();
     if total_mass <= 0.0 {
         return no_match(conv);
@@ -249,7 +333,7 @@ fn score_conversation_inner(
         let mut matched_mass = 0.0f32;
         let mut hit_topic = false;
         for token in &chat_tokens {
-            let w = vocab.weight_for(token);
+            let w = vocab.weight_for(token, boostable);
             if w > 0.0 {
                 if w > 1.0 {
                     hit_topic = true;
@@ -259,14 +343,12 @@ fn score_conversation_inner(
         }
         // TOPIC_WEIGHT can push coverage above 1.0; clamp so the threshold and
         // margin comparisons stay on a 0..1 scale.
-        let coverage = (matched_mass / total_mass).min(1.0);
+        let coverage = ((matched_mass / vocab.breadth_damping) / total_mass).min(1.0);
         scored.push((vocab.uuid.as_str(), coverage, hit_topic));
     }
 
-    // Sort descending and take the top two. Doing this explicitly (rather than
-    // tracking best/runner-up inline) keeps the margin check correct when two
-    // projects tie exactly — previously a tie left runner_up at 0.0 and the
-    // ambiguity guard failed open, confidently assigning the coin-flip winner.
+    // Sort descending and take the top two, so the margin check reads directly
+    // off the two best scores.
     scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
     let Some(&(top_uuid, top_score, top_hit_topic)) = scored.first() else {
@@ -295,11 +377,19 @@ fn no_match(conv: &ClaudeConversationPreview) -> MatchSuggestion {
     }
 }
 
-/// IDF for a token that appears in no project's vocabulary. Treated as maximally
-/// rare (df = 1) so off-topic chat text dilutes coverage rather than being free.
-fn unknown_token_idf(vocabs: &[ProjectVocab]) -> f32 {
-    (1.0 + vocabs.len().max(1) as f32).ln()
-}
+/// Denominator contribution for a chat token that appears in no project.
+///
+/// Charging these full rarity (they *are* rare, by df) is backwards: most are
+/// conversational filler — "understand", "explain", "start", "nature" — common
+/// in chats but absent from project vocabularies, which describe subjects rather
+/// than how people talk. Weighting them as maximally discriminative meant every
+/// extra sentence of context *lowered* coverage, so widening the chat window
+/// actively destroyed matches it was meant to rescue (measured: a chat scoring
+/// 1.00 on its title alone fell to 0.20 across three messages).
+///
+/// They still cost something — a chat that is mostly off-topic everywhere should
+/// not score highly on one shared word — but a small fixed floor, not the max.
+const UNKNOWN_TOKEN_IDF: f32 = 0.35;
 
 /// Text used to represent a chat for matching: title plus the first few user
 /// messages, capped. Falls back to `first_user_message` when the full transcript
@@ -673,9 +763,28 @@ fn tokenize(text: &str) -> HashSet<String> {
             if is_stopword(&lower) {
                 return None;
             }
-            Some(lower)
+            Some(stem(&lower))
         })
         .collect()
+}
+
+/// Collapse trailing plural / possessive forms to a common stem.
+///
+/// Splitting on non-alphanumerics turns "Hubbert's" into "hubbert" + "s", and a
+/// title repeated as "Hubberts peak" then yields both "hubbert" and "hubberts"
+/// as distinct tokens. That double-counts one word, which both inflates a chat's
+/// apparent length past MIN_CHAT_TOKENS and splits its IDF mass across two
+/// entries. Deliberately minimal — not a general stemmer, just the suffixes that
+/// arise from possessives and plurals in chat titles.
+fn stem(word: &str) -> String {
+    for suffix in ["'s", "es", "s"] {
+        if let Some(base) = word.strip_suffix(suffix) {
+            if base.len() >= MIN_TOKEN_LEN {
+                return base.to_string();
+            }
+        }
+    }
+    word.to_string()
 }
 
 fn is_stopword(w: &str) -> bool {
@@ -1037,9 +1146,15 @@ mod tests {
     fn topics_expand_matching_beyond_source_text() {
         // The project's prompt never says "mixer" or "beatmatching"; the topic
         // list supplies that vocabulary, so the chat matches on expansion alone.
+        // Needs a realistic pool size: the topic boost only applies to terms in
+        // <= TOPIC_BOOST_MAX_DF_RATIO of projects, so a 2-project fixture would
+        // put every term above the ratio and exercise nothing.
         let projects = vec![
             proj("p1", "Beach stage", "weekend sets at the shore"),
             proj("p2", "Taxes", "self assessment deductions receipts invoices"),
+            proj("p3", "Gardening", "compost seedlings pruning greenhouse"),
+            proj("p4", "Cooking", "recipes braising stock seasoning"),
+            proj("p5", "Cycling", "cadence commuting panniers drivetrain"),
         ];
         let mut topics = HashMap::new();
         topics.insert(
@@ -1071,6 +1186,117 @@ mod tests {
         );
         assert_eq!(with[0].project_uuid.as_deref(), Some("p1"));
         assert_eq!(with[0].reason, "topics");
+    }
+
+    #[test]
+    fn cross_cutting_topic_terms_are_not_boosted() {
+        // Distilling one person's projects yields recurring life-context terms —
+        // where they live, their field — that describe the *user*, not a project.
+        // Observed for real: "netherlands" in 6/21 projects, "amsterdam" in 5.
+        // Boosting those let a peak-oil chat land in a driving-licence project on
+        // shared location mass. A term that common must not outrank a rare one.
+        let projects = vec![
+            proj("p1", "Driving", "cbr theory exam road rules hazard perception"),
+            proj("p2", "Economics", "markets inflation commodities monetary policy"),
+            proj("p3", "Housing", "mortgage rental tenancy deposit"),
+            proj("p4", "Language", "grammar conjugation vocabulary pronunciation"),
+        ];
+        let mut topics = HashMap::new();
+        // "netherlands" is shared by 3 of 4 projects (ratio 0.75, well above the
+        // boost cap); "commodities"/"hubbert" are unique to Economics.
+        topics.insert(
+            "p1".to_string(),
+            vec!["netherlands".to_string(), "amsterdam".to_string()],
+        );
+        topics.insert(
+            "p2".to_string(),
+            vec![
+                "netherlands".to_string(),
+                "commodities".to_string(),
+                "hubbert".to_string(),
+                "depletion".to_string(),
+            ],
+        );
+        topics.insert(
+            "p3".to_string(),
+            vec!["netherlands".to_string(), "amsterdam".to_string()],
+        );
+
+        let convs = vec![conv(
+            "c1",
+            "Hubbert peak theory",
+            "Explain hubbert depletion curves for commodities in the netherlands",
+        )];
+        let out = suggest_project_for_conversations_with_topics(
+            &convs,
+            &projects,
+            &HashMap::new(),
+            &topics,
+        );
+        assert_eq!(
+            out[0].project_uuid.as_deref(),
+            Some("p2"),
+            "the rare on-topic terms must win over shared location vocabulary"
+        );
+    }
+
+    #[test]
+    fn possessive_variants_do_not_inflate_chat_length() {
+        // Observed for real: "Hubbert's peak theory" / "Hubberts peak" tokenised
+        // to {hubbert, hubberts, peak, theory} — 4 tokens for a 2-word chat,
+        // scraping past MIN_CHAT_TOKENS and letting one weak shared token
+        // ("theory") decide the match. Stemming collapses the duplicate.
+        assert_eq!(
+            tokenize("Hubbert's peak theory Hubberts peak").len(),
+            3,
+            "possessive and plural forms of one word must count once"
+        );
+
+        let projects = vec![
+            proj("p1", "Driving", "cbr theory exam road rules hazard perception"),
+            proj("p2", "Economics", "markets inflation commodities monetary policy"),
+            proj("p3", "Housing", "mortgage rental tenancy deposit"),
+            proj("p4", "Language", "grammar conjugation vocabulary pronunciation"),
+        ];
+        let convs = vec![conv("c1", "Hubbert's peak theory", "Hubberts peak")];
+        let out = suggest_project_for_conversations(&convs, &projects, &HashMap::new());
+        assert_eq!(
+            out[0].project_uuid, None,
+            "a two-word chat sharing one generic token must not be assigned"
+        );
+    }
+
+    #[test]
+    fn narrative_project_does_not_absorb_unrelated_chats() {
+        // Observed for real: a project whose instructions were a long personal
+        // narrative held 178 base tokens against a pool median of 25, and won
+        // 255 of 539 matches — chats about XSS, height loss and bitcoin all
+        // landed in it. IDF cannot suppress this: the tokens are unique to that
+        // project (df=1), so they score *maximum* IDF. Breadth damping does.
+        let narrative = "isolation community marriage motivation consistency progress \
+             realization pattern avoidance foundation obligation requirement practice \
+             restarting hiatus barrier concrete action weekly complexity worth social \
+             settings friends fear rejection provider homeowner theology acceptance \
+             struggling performance detour diagnostic attempt";
+        let projects = vec![
+            proj("p1", "Narrative", narrative),
+            proj("p2", "Security", "xss csrf injection"),
+            proj("p3", "Fitness", "squat deadlift macros"),
+            proj("p4", "Crypto", "bitcoin ledger halving"),
+        ];
+        // A chat that shares generic reflective vocabulary with the narrative
+        // project but is really about something else.
+        let convs = vec![conv(
+            "c1",
+            "Cross-site scripting vulnerability",
+            "Understanding xss injection patterns and the practice of avoidance",
+        )];
+        let out = suggest_project_for_conversations(&convs, &projects, &HashMap::new());
+        assert_ne!(
+            out[0].project_uuid.as_deref(),
+            Some("p1"),
+            "a verbose narrative project must not win on vocabulary surface area"
+        );
     }
 
     #[test]
