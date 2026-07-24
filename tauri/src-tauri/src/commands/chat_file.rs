@@ -1721,31 +1721,32 @@ pub async fn preview_claude_files(
     .map_err(|e| e.to_string())?
 }
 
-/// Re-run project matching for a set of orphan conversations using Ollama
-/// embeddings. Called on demand from the import UI — the scan completes with
-/// keyword suggestions first; the user can then request a more accurate pass.
+/// Re-run project matching for a set of orphan conversations using an LLM.
+/// Called on demand from the import UI — the scan completes with keyword
+/// suggestions first; the user can then request a more accurate LLM pass.
 ///
 /// `conversations` is a list of `{ uuid, name, first_user_message }` objects.
 /// `projects` is a list of `{ uuid, name, prompt_template, description }` objects.
 /// `memories_by_project` maps project UUID → memory text.
 #[tauri::command]
-pub async fn match_claude_with_embeddings(
+pub async fn match_claude_with_llm(
     conversations: Vec<serde_json::Value>,
     projects: Vec<serde_json::Value>,
     memories_by_project: std::collections::HashMap<String, String>,
-    // Optional model override -- uses the configured embedding model if absent.
+    // Optional model override -- uses the configured background/chat model if absent.
     model_override: Option<String>,
     db_state: State<'_, DbState>,
 ) -> Result<serde_json::Value, String> {
-    use crate::services::model_settings::get_embedding_model;
+    use crate::services::model_settings::{get_configured_background_model, get_configured_chat_model};
     use chat_file_store::{ClaudeConversationPreview, ClaudeProjectPreview};
 
-    let embedding_model = if let Some(m) = model_override.filter(|s| !s.is_empty()) {
+    let model = if let Some(m) = model_override.filter(|s| !s.is_empty()) {
         m
     } else {
         let conn = db_state.0.get().map_err(|e| e.to_string())?;
-        get_embedding_model(&conn)
-            .ok_or("No embedding model configured. Set one in Settings \u{2192} AI Models.")?
+        get_configured_background_model(&conn)
+            .or_else(|| get_configured_chat_model(&conn))
+            .ok_or("No AI model configured. Set one in Settings \u{2192} AI Models.")?
     };
 
     let ollama = crate::ollama::client::OllamaClient::new(None)?;
@@ -1783,12 +1784,12 @@ pub async fn match_claude_with_embeddings(
         })
         .collect();
 
-    let suggestions = chat_file_store::claude_v2_match::suggest_project_with_embeddings(
+    let suggestions = chat_file_store::claude_v2_match::suggest_project_with_llm(
         &conv_previews,
         &proj_previews,
         &memories_by_project,
         &ollama,
-        &embedding_model,
+        &model,
     )
     .await;
 

@@ -5,12 +5,11 @@
 // title, its first user message, and the project's name + prompt_template.
 //
 // Two strategies, selected at call time:
-//   - Keyword coverage (fast, no Ollama required): used for small exports or
-//     when no embedding model is configured / Ollama is unreachable.
-//   - Embedding cosine similarity (accurate): used for large exports when an
-//     embedding model is available. Project text = name + prompt + memory.
-//     Chat text = title + first user message. Best-match above a confidence
-//     threshold wins; ties below the gap threshold go unassigned.
+//   - Keyword coverage (fast, no Ollama required): used during the initial
+//     scan, or as a fallback when Ollama is unreachable.
+//   - LLM classification (accurate): triggered on demand from the import UI.
+//     The LLM receives a numbered project list and assigns each conversation
+//     to a project number (or 0 = no match). Batched in groups of 10.
 //
 // The frontend shows all suggestions and the user confirms before import —
 // we never auto-route.
@@ -165,78 +164,84 @@ fn score_conversation(
     }
 }
 
-// ── Embedding-based matcher ───────────────────────────────────────────────────
+// ── LLM-based classifier ─────────────────────────────────────────────────────
 
-/// Minimum cosine similarity for the winning project to be accepted.
-const EMBED_SIM_MIN: f32 = 0.50;
-/// The winner must beat the runner-up by at least this margin.
-const EMBED_MARGIN_MIN: f32 = 0.05;
+const LLM_BATCH_SIZE: usize = 10;
 
-/// Suggest projects using embedding cosine similarity.
+/// Suggest projects using an LLM chat model.
 ///
-/// Each project is represented by: name + prompt_template + description + memory.
-/// Each conversation is represented by: title + first user message (up to 400 chars).
+/// Projects are numbered 1..N. For each batch of conversations the LLM
+/// receives a system prompt listing all projects, then a user message with
+/// the conversation titles + first messages. It replies with one line per
+/// conversation: `<conv_index>: <project_number>` (or 0 for no match).
 ///
-/// Falls back to the keyword matcher for conversations whose text is too short
-/// to produce a meaningful embedding.
-pub async fn suggest_project_with_embeddings(
+/// Falls back to keyword matcher for any conversation the LLM response
+/// cannot be parsed for, or if the Ollama call fails entirely.
+pub async fn suggest_project_with_llm(
     conversations: &[ClaudeConversationPreview],
     projects: &[ClaudeProjectPreview],
     memories_by_project: &HashMap<String, String>,
     ollama: &crate::ollama::client::OllamaClient,
     model: &str,
 ) -> Vec<MatchSuggestion> {
-    // Build project texts and embed them.
-    let mut project_embeddings: Vec<(String, Vec<f32>)> = Vec::new();
-    for proj in projects {
-        let memory = memories_by_project
-            .get(&proj.uuid)
-            .map(String::as_str)
-            .unwrap_or("");
-        let text = format!(
-            "{} {} {} {}",
-            proj.name, proj.prompt_template, proj.description, memory
-        );
-        if let Ok(emb) = ollama
-            .generate_embedding_with_options("claude_import_match", model, &text, Some("5m"))
-            .await
-        {
-            project_embeddings.push((proj.uuid.clone(), emb));
-        }
-    }
+    use crate::ollama::client::OllamaMessage;
 
-    if project_embeddings.is_empty() {
-        // Ollama failed for all projects — fall back to keyword matcher.
-        return suggest_project_for_conversations(conversations, projects, memories_by_project);
-    }
-
-    // Pre-normalise project embeddings.
-    let project_embeddings: Vec<(String, Vec<f32>)> = project_embeddings
-        .into_iter()
-        .map(|(uuid, emb)| (uuid, normalise(&emb)))
-        .collect();
-
-    // Title-match lookup (same as keyword path — fast and reliable).
+    // Title-match lookup — same fast pre-pass as the keyword path.
     let project_names_lower: Vec<(String, String)> = projects
         .iter()
         .map(|p| (p.uuid.clone(), p.name.trim().to_lowercase()))
         .collect();
 
-    let mut results = Vec::with_capacity(conversations.len());
+    // Build the numbered project list for the system prompt (once, reused for every batch).
+    let mut project_list = String::new();
+    for (i, proj) in projects.iter().enumerate() {
+        let memory = memories_by_project
+            .get(&proj.uuid)
+            .map(String::as_str)
+            .unwrap_or("");
+        // Truncate prompt + memory so the context doesn't blow up.
+        let context: String = format!("{} {} {}", proj.prompt_template, proj.description, memory)
+            .chars()
+            .take(300)
+            .collect();
+        project_list.push_str(&format!(
+            "{}. {}{}\n",
+            i + 1,
+            proj.name,
+            if context.trim().is_empty() {
+                String::new()
+            } else {
+                format!(" — {}", context.trim())
+            },
+        ));
+    }
 
-    for conv in conversations {
-        // 1. Title substring match first (same as keyword path).
+    let system_prompt = format!(
+        "You are categorising imported AI chat conversations into projects.\n\
+         Reply with ONLY one line per conversation in this exact format:\n\
+         <conversation_number>: <project_number>\n\
+         Use 0 if no project is a good fit. No explanations.\n\n\
+         Projects:\n{}",
+        project_list.trim_end()
+    );
+
+    // Pre-allocate results; we fill in as we process.
+    let mut results: Vec<Option<MatchSuggestion>> = vec![None; conversations.len()];
+
+    // Title-match pass first (cheap, no LLM needed).
+    let mut needs_llm: Vec<usize> = Vec::new();
+    for (idx, conv) in conversations.iter().enumerate() {
         let title_lower = conv.name.trim().to_lowercase();
         if !title_lower.is_empty() {
-            let mut title_hit = None;
+            let mut hit = None;
             for (uuid, name_lower) in &project_names_lower {
                 if !name_lower.is_empty() && contains_whole_word(&title_lower, name_lower) {
-                    title_hit = Some(uuid.clone());
+                    hit = Some(uuid.clone());
                     break;
                 }
             }
-            if let Some(uuid) = title_hit {
-                results.push(MatchSuggestion {
+            if let Some(uuid) = hit {
+                results[idx] = Some(MatchSuggestion {
                     conversation_uuid: conv.uuid.clone(),
                     project_uuid: Some(uuid),
                     score: 0.9,
@@ -245,80 +250,109 @@ pub async fn suggest_project_with_embeddings(
                 continue;
             }
         }
+        needs_llm.push(idx);
+    }
 
-        // 2. Embed the conversation.
-        let first_msg: String = conv.first_user_message.chars().take(400).collect();
-        let chat_text = format!("{} {}", conv.name, first_msg);
-        let chat_emb = match ollama
-            .generate_embedding_with_options("claude_import_match", model, &chat_text, Some("5m"))
+    // LLM pass — batched.
+    let mut llm_failed = false;
+    for chunk in needs_llm.chunks(LLM_BATCH_SIZE) {
+        if llm_failed { break; }
+
+        // Build the user message listing conversations in this batch.
+        let mut user_msg = String::new();
+        for (batch_pos, &conv_idx) in chunk.iter().enumerate() {
+            let conv = &conversations[conv_idx];
+            let first_msg: String = conv.first_user_message.chars().take(200).collect();
+            user_msg.push_str(&format!(
+                "{}. Title: \"{}\" | First message: \"{}\"\n",
+                batch_pos + 1,
+                conv.name.replace('"', "'"),
+                first_msg.replace('"', "'"),
+            ));
+        }
+
+        let messages = vec![
+            OllamaMessage { role: "system".to_string(), content: system_prompt.clone() },
+            OllamaMessage { role: "user".to_string(), content: user_msg.trim_end().to_string() },
+        ];
+
+        match ollama
+            .send_message_with_options("claude_import_match", model, messages, Some("5m"))
             .await
         {
-            Ok(emb) => normalise(&emb),
+            Ok(reply) => {
+                // Parse lines of the form "<n>: <m>".
+                let mut parsed: HashMap<usize, usize> = HashMap::new();
+                for line in reply.lines() {
+                    let line = line.trim();
+                    if let Some((left, right)) = line.split_once(':') {
+                        if let (Ok(batch_pos), Ok(proj_num)) = (
+                            left.trim().parse::<usize>(),
+                            right.trim().parse::<usize>(),
+                        ) {
+                            parsed.insert(batch_pos, proj_num);
+                        }
+                    }
+                }
+                for (batch_pos, &conv_idx) in chunk.iter().enumerate() {
+                    let conv = &conversations[conv_idx];
+                    let proj_num = parsed.get(&(batch_pos + 1)).copied().unwrap_or(0);
+                    if proj_num >= 1 && proj_num <= projects.len() {
+                        let proj = &projects[proj_num - 1];
+                        results[conv_idx] = Some(MatchSuggestion {
+                            conversation_uuid: conv.uuid.clone(),
+                            project_uuid: Some(proj.uuid.clone()),
+                            score: 0.8,
+                            reason: "llm",
+                        });
+                    } else {
+                        // LLM said no match (0) or parse failed — keyword fallback per conv.
+                        let kw = suggest_project_for_conversations(
+                            std::slice::from_ref(conv),
+                            projects,
+                            memories_by_project,
+                        );
+                        results[conv_idx] = kw.into_iter().next();
+                    }
+                }
+            }
             Err(_) => {
-                // Embedding failed for this chat — emit a no-match.
-                results.push(MatchSuggestion {
-                    conversation_uuid: conv.uuid.clone(),
-                    project_uuid: None,
-                    score: 0.0,
-                    reason: "none",
-                });
-                continue;
-            }
-        };
-
-        // 3. Cosine similarity against each project (embeddings already normalised).
-        let mut top: Option<(String, f32)> = None;
-        let mut runner_up: f32 = 0.0;
-        for (uuid, proj_emb) in &project_embeddings {
-            let sim = dot(&chat_emb, proj_emb);
-            match &top {
-                Some((_, best)) if sim > *best => {
-                    runner_up = *best;
-                    top = Some((uuid.clone(), sim));
-                }
-                Some((_, best)) if sim > runner_up && sim <= *best => {
-                    runner_up = sim;
-                }
-                None => {
-                    top = Some((uuid.clone(), sim));
-                }
-                _ => {}
+                llm_failed = true;
             }
         }
+    }
 
-        if let Some((uuid, score)) = top {
-            if score >= EMBED_SIM_MIN && (score - runner_up) >= EMBED_MARGIN_MIN {
-                results.push(MatchSuggestion {
-                    conversation_uuid: conv.uuid.clone(),
-                    project_uuid: Some(uuid),
-                    score,
-                    reason: "embedding",
-                });
-                continue;
-            }
+    // If the LLM failed entirely, fall back to keyword matcher for everything that wasn't title-matched.
+    if llm_failed {
+        let remaining_indices: Vec<usize> = needs_llm
+            .iter()
+            .copied()
+            .filter(|&i| results[i].is_none())
+            .collect();
+        let remaining: Vec<ClaudeConversationPreview> = remaining_indices
+            .iter()
+            .map(|&i| conversations[i].clone())
+            .collect();
+        let fallback =
+            suggest_project_for_conversations(&remaining, projects, memories_by_project);
+        for (fb, &conv_idx) in fallback.into_iter().zip(remaining_indices.iter()) {
+            results[conv_idx] = Some(fb);
         }
-
-        results.push(MatchSuggestion {
-            conversation_uuid: conv.uuid.clone(),
-            project_uuid: None,
-            score: 0.0,
-            reason: "none",
-        });
     }
 
-    results
-}
-
-fn dot(a: &[f32], b: &[f32]) -> f32 {
-    a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
-}
-
-fn normalise(v: &[f32]) -> Vec<f32> {
-    let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt();
-    if norm < 1e-9 {
-        return v.to_vec();
-    }
-    v.iter().map(|x| x / norm).collect()
+    // Any remaining None slots (shouldn't happen) get a no-match entry.
+    conversations
+        .iter()
+        .enumerate()
+        .map(|(i, conv)| {
+            results[i].take().unwrap_or(MatchSuggestion {
+                conversation_uuid: conv.uuid.clone(),
+                project_uuid: None,
+                score: 0.0,
+                reason: "none",
+            })
+        })
+        .collect()
 }
 
 fn contains_whole_word(haystack: &str, needle: &str) -> bool {

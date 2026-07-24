@@ -756,7 +756,7 @@ export default function ImportSettingsSection() {
       const targetConvs = opts?.rerunAll
         ? claudeOrphans
         : claudeOrphans.filter((c) => !chatAssignments[c.uuid]);
-      const suggestions = await api.chatFile.matchClaudeWithEmbeddings({
+      const suggestions = await api.chatFile.matchClaudeWithLlm({
         conversations: targetConvs.map((c) => ({
           uuid: c.uuid,
           name: c.name,
@@ -1861,7 +1861,7 @@ export default function ImportSettingsSection() {
                                   onClick={() => void runEmbeddingMatch()}
                                   disabled={claudeEmbeddingMatching || claudeScanning}
                                   className="inline-flex items-center gap-1 px-2 py-0.5 text-xs text-[var(--accent-color)] hover:bg-[var(--bg-hover)] disabled:opacity-40 disabled:pointer-events-none transition-colors"
-                                  title={importMatchModel ? `Using: ${importMatchModel}` : "Using your configured embedding model"}
+                                  title={importMatchModel ? `Using: ${importMatchModel}` : "Using your configured chat/background model"}
                                 >
                                   {claudeEmbeddingMatching ? <RefreshCw size={11} className="animate-spin" /> : null}
                                   {claudeEmbeddingMatching ? "Matching\u2026" : "Improve with AI matching"}
@@ -1871,6 +1871,7 @@ export default function ImportSettingsSection() {
                                   onClick={async () => {
                                     if (!showMatchModelMenu && availableMatchModels.length === 0) {
                                       try {
+                                        // Fetch chat/background models (not embedding models)
                                         const models = await api.ollama.listModels();
                                         setAvailableMatchModels(models.map((m) => m.name));
                                       } catch { /* ignore */ }
@@ -1888,7 +1889,7 @@ export default function ImportSettingsSection() {
                                 <div className="absolute right-0 top-full z-50 mt-1 min-w-[200px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-lg py-1">
                                   <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Model</div>
                                   {[
-                                    { label: "Configured embedding model", value: "" },
+                                    { label: "Configured chat model", value: "" },
                                     ...availableMatchModels.map((m) => ({ label: m, value: m })),
                                   ].map((opt) => (
                                     <button
