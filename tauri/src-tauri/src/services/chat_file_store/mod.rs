@@ -2292,7 +2292,7 @@ mod tests {
     fn test_parse_gemini_takeout_title_prefix() {
         let html_sample = r#"
         <div class="outer-cell">
-          Prompted 24 Jul 2026, 12:00:00<br>How do I configure Vite?
+          Prompted How do I configure Vite?<br>24 Jul 2026, 12:00:00
           <p>You configure Vite in vite.config.ts</p>
         </div>
         "#;
@@ -2303,7 +2303,7 @@ mod tests {
 
         let html_sample_already_prefixed = r#"
         <div class="outer-cell">
-          Prompted 24 Jul 2026, 12:00:00<br>Gemini - How do I configure Vite?
+          Prompted Gemini - How do I configure Vite?<br>24 Jul 2026, 12:00:00
           <p>You configure Vite in vite.config.ts</p>
         </div>
         "#;
