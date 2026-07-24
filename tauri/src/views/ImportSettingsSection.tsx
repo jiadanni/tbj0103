@@ -149,6 +149,12 @@ export default function ImportSettingsSection() {
   const [importingClaude, setImportingClaude] = useState(false);
   const [claudeScanning, setClaudeScanning] = useState(false);
   const [claudeEmbeddingMatching, setClaudeEmbeddingMatching] = useState(false);
+  // Model used for embedding-based import matching. Empty = falls back to the
+  // configured embedding model. Populated from the Ollama model list on demand.
+  const [importMatchModel, setImportMatchModel] = useState("");
+  const [availableMatchModels, setAvailableMatchModels] = useState<string[]>([]);
+  const [showMatchModelMenu, setShowMatchModelMenu] = useState(false);
+  const matchModelMenuRef = useRef<HTMLDivElement>(null);
   const [claudeIncludeConversations, setClaudeIncludeConversations] = useState(true);
   const [claudeIncludeProjects, setClaudeIncludeProjects] = useState(true);
   const [claudeIncludeMemories, setClaudeIncludeMemories] = useState(true);
@@ -728,14 +734,30 @@ export default function ImportSettingsSection() {
     }
   }, [claudeFolderPath, claudeIncludeConversations, claudeIncludeProjects, claudeIncludeMemories, scanClaudeFiles]);
 
-  async function runEmbeddingMatch() {
+  // Close the model-picker dropdown on outside click.
+  useEffect(() => {
+    if (!showMatchModelMenu) { return; }
+    function onClickOutside(e: MouseEvent) {
+      if (matchModelMenuRef.current && !matchModelMenuRef.current.contains(e.target as Node)) {
+        setShowMatchModelMenu(false);
+      }
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [showMatchModelMenu]);
+
+  async function runEmbeddingMatch(opts?: { rerunAll?: boolean; modelOverride?: string }) {
     if (claudeOrphans.length === 0 || claudeProjects.length === 0) { return; }
     setError(null);
     setClaudeEmbeddingMatching(true);
+    setShowMatchModelMenu(false);
+    const effectiveModel = opts?.modelOverride ?? importMatchModel;
     try {
-      const unassigned = claudeOrphans.filter((c) => !chatAssignments[c.uuid]);
+      const targetConvs = opts?.rerunAll
+        ? claudeOrphans
+        : claudeOrphans.filter((c) => !chatAssignments[c.uuid]);
       const suggestions = await api.chatFile.matchClaudeWithEmbeddings({
-        conversations: unassigned.map((c) => ({
+        conversations: targetConvs.map((c) => ({
           uuid: c.uuid,
           name: c.name,
           first_user_message: c.first_user_message ?? "",
@@ -747,13 +769,18 @@ export default function ImportSettingsSection() {
           description: p.description,
         })),
         memoriesByProject: claudeMemoriesByProject,
+        modelOverride: effectiveModel || undefined,
       });
 
-      // Merge returned suggestions into chatAssignments and claudeSuggestions.
-      const newAssignments = { ...chatAssignments };
-      const newSuggestions = claudeSuggestions.filter(
-        (s) => !suggestions.some((r) => r.conversation_uuid === s.conversation_uuid),
-      );
+      // If re-running all, start fresh; otherwise merge into existing.
+      const newAssignments = opts?.rerunAll
+        ? Object.fromEntries(claudeOrphans.map((c) => [c.uuid, null as string | null]))
+        : { ...chatAssignments };
+      const newSuggestions = opts?.rerunAll
+        ? []
+        : claudeSuggestions.filter(
+            (s) => !suggestions.some((r) => r.conversation_uuid === s.conversation_uuid),
+          );
       for (const s of suggestions) {
         newSuggestions.push({ ...s, reason: s.reason as ChatSuggestion["reason"] });
         if (s.project_uuid && !newAssignments[s.conversation_uuid]) {
@@ -764,6 +791,14 @@ export default function ImportSettingsSection() {
             return next;
           });
         }
+      }
+      if (opts?.rerunAll) {
+        // Re-seed the unassigned-tick set from the new suggestions.
+        setClaudeSelected(new Set(
+          claudeOrphans
+            .filter((c) => !newAssignments[c.uuid])
+            .map((c) => c.uuid),
+        ));
       }
       setChatAssignments(newAssignments);
       setClaudeSuggestions(newSuggestions);
@@ -1817,16 +1852,72 @@ export default function ImportSettingsSection() {
                           Unassigned conversations ({unassignedTotal} of {claudeOrphans.length} · {assignedTotal} already routed to projects)
                         </span>
                         <div className="flex gap-2">
-                          {claudeOrphans.length >= 50 && unassignedTotal > 0 && (
-                            <button
-                              type="button"
-                              onClick={() => void runEmbeddingMatch()}
-                              disabled={claudeEmbeddingMatching || claudeScanning}
-                              className="inline-flex items-center gap-1 text-xs text-[var(--accent-color)] hover:underline disabled:opacity-40 disabled:no-underline"
-                            >
-                              {claudeEmbeddingMatching ? <RefreshCw size={11} className="animate-spin" /> : null}
-                              {claudeEmbeddingMatching ? "Matching…" : "Improve with AI matching"}
-                            </button>
+                          {claudeOrphans.length >= 1 && claudeProjects.length >= 1 && unassignedTotal > 0 && (
+                            <div ref={matchModelMenuRef} className="relative">
+                              {/* Split button: primary action + chevron for dropdown */}
+                              <div className="flex items-center rounded border border-[var(--border-color)] overflow-hidden">
+                                <button
+                                  type="button"
+                                  onClick={() => void runEmbeddingMatch()}
+                                  disabled={claudeEmbeddingMatching || claudeScanning}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 text-xs text-[var(--accent-color)] hover:bg-[var(--bg-hover)] disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                                  title={importMatchModel ? `Using: ${importMatchModel}` : "Using your configured embedding model"}
+                                >
+                                  {claudeEmbeddingMatching ? <RefreshCw size={11} className="animate-spin" /> : null}
+                                  {claudeEmbeddingMatching ? "Matching\u2026" : "Improve with AI matching"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (!showMatchModelMenu && availableMatchModels.length === 0) {
+                                      try {
+                                        const models = await api.ollama.listModels();
+                                        setAvailableMatchModels(models.map((m) => m.name));
+                                      } catch { /* ignore */ }
+                                    }
+                                    setShowMatchModelMenu((v) => !v);
+                                  }}
+                                  disabled={claudeEmbeddingMatching || claudeScanning}
+                                  className="border-l border-[var(--border-color)] px-1 py-0.5 text-[var(--accent-color)] hover:bg-[var(--bg-hover)] disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                                  aria-label="AI matching options"
+                                >
+                                  <ChevronDown size={10} />
+                                </button>
+                              </div>
+                              {showMatchModelMenu && (
+                                <div className="absolute right-0 top-full z-50 mt-1 min-w-[200px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-lg py-1">
+                                  <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Model</div>
+                                  {[
+                                    { label: "Configured embedding model", value: "" },
+                                    ...availableMatchModels.map((m) => ({ label: m, value: m })),
+                                  ].map((opt) => (
+                                    <button
+                                      key={opt.value}
+                                      type="button"
+                                      onClick={() => {
+                                        setImportMatchModel(opt.value);
+                                        setShowMatchModelMenu(false);
+                                      }}
+                                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--bg-hover)] flex items-center gap-2 ${
+                                        importMatchModel === opt.value ? "text-[var(--accent-color)]" : "text-[var(--text-primary)]"
+                                      }`}
+                                    >
+                                      {importMatchModel === opt.value && <Check size={11} />}
+                                      <span className={importMatchModel === opt.value ? "" : "ml-[15px]"}>{opt.label}</span>
+                                    </button>
+                                  ))}
+                                  <div className="my-1 border-t border-[var(--border-color)]" />
+                                  <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Actions</div>
+                                  <button
+                                    type="button"
+                                    onClick={() => void runEmbeddingMatch({ rerunAll: true })}
+                                    className="w-full text-left px-3 py-1.5 text-xs text-[var(--text-primary)] hover:bg-[var(--bg-hover)] ml-0"
+                                  >
+                                    Re-run all matching
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           )}
                           <button
                             type="button"

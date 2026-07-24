@@ -1733,15 +1733,19 @@ pub async fn match_claude_with_embeddings(
     conversations: Vec<serde_json::Value>,
     projects: Vec<serde_json::Value>,
     memories_by_project: std::collections::HashMap<String, String>,
+    // Optional model override -- uses the configured embedding model if absent.
+    model_override: Option<String>,
     db_state: State<'_, DbState>,
 ) -> Result<serde_json::Value, String> {
     use crate::services::model_settings::get_embedding_model;
     use chat_file_store::{ClaudeConversationPreview, ClaudeProjectPreview};
 
-    let embedding_model = {
+    let embedding_model = if let Some(m) = model_override.filter(|s| !s.is_empty()) {
+        m
+    } else {
         let conn = db_state.0.get().map_err(|e| e.to_string())?;
         get_embedding_model(&conn)
-            .ok_or("No embedding model configured. Set one in Settings → AI Models.")?
+            .ok_or("No embedding model configured. Set one in Settings \u{2192} AI Models.")?
     };
 
     let ollama = crate::ollama::client::OllamaClient::new(None)?;

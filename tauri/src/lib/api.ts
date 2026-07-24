@@ -1452,6 +1452,7 @@ export const api = {
       conversations: { uuid: string; name: string; first_user_message: string }[];
       projects: { uuid: string; name: string; prompt_template: string; description: string }[];
       memoriesByProject: Record<string, string>;
+      modelOverride?: string;
     }) =>
       invoke<{ conversation_uuid: string; project_uuid: string | null; score: number; reason: string }[]>(
         "match_claude_with_embeddings",
@@ -1459,6 +1460,7 @@ export const api = {
           conversations: args.conversations,
           projects: args.projects,
           memoriesByProject: args.memoriesByProject,
+          modelOverride: args.modelOverride ?? null,
         },
       ),
     importClaudeFiles: (args: {
