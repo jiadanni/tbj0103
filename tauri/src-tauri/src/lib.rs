@@ -581,6 +581,7 @@ pub fn run() {
             commands::chat_file::preview_claude_files,
             commands::chat_file::match_claude_with_llm,
             commands::chat_file::match_claude_with_topics,
+            commands::chat_file::cluster_unmatched_claude_chats,
             commands::chat_file::detect_claude_format,
             // Web AI (Playwright bridge)
             commands::web_ai::send_web_message,
@@ -663,6 +664,7 @@ pub fn complete_db_dependent_setup(
     drop(conn);
 
     crate::logging::init_pool(pool.clone());
+    crate::logging::init_app_handle(app.clone());
     let log_retention_days = {
         let log_conn = pool
             .get()

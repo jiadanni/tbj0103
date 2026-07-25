@@ -1752,6 +1752,128 @@ pub async fn preview_claude_files(
     .map_err(|e| e.to_string())?
 }
 
+/// Propose tentative groups for chats that matched no project.
+///
+/// Embeds each chat title and clusters semantically, which catches groups that
+/// share no vocabulary at all ("Post salah" / "Ju'mah prayer time" / "Mosque
+/// prayer timing"). Falls back to lexical title clustering when no embedding
+/// model is configured or Ollama is unreachable, so the feature still works
+/// offline — just less well.
+///
+/// Returns `{ clusters, strategy }` where strategy is "embedding" or "lexical".
+#[tauri::command]
+pub async fn cluster_unmatched_claude_chats(
+    conversations: Vec<serde_json::Value>,
+    unmatched_uuids: Vec<String>,
+    model_override: Option<String>,
+    db_state: State<'_, DbState>,
+) -> Result<serde_json::Value, String> {
+    use chat_file_store::{claude_v2_cluster, ClaudeConversationPreview, ClaudeMessagePreview};
+
+    let conv_previews: Vec<ClaudeConversationPreview> = conversations
+        .iter()
+        .filter_map(|v| {
+            let messages = v["messages"]
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|m| {
+                            Some(ClaudeMessagePreview {
+                                role: m["role"].as_str()?.to_string(),
+                                content: m["content"].as_str().unwrap_or("").to_string(),
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            Some(ClaudeConversationPreview {
+                uuid: v["uuid"].as_str()?.to_string(),
+                name: v["name"].as_str().unwrap_or("").to_string(),
+                message_count: 0,
+                created_at: String::new(),
+                updated_at: String::new(),
+                project_uuid: None,
+                first_user_message: v["first_user_message"].as_str().unwrap_or("").to_string(),
+                messages,
+            })
+        })
+        .collect();
+
+    let unmatched: std::collections::HashSet<String> = unmatched_uuids.into_iter().collect();
+
+    // Resolve the embedding model; absence is not an error — we fall back.
+    let embed_model = if let Some(m) = model_override.filter(|s| !s.is_empty()) {
+        Some(m)
+    } else {
+        let conn = db_state.0.get().map_err(|e| e.to_string())?;
+        crate::services::model_settings::get_embedding_model(&conn)
+    };
+
+    if let Some(model) = embed_model {
+        if let Ok(ollama) = crate::ollama::client::OllamaClient::new(None) {
+            let mut embeddings: std::collections::HashMap<String, Vec<f32>> =
+                std::collections::HashMap::new();
+            let mut failures = 0usize;
+            for conv in conv_previews.iter().filter(|c| unmatched.contains(&c.uuid)) {
+                let input = claude_v2_cluster::embedding_input(conv);
+                if input.is_empty() {
+                    continue;
+                }
+                match ollama
+                    .generate_embedding_with_options(
+                        "claude_import_cluster",
+                        &model,
+                        &input,
+                        Some("5m"),
+                    )
+                    .await
+                {
+                    Ok(mut v) => {
+                        // Normalise once here so clustering can use a plain dot product.
+                        let n = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+                        if n > 0.0 {
+                            for x in v.iter_mut() {
+                                *x /= n;
+                            }
+                            embeddings.insert(conv.uuid.clone(), v);
+                        }
+                    }
+                    Err(_) => {
+                        failures += 1;
+                        // A few transient failures are fine — those chats just
+                        // sit out. A wholesale failure means fall back instead.
+                        if failures > 20 && embeddings.is_empty() {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if !embeddings.is_empty() {
+                let clusters = claude_v2_cluster::cluster_by_embedding(
+                    &conv_previews,
+                    &unmatched,
+                    &embeddings,
+                );
+                return Ok(serde_json::json!({
+                    "clusters": clusters,
+                    "strategy": "embedding",
+                    "embedded": embeddings.len(),
+                    "failed": failures,
+                }));
+            }
+        }
+    }
+
+    let clusters = claude_v2_cluster::cluster_unmatched(&conv_previews, &unmatched);
+    Ok(serde_json::json!({
+        "clusters": clusters,
+        "strategy": "lexical",
+        "embedded": 0,
+        "failed": 0,
+    }))
+}
+
 /// Re-run deterministic project matching after distilling each project's
 /// prompt/description/memory into a topic list with one LLM call per few projects.
 ///
