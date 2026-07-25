@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
+use tauri::{AppHandle, Emitter};
 
 fn timestamp() -> String {
     // Local time, second precision, no timezone offset. Sub-second timestamps
@@ -60,11 +61,28 @@ pub fn stderr(message: impl AsRef<str>) {
 // ---------------------------------------------------------------------------
 
 static DB_POOL: OnceLock<Pool<SqliteConnectionManager>> = OnceLock::new();
+static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 
 /// Call once at app start to enable DB-backed logging.
 pub fn init_pool(pool: Pool<SqliteConnectionManager>) {
     let _ = DB_POOL.set(pool.clone());
     BUFFERED_LOGGER.get_or_init(|| Mutex::new(BufferedLogger::new(pool)));
+}
+
+/// Call once at app start (after the window is created) so log writes can
+/// notify listeners (e.g. LogsView) via events instead of requiring the
+/// frontend to poll for new rows.
+pub fn init_app_handle(handle: AppHandle) {
+    let _ = APP_HANDLE.set(handle);
+}
+
+/// Notify any listeners (LogsView) that new rows were written to `app_logs`.
+/// Best-effort: silently does nothing if the app handle isn't set yet or the
+/// emit fails, since this is purely an optimization over polling.
+fn notify_logs_appended() {
+    if let Some(handle) = APP_HANDLE.get() {
+        let _ = handle.emit("logs-appended", ());
+    }
 }
 
 fn persist(level: &str, source: &str, message: &str, metadata: &str) {
@@ -73,10 +91,13 @@ fn persist(level: &str, source: &str, message: &str, metadata: &str) {
     }
     if let Some(pool) = DB_POOL.get() {
         if let Ok(conn) = pool.get() {
-            let _ = conn.execute(
+            let inserted = conn.execute(
                 "INSERT INTO app_logs (timestamp, level, source, message, metadata) VALUES (?1, ?2, ?3, ?4, ?5)",
                 rusqlite::params![timestamp(), level, source, message, metadata],
             );
+            if inserted.is_ok() {
+                notify_logs_appended();
+            }
         }
     }
 }
@@ -134,10 +155,13 @@ pub fn log_with_meta(level: &str, source: &str, message: impl AsRef<str>, metada
 
 /// Insert a log entry directly using an existing connection (for use inside commands).
 pub fn log_with_conn(conn: &Connection, level: &str, source: &str, message: &str, metadata: &str) {
-    let _ = conn.execute(
+    let inserted = conn.execute(
         "INSERT INTO app_logs (timestamp, level, source, message, metadata) VALUES (?1, ?2, ?3, ?4, ?5)",
         rusqlite::params![timestamp(), level, source, message, metadata],
     );
+    if inserted.is_ok() {
+        notify_logs_appended();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -280,8 +304,11 @@ impl BufferedLogger {
             );
         }
 
-        let _ = tx.commit();
+        let wrote_rows = tx.commit().is_ok();
         self.last_flush = Instant::now();
+        if wrote_rows {
+            notify_logs_appended();
+        }
     }
 }
 
@@ -379,6 +406,9 @@ pub fn flush_buffered() {
 /// Write a batch of log entries in a single transaction. Used by the
 /// `log_frontend_events_batch` command to persist frontend logs efficiently.
 pub fn persist_batch(entries: &[(String, String, String, String, String)]) {
+    if entries.is_empty() {
+        return;
+    }
     let Some(pool) = DB_POOL.get() else { return };
     let Ok(conn) = pool.get() else { return };
     let Ok(tx) = conn.unchecked_transaction() else {
@@ -390,7 +420,9 @@ pub fn persist_batch(entries: &[(String, String, String, String, String)]) {
             rusqlite::params![ts, level, source, message, metadata],
         );
     }
-    let _ = tx.commit();
+    if tx.commit().is_ok() {
+        notify_logs_appended();
+    }
 }
 
 /// Spawn a background timer that periodically flushes the buffered logger

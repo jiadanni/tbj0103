@@ -15,7 +15,7 @@ export default function RecycleBinView() {
   const { activeWorkspaceId, isSplitPane } = useScopedWorkspace();
   const includeDescendants = useBubbleUpFlag();
   const { setSessions } = useChatStore();
-  const { modelLabels } = useSettingsStore();
+  const modelLabels = useSettingsStore((s) => s.modelLabels);
   const isDemoMode = useWorkspaceStore((s) => s.isDemoMode);
   const [deletedSessions, setDeletedSessions] = useState<ChatSession[]>([]);
   const [query, setQuery] = useState("");

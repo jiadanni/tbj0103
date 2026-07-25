@@ -35,11 +35,9 @@ function buildGlobalBackupFilename() {
 }
 
 export default function GlobalBackupSection() {
-  const {
-    setWorkspaces,
-    setActiveWorkspaceId,
-    setFoldersForWorkspace,
-  } = useWorkspaceStore();
+  const setWorkspaces = useWorkspaceStore((s) => s.setWorkspaces);
+  const setActiveWorkspaceId = useWorkspaceStore((s) => s.setActiveWorkspaceId);
+  const setFoldersForWorkspace = useWorkspaceStore((s) => s.setFoldersForWorkspace);
   const [creating, setCreating] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [error, setError] = useState<string | null>(null);

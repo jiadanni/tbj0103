@@ -10,7 +10,7 @@ import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useBubbleUpFlag } from "../lib/workspacePane";
 
 export default function LearningPathView() {
-  const { activeWorkspaceId } = useWorkspaceStore();
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const includeDescendants = useBubbleUpFlag();
   const [goals, setGoals] = useState<LearningGoal[]>([]);
   const [showCreate, setShowCreate] = useState(false);

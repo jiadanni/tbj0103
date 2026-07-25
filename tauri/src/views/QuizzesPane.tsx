@@ -53,7 +53,7 @@ function scoreToneClass(score: number | null | undefined): string {
 }
 
 export function QuizzesPane({ initialTopicId, initialKind }: Props = {}) {
-  const { activeWorkspaceId } = useWorkspaceStore();
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const [screen, setScreen] = useState<Screen>(() =>
     initialTopicId || initialKind ? { kind: "launch" } : { kind: "list" },
   );

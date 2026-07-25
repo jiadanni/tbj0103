@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { AlertTriangle, ArrowDownToLine, Bug, Download, Info, RefreshCw, Search, Trash2, XCircle } from "lucide-react";
 import { api, type LogEntry } from "../lib/api";
 import { CompactMenuSelect } from "../components/CompactMenuSelect";
@@ -34,7 +35,6 @@ export default function LogsView() {
   const [autoScroll, setAutoScroll] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isFetchingRef = useRef(false);
 
   // Debounce search query
@@ -73,12 +73,14 @@ export default function LogsView() {
     fetchLogs();
   }, [fetchLogs]);
 
-  // Auto-poll every 3 seconds
+  // Event-driven refresh: the backend emits "logs-appended" whenever a new
+  // row is written to app_logs, so we refetch on-demand instead of blindly
+  // polling every few seconds regardless of whether anything changed.
   useEffect(() => {
-    pollRef.current = setInterval(fetchLogs, 3000);
-    return () => {
-      if (pollRef.current) { clearInterval(pollRef.current); }
-    };
+    const unlisten = listen("logs-appended", () => {
+      void fetchLogs();
+    });
+    return () => { unlisten.then((fn) => fn()); };
   }, [fetchLogs]);
 
   // Auto-scroll to bottom

@@ -92,7 +92,8 @@ export default function FlashcardReviewView({
 }: { conceptId?: string | null; hideSidebar?: boolean } = {}) {
   const { activeWorkspaceId } = useScopedWorkspace();
   const includeDescendants = useBubbleUpFlag();
-  const { preferredModel, ollamaUrl } = useSettingsStore();
+  const preferredModel = useSettingsStore((s) => s.preferredModel);
+  const ollamaUrl = useSettingsStore((s) => s.ollamaUrl);
 
   const composerMode = useSettingsStore((s) => s.composerMode);
   const modelFamilyLabels = useSettingsStore((s) => s.modelFamilyLabels);

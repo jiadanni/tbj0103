@@ -1034,6 +1034,34 @@ Rules:\n\
         }
     };
 
+    // Move the settings read + per-chunk DB writes off the async runtime
+    // worker thread: this loop can issue dozens of synchronous rusqlite
+    // round-trips per chunk, which would otherwise block the tokio worker
+    // servicing this (and other) async IPC calls for the duration.
+    let pool_clone = pool.clone();
+    let workspace_id_owned = workspace_id.to_string();
+    let model_owned = model.to_string();
+    let job_id_owned = job_id.to_string();
+    let mut name_to_id_owned = std::mem::take(name_to_id);
+    let output_owned = output;
+
+    type ChunkSyncOutcome = (
+        ChunkStats,
+        Vec<(String, String, String)>,
+        Vec<(String, String, String, f64)>,
+        String,
+        HashMap<String, String>,
+    );
+
+    let (stats, newly_created_concepts, low_conf_concepts, supersede_mode, name_to_id_result): ChunkSyncOutcome =
+        tokio::task::spawn_blocking(move || -> Result<ChunkSyncOutcome, String> {
+            let pool = &pool_clone;
+            let workspace_id = workspace_id_owned.as_str();
+            let model = model_owned.as_str();
+            let job_id = job_id_owned.as_str();
+            let output = output_owned;
+            let name_to_id = &mut name_to_id_owned;
+
     let (upgrade_mode, supersede_mode, confidence_threshold) = {
         let conn = pool.get().map_err(|e| e.to_string())?;
         let up_mode = conn
@@ -1416,6 +1444,19 @@ Rules:\n\
         low_conf_concepts = rows.filter_map(Result::ok).collect();
     }
 
+            Ok((
+                stats,
+                newly_created_concepts,
+                low_conf_concepts,
+                supersede_mode,
+                name_to_id_owned,
+            ))
+        })
+        .await
+        .map_err(|e| format!("Task join error: {e}"))??;
+
+    *name_to_id = name_to_id_result;
+
     let mut recommendations = Vec::new();
     if supersede_mode != "off"
         && !newly_created_concepts.is_empty()
@@ -1471,39 +1512,52 @@ No markdown formatting, no commentary, only raw JSON.",
     }
 
     if !recommendations.is_empty() {
-        let conn = pool.get().map_err(|e| e.to_string())?;
-        let now = chrono::Utc::now().to_rfc3339();
-        for rec in recommendations {
-            if rec.action == "keep" {
-                continue;
-            }
-            if let Some(nid) = rec.new_id {
-                let reason_str = rec
-                    .reason
-                    .clone()
-                    .unwrap_or_else(|| "superseded".to_string());
-                if supersede_mode == "auto" {
-                    let _ = apply_supersede(&conn, &rec.old_id, &nid, &reason_str, &now, job_id);
-                } else if supersede_mode == "suggest" {
-                    let prop_id = uuid::Uuid::new_v4().to_string();
-                    let payload_json = serde_json::json!({ "successor_id": nid });
-                    let _ = conn.execute(
-                        "INSERT INTO concept_change_proposals (id, workspace_id, job_id, proposal_type, target_node_id, payload, reason, created_at) \
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                        rusqlite::params![
-                            prop_id,
-                            workspace_id,
-                            job_id,
-                            if rec.action == "merge_into" { "merge" } else { "supersede" },
-                            rec.old_id,
-                            payload_json.to_string(),
-                            reason_str,
-                            now
-                        ]
-                    );
+        let pool_clone = pool.clone();
+        let workspace_id_owned = workspace_id.to_string();
+        let job_id_owned = job_id.to_string();
+        let supersede_mode_owned = supersede_mode.clone();
+        tokio::task::spawn_blocking(move || -> Result<(), String> {
+            let conn = pool_clone.get().map_err(|e| e.to_string())?;
+            let workspace_id = workspace_id_owned.as_str();
+            let job_id = job_id_owned.as_str();
+            let supersede_mode = supersede_mode_owned.as_str();
+            let now = chrono::Utc::now().to_rfc3339();
+            for rec in recommendations {
+                if rec.action == "keep" {
+                    continue;
+                }
+                if let Some(nid) = rec.new_id {
+                    let reason_str = rec
+                        .reason
+                        .clone()
+                        .unwrap_or_else(|| "superseded".to_string());
+                    if supersede_mode == "auto" {
+                        let _ =
+                            apply_supersede(&conn, &rec.old_id, &nid, &reason_str, &now, job_id);
+                    } else if supersede_mode == "suggest" {
+                        let prop_id = uuid::Uuid::new_v4().to_string();
+                        let payload_json = serde_json::json!({ "successor_id": nid });
+                        let _ = conn.execute(
+                            "INSERT INTO concept_change_proposals (id, workspace_id, job_id, proposal_type, target_node_id, payload, reason, created_at) \
+                             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                            rusqlite::params![
+                                prop_id,
+                                workspace_id,
+                                job_id,
+                                if rec.action == "merge_into" { "merge" } else { "supersede" },
+                                rec.old_id,
+                                payload_json.to_string(),
+                                reason_str,
+                                now
+                            ]
+                        );
+                    }
                 }
             }
-        }
+            Ok(())
+        })
+        .await
+        .map_err(|e| format!("Task join error: {e}"))??;
     }
 
     let _ = run_semantic_dedup_pass(
@@ -1683,61 +1737,80 @@ Respond with ONLY a raw JSON array. Empty array [] if there are no duplicates. E
     let valid_ids: std::collections::HashSet<String> =
         nodes.iter().map(|(id, _, _)| id.clone()).collect();
 
-    let conn = pool.get().map_err(|e| e.to_string())?;
-    let now = chrono::Utc::now().to_rfc3339();
-    let mut merged = 0usize;
-    let mut proposals = 0usize;
+    // Run the merge pass off the async runtime worker thread, and wrap all
+    // per-group writes in a single transaction instead of issuing untransacted
+    // per-row conn.execute calls in the loop.
+    let pool_clone = pool.clone();
+    let workspace_id_owned = workspace_id.to_string();
+    let job_id_owned = job_id.to_string();
+    let supersede_mode_owned = supersede_mode.to_string();
 
-    for group in groups {
-        if !valid_ids.contains(&group.canonical_id) {
-            continue;
-        }
-        let reason = group
-            .reason
-            .clone()
-            .unwrap_or_else(|| "semantic dedup".to_string());
-        for old_id in &group.merge_ids {
-            if old_id == &group.canonical_id || !valid_ids.contains(old_id) {
+    tokio::task::spawn_blocking(move || -> Result<(usize, usize), String> {
+        let workspace_id = workspace_id_owned.as_str();
+        let job_id = job_id_owned.as_str();
+        let supersede_mode = supersede_mode_owned.as_str();
+        let mut conn = pool_clone.get().map_err(|e| e.to_string())?;
+        let now = chrono::Utc::now().to_rfc3339();
+        let mut merged = 0usize;
+        let mut proposals = 0usize;
+
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+        for group in groups {
+            if !valid_ids.contains(&group.canonical_id) {
                 continue;
             }
-            if supersede_mode == "auto" {
-                if apply_supersede(&conn, old_id, &group.canonical_id, &reason, &now, job_id)
-                    .is_ok()
-                {
-                    let _ = reparent_children_to_canonical(
-                        &conn,
-                        &group.canonical_id,
-                        std::slice::from_ref(old_id),
-                        job_id,
-                    );
-                    merged += 1;
+            let reason = group
+                .reason
+                .clone()
+                .unwrap_or_else(|| "semantic dedup".to_string());
+            for old_id in &group.merge_ids {
+                if old_id == &group.canonical_id || !valid_ids.contains(old_id) {
+                    continue;
                 }
-            } else if supersede_mode == "suggest" {
-                let prop_id = uuid::Uuid::new_v4().to_string();
-                let payload_json = serde_json::json!({ "successor_id": group.canonical_id });
-                if conn
-                    .execute(
-                        "INSERT INTO concept_change_proposals (id, workspace_id, job_id, proposal_type, target_node_id, payload, reason, created_at) \
-                         VALUES (?1, ?2, ?3, 'supersede', ?4, ?5, ?6, ?7)",
-                        rusqlite::params![
-                            prop_id,
-                            workspace_id,
+                if supersede_mode == "auto" {
+                    if apply_supersede(&tx, old_id, &group.canonical_id, &reason, &now, job_id)
+                        .is_ok()
+                    {
+                        let _ = reparent_children_to_canonical(
+                            &tx,
+                            &group.canonical_id,
+                            std::slice::from_ref(old_id),
                             job_id,
-                            old_id,
-                            payload_json.to_string(),
-                            reason,
-                            now
-                        ],
-                    )
-                    .is_ok()
-                {
-                    proposals += 1;
+                        );
+                        merged += 1;
+                    }
+                } else if supersede_mode == "suggest" {
+                    let prop_id = uuid::Uuid::new_v4().to_string();
+                    let payload_json = serde_json::json!({ "successor_id": group.canonical_id });
+                    if tx
+                        .execute(
+                            "INSERT INTO concept_change_proposals (id, workspace_id, job_id, proposal_type, target_node_id, payload, reason, created_at) \
+                             VALUES (?1, ?2, ?3, 'supersede', ?4, ?5, ?6, ?7)",
+                            rusqlite::params![
+                                prop_id,
+                                workspace_id,
+                                job_id,
+                                old_id,
+                                payload_json.to_string(),
+                                reason,
+                                now
+                            ],
+                        )
+                        .is_ok()
+                    {
+                        proposals += 1;
+                    }
                 }
             }
         }
-    }
 
-    Ok((merged, proposals))
+        tx.commit().map_err(|e| e.to_string())?;
+
+        Ok((merged, proposals))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {e}"))?
 }
 
 #[derive(Debug, Deserialize)]

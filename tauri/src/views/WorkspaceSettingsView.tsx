@@ -387,8 +387,12 @@ export default function WorkspaceSettingsView() {
   const activeJob = storeActiveJob
     ? {
         status: storeActiveJob.status,
-        generated_count: promptBankStatus?.active_job?.generated_count ?? 0,
-        target_count: promptBankStatus?.active_job?.target_count ?? 120,
+        // `current`/`total` are populated event-driven, per generation batch,
+        // by the "background-task" event (see backgroundJobs store). Fall
+        // back to the last-fetched status in case the job started before we
+        // subscribed to events (e.g. app was backgrounded and just resumed).
+        generated_count: storeActiveJob.current ?? promptBankStatus?.active_job?.generated_count ?? 0,
+        target_count: storeActiveJob.total ?? promptBankStatus?.active_job?.target_count ?? 120,
       }
     : null;
   const wasPromptJobRunning = useRef(false);
@@ -541,35 +545,10 @@ export default function WorkspaceSettingsView() {
   }, [storeActiveJob, selectedId]);
 
   // While a prompt-bank job is active for the currently-selected workspace,
-  // poll its status at 3s cadence to keep the generated/target progress
-  // display fresh. The backend doesn't emit per-batch progress events, so the
-  // pill needs a small targeted poll — but only while a job is actually
-  // running for the visible workspace, and only one query per tick.
-  useEffect(() => {
-    if (!selectedId || !storeActiveJob) { return; }
-    if (storeActiveJob.status !== "running" && storeActiveJob.status !== "queued") { return; }
-
-    let cancelled = false;
-    const workspaceId = selectedId;
-
-    async function tick() {
-      try {
-        const status = await api.workspace.getPromptBankStatus(workspaceId);
-        if (!cancelled) {
-          setPromptBankStatus(status);
-        }
-      } catch {
-        // ignore
-      }
-    }
-
-    void tick();
-    const interval = window.setInterval(() => { void tick(); }, 3000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, [selectedId, storeActiveJob]);
+  // progress (generated/target) arrives event-driven via the
+  // "background-task" event's `current`/`total` fields (see
+  // useBackgroundJobsStore and services/prompt_bank.rs::run_generation),
+  // so no polling is needed here.
 
   useEffect(() => {
     if (!selectedId) {

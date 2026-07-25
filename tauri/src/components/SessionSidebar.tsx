@@ -854,7 +854,7 @@ export const SessionSidebar = memo(function SessionSidebar({
     onSelect: (workspaceId: string) => void,
     flipUp = false,
   ) {
-    function handleCreateWorkspace() {
+    function handleCreateWorkspaceForFolderMove() {
       const name = newWorkspaceName.trim();
       if (!name) { return; }
       setShowNewWorkspaceInput(false);
@@ -888,7 +888,7 @@ export const SessionSidebar = memo(function SessionSidebar({
           )}
           {showNewWorkspaceInput ? (
             <form
-              onSubmit={(e) => { e.preventDefault(); handleCreateWorkspace(); }}
+              onSubmit={(e) => { e.preventDefault(); handleCreateWorkspaceForFolderMove(); }}
               className="px-2 py-1"
             >
               <input

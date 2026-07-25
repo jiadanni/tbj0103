@@ -105,12 +105,10 @@ async function resolveWorkspaceNameConflict(
 
 export default function ImportSettingsSection() {
   const navigate = useNavigate();
-  const {
-    setActiveFolderId,
-    setActiveWorkspaceId,
-    setFoldersForWorkspace,
-    setWorkspaces,
-  } = useWorkspaceStore();
+  const setActiveFolderId = useWorkspaceStore((s) => s.setActiveFolderId);
+  const setActiveWorkspaceId = useWorkspaceStore((s) => s.setActiveWorkspaceId);
+  const setFoldersForWorkspace = useWorkspaceStore((s) => s.setFoldersForWorkspace);
+  const setWorkspaces = useWorkspaceStore((s) => s.setWorkspaces);
   const workspaces = useWorkspaceStore((s) => s.workspaces);
   const [importingLmStudio, setImportingLmStudio] = useState(false);
   const [lmStudioFolder, setLmStudioFolder] = useState<string | null>(null);

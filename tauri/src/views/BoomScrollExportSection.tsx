@@ -44,7 +44,7 @@ function orderForPicker(workspaces: Workspace[]): Array<{ workspace: Workspace; 
 }
 
 export default function BoomScrollExportSection() {
-  const { workspaces } = useWorkspaceStore();
+  const workspaces = useWorkspaceStore((s) => s.workspaces);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successDialog, setSuccessDialog] = useState<{ title: string; description: string } | null>(null);

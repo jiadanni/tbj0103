@@ -22,7 +22,7 @@ interface WebCapture {
 }
 
 export default function WebCaptureView() {
-  const { activeWorkspaceId } = useWorkspaceStore();
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const includeDescendants = useBubbleUpFlag();
   const [captures, setCaptures] = useState<WebCapture[]>([]);
   const [selected, setSelected] = useState<WebCapture | null>(null);

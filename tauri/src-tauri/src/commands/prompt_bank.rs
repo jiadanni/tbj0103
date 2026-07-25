@@ -99,7 +99,7 @@ pub fn start_workspace_prompt_bank_job(
                 Some(model.clone()),
                 Some(workspace_id_for_task.clone()),
             );
-            if let Err(error) = prompt_bank::run_job_by_id(pool.clone(), job_id.clone()).await {
+            if let Err(error) = prompt_bank::run_job_by_id(&app_handle, pool.clone(), job_id.clone()).await {
                 prompt_bank::mark_job_failed(&pool, &job_id, &error);
                 emit_prompt_bank_task(
                     &app_handle,

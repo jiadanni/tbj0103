@@ -9,7 +9,8 @@ interface WorkspaceMigrationBannerProps {
 }
 
 export const WorkspaceMigrationBanner: React.FC<WorkspaceMigrationBannerProps> = ({ onDismiss, onMove }) => {
-  const { migrationSuggestion, dismissMigrationSuggestion } = useWorkspaceStore();
+  const migrationSuggestion = useWorkspaceStore((s) => s.migrationSuggestion);
+  const dismissMigrationSuggestion = useWorkspaceStore((s) => s.dismissMigrationSuggestion);
   const shouldShow = !!migrationSuggestion && !migrationSuggestion.is_match && !!migrationSuggestion.suggestion;
 
   useEffect(() => {

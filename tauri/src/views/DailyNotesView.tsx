@@ -48,7 +48,7 @@ function moodToEmoji(mood: number | undefined): string {
 }
 
 export default function DailyNotesView() {
-  const { activeWorkspaceId } = useWorkspaceStore();
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const includeDescendants = useBubbleUpFlag();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());

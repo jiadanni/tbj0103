@@ -985,7 +985,7 @@ async fn run_manual_job(
         "concept_hierarchy" => crate::services::concept_hierarchy_service::tick(&db, ollama_url)
             .await
             .map(|_| ()),
-        "workspace_prompt_bank" => crate::services::prompt_bank::tick(&db).await.map(|_| ()),
+        "workspace_prompt_bank" => crate::services::prompt_bank::tick(app, &db).await.map(|_| ()),
         other => Err(format!("Unknown background job: {other}")),
     }
     .map_err(|error| {
@@ -1425,7 +1425,7 @@ async fn run_manual_processing_job(
                     workspace_index,
                     workspace_total,
                 );
-                if crate::services::prompt_bank::tick_for_workspaces(&db, Some(std::slice::from_ref(workspace_id)))
+                if crate::services::prompt_bank::tick_for_workspaces(app, &db, Some(std::slice::from_ref(workspace_id)))
                     .await
                     .is_err()
                 {
@@ -2319,7 +2319,7 @@ pub fn start_scheduler(app: AppHandle) {
                     let prompt_bank_result = if is_cancelled("workspace_prompt_bank") {
                         Err("cancelled".to_string())
                     } else {
-                        crate::services::prompt_bank::tick(&db).await
+                        crate::services::prompt_bank::tick(&app, &db).await
                     };
                     let cancelled = is_cancelled("workspace_prompt_bank");
                     emit_task(

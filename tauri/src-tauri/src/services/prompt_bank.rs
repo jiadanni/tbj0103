@@ -1,6 +1,7 @@
 use crate::db::DbState;
 use crate::models::workspace::TopicSignature;
 use crate::ollama::client::{cosine_similarity, OllamaClient, OllamaMessage, RequestContext};
+use crate::services::background_scheduler::BackgroundTaskEvent;
 use crate::services::model_settings::{
     get_embedding_model, get_model_for_job, get_ollama_base_url,
 };
@@ -12,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::time::Duration;
+use tauri::{AppHandle, Emitter};
 
 const DEFAULT_TARGET_COUNT: i64 = 30;
 const REFILL_WATERMARK: i64 = 15;
@@ -340,6 +342,7 @@ fn create_job_with_conn(
 }
 
 pub async fn run_job_by_id(
+    app: &AppHandle,
     pool: Pool<SqliteConnectionManager>,
     job_id: String,
 ) -> Result<(), String> {
@@ -352,14 +355,15 @@ pub async fn run_job_by_id(
         )
         .map_err(|e| e.to_string())?
     };
-    run_generation(pool, &job_id, &workspace_id, target_count).await
+    run_generation(app, pool, &job_id, &workspace_id, target_count).await
 }
 
-pub async fn tick(db: &DbState) -> Result<Option<PromptBankJob>, String> {
-    tick_for_workspaces(db, None).await
+pub async fn tick(app: &AppHandle, db: &DbState) -> Result<Option<PromptBankJob>, String> {
+    tick_for_workspaces(app, db, None).await
 }
 
 pub async fn tick_for_workspaces(
+    app: &AppHandle,
     db: &DbState,
     workspace_filter: Option<&[String]>,
 ) -> Result<Option<PromptBankJob>, String> {
@@ -456,7 +460,7 @@ pub async fn tick_for_workspaces(
 
     if let Some(job) = maybe_job {
         if let Err(error) =
-            run_generation(db.0.clone(), &job.id, &job.workspace_id, job.target_count).await
+            run_generation(app, db.0.clone(), &job.id, &job.workspace_id, job.target_count).await
         {
             mark_job_failed(&db.0, &job.id, &error);
             return Err(error);
@@ -468,6 +472,7 @@ pub async fn tick_for_workspaces(
 }
 
 async fn run_generation(
+    app: &AppHandle,
     pool: Pool<SqliteConnectionManager>,
     job_id: &str,
     workspace_id: &str,
@@ -529,6 +534,23 @@ async fn run_generation(
             )
             .map_err(|e| e.to_string())?;
         }
+        // Progress event so the frontend can react instead of polling
+        // getPromptBankStatus on a timer (see WorkspaceSettingsView).
+        let _ = app.emit(
+            "background-task",
+            BackgroundTaskEvent {
+                task_type: "workspace_prompt_bank".to_string(),
+                status: "processing".to_string(),
+                message: "Refreshing starter prompts…".to_string(),
+                model: None,
+                workspace_id: Some(workspace_id.to_string()),
+                current: u32::try_from(current_count + inserted).ok(),
+                total: u32::try_from(target_count).ok(),
+                current_task_type: None,
+                workspace_index: None,
+                workspace_total: None,
+            },
+        );
         if inserted == 0 {
             break;
         }

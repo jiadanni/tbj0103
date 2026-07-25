@@ -35,14 +35,12 @@ function buildBackupFilename(workspaceName: string) {
 }
 
 export default function BackupSettingsSection() {
-  const {
-    workspaces,
-    activeWorkspaceId,
-    setActiveWorkspaceId,
-    setActiveFolderId,
-    setFoldersForWorkspace,
-    setWorkspaces,
-  } = useWorkspaceStore();
+  const workspaces = useWorkspaceStore((s) => s.workspaces);
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const setActiveWorkspaceId = useWorkspaceStore((s) => s.setActiveWorkspaceId);
+  const setActiveFolderId = useWorkspaceStore((s) => s.setActiveFolderId);
+  const setFoldersForWorkspace = useWorkspaceStore((s) => s.setFoldersForWorkspace);
+  const setWorkspaces = useWorkspaceStore((s) => s.setWorkspaces);
   const [creating, setCreating] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [error, setError] = useState<string | null>(null);

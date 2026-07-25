@@ -70,7 +70,9 @@ function isoToLocalInput(iso: string): string {
 
 export default function ThoughtQueueView() {
   const { activeWorkspaceId } = useScopedWorkspace();
-  const { preferredModel, ollamaUrl, modelLabels } = useSettingsStore();
+  const preferredModel = useSettingsStore((s) => s.preferredModel);
+  const ollamaUrl = useSettingsStore((s) => s.ollamaUrl);
+  const modelLabels = useSettingsStore((s) => s.modelLabels);
 
   const [thoughts, setThoughts] = useState<ThoughtItem[]>([]);
   const [loading, setLoading] = useState(false);
