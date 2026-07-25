@@ -7,7 +7,7 @@
 //! The five `#[tauri::command]` entry points in `commands::ai_knowledge`
 //! call into this module for all of the actual work.
 
-use crate::commands::knowledge_graph::snapshot_workspace_roadmap;
+use crate::services::knowledge_graph_service::snapshot_workspace_roadmap;
 use crate::ollama::client::{OllamaClient, OllamaMessage};
 use crate::services::concept_hierarchy::{is_valid_parent_pair, normalize_concept_name};
 use crate::services::context_assembler::context_size_for_model;
