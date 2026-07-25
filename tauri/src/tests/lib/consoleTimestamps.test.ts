@@ -1,9 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  installConsoleTimestamps,
-  enableLogForwarding,
-  enableBatchLogForwarding
-} from '../../lib/consoleTimestamps';
+/* eslint-disable no-console -- this suite tests console patching itself */
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { installConsoleTimestamps } from '../../lib/consoleTimestamps';
 
 describe('consoleTimestamps', () => {
   let originalConsoleInfo: typeof console.info;
