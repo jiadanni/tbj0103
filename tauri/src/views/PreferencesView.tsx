@@ -46,6 +46,7 @@ import { ModelsTable } from "../components/ModelsTable";
 import { AboutYouPreferencesPanel } from "../components/preferences/AboutYouPreferencesPanel";
 import { AppearancePreferencesPanel } from "../components/preferences/AppearancePreferencesPanel";
 import { LearningPreferencesPanel } from "../components/preferences/LearningPreferencesPanel";
+import { SyncPreferencesPanel } from "../components/preferences/SyncPreferencesPanel";
 import { DataControlsPreferences } from "../components/preferences/DataControlsPreferences";
 import { STRUCTURED_OUTPUT_MIN_PARAMS_B, INFERENCE_JOBS_CATALOG, RUN_MODE_OPTIONS } from "../lib/inferenceJobsCatalog";
 
@@ -4677,134 +4678,54 @@ export default function PreferencesView() {
 
           {/* ── Sync ── */}
           {activeTab === "sync" && (
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              <div className="max-w-4xl px-5 py-4 space-y-8">
-                  <section className="space-y-3" data-pref-section>
-                    <div className="pb-1.5 border-b border-[var(--border-color)]">
-                      <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Multi-device Sync</h3>
-                      <p className="text-xs text-[var(--text-muted)]/80 mt-1">
-                        Sync your chats, memories, and settings across devices using a private Git remote.
-                        Requires a private repository (GitHub, GitLab, or any SSH-accessible bare repo) and
-                        Git installed on this machine.
-                      </p>
-                    </div>
+            <SyncPreferencesPanel
+              dbSettings={dbSettings}
+              gitSync={gitSync}
+              gitSyncUrl={gitSyncUrl}
+              gitSyncing={gitSyncing}
+              gitSyncSaving={gitSyncSaving}
+              isGitSyncSshUrl={isGitSyncSshUrl}
+              onGitSyncUrlChange={setGitSyncUrl}
+              onSyncIntervalChange={(value) => set("git_sync_interval_minutes", value)}
+              onToggleEnabled={async () => {
+                if (!gitSync) { return; }
+                const next = !gitSync.enabled;
+                setGitSyncSaving(true);
+                try {
+                  await api.gitSync.configure(gitSyncUrl, next);
+                  setGitSync((s) => s ? { ...s, enabled: next } : s);
 
-                    <div className="flex items-center justify-between py-1 border-t border-[var(--border-color)] pt-4">
-                      <div>
-                        <p className="text-sm font-semibold text-[var(--text-secondary)]">Enable sync</p>
-                        <p className="text-xs text-[var(--text-muted)] mt-0.5">Automatically sync in the background</p>
-                      </div>
-                      <Toggle
-                        on={gitSync?.enabled ?? false}
-                        onToggle={async () => {
-                          if (!gitSync) { return; }
-                          const next = !gitSync.enabled;
-                          setGitSyncSaving(true);
-                          try {
-                            await api.gitSync.configure(gitSyncUrl, next);
-                            setGitSync((s) => s ? { ...s, enabled: next } : s);
+                } catch (e: unknown) {
+                  setGitSync((s) => s ? { ...s, last_error: String(e) } : s);
+                } finally {
+                  setGitSyncSaving(false);
+                }
+              }}
+              onSaveRemoteUrl={async () => {
+                setGitSyncSaving(true);
+                try {
+                  await api.gitSync.configure(gitSyncUrl, gitSync?.enabled ?? false);
+                  setGitSync((s) => s ? { ...s, remote_url: gitSyncUrl, last_error: "" } : s);
 
-                          } catch (e: unknown) {
-                            setGitSync((s) => s ? { ...s, last_error: String(e) } : s);
-                          } finally {
-                            setGitSyncSaving(false);
-                          }
-                        }}
-                      />
-                    </div>
+                } catch (e: unknown) {
+                  setGitSync((s) => s ? { ...s, last_error: String(e) } : s);
+                } finally {
+                  setGitSyncSaving(false);
+                }
+              }}
+              onTriggerSync={async () => {
+                setGitSyncing(true);
+                try {
+                  const s = await api.gitSync.triggerSync();
+                  setGitSync(s);
 
-                    <div className={`flex items-center justify-between py-1 ${gitSync?.enabled ? "" : "opacity-50"}`}>
-                      <div>
-                        <p className="text-sm text-[var(--text-secondary)]">Sync every (minutes)</p>
-                        {!gitSync?.enabled && (
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5">Enable sync above to change this</p>
-                        )}
-                      </div>
-                      <input
-                        type="number"
-                        min={1}
-                        max={60}
-                        disabled={!gitSync?.enabled}
-                        value={dbSettings.git_sync_interval_minutes}
-                        onChange={(e) => set("git_sync_interval_minutes", Math.max(1, Math.min(60, Number(e.target.value) || 5)))}
-                        className="w-16 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-1 text-center text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] disabled:cursor-not-allowed"
-                      />
-                    </div>
-
-                    <div className="border-t border-[var(--border-color)] pt-4 space-y-2">
-                      <label className="text-xs text-[var(--text-secondary)] block font-medium">Remote URL</label>
-                      <div className="flex gap-2">
-                        <input
-                          value={gitSyncUrl}
-                          onChange={(e) => setGitSyncUrl(e.target.value)}
-                          placeholder="git@github.com:you/aetherium-sync.git"
-                          className="flex-1 px-3 py-1.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] font-mono"
-                        />
-                        <button
-                          disabled={gitSyncSaving || !gitSyncUrl.trim() || !isGitSyncSshUrl}
-                          onClick={async () => {
-                            setGitSyncSaving(true);
-                            try {
-                              await api.gitSync.configure(gitSyncUrl, gitSync?.enabled ?? false);
-                              setGitSync((s) => s ? { ...s, remote_url: gitSyncUrl, last_error: "" } : s);
-
-                            } catch (e: unknown) {
-                              setGitSync((s) => s ? { ...s, last_error: String(e) } : s);
-                            } finally {
-                              setGitSyncSaving(false);
-                            }
-                          }}
-                          className="px-3 py-1.5 text-xs rounded bg-[var(--accent-color)] text-white hover:opacity-90 disabled:opacity-50"
-                        >
-                          {gitSyncSaving ? <RefreshCw size={12} className="animate-spin" /> : "Save"}
-                        </button>
-                      </div>
-                      <p className="text-[11px] text-[var(--text-muted)] mt-1.5">
-                        SSH remote required. Use `git@...` or `ssh://...` and ensure your key is loaded in `ssh-agent`.
-                      </p>
-                      {gitSyncUrl.trim() && !isGitSyncSshUrl && (
-                        <p className="text-[11px] text-amber-400 mt-1">
-                          Git sync only accepts SSH remotes.
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="flex items-center justify-between py-1 border-t border-[var(--border-color)] pt-4">
-                      <div>
-                        <p className="text-xs text-[var(--text-muted)]">Last synced</p>
-                        <p className="text-sm font-semibold text-[var(--text-secondary)] mt-0.5">
-                          {gitSync?.last_synced_at ? new Date(gitSync.last_synced_at).toLocaleString() : "Never"}
-                        </p>
-                      </div>
-                      <button
-                        disabled={gitSyncing || !gitSync?.enabled}
-                        onClick={async () => {
-                          setGitSyncing(true);
-                          try {
-                            const s = await api.gitSync.triggerSync();
-                            setGitSync(s);
-
-                          } catch (e: unknown) {
-                            setGitSync((s) => s ? { ...s, last_error: String(e) } : s);
-                          } finally {
-                            setGitSyncing(false);
-                          }
-                        }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
-                      >
-                        {gitSyncing ? <RefreshCw size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-                        Sync Now
-                      </button>
-                    </div>
-
-                    {gitSync?.last_error && (
-                      <div className="px-3 py-2 rounded bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
-                        {gitSync.last_error}
-                      </div>
-                    )}
-                  </section>
-              </div>
-            </div>
+                } catch (e: unknown) {
+                  setGitSync((s) => s ? { ...s, last_error: String(e) } : s);
+                } finally {
+                  setGitSyncing(false);
+                }
+              }}
+            />
           )}
 
           {activeTab === "inference-jobs" && (
