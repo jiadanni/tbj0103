@@ -18,6 +18,7 @@ pub mod flashcard_topic_service;
 pub mod folder_service;
 pub mod git_sync;
 pub mod graph_algorithms;
+pub mod knowledge_analysis;
 pub mod link_parser;
 pub mod linking_engine;
 pub mod memory_cleanup;
