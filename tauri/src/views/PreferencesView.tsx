@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { message } from "@tauri-apps/plugin-dialog";
-import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FolderInput, ScrollText, Info, Brain, ChevronDown, GraduationCap, Search, UserCircle, SlidersHorizontal, X } from "lucide-react";
+import { Palette, Bot, ShieldCheck, HardDrive, Plus, LayoutGrid, Network, Globe, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FolderInput, ScrollText, Info, Brain, ChevronDown, GraduationCap, Search, UserCircle, SlidersHorizontal, X } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat, type CoreSettings, type InferenceSettings, type AdvancedSettings, type InferenceJobSetting, type InferenceJobStatus, type BackgroundJobRunMode } from "../lib/api";
 import { resolveModelDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
@@ -46,6 +46,7 @@ import { SecurityPreferencesPanel } from "../components/preferences/SecurityPref
 import { InferencePreferencesPanel } from "../components/preferences/InferencePreferencesPanel";
 import { LearningPreferencesPanel } from "../components/preferences/LearningPreferencesPanel";
 import { SyncPreferencesPanel } from "../components/preferences/SyncPreferencesPanel";
+import { McpPreferencesPanel } from "../components/preferences/McpPreferencesPanel";
 import { DataControlsPreferences } from "../components/preferences/DataControlsPreferences";
 import { STRUCTURED_OUTPUT_MIN_PARAMS_B, INFERENCE_JOBS_CATALOG, RUN_MODE_OPTIONS } from "../lib/inferenceJobsCatalog";
 
@@ -1528,10 +1529,6 @@ export default function PreferencesView() {
 
   // MCP state
   const [mcpServers, setMcpServers] = useState<MCPServerConfig[]>([]);
-  const [showAddMcpServer, setShowAddMcpServer] = useState(false);
-  const [newMcpName, setNewMcpName] = useState("");
-  const [newMcpCommand, setNewMcpCommand] = useState("");
-  const [newMcpArgs, setNewMcpArgs] = useState("");
 
   // Git sync state
   const [gitSync, setGitSync] = useState<GitSyncStatus | null>(null);
@@ -2566,136 +2563,7 @@ export default function PreferencesView() {
           )}
 
           {activeTab === "mcp" && (
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-6">
-              <div className="app-container">
-                <h2 className="text-2xl font-bold mb-4">Model Context Protocol Servers</h2>
-
-                <div className="mb-6">
-                  <p className="text-sm text-[var(--text-secondary)] mb-4">
-                    Configure external MCP servers to integrate with external knowledge sources and tools.
-                  </p>
-                </div>
-
-                <div className="mb-6">
-                  <button
-                    onClick={() => setShowAddMcpServer(!showAddMcpServer)}
-                    className="flex items-center gap-2 px-4 py-2 rounded bg-[var(--accent-color)] text-white hover:opacity-90 transition"
-                  >
-                    <Plus size={18} /> Add MCP Server
-                  </button>
-                </div>
-
-                {showAddMcpServer && (
-                  <div className="mb-6 p-4 rounded border border-[var(--border-color)] bg-[var(--bg-secondary)]">
-                    <h3 className="font-bold mb-4">New MCP Server</h3>
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium mb-2">Server Name</label>
-                        <input
-                          type="text"
-                          value={newMcpName}
-                          onChange={(e) => setNewMcpName(e.target.value)}
-                          className="w-full px-3 py-2 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] focus:outline-none"
-                          placeholder="e.g., my-knowledge-server"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-2">Command</label>
-                        <input
-                          type="text"
-                          value={newMcpCommand}
-                          onChange={(e) => setNewMcpCommand(e.target.value)}
-                          className="w-full px-3 py-2 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] focus:outline-none"
-                          placeholder="e.g., /path/to/server-binary"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-2">Arguments (comma-separated)</label>
-                        <input
-                          type="text"
-                          value={newMcpArgs}
-                          onChange={(e) => setNewMcpArgs(e.target.value)}
-                          className="w-full px-3 py-2 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] focus:outline-none"
-                          placeholder="e.g., --config /path/config.json"
-                        />
-                      </div>
-                      <div className="flex gap-2 justify-end">
-                        <button
-                          onClick={() => {
-                            setShowAddMcpServer(false);
-                            setNewMcpName("");
-                            setNewMcpCommand("");
-                            setNewMcpArgs("");
-                          }}
-                          className="px-4 py-2 rounded border border-[var(--border-color)] hover:bg-[var(--bg-hover)] transition"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={async () => {
-                            try {
-                              await api.mcp.addServer(
-                                newMcpName,
-                                newMcpCommand,
-                                newMcpArgs.split(",").map((s) => s.trim()).filter(Boolean),
-                                "" // workspace_id
-                              );
-                              const servers = await api.mcp.listServers();
-                              setMcpServers(servers);
-                              setShowAddMcpServer(false);
-                              setNewMcpName("");
-                              setNewMcpCommand("");
-                              setNewMcpArgs("");
-                            } catch (err) {
-                              console.error("Failed to add MCP server:", err);
-                            }
-                          }}
-                          className="px-4 py-2 rounded bg-[var(--accent-color)] text-white hover:opacity-90 transition"
-                        >
-                          Add
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-3">
-                  {mcpServers.length === 0 ? (
-                    <p className="text-sm text-[var(--text-secondary)] italic">No MCP servers configured yet.</p>
-                  ) : (
-                    mcpServers.map((server) => (
-                      <div key={server.id} className="p-4 rounded border border-[var(--border-color)] bg-[var(--bg-secondary)]">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <h4 className="font-bold">{server.name}</h4>
-                            <p className="text-sm text-[var(--text-secondary)] font-mono">{server.command}</p>
-                            {server.args.length > 0 && (
-                              <p className="text-xs text-[var(--text-secondary)] mt-1">{server.args.join(" ")}</p>
-                            )}
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={async () => {
-                                try {
-                                  await api.mcp.deleteServer(server.name);
-                                  const servers = await api.mcp.listServers();
-                                  setMcpServers(servers);
-                                } catch (err) {
-                                  console.error("Failed to delete MCP server:", err);
-                                }
-                              }}
-                              className="p-2 rounded hover:bg-[var(--bg-hover)] transition text-red-500"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
+            <McpPreferencesPanel mcpServers={mcpServers} onMcpServersChange={setMcpServers} />
           )}
         </div>
       </div >
