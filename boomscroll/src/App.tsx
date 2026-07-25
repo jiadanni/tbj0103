@@ -266,7 +266,7 @@ export default function App() {
   // Loader screen
   if (!deck) {
     return (
-      <main className="flex h-full flex-col items-center justify-center gap-6 px-8 text-center">
+      <main className="safe-screen flex h-full flex-col items-center justify-center gap-6 px-8 text-center">
         <h1 className="text-3xl font-bold tracking-tight">Boom Scroll</h1>
         <p className="max-w-xs text-sm text-zinc-400">
           Export a deck from Aetherium (Preferences → Backup → Boom Scroll),
@@ -301,10 +301,25 @@ export default function App() {
   // Workspace filter screen
   if (showFilter || !current) {
     const enabledCards = deck.cards.filter((card) => enabledIds.has(card.workspaceId)).length;
+    const allSelected = deck.workspaces.length > 0 && deck.workspaces.every((ws) => enabledIds.has(ws.id));
+
     return (
-      <main className="flex h-full flex-col items-center justify-center gap-6 px-8">
-        <h1 className="text-xl font-bold tracking-tight">Choose workspaces</h1>
-        <ul className="w-full max-w-sm space-y-2 overflow-y-auto">
+      <main className="safe-screen flex h-full flex-col items-center justify-center gap-4 px-8">
+        <h1 className="shrink-0 text-xl font-bold tracking-tight">Choose workspaces</h1>
+        <div className="flex w-full max-w-sm shrink-0 items-center justify-between">
+          <span className="text-xs text-zinc-500">
+            {enabledIds.size} of {deck.workspaces.length} selected
+          </span>
+          <button
+            onClick={() =>
+              setEnabledIds(allSelected ? new Set() : new Set(deck.workspaces.map((ws) => ws.id)))
+            }
+            className="rounded-full border border-zinc-800 px-3 py-1 text-xs font-medium text-zinc-300 hover:bg-zinc-900/50 hover:text-zinc-100 active:opacity-80 transition-colors"
+          >
+            {allSelected ? "Unselect all" : "Select all"}
+          </button>
+        </div>
+        <ul className="w-full max-w-sm min-h-0 flex-1 space-y-2 overflow-y-auto touch-pan-y">
           {deck.workspaces.map((ws) => (
             <li key={ws.id}>
               <label className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 px-4 py-3">
@@ -331,7 +346,7 @@ export default function App() {
             </li>
           ))}
         </ul>
-        <div className="flex flex-col items-center gap-3 w-full max-w-sm">
+        <div className="flex shrink-0 flex-col items-center gap-3 w-full max-w-sm">
           <button
             onClick={() => startFeed(deck, enabledIds)}
             disabled={enabledCards === 0}
@@ -363,7 +378,7 @@ export default function App() {
       onPointerCancel={onPointerUp}
     >
       {/* Safe area top margin keeps controls clear of Android status bar / camera cutout */}
-      <div className="pointer-events-none absolute left-0 right-0 top-[max(3.75rem,calc(env(safe-area-inset-top)+1rem))] z-10 flex items-center justify-between px-4">
+      <div className="pointer-events-none absolute left-0 right-0 top-[calc(var(--safe-top)+0.5rem)] z-10 flex items-center justify-between px-4">
         <div className="pointer-events-auto flex overflow-hidden rounded-full border border-zinc-800 text-xs bg-zinc-950/80 backdrop-blur-md">
           <button
             onClick={() => switchFeedMode("test")}
@@ -443,8 +458,8 @@ export default function App() {
 
       {/* Modal overlay when loading a deck while one is active */}
       {pendingDeck && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl border border-zinc-800 bg-zinc-900 p-6 text-center space-y-4 shadow-2xl">
+        <div className="safe-screen fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/80 px-6 backdrop-blur-sm">
+          <div className="my-auto w-full max-w-sm rounded-2xl border border-zinc-800 bg-zinc-900 p-6 text-center space-y-4 shadow-2xl">
             <h2 className="text-lg font-bold text-zinc-100">Import Deck</h2>
             <p className="text-xs text-zinc-400 leading-relaxed">
               You already have an active deck loaded. Would you like to merge the new cards into your existing deck or replace it completely?
