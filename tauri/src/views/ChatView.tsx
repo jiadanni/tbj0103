@@ -27,7 +27,7 @@ import {
   type ComposerSuggestion,
 } from "../lib/composerSuggestions";
 import { resolveModelDisplayName } from "../lib/modelDisplayName";
-import { groupModelsByFamily } from "../lib/modelFamilyGrouping";
+import { useModelPickerGroups } from "../hooks/useModelPickerGroups";
 import { resolveChatTitle } from "../lib/chatTitles";
 import { useTextSelectionToolbar } from "../hooks/useTextSelectionToolbar";
 import { SelectionToolbar } from "../components/SelectionToolbar";
@@ -866,10 +866,6 @@ export default function ChatView() {
   }, []);
 
   const activeMessages = activeChatMessages;
-  const aiModelById = useMemo(
-    () => new Map(aiModelList.map((model) => [model.model_id, model] as const)),
-    [aiModelList],
-  );
   const sessionById = useMemo(
     () => new Map(sessions.map((session) => [session.id, session] as const)),
     [sessions],
@@ -887,44 +883,22 @@ export default function ChatView() {
     [effectiveWorkspaceFolders],
   );
 
-  const modelPickerOptions = useMemo(
-    () => availableModels.filter((modelId) => {
-      const meta = aiModelById.get(modelId);
-      return !meta?.provider.startsWith("web_");
-    }),
-    [availableModels, aiModelById]
-  );
-  const enabledWebModels = useMemo(
-    () => aiModelList.filter((m) => m.provider.startsWith("web_") && m.enabled && !m.is_hidden),
-    [aiModelList]
-  );
+  const {
+    aiModelById,
+    modelPickerOptions,
+    enabledWebModels,
+    groupedModelPickerOptions,
+    alternateSendModels,
+    groupedAlternateSendModels,
+  } = useModelPickerGroups({
+    availableModels,
+    aiModelList,
+    modelFamilyLabels,
+    customModelFamilies,
+    modelLabels,
+    selectedModel,
+  });
   const [isWebPickerOpen, setIsWebPickerOpen] = useState(false);
-  const groupedModelPickerOptions = useMemo(() => {
-    const { groups } = groupModelsByFamily(
-      modelPickerOptions,
-      modelFamilyLabels,
-      customModelFamilies,
-      modelLabels,
-      undefined, // we'll use resolveModelDisplayName in the render loop or similar if needed, but here we just need keys
-      true
-    );
-
-    return groups.map((g, idx) => ({
-      key: `family-${idx}-${g.label}`,
-      label: g.label,
-      modelIds: g.options.map((opt) => opt.value),
-    }));
-  }, [modelPickerOptions, modelFamilyLabels, customModelFamilies, modelLabels]);
-  const alternateSendModels = useMemo(
-    () => availableModels.filter((id) => id !== selectedModel),
-    [availableModels, selectedModel]
-  );
-  const groupedAlternateSendModels = useMemo(
-    () => groupedModelPickerOptions
-      .map((g) => ({ ...g, modelIds: g.modelIds.filter((id) => alternateSendModels.includes(id)) }))
-      .filter((g) => g.modelIds.length > 0),
-    [groupedModelPickerOptions, alternateSendModels]
-  );
   // uses granular selector from above
   const sessionTokensUsed = activeMessages.reduce((sum, m) => sum + (m.tokens_used ?? 0), 0);
   const setTitlebarTokenCount = useUIStore((s) => s.setTitlebarTokenCount);
