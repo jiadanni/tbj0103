@@ -17,7 +17,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
 use tauri::PhysicalPosition;
 #[cfg(target_os = "linux")]
 use tauri::PhysicalSize;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri::{WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_global_shortcut::ShortcutState;
@@ -851,6 +851,7 @@ pub fn complete_db_dependent_setup(
     }
 
     crate::services::background_scheduler::start_scheduler(app.clone());
+    crate::services::background_scheduler::start_thought_due_watcher(app.clone());
 
     if let Some(db) = app.try_state::<crate::db::DbState>() {
         if let Ok(conn) = db.0.get() {
@@ -910,7 +911,7 @@ pub fn complete_db_dependent_setup(
                 };
 
                 for id in workspace_ids {
-                    let _ =
+                    let recompute =
                         crate::services::topic_signature::recompute_workspace_signature_with_ai(
                             &db,
                             &id,
@@ -919,6 +920,29 @@ pub fn complete_db_dependent_setup(
                             Some(cancel_rx.clone()),
                         )
                         .await;
+                    // Notify listeners (e.g. ChatView's topic-signature hook) that
+                    // this workspace's signature was just regenerated, so they can
+                    // refetch instead of polling on a blind timer. Reuses the
+                    // generic "background-task" channel; only a terminal
+                    // "completed" event is emitted so it never registers a job
+                    // pill in the status bar (see backgroundJobs store applyEvent).
+                    if recompute.is_ok() {
+                        let _ = app_handle.emit(
+                            "background-task",
+                            crate::services::background_scheduler::BackgroundTaskEvent {
+                                task_type: "topic_signature".to_string(),
+                                status: "completed".to_string(),
+                                message: "Topic signature updated".to_string(),
+                                model: None,
+                                workspace_id: Some(id.clone()),
+                                current: None,
+                                total: None,
+                                current_task_type: None,
+                                workspace_index: None,
+                                workspace_total: None,
+                            },
+                        );
+                    }
                 }
             }
             tokio::time::sleep(std::time::Duration::from_secs(interval_minutes * 60)).await;

@@ -2257,6 +2257,16 @@ export const api = {
       onEvent(event.payload);
     }),
 
+  /**
+   * Fires when the backend detects scheduled thoughts whose `process_at` has
+   * arrived. Carries no payload — listeners re-query `thoughtQueue.getDue`
+   * scoped to their own workspace. Replaces the per-view 60s `getDue` polls.
+   */
+  listenThoughtDue: (onEvent: () => void): Promise<UnlistenFn> =>
+    listen("thought-due", () => {
+      onEvent();
+    }),
+
   backgroundJobs: {
     confirm: (taskType: string) =>
       invoke<boolean>("confirm_background_job", { taskType }),

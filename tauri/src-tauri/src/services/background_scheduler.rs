@@ -2467,6 +2467,45 @@ pub fn start_scheduler(app: AppHandle) {
     });
 }
 
+/// Interval for the due-thought watcher. Kept finer than the main scheduler
+/// (5 min) so scheduled thoughts still fire promptly, but it is a single
+/// backend timer replacing the per-view 60s frontend polls in ChatView and
+/// ThoughtQueueView.
+const THOUGHT_DUE_WATCH_SECS: u64 = 60;
+
+/// Watch for scheduled thoughts whose `process_at` has arrived and emit a
+/// lightweight `thought-due` event so any open thought view can pull and
+/// process them. The event carries no payload — listeners re-query
+/// `get_due_thoughts` scoped to their own workspace on receipt. This replaces
+/// the duplicated 60s `getDue` polls that previously ran in each view.
+pub fn start_thought_due_watcher(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(THOUGHT_DUE_WATCH_SECS));
+        loop {
+            interval.tick().await;
+            let pool = app.state::<DbState>().0.clone();
+            let has_due = tokio::task::spawn_blocking(move || -> bool {
+                let Ok(conn) = pool.get() else {
+                    return false;
+                };
+                let now = chrono::Utc::now().to_rfc3339();
+                conn.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM thought_queue \
+                     WHERE status = 'scheduled' AND process_at <= ?1)",
+                    rusqlite::params![now],
+                    |row| row.get::<_, bool>(0),
+                )
+                .unwrap_or(false)
+            })
+            .await
+            .unwrap_or(false);
+            if has_due {
+                let _ = app.emit("thought-due", ());
+            }
+        }
+    });
+}
+
 #[derive(Debug, Clone, Serialize, serde::Deserialize)]
 pub struct ActiveBackgroundJob {
     pub task_type: String,

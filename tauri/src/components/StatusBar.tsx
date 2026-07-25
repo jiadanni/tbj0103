@@ -590,6 +590,9 @@ export default function StatusBar() {
 
   // Poll performance stats on a slower cadence, rescheduling after each
   // response completes so a slow backend sample never overlaps with the next.
+  // Paused while the window is hidden — CPU/memory readings aren't useful when
+  // the app isn't visible, and resuming on visibility regain takes a fresh
+  // sample immediately.
   useEffect(() => {
     let cancelled = false;
     let inFlight = false;
@@ -603,12 +606,12 @@ export default function StatusBar() {
 
     function scheduleNext() {
       clearTimer();
-      if (cancelled) { return; }
+      if (cancelled || document.hidden) { return; }
       timerRef.current = setTimeout(() => { void fetchOnce(); }, PERFORMANCE_POLL_INTERVAL_MS);
     }
 
     async function fetchOnce() {
-      if (cancelled || inFlight) {
+      if (cancelled || inFlight || document.hidden) {
         scheduleNext();
         return;
       }
@@ -624,11 +627,21 @@ export default function StatusBar() {
       }
     }
 
-    void fetchOnce();
+    function handleVisibilityChange() {
+      if (document.hidden) {
+        clearTimer();
+      } else {
+        void fetchOnce();
+      }
+    }
+
+    if (!document.hidden) { void fetchOnce(); }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       cancelled = true;
       clearTimer();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 

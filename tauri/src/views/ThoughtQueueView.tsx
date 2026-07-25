@@ -10,6 +10,7 @@ import {
 import { api, type ThoughtItem } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useScopedWorkspace } from "../lib/workspacePane";
+import { useDueThoughts } from "../hooks/useDueThoughts";
 import { Tooltip } from "../components/Tooltip";
 
 // ---- helpers ----------------------------------------------------------------
@@ -91,9 +92,6 @@ export default function ThoughtQueueView() {
   // Expanded result panes
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // Active processing set (IDs being processed via Ollama)
-  const processingRef = useRef<Set<string>>(new Set());
-
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // ---- load thoughts --------------------------------------------------------
@@ -117,67 +115,17 @@ export default function ThoughtQueueView() {
     setDraftModel(preferredModel || "");
   }, [preferredModel]);
 
-  // ---- passive polling: check for due items every 60 s ----------------------
+  // ---- due-thought processing ----------------------------------------------
+  // Shared with ChatView: an immediate check on mount plus a backend
+  // `thought-due` event listener (no per-view 60s poll).
 
-  const processDueThought = useCallback(async (thought: ThoughtItem) => {
-    if (processingRef.current.has(thought.id)) {return;}
-    processingRef.current.add(thought.id);
-    try {
-      await api.thoughtQueue.updateStatus(thought.id, "processing");
-      setThoughts((prev) =>
-        prev.map((t) => (t.id === thought.id ? { ...t, status: "processing" } : t))
-      );
-
-      const prefix = thought.prompt_prefix.trim();
-      const userContent = prefix
-        ? `${prefix}\n\n${thought.content}`
-        : thought.content;
-
-      const result = await api.ollama.sendMessage(
-        thought.id,
-        thought.model_name,
-        [{ role: "user", content: userContent }],
-        false,
-        ollamaUrl,
-      );
-
-      await api.thoughtQueue.updateResult(thought.id, result);
-      setThoughts((prev) =>
-        prev.map((t) =>
-          t.id === thought.id
-            ? { ...t, status: "done", result, result_at: new Date().toISOString() }
-            : t
-        )
-      );
-      setExpandedId(thought.id);
-    } catch {
-      // Revert to scheduled so the next poll can retry
-      await api.thoughtQueue.updateStatus(thought.id, "scheduled").catch(() => {});
-      setThoughts((prev) =>
-        prev.map((t) => (t.id === thought.id ? { ...t, status: "scheduled" } : t))
-      );
-    } finally {
-      processingRef.current.delete(thought.id);
-    }
-  }, [ollamaUrl]);
-
-  useEffect(() => {
-    if (!activeWorkspaceId) {return;}
-
-    async function pollDue() {
-      if (!activeWorkspaceId) {return;}
-      try {
-        const due = await api.thoughtQueue.getDue(activeWorkspaceId);
-        for (const t of due) {
-          processDueThought(t);
-        }
-      } catch {/* ignore */}
-    }
-
-    pollDue(); // immediate on mount
-    const timer = setInterval(pollDue, 60_000);
-    return () => clearInterval(timer);
-  }, [activeWorkspaceId, processDueThought]);
+  const { processDueThought } = useDueThoughts({
+    workspaceId: activeWorkspaceId,
+    enabled: true,
+    ollamaUrl,
+    setThoughts,
+    onProcessed: setExpandedId,
+  });
 
   // ---- actions --------------------------------------------------------------
 

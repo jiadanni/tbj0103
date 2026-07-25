@@ -229,6 +229,8 @@ vi.mock("@/lib/api", () => ({
       sendMessage: vi.fn(),
     },
     listenStream: vi.fn(() => Promise.resolve(() => {})),
+    listenBackgroundTask: vi.fn(() => Promise.resolve(() => {})),
+    listenThoughtDue: vi.fn(() => Promise.resolve(() => {})),
   },
 }));
 

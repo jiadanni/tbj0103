@@ -4,111 +4,12 @@ import { api, REFRESH_WORKSPACE_TASK_TYPES, type BackgroundProcessingScope, type
 import { INFERENCE_JOBS_CATALOG } from "../../lib/inferenceJobsCatalog";
 import { useWorkspaceStore } from "../../stores/workspaceStore";
 import SuccessDialog from "../SuccessDialog";
-
-const DEFAULT_DATA_RESET_OPTIONS: KnowledgeResetOptions = {
-  clear_graph: true,
-  clear_topic_signatures: true,
-  clear_prompt_bank: true,
-  clear_analysis_jobs: true,
-  clear_legacy_topics: true,
-  delete_generated_cards: true,
-};
-
-function totalKnowledgeResetRows(result: KnowledgeResetResult | null): number {
-  if (!result) {
-    return 0;
-  }
-  return result.concept_nodes
-    + result.concept_links
-    + result.concept_mentions
-    + result.graph_statistics
-    + result.analyze_jobs
-    + result.analyze_job_chunks
-    + result.change_proposals
-    + result.flashcard_topics
-    + result.generated_cards_deleted
-    + result.generated_cards_detached
-    + result.learning_goals_detached
-    + result.topic_signatures_cleared
-    + result.prompt_bank_prompts
-    + result.prompt_bank_jobs;
-}
-
-// The backend's `workspace` scope resolves exactly one workspace_id, so the
-// "Selected workspaces" scope fans out to one call per workspace and the
-// per-workspace results are summed back into a single result for display.
-function sumKnowledgeResetResults(results: KnowledgeResetResult[]): KnowledgeResetResult {
-  return results.reduce<KnowledgeResetResult>((acc, next) => ({
-    dry_run: next.dry_run,
-    workspace_count: acc.workspace_count + next.workspace_count,
-    concept_nodes: acc.concept_nodes + next.concept_nodes,
-    concept_links: acc.concept_links + next.concept_links,
-    concept_mentions: acc.concept_mentions + next.concept_mentions,
-    graph_statistics: acc.graph_statistics + next.graph_statistics,
-    roadmap_snapshots: acc.roadmap_snapshots + next.roadmap_snapshots,
-    analyze_jobs: acc.analyze_jobs + next.analyze_jobs,
-    analyze_job_chunks: acc.analyze_job_chunks + next.analyze_job_chunks,
-    change_proposals: acc.change_proposals + next.change_proposals,
-    flashcard_topics: acc.flashcard_topics + next.flashcard_topics,
-    generated_cards_deleted: acc.generated_cards_deleted + next.generated_cards_deleted,
-    generated_cards_detached: acc.generated_cards_detached + next.generated_cards_detached,
-    learning_goals_detached: acc.learning_goals_detached + next.learning_goals_detached,
-    topic_signatures_cleared: acc.topic_signatures_cleared + next.topic_signatures_cleared,
-    prompt_bank_prompts: acc.prompt_bank_prompts + next.prompt_bank_prompts,
-    prompt_bank_jobs: acc.prompt_bank_jobs + next.prompt_bank_jobs,
-  }), {
-    dry_run: results[0]?.dry_run ?? false,
-    workspace_count: 0,
-    concept_nodes: 0,
-    concept_links: 0,
-    concept_mentions: 0,
-    graph_statistics: 0,
-    roadmap_snapshots: 0,
-    analyze_jobs: 0,
-    analyze_job_chunks: 0,
-    change_proposals: 0,
-    flashcard_topics: 0,
-    generated_cards_deleted: 0,
-    generated_cards_detached: 0,
-    learning_goals_detached: 0,
-    topic_signatures_cleared: 0,
-    prompt_bank_prompts: 0,
-    prompt_bank_jobs: 0,
-  });
-}
-
-function formatKnowledgeResetResult(result: KnowledgeResetResult): string {
-  const rows = totalKnowledgeResetRows(result);
-  return `${rows} AI-inferred row${rows === 1 ? "" : "s"} reset across ${result.workspace_count} workspace${result.workspace_count === 1 ? "" : "s"}. Source material was preserved.`;
-}
-
-function KnowledgeResetCountGrid({ result }: { result: KnowledgeResetResult }) {
-  const items = [
-    ["Workspaces", result.workspace_count],
-    ["Concepts", result.concept_nodes],
-    ["Links", result.concept_links],
-    ["Mentions", result.concept_mentions],
-    ["Analysis jobs", result.analyze_jobs + result.analyze_job_chunks],
-    ["Proposals", result.change_proposals],
-    ["Legacy topics", result.flashcard_topics],
-    ["Cards deleted", result.generated_cards_deleted],
-    ["Cards detached", result.generated_cards_detached],
-    ["Goals detached", result.learning_goals_detached],
-    ["Topic signatures", result.topic_signatures_cleared],
-    ["Prompt bank", result.prompt_bank_prompts + result.prompt_bank_jobs],
-  ];
-
-  return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-      {items.map(([label, value]) => (
-        <div key={label} className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
-          <div className="text-sm font-semibold text-[var(--text-primary)]">{value}</div>
-          <div className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">{label}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
+import {
+  DEFAULT_KNOWLEDGE_RESET_OPTIONS,
+  KnowledgeResetDialog,
+  formatKnowledgeResetResult,
+  sumKnowledgeResetResults,
+} from "../KnowledgeReset";
 
 /** Default job selection for the "Run Background Processing Now" panel:
  *  the standard refresh jobs plus the maintenance/cleanup passes, which are
@@ -121,7 +22,7 @@ const DEFAULT_PROCESSING_JOBS = [
 ];
 
 export function DataControlsPreferences() {
-  const [options, setOptions] = useState<KnowledgeResetOptions>({ ...DEFAULT_DATA_RESET_OPTIONS });
+  const [options, setOptions] = useState<KnowledgeResetOptions>({ ...DEFAULT_KNOWLEDGE_RESET_OPTIONS });
   const [preview, setPreview] = useState<KnowledgeResetResult | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -129,6 +30,12 @@ export function DataControlsPreferences() {
   const [processingRunning, setProcessingRunning] = useState(false);
   const [processingScope, setProcessingScope] = useState<BackgroundProcessingScope>("current_workspace");
   const [selectedWorkspaceIds, setSelectedWorkspaceIds] = useState<string[]>([]);
+  // The reset owns its scope independently of the background-processing scope
+  // above. They used to share one radio group, which meant a control labelled
+  // "Background Processing" silently retargeted a destructive action in a
+  // different card.
+  const [resetScope, setResetScope] = useState<BackgroundProcessingScope>("current_workspace");
+  const [resetWorkspaceIds, setResetWorkspaceIds] = useState<string[]>([]);
   const [selectedProcessingJobs, setSelectedProcessingJobs] = useState<string[]>(
     () => [...DEFAULT_PROCESSING_JOBS],
   );
@@ -143,51 +50,24 @@ export function DataControlsPreferences() {
   const workspaces = useWorkspaceStore((state) => state.workspaces).filter((workspace) => !workspace.is_hidden);
   const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
 
-  const optionGroups: Array<{
-    title: string;
-    rows: Array<{ key: keyof KnowledgeResetOptions; label: string; description: string }>;
-  }> = [
-    {
-      title: "Knowledge",
-      rows: [
-        { key: "clear_graph", label: "Graph and roadmap", description: "Concepts, links, mentions, graph statistics, and concept proposals." },
-        { key: "clear_topic_signatures", label: "Topic signatures", description: "Workspace topic fingerprints that can re-seed old concepts." },
-        { key: "clear_analysis_jobs", label: "Analysis jobs", description: "Analyze Workspace job and chunk history." },
-      ],
-    },
-    {
-      title: "Chat",
-      rows: [
-        { key: "clear_prompt_bank", label: "Prompt bank", description: "Stored starter prompts and prompt-bank jobs." },
-      ],
-    },
-    {
-      title: "Learning",
-      rows: [
-        { key: "clear_legacy_topics", label: "Legacy topics", description: "Flashcard topic rows from older topic systems." },
-        { key: "delete_generated_cards", label: "Generated concept/topic cards", description: "If disabled, cards are kept but stale concept/topic links are detached." },
-      ],
-    },
-  ];
-
-  // Runs the reset (or its dry-run preview) against whatever the Scope radio
-  // currently selects, rather than always hitting every workspace.
+  // Runs the reset (or its dry-run preview) against whatever the reset card's
+  // own Scope radio selects, rather than always hitting every workspace.
   async function runScopedReset(
     nextOptions: KnowledgeResetOptions,
     dryRun: boolean,
   ): Promise<KnowledgeResetResult> {
-    if (processingScope === "all_workspaces") {
+    if (resetScope === "all_workspaces") {
       return api.graph.resetKnowledgeState({ scope: "all_workspaces", options: nextOptions, dryRun });
     }
 
-    const workspaceIds = processingScope === "selected_workspaces"
-      ? selectedWorkspaceIds
+    const workspaceIds = resetScope === "selected_workspaces"
+      ? resetWorkspaceIds
       : activeWorkspaceId
         ? [activeWorkspaceId]
         : [];
 
     if (workspaceIds.length === 0) {
-      throw new Error(processingScope === "selected_workspaces"
+      throw new Error(resetScope === "selected_workspaces"
         ? "Select at least one workspace to reset."
         : "No active workspace to reset.");
     }
@@ -201,23 +81,39 @@ export function DataControlsPreferences() {
     return sumKnowledgeResetResults(results);
   }
 
-  const resetScopeIsEmpty = processingScope === "selected_workspaces"
-    ? selectedWorkspaceIds.length === 0
-    : processingScope === "current_workspace" && !activeWorkspaceId;
+  const resetScopeIsEmpty = resetScope === "selected_workspaces"
+    ? resetWorkspaceIds.length === 0
+    : resetScope === "current_workspace" && !activeWorkspaceId;
 
   const resetScopeDescription = useMemo(() => {
-    if (processingScope === "all_workspaces") {
+    if (resetScope === "all_workspaces") {
       return "across all workspaces";
     }
-    if (processingScope === "selected_workspaces") {
-      const count = selectedWorkspaceIds.length;
+    if (resetScope === "selected_workspaces") {
+      const count = resetWorkspaceIds.length;
       return count === 1
-        ? `for ${workspaces.find((w) => w.id === selectedWorkspaceIds[0])?.name ?? "the selected workspace"}`
+        ? `for ${workspaces.find((w) => w.id === resetWorkspaceIds[0])?.name ?? "the selected workspace"}`
         : `across ${count} selected workspace${count === 1 ? "" : "s"}`;
     }
     const active = workspaces.find((w) => w.id === activeWorkspaceId);
     return active ? `for ${active.name}` : "for the current workspace";
-  }, [processingScope, selectedWorkspaceIds, workspaces, activeWorkspaceId]);
+  }, [resetScope, resetWorkspaceIds, workspaces, activeWorkspaceId]);
+
+  // Short form for the button face — the prose description is too long to sit
+  // inside a button, but the button must still say what it is about to hit.
+  const resetScopeButtonLabel = useMemo(() => {
+    if (resetScope === "all_workspaces") {
+      return "All Workspaces";
+    }
+    if (resetScope === "selected_workspaces") {
+      const count = resetWorkspaceIds.length;
+      if (count === 1) {
+        return workspaces.find((w) => w.id === resetWorkspaceIds[0])?.name ?? "1 Workspace";
+      }
+      return `${count} Workspaces`;
+    }
+    return workspaces.find((w) => w.id === activeWorkspaceId)?.name ?? "This Workspace";
+  }, [resetScope, resetWorkspaceIds, workspaces, activeWorkspaceId]);
 
   async function loadPreview(nextOptions: KnowledgeResetOptions) {
     setLoadingPreview(true);
@@ -336,6 +232,12 @@ export function DataControlsPreferences() {
 
   function toggleProcessingWorkspace(workspaceId: string, checked: boolean) {
     setSelectedWorkspaceIds((current) => checked
+      ? Array.from(new Set([...current, workspaceId]))
+      : current.filter((id) => id !== workspaceId));
+  }
+
+  function toggleResetWorkspace(workspaceId: string, checked: boolean) {
+    setResetWorkspaceIds((current) => checked
       ? Array.from(new Set([...current, workspaceId]))
       : current.filter((id) => id !== workspaceId));
   }
@@ -497,8 +399,6 @@ export function DataControlsPreferences() {
     };
   }, [modelDropdownOpen]);
 
-  const busy = loadingPreview || running;
-  const totalRows = totalKnowledgeResetRows(preview);
   const batchInFlight = batchStatus !== null
     && Object.values(batchStatus).some((s) => s === "queued" || s === "running");
   const processingDisabled = processingRunning
@@ -748,142 +648,113 @@ export function DataControlsPreferences() {
           </div>
 
           <div className="rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-4">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex flex-col gap-4">
               <div className="min-w-0">
                 <h3 className="text-base font-semibold text-[var(--text-primary)]">Reset AI-Inferred Workspace Data</h3>
                 <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">
                   Clear generated graph, topic, prompt-bank, and analysis state {resetScopeDescription} after major concept iteration.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={openResetDialog}
-                disabled={resetScopeIsEmpty}
-                title={resetScopeIsEmpty ? "Select at least one workspace to reset." : undefined}
-                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-red-500 px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <RotateCcw size={15} />
-                Reset AI-Inferred Workspace Data
-              </button>
+
+              <div className="space-y-2">
+                <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Reset scope</div>
+                <div className="flex flex-col gap-1.5 sm:flex-row">
+                  {[
+                    { value: "current_workspace", label: "Current workspace" },
+                    { value: "selected_workspaces", label: "Selected workspaces" },
+                    { value: "all_workspaces", label: "All workspaces" },
+                  ].map((option) => (
+                    <label key={option.value} className="flex flex-1 cursor-pointer items-center gap-2 rounded-lg border border-red-500/25 bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-secondary)]">
+                      <input
+                        type="radio"
+                        name="knowledge-reset-scope"
+                        checked={resetScope === option.value}
+                        onChange={() => {
+                          const next = option.value as BackgroundProcessingScope;
+                          setResetScope(next);
+                          // Seed the checkbox list from the active workspace so
+                          // the button label never reads "0 Workspaces" the
+                          // instant this mode is picked.
+                          if (next === "selected_workspaces" && resetWorkspaceIds.length === 0 && activeWorkspaceId) {
+                            setResetWorkspaceIds([activeWorkspaceId]);
+                          }
+                        }}
+                        className="h-4 w-4 accent-red-500"
+                      />
+                      <span className="truncate">{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {resetScope === "selected_workspaces" && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Workspaces to reset</div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setResetWorkspaceIds([])}
+                        className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                      >
+                        Clear all
+                      </button>
+                      <span className="text-[var(--border-color)]">|</span>
+                      <button
+                        type="button"
+                        onClick={() => setResetWorkspaceIds(workspaces.map((w) => w.id))}
+                        className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                      >
+                        Select all
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {workspaces.map((workspace) => (
+                      <label key={workspace.id} className="flex cursor-pointer items-center gap-2 rounded-lg border border-red-500/25 bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-secondary)]">
+                        <input
+                          type="checkbox"
+                          checked={resetWorkspaceIds.includes(workspace.id)}
+                          onChange={(event) => toggleResetWorkspace(workspace.id, event.target.checked)}
+                          className="h-4 w-4 accent-red-500"
+                        />
+                        <span className="truncate">{workspace.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={openResetDialog}
+                  disabled={resetScopeIsEmpty}
+                  title={resetScopeIsEmpty ? "Select at least one workspace to reset." : undefined}
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-red-500 px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <RotateCcw size={15} />
+                  {resetScopeIsEmpty ? "Reset AI-Inferred Data" : `Reset AI-Inferred Data — ${resetScopeButtonLabel}`}
+                </button>
+              </div>
             </div>
           </div>
         </section>
       </div>
 
       {dialogOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm"
-          onClick={() => {
-            if (!busy) {
-              setDialogOpen(false);
-            }
-          }}
-        >
-          <div
-            className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-red-500/25 bg-[var(--bg-elevated)] shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="border-b border-[var(--border-color)] px-5 py-4">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-500/12 text-red-400">
-                  <RotateCcw size={18} />
-                </div>
-                <div>
-                  <h3 className="text-base font-semibold text-[var(--text-primary)]">Reset AI-Inferred Workspace Data</h3>
-                  <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">
-                    Clear selected AI-inferred data {resetScopeDescription}. Source material is preserved.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-4 overflow-y-auto px-5 py-4">
-              <div className="rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-xs leading-5 text-red-200">
-                This cannot be undone. Source material is preserved, but selected AI-inferred data will be cleared.
-              </div>
-
-              {loadingPreview ? (
-                <div className="flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-4 py-3 text-sm text-[var(--text-secondary)]">
-                  <Loader2 size={14} className="animate-spin" />
-                  Calculating affected data...
-                </div>
-              ) : preview ? (
-                <KnowledgeResetCountGrid result={preview} />
-              ) : null}
-
-              <div className="space-y-2">
-                <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Advanced options</div>
-                <div className="space-y-4">
-                  {optionGroups.map((group) => (
-                    <div key={group.title} className="space-y-2">
-                      <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">{group.title}</div>
-                      <div className="space-y-2">
-                        {group.rows.map((option) => {
-                          const checked = options[option.key] ?? true;
-                          return (
-                            <label
-                              key={option.key}
-                              className="flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2.5"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                disabled={busy}
-                                onChange={(event) => { void updateOption(option.key, event.target.checked); }}
-                                className="mt-1 h-4 w-4 accent-[var(--accent-color)]"
-                              />
-                              <span className="min-w-0">
-                                <span className="block text-sm font-medium text-[var(--text-primary)]">{option.label}</span>
-                                <span className="block text-xs leading-5 text-[var(--text-muted)]">{option.description}</span>
-                              </span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {options.delete_generated_cards === false && (
-                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs leading-5 text-amber-200">
-                  Generated cards will be kept as manual cards, but their concept and legacy topic links will be removed.
-                </div>
-              )}
-
-              {error && (
-                <div className="rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-xs leading-5 text-red-200">
-                  {error}
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between gap-3 border-t border-[var(--border-color)] px-5 py-4">
-              <div className="text-xs text-[var(--text-muted)]">
-                {preview && !loadingPreview ? `${totalRows} affected derived row${totalRows === 1 ? "" : "s"}` : ""}
-              </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setDialogOpen(false)}
-                  disabled={busy}
-                  className="rounded-xl border border-[var(--border-color)] px-4 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={confirmReset}
-                  disabled={busy}
-                  className="inline-flex items-center gap-2 rounded-xl bg-red-500 px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {running && <Loader2 size={14} className="animate-spin" />}
-                  Reset AI-Inferred Data
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <KnowledgeResetDialog
+          title="Reset AI-Inferred Workspace Data"
+          description={`Clear selected AI-inferred data ${resetScopeDescription}. Source material is preserved.`}
+          options={options}
+          preview={preview}
+          loadingPreview={loadingPreview}
+          running={running}
+          error={error}
+          onOptionChange={(key, value) => { void updateOption(key, value); }}
+          onConfirm={() => { void confirmReset(); }}
+          onCancel={() => setDialogOpen(false)}
+        />
       )}
       {successDialog && (
         <SuccessDialog

@@ -25,9 +25,11 @@ import {
   type ComposerSuggestion,
 } from "../lib/composerSuggestions";
 import { useComposerSuggestions } from "../hooks/useComposerSuggestions";
+import { useDueThoughts } from "../hooks/useDueThoughts";
 import { resolveModelDisplayName } from "../lib/modelDisplayName";
 import { useModelPickerGroups } from "../hooks/useModelPickerGroups";
 import { useModelFamilyPicker } from "../hooks/useModelFamilyPicker";
+import { useTopicSignatureRefresh } from "../hooks/useTopicSignatureRefresh";
 import { resolveChatTitle } from "../lib/chatTitles";
 import { useTextSelectionToolbar } from "../hooks/useTextSelectionToolbar";
 import { SelectionToolbar } from "../components/SelectionToolbar";
@@ -783,7 +785,6 @@ export default function ChatView() {
   const [thoughtScheduleEnabled, setThoughtScheduleEnabled] = useState(false);
   const [thoughtSubmitting, setThoughtSubmitting] = useState(false);
   const [thoughtExpandedId, setThoughtExpandedId] = useState<string | null>(null);
-  const thoughtProcessingRef = useRef<Set<string>>(new Set());
 
   const loadThoughts = useCallback(async () => {
     if (!effectiveWorkspaceId) { return; }
@@ -798,40 +799,13 @@ export default function ChatView() {
     loadThoughts();
   }, [thoughtPanelOpen, loadThoughts]);
 
-  const processDueThought = useCallback(async (thought: ThoughtItem) => {
-    if (thoughtProcessingRef.current.has(thought.id)) { return; }
-    thoughtProcessingRef.current.add(thought.id);
-    try {
-      await api.thoughtQueue.updateStatus(thought.id, "processing");
-      setThoughts((prev) => prev.map((t) => t.id === thought.id ? { ...t, status: "processing" } : t));
-      const userContent = thought.prompt_prefix.trim()
-        ? `${thought.prompt_prefix}\n\n${thought.content}`
-        : thought.content;
-      const result = await api.ollama.sendMessage(thought.id, thought.model_name, [{ role: "user", content: userContent }], false, ollamaUrl);
-      await api.thoughtQueue.updateResult(thought.id, result);
-      setThoughts((prev) => prev.map((t) => t.id === thought.id ? { ...t, status: "done", result, result_at: new Date().toISOString() } : t));
-      setThoughtExpandedId(thought.id);
-    } catch {
-      await api.thoughtQueue.updateStatus(thought.id, "scheduled").catch(() => { });
-      setThoughts((prev) => prev.map((t) => t.id === thought.id ? { ...t, status: "scheduled" } : t));
-    } finally {
-      thoughtProcessingRef.current.delete(thought.id);
-    }
-  }, [ollamaUrl]);
-
-  useEffect(() => {
-    if (!effectiveWorkspaceId || !thoughtPanelOpen) { return; }
-    async function pollDue() {
-      if (!effectiveWorkspaceId) { return; }
-      try {
-        const due = await api.thoughtQueue.getDue(effectiveWorkspaceId);
-        for (const t of due) { processDueThought(t); }
-      } catch { /* ignore */ }
-    }
-    pollDue();
-    const timer = setInterval(pollDue, 60_000);
-    return () => clearInterval(timer);
-  }, [effectiveWorkspaceId, thoughtPanelOpen, processDueThought]);
+  const { processDueThought } = useDueThoughts({
+    workspaceId: effectiveWorkspaceId,
+    enabled: thoughtPanelOpen,
+    ollamaUrl,
+    setThoughts,
+    onProcessed: setThoughtExpandedId,
+  });
 
   async function submitThought() {
     if (!effectiveWorkspaceId || !thoughtDraft.trim()) { return; }
@@ -1358,33 +1332,7 @@ export default function ChatView() {
     return () => { cancelled = true; };
   }, [effectiveWorkspaceId, activeChatMessages.length]);
 
-  useEffect(() => {
-    if (!effectiveWorkspaceId) { return; }
-
-    let cancelled = false;
-
-    const refreshSignature = () => {
-      if (document.visibilityState === "hidden") { return; }
-      api.topicSignature.get(effectiveWorkspaceId)
-        .then((sig) => {
-          if (!cancelled) {
-            setWorkspaceTopicSignature(effectiveWorkspaceId, sig);
-          }
-        })
-        .catch(() => { });
-    };
-
-    const intervalId = window.setInterval(refreshSignature, 60_000);
-    document.addEventListener("visibilitychange", refreshSignature);
-    window.addEventListener("focus", refreshSignature);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-      document.removeEventListener("visibilitychange", refreshSignature);
-      window.removeEventListener("focus", refreshSignature);
-    };
-  }, [effectiveWorkspaceId, setWorkspaceTopicSignature]);
+  useTopicSignatureRefresh(effectiveWorkspaceId);
 
   // Generate AI workspace prompts if needed
   const suggestedPromptsCount = activeTopicSignature?.suggested_prompts?.length ?? 0;
