@@ -923,6 +923,49 @@ function totalKnowledgeResetRows(result: KnowledgeResetResult | null): number {
     + result.prompt_bank_jobs;
 }
 
+// The backend's `workspace` scope resolves exactly one workspace_id, so the
+// "Selected workspaces" scope fans out to one call per workspace and the
+// per-workspace results are summed back into a single result for display.
+function sumKnowledgeResetResults(results: KnowledgeResetResult[]): KnowledgeResetResult {
+  return results.reduce<KnowledgeResetResult>((acc, next) => ({
+    dry_run: next.dry_run,
+    workspace_count: acc.workspace_count + next.workspace_count,
+    concept_nodes: acc.concept_nodes + next.concept_nodes,
+    concept_links: acc.concept_links + next.concept_links,
+    concept_mentions: acc.concept_mentions + next.concept_mentions,
+    graph_statistics: acc.graph_statistics + next.graph_statistics,
+    roadmap_snapshots: acc.roadmap_snapshots + next.roadmap_snapshots,
+    analyze_jobs: acc.analyze_jobs + next.analyze_jobs,
+    analyze_job_chunks: acc.analyze_job_chunks + next.analyze_job_chunks,
+    change_proposals: acc.change_proposals + next.change_proposals,
+    flashcard_topics: acc.flashcard_topics + next.flashcard_topics,
+    generated_cards_deleted: acc.generated_cards_deleted + next.generated_cards_deleted,
+    generated_cards_detached: acc.generated_cards_detached + next.generated_cards_detached,
+    learning_goals_detached: acc.learning_goals_detached + next.learning_goals_detached,
+    topic_signatures_cleared: acc.topic_signatures_cleared + next.topic_signatures_cleared,
+    prompt_bank_prompts: acc.prompt_bank_prompts + next.prompt_bank_prompts,
+    prompt_bank_jobs: acc.prompt_bank_jobs + next.prompt_bank_jobs,
+  }), {
+    dry_run: results[0]?.dry_run ?? false,
+    workspace_count: 0,
+    concept_nodes: 0,
+    concept_links: 0,
+    concept_mentions: 0,
+    graph_statistics: 0,
+    roadmap_snapshots: 0,
+    analyze_jobs: 0,
+    analyze_job_chunks: 0,
+    change_proposals: 0,
+    flashcard_topics: 0,
+    generated_cards_deleted: 0,
+    generated_cards_detached: 0,
+    learning_goals_detached: 0,
+    topic_signatures_cleared: 0,
+    prompt_bank_prompts: 0,
+    prompt_bank_jobs: 0,
+  });
+}
+
 function formatKnowledgeResetResult(result: KnowledgeResetResult): string {
   const rows = totalKnowledgeResetRows(result);
   return `${rows} AI-inferred row${rows === 1 ? "" : "s"} reset across ${result.workspace_count} workspace${result.workspace_count === 1 ? "" : "s"}. Source material was preserved.`;
@@ -1016,16 +1059,60 @@ function DataControlsPreferences() {
     },
   ];
 
+  // Runs the reset (or its dry-run preview) against whatever the Scope radio
+  // currently selects, rather than always hitting every workspace.
+  async function runScopedReset(
+    nextOptions: KnowledgeResetOptions,
+    dryRun: boolean,
+  ): Promise<KnowledgeResetResult> {
+    if (processingScope === "all_workspaces") {
+      return api.graph.resetKnowledgeState({ scope: "all_workspaces", options: nextOptions, dryRun });
+    }
+
+    const workspaceIds = processingScope === "selected_workspaces"
+      ? selectedWorkspaceIds
+      : activeWorkspaceId
+        ? [activeWorkspaceId]
+        : [];
+
+    if (workspaceIds.length === 0) {
+      throw new Error(processingScope === "selected_workspaces"
+        ? "Select at least one workspace to reset."
+        : "No active workspace to reset.");
+    }
+
+    const results = await Promise.all(workspaceIds.map((workspaceId) => api.graph.resetKnowledgeState({
+      scope: "workspace",
+      workspaceId,
+      options: nextOptions,
+      dryRun,
+    })));
+    return sumKnowledgeResetResults(results);
+  }
+
+  const resetScopeIsEmpty = processingScope === "selected_workspaces"
+    ? selectedWorkspaceIds.length === 0
+    : processingScope === "current_workspace" && !activeWorkspaceId;
+
+  const resetScopeDescription = useMemo(() => {
+    if (processingScope === "all_workspaces") {
+      return "across all workspaces";
+    }
+    if (processingScope === "selected_workspaces") {
+      const count = selectedWorkspaceIds.length;
+      return count === 1
+        ? `for ${workspaces.find((w) => w.id === selectedWorkspaceIds[0])?.name ?? "the selected workspace"}`
+        : `across ${count} selected workspace${count === 1 ? "" : "s"}`;
+    }
+    const active = workspaces.find((w) => w.id === activeWorkspaceId);
+    return active ? `for ${active.name}` : "for the current workspace";
+  }, [processingScope, selectedWorkspaceIds, workspaces, activeWorkspaceId]);
+
   async function loadPreview(nextOptions: KnowledgeResetOptions) {
     setLoadingPreview(true);
     setError(null);
     try {
-      const result = await api.graph.resetKnowledgeState({
-        scope: "all_workspaces",
-        options: nextOptions,
-        dryRun: true,
-      });
-      setPreview(result);
+      setPreview(await runScopedReset(nextOptions, true));
     } catch (err) {
       setPreview(null);
       setError(err instanceof Error ? err.message : String(err));
@@ -1052,11 +1139,7 @@ function DataControlsPreferences() {
     setRunning(true);
     setError(null);
     try {
-      const result = await api.graph.resetKnowledgeState({
-        scope: "all_workspaces",
-        options,
-        dryRun: false,
-      });
+      const result = await runScopedReset(options, false);
       setPreview(result);
       setDialogOpen(false);
       setSuccess(formatKnowledgeResetResult(result));
@@ -1558,13 +1641,15 @@ function DataControlsPreferences() {
               <div className="min-w-0">
                 <h3 className="text-base font-semibold text-[var(--text-primary)]">Reset AI-Inferred Workspace Data</h3>
                 <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">
-                  Clear generated graph, topic, prompt-bank, and analysis state across all workspaces after major concept iteration.
+                  Clear generated graph, topic, prompt-bank, and analysis state {resetScopeDescription} after major concept iteration.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={openResetDialog}
-                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-red-500 px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                disabled={resetScopeIsEmpty}
+                title={resetScopeIsEmpty ? "Select at least one workspace to reset." : undefined}
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-red-500 px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <RotateCcw size={15} />
                 Reset AI-Inferred Workspace Data
@@ -1595,7 +1680,7 @@ function DataControlsPreferences() {
                 <div>
                   <h3 className="text-base font-semibold text-[var(--text-primary)]">Reset AI-Inferred Workspace Data</h3>
                   <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">
-                    Clear selected AI-inferred data for every workspace. This is for global cleanup, not a single workspace repair.
+                    Clear selected AI-inferred data {resetScopeDescription}. Source material is preserved.
                   </p>
                 </div>
               </div>
