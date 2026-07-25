@@ -22,6 +22,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 pub mod claude_v2;
+pub mod claude_v2_cluster;
 pub mod claude_v2_match;
 
 // ── Public file-data structs ──────────────────────────────────────────────────

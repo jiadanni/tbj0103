@@ -394,7 +394,7 @@ const UNKNOWN_TOKEN_IDF: f32 = 0.35;
 /// Text used to represent a chat for matching: title plus the first few user
 /// messages, capped. Falls back to `first_user_message` when the full transcript
 /// isn't loaded (the LLM command reconstructs previews without `messages`).
-fn chat_context_text(conv: &ClaudeConversationPreview) -> String {
+pub(super) fn chat_context_text(conv: &ClaudeConversationPreview) -> String {
     let mut out = String::with_capacity(conv.name.len() + CHAT_CONTEXT_CHARS);
     out.push_str(&conv.name);
 
@@ -753,7 +753,7 @@ fn contains_whole_word(haystack: &str, needle: &str) -> bool {
     false
 }
 
-fn tokenize(text: &str) -> HashSet<String> {
+pub(super) fn tokenize(text: &str) -> HashSet<String> {
     text.split(|c: char| !c.is_alphanumeric())
         .filter_map(|w| {
             let lower = w.trim().to_lowercase();
