@@ -27,6 +27,7 @@ import {
 import { useComposerSuggestions } from "../hooks/useComposerSuggestions";
 import { resolveModelDisplayName } from "../lib/modelDisplayName";
 import { useModelPickerGroups } from "../hooks/useModelPickerGroups";
+import { useModelFamilyPicker } from "../hooks/useModelFamilyPicker";
 import { resolveChatTitle } from "../lib/chatTitles";
 import { useTextSelectionToolbar } from "../hooks/useTextSelectionToolbar";
 import { SelectionToolbar } from "../components/SelectionToolbar";
@@ -2866,47 +2867,20 @@ export default function ChatView() {
   );
 
   // Family mode: group enabled models by ID prefix
-  const modelFamilies = useMemo(() => {
-    const map = new Map<string, AiModel[]>();
-    enabledModels.forEach((m) => {
-      const prefix = m.model_id.includes(":") ? m.model_id.split(":")[0] : m.model_id;
-      const existing = map.get(prefix);
-      if (existing) { existing.push(m); } else { map.set(prefix, [m]); }
-    });
-    return [...map.entries()].map(([prefix, models]) => ({
-      prefix,
-      label: modelFamilyLabels[prefix] ?? prefix,
-      models: [...models].sort((a, b) => a.priority - b.priority),
-    }));
-  }, [enabledModels, modelFamilyLabels]);
-
-  const [selectedFamily, setSelectedFamily] = useState<string | null>(null);
-  const [_showFamilyVariant, _setShowFamilyVariant] = useState(false);
-
-  // Revert the family picker label back to family-level once generation ends
-  const prevIsStreamingRef = useRef(false);
-  useEffect(() => {
-    if (prevIsStreamingRef.current && !isStreaming && composerMode === "family") {
-      _setShowFamilyVariant(false);
-    }
-    prevIsStreamingRef.current = isStreaming;
-  }, [isStreaming, composerMode]);
-
-  // Sync selectedFamily from selectedModel when entering family mode
-  useEffect(() => {
-    if (composerMode !== "family") { return; }
-    if (selectedFamily !== null) { return; }
-    const prefix = selectedModel
-      ? (selectedModel.includes(":") ? selectedModel.split(":")[0] : selectedModel)
-      : null;
-    setSelectedFamily(prefix ?? (modelFamilies[0]?.prefix ?? null));
-  }, [composerMode, selectedFamily, selectedModel, modelFamilies]);
-
-  const activeFamilyModels = useMemo(
-    () => modelFamilies.find((f) => f.prefix === selectedFamily)?.models ?? [],
-    [modelFamilies, selectedFamily]
-  );
-  const activeFamilyDefaultModelId = activeFamilyModels[0]?.model_id ?? null;
+  const {
+    modelFamilies,
+    selectedFamily,
+    setSelectedFamily,
+    activeFamilyModels,
+    activeFamilyDefaultModelId,
+    setShowFamilyVariant,
+  } = useModelFamilyPicker({
+    enabledModels,
+    modelFamilyLabels,
+    selectedModel,
+    composerMode,
+    isStreaming,
+  });
 
   const {
     chatFollowUpRow,
@@ -3721,7 +3695,7 @@ export default function ChatView() {
                                           <button
                                             onClick={async (e) => {
                                               setSelectedModel(m.model_id);
-                                              _setShowFamilyVariant(true);
+                                              setShowFamilyVariant(true);
                                               await persistModelChoice(m.model_id);
                                               if (e.metaKey || e.ctrlKey) {
                                                 await queueWithModel(m.model_id);
