@@ -20,7 +20,7 @@ import {
   CODE_BLOCK_KEYWORD_COLORS,
   getCodeBlockColorPaletteColors,
 } from "../lib/codeBlockHighlight";
-import { ACCENT_COLORS, THEMES, THEME_DEFAULT_ACCENTS, normalizeTheme } from "../lib/theme";
+import { normalizeTheme } from "../lib/theme";
 import { useSettingsStore, type ChatMessageStyle, type CodeBlockColorPalette, type CodeBlockContainerStyle, type CodeBlockKeywordColor } from "../stores/settingsStore";
 import { type NavigationPresentation, useWorkspaceStore } from "../stores/workspaceStore";
 // Heavy tab-specific subviews are lazy-loaded so opening the standalone
@@ -43,14 +43,10 @@ import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import LiveAppPreview from "./preferences/LiveAppPreview";
 import { Toggle } from "../components/Toggle";
 import { AboutYouPreferencesPanel } from "../components/preferences/AboutYouPreferencesPanel";
+import { AppearancePreferencesPanel } from "../components/preferences/AppearancePreferencesPanel";
 import { LearningPreferencesPanel } from "../components/preferences/LearningPreferencesPanel";
 import { DataControlsPreferences } from "../components/preferences/DataControlsPreferences";
 import { STRUCTURED_OUTPUT_MIN_PARAMS_B, INFERENCE_JOBS_CATALOG, RUN_MODE_OPTIONS } from "../lib/inferenceJobsCatalog";
-
-
-const MIN_FONT_SIZE = 11;
-const MAX_FONT_SIZE = 22;
-const DEFAULT_FONT_SIZE = 16;
 
 const TABS: { id: PreferencesSection; label: string; Icon: React.ElementType }[] = [
   { id: "app", label: "App", Icon: SettingsIcon },
@@ -3405,128 +3401,16 @@ export default function PreferencesView() {
 
                 {/* ── Appearance ── */}
                 {activeTab === "appearance" && (
-                  <div className="flex flex-col gap-8">
-                    {/* Typography & Interface */}
-                    <section className="space-y-3" data-pref-section>
-                      <div className="pb-1.5 border-b border-[var(--border-color)]">
-                        <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Typography & Interface</h3>
-                        <p className="text-xs text-[var(--text-muted)]/80 mt-1">
-                          Adjust text sizes and platform-specific window decorations.
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="text-xs text-[var(--text-secondary)] mb-2 block font-medium">Text Size</label>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setAppearance("font_size", Math.max(MIN_FONT_SIZE, dbSettings.font_size - 1))}
-                            onMouseEnter={() => setHoverOverrides((o) => ({ ...o, fontSize: Math.max(MIN_FONT_SIZE, dbSettings.font_size - 1) }))}
-                            onMouseLeave={() => setHoverOverrides((o) => ({ ...o, fontSize: null }))}
-                            disabled={dbSettings.font_size <= MIN_FONT_SIZE}
-                            className="rounded-lg border border-[var(--border-color)] px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            A-
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setAppearance("font_size", Math.min(MAX_FONT_SIZE, dbSettings.font_size + 1))}
-                            onMouseEnter={() => setHoverOverrides((o) => ({ ...o, fontSize: Math.min(MAX_FONT_SIZE, dbSettings.font_size + 1) }))}
-                            onMouseLeave={() => setHoverOverrides((o) => ({ ...o, fontSize: null }))}
-                            disabled={dbSettings.font_size >= MAX_FONT_SIZE}
-                            className="rounded-lg border border-[var(--border-color)] px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            A+
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setAppearance("font_size", DEFAULT_FONT_SIZE)}
-                            onMouseEnter={() => setHoverOverrides((o) => ({ ...o, fontSize: DEFAULT_FONT_SIZE }))}
-                            onMouseLeave={() => setHoverOverrides((o) => ({ ...o, fontSize: null }))}
-                            disabled={dbSettings.font_size === DEFAULT_FONT_SIZE}
-                            className="rounded-lg border border-[var(--border-color)] px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            Reset
-                          </button>
-                          <span className="ml-2 text-xs font-medium text-[var(--text-muted)] w-8 text-center bg-[var(--bg-hover)] px-2 py-1 rounded-md">
-                            {dbSettings.font_size}
-                          </span>
-                        </div>
-                      </div>
-
-                      {isMac && (
-                        <div>
-                          <label className="text-xs text-[var(--text-secondary)] mb-2 block font-medium">Menubar Icon Style</label>
-                          <div className="flex flex-wrap gap-2">
-                            {["monochrome", "white", "black"].map((style) => (
-                              <button
-                                key={style}
-                                onClick={() => updateSettings({ menubar_icon_style: style as "monochrome" | "white" | "black" })}
-                                className={`px-3 py-1.5 text-xs rounded-lg border transition-colors capitalize ${dbSettings.menubar_icon_style === style
-                                  ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                                  : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                                  }`}
-                              >
-                                {style}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </section>
-
-                    {/* Theme & Accent */}
-                    <section className="space-y-3" data-pref-section>
-                      <div className="pb-1.5 border-b border-[var(--border-color)]">
-                        <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Theme & Accent</h3>
-                        <p className="text-xs text-[var(--text-muted)]/80 mt-1">
-                          Personalize the color scheme and main highlights of the interface.
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="text-xs text-[var(--text-secondary)] mb-2 block font-medium">Theme</label>
-                        <div className="flex flex-wrap gap-2">
-                          {THEMES.map((t) => (
-                            <button
-                              key={t}
-                              type="button"
-                              onClick={() => updateSettings({ theme: t, accent_color: THEME_DEFAULT_ACCENTS[t] })}
-                              onMouseEnter={() => setHoverOverrides((o) => ({ ...o, theme: t, accentColor: THEME_DEFAULT_ACCENTS[t] }))}
-                              onMouseLeave={() => setHoverOverrides((o) => ({ ...o, theme: null, accentColor: null }))}
-                              className={`px-3 py-1.5 text-xs rounded-lg border transition-colors capitalize ${dbSettings.theme === t
-                                ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
-                                : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                                }`}
-                            >
-                              {t}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="text-xs text-[var(--text-secondary)] mb-2 block font-medium">Accent Color</label>
-                        <div className="grid grid-cols-8 gap-2 w-fit">
-                          {ACCENT_COLORS.map(({ label, value }) => (
-                            <Tooltip key={value} content={label}>
-                              <button
-                                onClick={() => setAppearance("accent_color", value)}
-                                onMouseEnter={() => setHoverOverrides((o) => ({ ...o, accentColor: value }))}
-                                onMouseLeave={() => setHoverOverrides((o) => ({ ...o, accentColor: null }))}
-                                aria-label={`Use ${label} accent`}
-                                className={`relative h-8 w-8 rounded-full border-2 border-white transition-all ${dbSettings.accent_color === value ? "scale-110 shadow-sm ring-2 ring-white ring-offset-2 ring-offset-[var(--bg-elevated)] z-10" : "opacity-80 hover:opacity-100 hover:scale-105"
-                                  }`}
-                                style={{ backgroundColor: value }}
-                              >
-                                <span className="sr-only">{label}</span>
-                              </button>
-                            </Tooltip>
-                          ))}
-                        </div>
-                      </div>
-                    </section>
-                  </div>
+                  <AppearancePreferencesPanel
+                    dbSettings={dbSettings}
+                    onSetFontSize={(value) => setAppearance("font_size", value)}
+                    onPreviewFontSize={(value) => setHoverOverrides((o) => ({ ...o, fontSize: value }))}
+                    onSetMenubarIconStyle={(style) => updateSettings({ menubar_icon_style: style })}
+                    onSetTheme={(theme, accentColor) => updateSettings({ theme, accent_color: accentColor })}
+                    onPreviewTheme={(theme, accentColor) => setHoverOverrides((o) => ({ ...o, theme, accentColor }))}
+                    onSetAccentColor={(value) => setAppearance("accent_color", value)}
+                    onPreviewAccentColor={(value) => setHoverOverrides((o) => ({ ...o, accentColor: value }))}
+                  />
                 )}
 
                 {/* ── AI / Ollama ── */}
