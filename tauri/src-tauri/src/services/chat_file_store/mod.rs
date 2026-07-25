@@ -2229,10 +2229,34 @@ mod tests {
         assert!(res.is_err());
     }
 
+    /// Fixture test against a real Claude v2 export.
+    ///
+    /// The sample data is not checked into the repo, so this test is a no-op
+    /// unless `AETHERIUM_CLAUDE_V2_SAMPLE` points at a v2 export directory:
+    ///
+    /// ```text
+    /// AETHERIUM_CLAUDE_V2_SAMPLE=/path/to/Samples/claude/2026-06-04 cargo test
+    /// ```
+    ///
+    /// The assertions below (18 projects, non-empty memories) describe that
+    /// specific export, so pointing this at a different export will fail.
     #[test]
     fn test_parsing_actual_v2_sample_export() {
-        use std::path::Path;
-        let export_path = Path::new("/home/urljenkins/Source/tbj0103/Samples/claude/2026-06-04");
+        use std::path::PathBuf;
+        let Some(export_path) = std::env::var_os("AETHERIUM_CLAUDE_V2_SAMPLE").map(PathBuf::from)
+        else {
+            eprintln!(
+                "skipping test_parsing_actual_v2_sample_export: \
+                 set AETHERIUM_CLAUDE_V2_SAMPLE to a Claude v2 export directory"
+            );
+            return;
+        };
+        let export_path = export_path.as_path();
+        assert!(
+            export_path.is_dir(),
+            "AETHERIUM_CLAUDE_V2_SAMPLE is not a directory: {}",
+            export_path.display()
+        );
 
         // 1. preview_v2_design_chats
         let convs_by_project = claude_v2::preview_v2_design_chats(export_path).unwrap();

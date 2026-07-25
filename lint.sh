@@ -77,8 +77,11 @@ fi
 info "Running Cargo Clippy..."
 CARGO="${CARGO_BIN:-$HOME/.cargo/bin/cargo}"
 if [ -x "$CARGO" ]; then
+  # --all-targets so test code is linted too; without it, warnings inside
+  # #[cfg(test)] modules never surface here.
   if "$CARGO" clippy \
         --manifest-path "$TAURI/src-tauri/Cargo.toml" \
+        --all-targets \
         -- -D warnings 2>&1; then
     pass "Clippy"
   else
@@ -86,6 +89,49 @@ if [ -x "$CARGO" ]; then
   fi
 else
   echo "  cargo not found – install rustup from https://rustup.rs"
+fi
+
+# ── 6 & 7. Test suites ───────────────────────────────────────────────────────
+# Both are skipped with SKIP_TESTS=1 for a fast lint-only pass.
+if [ "${SKIP_TESTS:-0}" = "1" ]; then
+  info "Skipping tests (SKIP_TESTS=1)"
+else
+  # ── 6. Frontend tests (vitest) ─────────────────────────────────────────────
+  #
+  # QUARANTINE: src/tests/views/PreferencesView.test.tsx is excluded because it
+  # hangs — it spins at ~100% CPU on its first case ("renders visible provider
+  # group headers in the AI settings tab") rendering the 6,691-line
+  # PreferencesView, and never reaches the other 5 cases. Reproduced on a clean
+  # checkout, so it predates this exclusion. Without it the suite is ~90s; with
+  # it, it never terminates.
+  #
+  # Re-include it (delete VITEST_EXCLUDE below) once that test is fixed.
+  VITEST_EXCLUDE="src/tests/views/PreferencesView.test.tsx"
+  info "Running frontend tests (vitest)..."
+  echo "  note: quarantined (hangs): $VITEST_EXCLUDE"
+  if [ -n "$NODE_BIN" ] && [ -x "$TAURI/node_modules/.bin/vitest" ]; then
+    if (cd "$TAURI" && node_modules/.bin/vitest run --exclude "$VITEST_EXCLUDE" 2>&1); then
+      pass "Vitest"
+    else
+      fail "Vitest"
+    fi
+  else
+    echo "  vitest not found – run: cd tauri && npm install"
+  fi
+
+  # ── 7. Rust tests (cargo test) ─────────────────────────────────────────────
+  info "Running Rust tests (cargo test)..."
+  if [ -x "$CARGO" ]; then
+    if "$CARGO" test \
+          --manifest-path "$TAURI/src-tauri/Cargo.toml" \
+          --quiet 2>&1; then
+      pass "Cargo test"
+    else
+      fail "Cargo test"
+    fi
+  else
+    echo "  cargo not found – install rustup from https://rustup.rs"
+  fi
 fi
 
 # ── Result ───────────────────────────────────────────────────────────────────

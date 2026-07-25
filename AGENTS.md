@@ -33,7 +33,9 @@ The targeted check is the cheap one matched to the edit: `cargo check --manifest
 
 *Trivial edits* (comments, log strings, internal renames with no exported surface) don't need an immediate check. They ride to the next checkpoint.
 
-*At commit time only:* `./lint.sh` (full `tsc`, full `vitest`, `cargo clippy -D warnings`, SwiftLint, ESLint). If `./lint.sh` catches something at this point, the cadence rule above wasn't followed — fix the cadence next time.
+*At commit time only:* `./lint.sh` (SwiftLint, ESLint, full `tsc`, migration freeze check, `cargo clippy --all-targets -D warnings`, full `vitest`, full `cargo test`). If `./lint.sh` catches something at this point, the cadence rule above wasn't followed — fix the cadence next time.
+
+`SKIP_TESTS=1 ./lint.sh` runs the static checks only, for a fast lint-only pass. Clippy runs with `--all-targets`, so warnings inside `#[cfg(test)]` modules are errors too.
 
 ### 2. Surgical Editing vs. Rewrite
 *   **Prefer surgical editing** for files over 200 lines. Avoid rewriting the entire file unless necessary.
@@ -230,8 +232,9 @@ cargo check --manifest-path tauri/src-tauri/Cargo.toml
 # Rust lint (clippy)
 cargo clippy --manifest-path tauri/src-tauri/Cargo.toml -- -D warnings
 
-# Run all checks at once (SwiftLint + ESLint + tsc + clippy)
-# All four checks must exit 0 — treat any non-zero exit (including lint warnings under -D warnings) as a blocker.
+# Run all checks at once (SwiftLint + ESLint + tsc + migrations + clippy + vitest + cargo test)
+# Every check must exit 0 — treat any non-zero exit (including lint warnings under -D warnings) as a blocker.
+# SKIP_TESTS=1 ./lint.sh   # static checks only, skips vitest + cargo test
 ./lint.sh
 
 # Run dev server (requires Ollama running on :11434 for AI features)

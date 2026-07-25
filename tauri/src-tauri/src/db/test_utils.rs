@@ -5,7 +5,7 @@ pub mod tests {
 
     pub fn setup_test_db() -> r2d2::Pool<r2d2_sqlite::SqliteConnectionManager> {
         let dir = tempfile::tempdir().expect("Failed to create temp dir");
-        let path: PathBuf = dir.into_path().join("test.db");
+        let path: PathBuf = dir.keep().join("test.db");
         initialize_database(&path).expect("Failed to initialize test db")
     }
 }

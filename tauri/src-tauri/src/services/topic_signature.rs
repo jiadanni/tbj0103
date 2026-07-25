@@ -431,130 +431,6 @@ pub fn generate_heuristic(text: &str) -> TopicSignature {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{extract_specific_tags, is_specific_topic_tag};
-
-    #[test]
-    fn filters_generic_log_words() {
-        assert!(!is_specific_topic_tag("line"));
-        assert!(!is_specific_topic_tag("module"));
-        assert!(!is_specific_topic_tag("consuming"));
-    }
-
-    #[test]
-    fn keeps_real_domain_terms() {
-        assert!(is_specific_topic_tag("anaconda"));
-        assert!(is_specific_topic_tag("linux"));
-        assert!(is_specific_topic_tag("java"));
-        assert!(is_specific_topic_tag("rust"));
-        assert!(is_specific_topic_tag("cargo"));
-    }
-
-    #[test]
-    fn prefers_specific_topics_over_generic_noise() {
-        let text = "\
-error loading module line line line data import command\n\
-anaconda environment on linux with java sdk setup\n\
-fixing anaconda path issue on linux for java tooling\n";
-
-        let tags = extract_specific_tags(text, 10);
-
-        assert!(tags.iter().any(|tag| tag == "anaconda"));
-        assert!(tags.iter().any(|tag| tag == "linux"));
-        assert!(tags.iter().any(|tag| tag == "java"));
-        assert!(!tags.iter().any(|tag| tag == "line"));
-        assert!(!tags.iter().any(|tag| tag == "module"));
-        assert!(!tags.iter().any(|tag| tag == "command"));
-    }
-
-    #[test]
-    fn rejects_question_words_and_roadmap_noise() {
-        assert!(!is_specific_topic_tag("what"));
-        assert!(!is_specific_topic_tag("programming"));
-        assert!(!is_specific_topic_tag("language"));
-        assert!(!is_specific_topic_tag("memory"));
-        assert!(!is_specific_topic_tag("space"));
-
-        let text = "\
-what what what programming language memory space abstraction allocation collections\n\
-rust cargo toml ownership borrow checker cargo dependency management\n";
-
-        let tags = extract_specific_tags(text, 10);
-
-        assert!(tags.iter().any(|tag| tag == "rust"));
-        assert!(tags.iter().any(|tag| tag == "cargo"));
-        assert!(!tags.iter().any(|tag| tag == "what"));
-        assert!(!tags.iter().any(|tag| tag == "programming"));
-        assert!(!tags.iter().any(|tag| tag == "language"));
-        assert!(!tags.iter().any(|tag| tag == "memory"));
-        assert!(!tags.iter().any(|tag| tag == "space"));
-        assert!(!tags.iter().any(|tag| tag == "abstraction"));
-        assert!(!tags.iter().any(|tag| tag == "allocation"));
-        assert!(!tags.iter().any(|tag| tag == "collections"));
-    }
-
-    #[test]
-    fn fuzzy_matches_synonyms() {
-        use super::tags_match_fuzzy;
-
-        assert!(tags_match_fuzzy("kubernetes", "k8s"));
-        assert!(tags_match_fuzzy("k8s", "kubernetes"));
-        assert!(tags_match_fuzzy("javascript", "js"));
-        assert!(tags_match_fuzzy("machine learning", "ml"));
-        assert!(!tags_match_fuzzy("rust", "python"));
-    }
-
-    #[test]
-    fn fuzzy_matches_substring() {
-        use super::tags_match_fuzzy;
-
-        assert!(tags_match_fuzzy("react", "react native"));
-        assert!(tags_match_fuzzy("react native", "react"));
-        assert!(!tags_match_fuzzy("go", "golang")); // too short for substring match
-    }
-
-    #[test]
-    fn extract_json_with_nested_objects() {
-        use super::extract_json_object;
-
-        let input =
-            r#"Here is the result: {"topics":["rust","python"],"nested":{"key":"val"}} extra text"#;
-        let result = extract_json_object(input).unwrap();
-        assert_eq!(
-            result,
-            r#"{"topics":["rust","python"],"nested":{"key":"val"}}"#
-        );
-    }
-
-    #[test]
-    fn extract_json_with_strings_containing_braces() {
-        use super::extract_json_object;
-
-        let input = r#"{"topics":["test {thing}"]}"#;
-        let result = extract_json_object(input).unwrap();
-        assert_eq!(result, input);
-    }
-
-    #[test]
-    fn dedup_merges_synonyms() {
-        use super::{merge_topic_tags, TopicTag};
-
-        let primary = vec![TopicTag {
-            tag: "kubernetes".to_string(),
-            weight: 30,
-            source: "ollama".to_string(),
-        }];
-        let secondary = vec![TopicTag {
-            tag: "k8s".to_string(),
-            weight: 20,
-            source: "heuristic".to_string(),
-        }];
-        let merged = merge_topic_tags(primary, secondary, 12);
-        assert_eq!(merged.len(), 1);
-        assert_eq!(merged[0].tag, "kubernetes");
-    }
-}
 
 pub async fn enrich_with_ollama(
     heuristic: TopicSignature,
@@ -865,4 +741,129 @@ pub fn find_best_workspace(
     }
 
     best_match
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{extract_specific_tags, is_specific_topic_tag};
+
+    #[test]
+    fn filters_generic_log_words() {
+        assert!(!is_specific_topic_tag("line"));
+        assert!(!is_specific_topic_tag("module"));
+        assert!(!is_specific_topic_tag("consuming"));
+    }
+
+    #[test]
+    fn keeps_real_domain_terms() {
+        assert!(is_specific_topic_tag("anaconda"));
+        assert!(is_specific_topic_tag("linux"));
+        assert!(is_specific_topic_tag("java"));
+        assert!(is_specific_topic_tag("rust"));
+        assert!(is_specific_topic_tag("cargo"));
+    }
+
+    #[test]
+    fn prefers_specific_topics_over_generic_noise() {
+        let text = "\
+error loading module line line line data import command\n\
+anaconda environment on linux with java sdk setup\n\
+fixing anaconda path issue on linux for java tooling\n";
+
+        let tags = extract_specific_tags(text, 10);
+
+        assert!(tags.iter().any(|tag| tag == "anaconda"));
+        assert!(tags.iter().any(|tag| tag == "linux"));
+        assert!(tags.iter().any(|tag| tag == "java"));
+        assert!(!tags.iter().any(|tag| tag == "line"));
+        assert!(!tags.iter().any(|tag| tag == "module"));
+        assert!(!tags.iter().any(|tag| tag == "command"));
+    }
+
+    #[test]
+    fn rejects_question_words_and_roadmap_noise() {
+        assert!(!is_specific_topic_tag("what"));
+        assert!(!is_specific_topic_tag("programming"));
+        assert!(!is_specific_topic_tag("language"));
+        assert!(!is_specific_topic_tag("memory"));
+        assert!(!is_specific_topic_tag("space"));
+
+        let text = "\
+what what what programming language memory space abstraction allocation collections\n\
+rust cargo toml ownership borrow checker cargo dependency management\n";
+
+        let tags = extract_specific_tags(text, 10);
+
+        assert!(tags.iter().any(|tag| tag == "rust"));
+        assert!(tags.iter().any(|tag| tag == "cargo"));
+        assert!(!tags.iter().any(|tag| tag == "what"));
+        assert!(!tags.iter().any(|tag| tag == "programming"));
+        assert!(!tags.iter().any(|tag| tag == "language"));
+        assert!(!tags.iter().any(|tag| tag == "memory"));
+        assert!(!tags.iter().any(|tag| tag == "space"));
+        assert!(!tags.iter().any(|tag| tag == "abstraction"));
+        assert!(!tags.iter().any(|tag| tag == "allocation"));
+        assert!(!tags.iter().any(|tag| tag == "collections"));
+    }
+
+    #[test]
+    fn fuzzy_matches_synonyms() {
+        use super::tags_match_fuzzy;
+
+        assert!(tags_match_fuzzy("kubernetes", "k8s"));
+        assert!(tags_match_fuzzy("k8s", "kubernetes"));
+        assert!(tags_match_fuzzy("javascript", "js"));
+        assert!(tags_match_fuzzy("machine learning", "ml"));
+        assert!(!tags_match_fuzzy("rust", "python"));
+    }
+
+    #[test]
+    fn fuzzy_matches_substring() {
+        use super::tags_match_fuzzy;
+
+        assert!(tags_match_fuzzy("react", "react native"));
+        assert!(tags_match_fuzzy("react native", "react"));
+        assert!(!tags_match_fuzzy("go", "golang")); // too short for substring match
+    }
+
+    #[test]
+    fn extract_json_with_nested_objects() {
+        use super::extract_json_object;
+
+        let input =
+            r#"Here is the result: {"topics":["rust","python"],"nested":{"key":"val"}} extra text"#;
+        let result = extract_json_object(input).unwrap();
+        assert_eq!(
+            result,
+            r#"{"topics":["rust","python"],"nested":{"key":"val"}}"#
+        );
+    }
+
+    #[test]
+    fn extract_json_with_strings_containing_braces() {
+        use super::extract_json_object;
+
+        let input = r#"{"topics":["test {thing}"]}"#;
+        let result = extract_json_object(input).unwrap();
+        assert_eq!(result, input);
+    }
+
+    #[test]
+    fn dedup_merges_synonyms() {
+        use super::{merge_topic_tags, TopicTag};
+
+        let primary = vec![TopicTag {
+            tag: "kubernetes".to_string(),
+            weight: 30,
+            source: "ollama".to_string(),
+        }];
+        let secondary = vec![TopicTag {
+            tag: "k8s".to_string(),
+            weight: 20,
+            source: "heuristic".to_string(),
+        }];
+        let merged = merge_topic_tags(primary, secondary, 12);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].tag, "kubernetes");
+    }
 }

@@ -432,16 +432,6 @@ pub fn start_flush_timer_with_retention(retention_days: Option<u32>) {
     });
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn retention_days_can_be_disabled_or_clamped() {
-        assert_eq!(super::normalize_retention_days(None), None);
-        assert_eq!(super::normalize_retention_days(Some(0)), Some(1));
-        assert_eq!(super::normalize_retention_days(Some(30)), Some(30));
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Typed metadata macro
 // ---------------------------------------------------------------------------
@@ -458,4 +448,14 @@ macro_rules! app_log_meta {
         let meta = ::serde_json::json!({ $(stringify!($key): $val),* }).to_string();
         $crate::logging::log_with_meta($level, $source, $msg, &meta);
     }};
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn retention_days_can_be_disabled_or_clamped() {
+        assert_eq!(super::normalize_retention_days(None), None);
+        assert_eq!(super::normalize_retention_days(Some(0)), Some(1));
+        assert_eq!(super::normalize_retention_days(Some(30)), Some(30));
+    }
 }
