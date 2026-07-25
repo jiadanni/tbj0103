@@ -21,11 +21,10 @@ import { Tooltip } from "../components/Tooltip";
 import SuccessDialog from "../components/SuccessDialog";
 import { useScopedChat, useScopedFolders, useScopedWorkspace, useWorkspacePane, useBubbleUpFlag } from "../lib/workspacePane";
 import {
-  buildChatSuggestionRow,
-  buildWorkspaceSuggestionRow,
   mergeComposerInput,
   type ComposerSuggestion,
 } from "../lib/composerSuggestions";
+import { useComposerSuggestions } from "../hooks/useComposerSuggestions";
 import { resolveModelDisplayName } from "../lib/modelDisplayName";
 import { useModelPickerGroups } from "../hooks/useModelPickerGroups";
 import { resolveChatTitle } from "../lib/chatTitles";
@@ -2909,41 +2908,27 @@ export default function ChatView() {
   );
   const activeFamilyDefaultModelId = activeFamilyModels[0]?.model_id ?? null;
 
-  const suggestionContext = useMemo(() => ({
-    workspaceName: activeWorkspace?.name ?? null,
-    folderName: activeFolder?.name ?? null,
-    topicSignature: activeTopicSignature,
-    promptBankPrompts,
-    processedDocCount: attachedSources.length,
-    activeMessages,
-    followUps,
-  }), [
+  const {
+    chatFollowUpRow,
+    composerSuggestionRows,
+    setIsComposerHeaderCollapsed,
+    hasComposerHeader,
+    showComposerHeader,
+    waterfallSuggestions,
+    handleDismissSuggestion,
+  } = useComposerSuggestions({
     activeWorkspace,
     activeFolder,
     activeTopicSignature,
     promptBankPrompts,
-    attachedSources.length,
+    attachedSourcesCount: attachedSources.length,
     activeMessages,
     followUps,
-  ]);
-
-  const composerWorkspaceRow = useMemo(() => {
-    if (!showComposerWorkspaceSuggestions) {return null;}
-    return buildWorkspaceSuggestionRow(suggestionContext);
-  }, [showComposerWorkspaceSuggestions, suggestionContext]);
-
-  const chatFollowUpRow = useMemo(() => {
-    if (!showComposerChatFollowUps) {return null;}
-    return buildChatSuggestionRow(suggestionContext);
-  }, [showComposerChatFollowUps, suggestionContext]);
-
-  const composerSuggestionRows = useMemo(
-    () => (composerWorkspaceRow ? [composerWorkspaceRow] : []),
-    [composerWorkspaceRow],
-  );
-  const [isComposerHeaderCollapsed, setIsComposerHeaderCollapsed] = useState(false);
-  const hasComposerHeader = composerSuggestionRows.length > 0;
-  const showComposerHeader = hasComposerHeader && !isComposerHeaderCollapsed;
+    showComposerWorkspaceSuggestions,
+    showComposerChatFollowUps,
+    activeChatId,
+    effectiveWorkspaceId,
+  });
 
   // Map model_id to display name from global labels or priority list
   const modelDisplayName = (modelId: string) => resolveModelDisplayName(modelId, modelLabels, aiModelList);
@@ -3013,30 +2998,6 @@ export default function ChatView() {
   ]);
 
   const virtuosoComponents = useMemo(() => ({ Footer: VirtuosoFooter }), [VirtuosoFooter]);
-
-  // Extract all suggestions for the waterfall background
-  // Locally suppress prompts the user has dismissed (X'd) this session so they
-  // disappear immediately regardless of source (bank / AI / fallback). The
-  // dismissal is also persisted to the backend as negative feedback below.
-  const [dismissedPromptKeys, setDismissedPromptKeys] = useState<Set<string>>(() => new Set());
-
-  const waterfallSuggestions = useMemo(() => {
-    if (activeChatId) { return []; }
-    const all = composerSuggestionRows.flatMap(row => row.suggestions);
-    if (dismissedPromptKeys.size === 0) { return all; }
-    return all.filter((s) => !dismissedPromptKeys.has(s.prompt.trim().toLowerCase()));
-  }, [activeChatId, composerSuggestionRows, dismissedPromptKeys]);
-
-  const handleDismissSuggestion = useCallback((suggestion: ComposerSuggestion) => {
-    setDismissedPromptKeys((prev) => {
-      const next = new Set(prev);
-      next.add(suggestion.prompt.trim().toLowerCase());
-      return next;
-    });
-    if (effectiveWorkspaceId) {
-      void api.workspace.dismissPromptSuggestion(effectiveWorkspaceId, suggestion.prompt);
-    }
-  }, [effectiveWorkspaceId]);
 
   const isComparePanelOpen = activeSubView === "compare";
   const chatWorkspaceClassName = "flex flex-1 min-w-0 min-h-0 overflow-hidden";
