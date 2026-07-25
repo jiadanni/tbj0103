@@ -226,6 +226,14 @@ function chatExportFilename(title: string) {
   return `${base || "chat"}.json`;
 }
 
+function persistedUserMessageWithFallback(optimistic: Message, persisted: Message): Message {
+  return {
+    ...optimistic,
+    ...persisted,
+    id: optimistic.id,
+  };
+}
+
 export default function ChatView() {
   chatViewDiag("ChatView render");
   const navigate = useNavigate();
@@ -2914,12 +2922,6 @@ export default function ChatView() {
   const _activeFamilyDefaultModelLabel = activeFamilyDefaultModelId
     ? modelPickerLabel(activeFamilyDefaultModelId)
     : null;
-
-  const persistedUserMessageWithFallback = (optimistic: Message, persisted: Message): Message => ({
-    ...optimistic,
-    ...persisted,
-    id: optimistic.id,
-  });
 
   const canRefreshActiveSessionTitle = activeSession
     ? canRefreshSessionTitle(activeSession, useChatStore.getState().messages)
