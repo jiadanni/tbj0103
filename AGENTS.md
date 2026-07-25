@@ -48,15 +48,19 @@ If you modify a **Rust Struct** or a **TypeScript Interface**:
 2.  Update all usage sites, including **Mock Objects** in test files.
 3.  A task is not complete until `npm run typecheck` and `cargo check` pass project-wide.
 
-### 4. Large File Strategy (e.g., `ChatView.tsx`)
-Files like `src/views/ChatView.tsx` are critical and highly complex.
+### 4. Large File Strategy (e.g., `ChatView.tsx`, `PreferencesView.tsx`)
+Files like `src/views/ChatView.tsx` and `src/views/PreferencesView.tsx` (~6,800 lines) are critical and highly complex.
 *   Before editing, read the targeted section with at least 20 lines of context.
 *   Double-check brace nesting (`{}`) after every insertion.
 *   If a feature (like file attachments or prompt polishing) is already present, DO NOT reimplement it; safely extend it.
+*   `PreferencesView.tsx` is large enough that mounting it whole in a vitest test never terminates — its test file is quarantined (see Testing). Prefer extracting new preferences UI into its own component with its own focused test over growing the monolith.
 
 ### 5. AI Tooling Assumptions
 *   Never assume Ollama is running or a specific model is pulled during a test.
 *   Always check `apiMocks` in tests to ensure they return valid, expected data shapes for the component being tested.
+*   **AI enrichment must degrade, not fail.** Features that call Ollama to improve a base behavior (topic distillation, icon generation, dedup passes) must be strictly additive: an Ollama outage or a model that fails on some inputs falls back to the non-LLM path for those inputs, and partial failures are surfaced in the UI rather than swallowed. See the import topic-distillation flow for the pattern.
+*   **Don't assume small models can produce structured output.** Sub-4B models are blocked from structured-output background jobs for a reason — parse LLM responses defensively and fall through to the non-LLM path on unparseable output.
+*   **Tune matching/scoring heuristics against real data, not by feel.** When adjusting thresholds or weights in matchers (e.g., Claude import project matching), sweep candidate values against a real corpus and record the measured results in the commit message. The Claude-export fixture test reads its sample from the `AETHERIUM_CLAUDE_V2_SAMPLE` env var.
 
 ### 6. Tauri Command Registration
 A new `#[tauri::command]` is not callable until it is listed in `tauri::generate_handler![…]` in `src-tauri/src/lib.rs`. `cargo check` will pass without it — the failure only surfaces at runtime as `"Command <name> not found"` returned to the JS caller.
@@ -68,6 +72,8 @@ When adding or renaming a command:
 4. Verify all three names match exactly: Rust fn name == handler entry == string in `invoke()`.
 
 If a feature ships steps 1 + 2 but skips step 3, the UI will appear to hang on its loading state because the IPC rejects immediately and the view never leaves its `if (!data) return <Loading/>` branch. Before considering an IPC feature done, open DevTools and confirm at least one successful `[ipc] <- <command>` log line for the new command — not just that the code compiles.
+
+**Destructive commands must call the auth gate.** Any command that deletes, imports, bulk-mutates, or resets user data must call `require_auth_for_destructive_ops(...)` from `src-tauri/src/commands/security.rs` before doing work. This is how the opt-in "strict auth mode" setting protects destructive operations — a new `delete_*` / import / wipe command that skips the call silently bypasses the lock screen for users who enabled it. See the ~33 existing gated commands (chat, workspace, memory, backup, etc.) for the pattern.
 
 ---
 
@@ -115,15 +121,18 @@ tbj0103/
 │       ├── src/db/             # SQLite connection pool
 │       ├── src/ollama/         # Ollama HTTP client
 │       └── schema.sql          # SQLite schema (source of truth)
+├── boomscroll/                 # Standalone Android Tauri companion app (BoomScroll)
 ├── docs/                       # Project documentation
 │   ├── ARCHITECTURE.md         # Deep dive into system design
 │   ├── todo.md                 # Active roadmap — read before starting work
 │   └── bugs.md                 # Known issues — check before touching affected areas
+├── scripts/                    # Repo-level helper scripts
 ├── README.md
-├── AGENTS.md
-├── GEMINI.md
-└── lint.sh
+├── AGENTS.md                   # This file (CLAUDE.md and GEMINI.md are symlinks to it)
+└── lint.sh                     # Full check gate — covers swift/ and tauri/, NOT boomscroll/
 ```
+
+> **BoomScroll:** `boomscroll/` is a separate Android-focused Tauri app fed by deck files exported from the main app. `./lint.sh` does **not** check it — after editing BoomScroll code, run its own `tsc` / `cargo check` from inside `boomscroll/`.
 
 ---
 
@@ -274,7 +283,7 @@ npm run tauri dev
 
 1. **Schema**: add `CREATE TABLE IF NOT EXISTS` or new columns in `schema.sql`.
 2. **Rust model**: add a struct in `src-tauri/src/models/` with `Serialize`/`Deserialize`.
-3. **Rust command(s)**: add `pub fn command_name(state: State<DbState>, ...) -> Result<T, String>` in the appropriate `commands/*.rs` file, then register in `lib.rs`.
+3. **Rust command(s)**: add `pub fn command_name(state: State<DbState>, ...) -> Result<T, String>` in the appropriate `commands/*.rs` file, then register in `lib.rs`. If the command deletes, imports, or bulk-mutates data, gate it with `require_auth_for_destructive_ops(...)`.
 4. **`api.ts`**: add a typed `invoke<T>('command_name', { ... })` wrapper.
 5. **View**: create `src/views/FeatureView.tsx`, add a route in `App.tsx`, add a sidebar entry if needed.
 6. **Verify**: `cargo check` → exit 0, `tsc --noEmit` → exit 0.
@@ -354,6 +363,12 @@ System/Area 2:
 
 - Swift tests: `swift/Tests/AetheriumTests/`. Run with `cd swift && swift test`.
 - Tauri frontend tests live in `tauri/src/tests/` and run with `npx vitest run` (or the equivalent absolute `node` path if `npx` is not on `PATH`).
+- **Vitest only collects `tauri/src/tests/**`.** A test file placed anywhere else (e.g., a `__tests__/` folder next to a view) is silently never run — it won't fail, it just rots. One such file sat orphaned for weeks with stale assertions and a mock of a renamed API. If you write a test, run that exact file once and confirm vitest actually collected it.
+- **Known test-suite exclusions:**
+  - `src/tests/views/PreferencesView.test.tsx` is quarantined in `lint.sh` — it hangs rendering the full PreferencesView. Don't re-include it or add cases to it until the view is decomposed.
+  - `*.ollama.test.ts` files are live-Ollama tests, excluded from the default vitest run via `vite.config.ts`.
+  - The Rust Claude-export fixture test skips unless `AETHERIUM_CLAUDE_V2_SAMPLE` points at a local sample export.
+- **Never hardcode machine-specific paths in tests.** A Rust test with a hardcoded `/home/<user>/...` path kept `cargo test` red on develop for seven weeks. Use an env var (skip when unset, fail loudly when set but invalid) for tests that need local fixtures.
 - For Tauri work, manual verification is still important, but `vitest` + `cargo check` + `tsc --noEmit` are the standard gates.
 - When fixing a bug, add or update a Swift test covering the regression if the affected code is in the Swift app.
 - When fixing a Tauri bug, add or update a focused `vitest` regression test when the behavior is practical to cover in `src/tests/`.
@@ -378,6 +393,7 @@ System/Area 2:
 - **Always list explicit column names in `INSERT` and `SELECT` statements.** Never use `SELECT *` or positional inserts without column names. This prevents migrations from failing when `schema.sql` evolves (e.g., adding a column to the base schema will cause `SELECT *` in an old migration to return an unexpected number of columns).
 - **Keep migrations idempotent.** Ensure they can run safely even if the target state (e.g., a new column) already exists in the table.
 - **Maintain Foreign Keys.** When restructuring tables in migrations, ensure all `REFERENCES` and `ON DELETE` constraints are preserved in the new table definition.
+- **Table rebuilds leave debris — clean up everything the table owned.** Rebuilding or renaming a table (`CREATE new` → copy → `DROP old` → rename) silently orphans its FTS triggers and, if the migration crashes midway, leaves a stranded `<table>_old` behind. This has caused three shipped incidents: a dangling `quick_search_chat_sessions_au` trigger after v71, an orphaned `memories_old` after a crashed v72, and drifted FK references repaired in v75. When a migration rebuilds a table: (a) re-create every trigger and index that referenced it, (b) verify FK references from *other* tables still point at the right name, and (c) write the migration so a re-run after a mid-way crash recovers (drop leftover `_old` / temp tables before starting).
 
 ## Debugging Runtime Bugs
 
@@ -395,6 +411,4 @@ System/Area 2:
 - Do **not** call `unwrap()` or `expect()` in Rust command handlers — propagate errors with `?` or map them to `String`.
 - Do **not** store secrets or API keys in source files. Use the `settings` table or environment variables.
 - Do **not** create new markdown documentation files unless explicitly asked.
-- Do **not** refactor or "clean up" code outside the scope of the current task.
-** create new markdown documentation files unless explicitly asked.
 - Do **not** refactor or "clean up" code outside the scope of the current task.
