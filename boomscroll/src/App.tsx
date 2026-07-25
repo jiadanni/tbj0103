@@ -27,7 +27,10 @@ export default function App() {
   const [drag, setDrag] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [committing, setCommitting] = useState(false);
-  const [mode, setMode] = useState<FeedMode>("info");
+  const [mode, setMode] = useState<FeedMode>("study");
+  const [showAnswerImmediately, setShowAnswerImmediately] = useState(
+    () => localStorage.getItem("boomscroll_show_answer_immediately") === "1",
+  );
   const [error, setError] = useState<string | null>(null);
   const [pendingDeck, setPendingDeck] = useState<{ raw: string; deck: Deck } | null>(null);
   const [useTransition, setUseTransition] = useState(false);
@@ -66,17 +69,16 @@ export default function App() {
     ? (nextOrderRef.current?.[0] ?? null)
     : (order[index + 1] ?? null);
 
+  /**
+   * Study mode shows the long-form explanation cards; Test mode shows the
+   * question/answer flashcards. If the deck has nothing of the requested kind,
+   * fall back to all cards rather than showing an empty feed.
+   */
   function filterCardsForMode(cards: DeckCard[], activeMode: FeedMode): DeckCard[] {
-    const hasInfoCards = cards.some((c) => c.kind === "info");
-    const hasTestCards = cards.some((c) => c.kind !== "info");
-
-    if (activeMode === "info" && hasInfoCards) {
-      return cards.filter((c) => c.kind === "info");
-    }
-    if (activeMode === "test" && hasTestCards) {
-      return cards.filter((c) => c.kind !== "info");
-    }
-    return cards;
+    const matching = cards.filter((c) =>
+      activeMode === "study" ? c.kind === "info" : c.kind !== "info",
+    );
+    return matching.length > 0 ? matching : cards;
   }
 
   function startFeed(sourceDeck: Deck, ids: Set<string>, activeMode: FeedMode = mode) {
@@ -84,7 +86,7 @@ export default function App() {
     const modeCards = filterCardsForMode(wsCards, activeMode);
     setOrder(shuffle(modeCards));
     setIndex(0);
-    setRevealed(false);
+    setRevealed(showAnswerImmediately);
     setShowFilter(false);
     nextOrderRef.current = null;
     localStorage.setItem("boomscroll_enabled_ids", JSON.stringify(Array.from(ids)));
@@ -92,10 +94,17 @@ export default function App() {
 
   function switchFeedMode(newMode: FeedMode) {
     setMode(newMode);
-    setRevealed(false);
     if (deck) {
       startFeed(deck, enabledIds, newMode);
     }
+  }
+
+  function toggleShowAnswerImmediately() {
+    const nextValue = !showAnswerImmediately;
+    setShowAnswerImmediately(nextValue);
+    localStorage.setItem("boomscroll_show_answer_immediately", nextValue ? "1" : "0");
+    // Apply to the card already on screen so the change is visible at once.
+    setRevealed(nextValue);
   }
 
   function loadDeckFromText(raw: string, initialEnabledIds?: Set<string>, forceDirect = false) {
@@ -211,7 +220,7 @@ export default function App() {
     } else {
       setIndex((i) => i + 1);
     }
-    setRevealed(false);
+    setRevealed(showAnswerImmediately);
     setCommitting(false);
     setUseTransition(false);
     setDrag(0);
@@ -251,6 +260,7 @@ export default function App() {
 
     setUseTransition(true);
     if (!movedRef.current) {
+      // Study cards always show their explanation; only Test cards toggle.
       if (mode === "test") {setRevealed((r) => !r);}
       setDrag(0);
       return;
@@ -379,30 +389,48 @@ export default function App() {
     >
       {/* Safe area top margin keeps controls clear of Android status bar / camera cutout */}
       <div className="pointer-events-none absolute left-0 right-0 top-[calc(var(--safe-top)+0.5rem)] z-10 flex items-center justify-between px-4">
-        <div className="pointer-events-auto flex overflow-hidden rounded-full border border-zinc-800 text-xs bg-zinc-950/80 backdrop-blur-md">
-          <button
-            onClick={() => switchFeedMode("test")}
-            className={`px-3 py-1.5 font-medium transition-colors ${mode === "test" ? "bg-zinc-800 text-zinc-100 font-semibold" : "text-zinc-400 hover:text-zinc-200"}`}
-          >
-            Test
-          </button>
-          <button
-            onClick={() => switchFeedMode("study")}
-            className={`px-3 py-1.5 font-medium transition-colors ${mode === "study" ? "bg-zinc-800 text-zinc-100 font-semibold" : "text-zinc-400 hover:text-zinc-200"}`}
-          >
-            Study
-          </button>
-          <button
-            onClick={() => switchFeedMode("info")}
-            className={`px-3 py-1.5 font-medium transition-colors ${mode === "info" ? "bg-purple-900/60 text-purple-200 font-semibold" : "text-zinc-400 hover:text-zinc-200"}`}
-          >
-            Info
-          </button>
+        <div className="pointer-events-auto flex min-w-0 items-center gap-2">
+          <div className="flex shrink-0 overflow-hidden rounded-full border border-zinc-800 text-xs bg-zinc-950/80 backdrop-blur-md">
+            <button
+              onClick={() => switchFeedMode("study")}
+              className={`whitespace-nowrap px-3 py-1.5 font-medium transition-colors ${mode === "study" ? "bg-purple-900/60 text-purple-200 font-semibold" : "text-zinc-400 hover:text-zinc-200"}`}
+            >
+              Study
+            </button>
+            <button
+              onClick={() => switchFeedMode("test")}
+              className={`whitespace-nowrap px-3 py-1.5 font-medium transition-colors ${mode === "test" ? "bg-zinc-800 text-zinc-100 font-semibold" : "text-zinc-400 hover:text-zinc-200"}`}
+            >
+              Test
+            </button>
+          </div>
+          {mode === "test" && (
+            <button
+              onClick={toggleShowAnswerImmediately}
+              role="switch"
+              aria-checked={showAnswerImmediately}
+              aria-label="Show the answer as soon as each card appears"
+              title="Show the answer as soon as each card appears"
+              className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-800 bg-zinc-950/80 px-2.5 py-1.5 text-xs text-zinc-400 backdrop-blur-md transition-colors active:text-zinc-200"
+            >
+              <span
+                aria-hidden="true"
+                className={`flex h-3.5 w-3.5 items-center justify-center rounded-[4px] border text-[9px] font-bold leading-none transition-colors ${
+                  showAnswerImmediately
+                    ? "border-emerald-400 bg-emerald-400 text-zinc-900"
+                    : "border-zinc-600 text-transparent"
+                }`}
+              >
+                ✓
+              </span>
+              Show
+            </button>
+          )}
         </div>
-        <div className="pointer-events-auto flex items-center gap-1.5">
+        <div className="pointer-events-auto flex shrink-0 items-center gap-1.5">
           <button
             onClick={() => void openDeck()}
-            className="rounded-full border border-zinc-800 px-3 py-1 text-xs text-zinc-400 active:text-zinc-200"
+            className="whitespace-nowrap rounded-full border border-zinc-800 px-3 py-1 text-xs text-zinc-400 active:text-zinc-200"
             title="Import another deck"
           >
             + Add
@@ -410,14 +438,15 @@ export default function App() {
           {deck.workspaces.length > 1 && (
             <button
               onClick={() => setShowFilter(true)}
-              className="rounded-full border border-zinc-800 px-3 py-1 text-xs text-zinc-500 active:text-zinc-300"
+              className="whitespace-nowrap rounded-full border border-zinc-800 px-3 py-1 text-xs text-zinc-500 active:text-zinc-300"
+              title="Choose workspaces"
             >
-              Workspaces
+              Decks
             </button>
           )}
           <button
             onClick={closeDeck}
-            className="rounded-full px-2 py-1 text-xs text-zinc-600 active:text-zinc-300"
+            className="shrink-0 rounded-full px-2 py-1 text-xs text-zinc-600 active:text-zinc-300"
             aria-label="Close deck"
           >
             ✕
