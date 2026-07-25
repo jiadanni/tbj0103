@@ -7,7 +7,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
-import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Sparkles, Search, UserCircle, SlidersHorizontal, X } from "lucide-react";
+import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Search, UserCircle, SlidersHorizontal, X } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat, type CoreSettings, type InferenceSettings, type AdvancedSettings, type InferenceJobSetting, type InferenceJobStatus, type BackgroundJobRunMode } from "../lib/api";
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
@@ -43,6 +43,7 @@ import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import LiveAppPreview from "./preferences/LiveAppPreview";
 import { Toggle } from "../components/Toggle";
 import { AboutYouPreferencesPanel } from "../components/preferences/AboutYouPreferencesPanel";
+import { LearningPreferencesPanel } from "../components/preferences/LearningPreferencesPanel";
 import { DataControlsPreferences } from "../components/preferences/DataControlsPreferences";
 import { STRUCTURED_OUTPUT_MIN_PARAMS_B, INFERENCE_JOBS_CATALOG, RUN_MODE_OPTIONS } from "../lib/inferenceJobsCatalog";
 
@@ -1416,9 +1417,6 @@ export default function PreferencesView() {
   const isLargeScreen = useIsLargeScreen();
   const settingsNavLayout = useSettingsStore((state) => state.settingsNavLayout);
   const setSettingsNavLayout = useSettingsStore((state) => state.setSettingsNavLayout);
-  const autoGenerateFlashcards = useSettingsStore((state) => state.autoGenerateFlashcards);
-  const setAutoGenerateFlashcards = useSettingsStore((state) => state.setAutoGenerateFlashcards);
-  const flashcardModel = useSettingsStore((state) => state.flashcardModel);
   const showGenInfo = useSettingsStore((state) => state.showGenInfo);
   const setShowGenInfo = useSettingsStore((state) => state.setShowGenInfo);
   const showGenInfoTokenCount = useSettingsStore((state) => state.showGenInfoTokenCount);
@@ -4511,67 +4509,7 @@ export default function PreferencesView() {
 
                 {/* ── Learning ── */}
                 {activeTab === "learning" && (
-                  <div className="flex flex-col gap-8">
-                    <section className="space-y-3" data-pref-section>
-                      <div className="pb-1.5 border-b border-[var(--border-color)] flex items-center justify-between gap-3">
-                        <div>
-                          <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] flex items-center gap-1.5">
-                            <Sparkles size={11} /> Flashcards
-                          </h3>
-                          <p className="text-xs text-[var(--text-muted)]/80 mt-1">
-                            Aetherium can extract flashcards from your chats so you can review them later.
-                          </p>
-                        </div>
-                        <label className="flex items-center gap-2 text-xs cursor-pointer whitespace-nowrap">
-                          <Toggle
-                            on={autoGenerateFlashcards}
-                            onToggle={() => setAutoGenerateFlashcards(!autoGenerateFlashcards)}
-                          />
-                          <span className="text-[var(--text-secondary)]">Auto-generate from chats</span>
-                        </label>
-                      </div>
-                      <div className="flex items-center justify-between gap-3 pt-1">
-                        <div>
-                          <p className="text-sm text-[var(--text-secondary)]">Generation model</p>
-                          <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                            {flashcardModel
-                              ? `Using ${flashcardModel}`
-                              : "Uses the background-job default model."}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setActiveTab("inference")}
-                          className="text-xs px-3 py-1.5 rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors whitespace-nowrap"
-                        >
-                          Configure in AI →
-                        </button>
-                      </div>
-                    </section>
-
-                    <section className="space-y-3" data-pref-section>
-                      <div className="pb-1.5 border-b border-[var(--border-color)]">
-                        <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] flex items-center gap-1.5">
-                          <Brain size={11} /> Knowledge
-                        </h3>
-                        <p className="text-xs text-[var(--text-muted)]/80 mt-1">
-                          A roadmap of concepts Aetherium has extracted from your workspace. Use it to navigate what you&apos;ve learned and spot gaps.
-                        </p>
-                      </div>
-                      <div className="flex items-center justify-between gap-3 pt-1">
-                        <p className="text-xs text-[var(--text-muted)]">
-                          The roadmap rebuilds itself as you chat, take notes, and capture sources in the active workspace.
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => navigate("/graph")}
-                          className="text-xs px-3 py-1.5 rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors whitespace-nowrap"
-                        >
-                          Open Knowledge Graph →
-                        </button>
-                      </div>
-                    </section>
-                  </div>
+                  <LearningPreferencesPanel onNavigateToTab={setActiveTab} />
                 )}
 
                 {/* ── About You ── */}
