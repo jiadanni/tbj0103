@@ -179,6 +179,92 @@ fn is_specific_topic_tag(tag: &str) -> bool {
     tag.len() >= 4
 }
 
+/// Strip Markdown code from `text`, keeping only prose lines.
+///
+/// Topics come from what the user *writes about*, not from what they paste.
+/// A line like `psql -U postgres -d mydb` tokenizes into `psql`, `postgres`,
+/// `mydb` — all indistinguishable from real subject matter to the tag
+/// extractor, and all meaningless as concepts. The surrounding prose ("how do
+/// I connect to a database") is what carries the actual topic.
+///
+/// Removes:
+/// - fenced blocks (``` or ~~~, any info string, closed by a matching run)
+/// - indented blocks (4+ spaces or a tab) following a blank line
+/// - inline `code spans`, replaced by a space so words don't fuse
+///
+/// An unterminated fence swallows the rest of the input, which is why callers
+/// must strip per message rather than over concatenated text — see
+/// [`collect_workspace_text`].
+pub(crate) fn strip_code(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut fence: Option<(char, usize)> = None;
+    let mut prev_blank = true;
+
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+
+        // Fence delimiters are a run of 3+ backticks or tildes. A closing
+        // fence must use the same character and be at least as long as the
+        // opener, so ``` inside a ````-fenced block doesn't close it early.
+        let delim = trimmed.chars().next().filter(|c| *c == '`' || *c == '~');
+        let run = delim.map_or(0, |c| trimmed.chars().take_while(|ch| *ch == c).count());
+
+        match fence {
+            Some((open_char, open_len)) => {
+                if delim == Some(open_char) && run >= open_len {
+                    fence = None;
+                }
+                continue;
+            }
+            None => {
+                if run >= 3 {
+                    fence = Some((delim.unwrap_or('`'), run));
+                    continue;
+                }
+            }
+        }
+
+        // Indented code blocks only start after a blank line; this keeps
+        // wrapped or hanging-indent prose from being mistaken for code.
+        let indented = line.starts_with("    ") || line.starts_with('\t');
+        if indented && prev_blank {
+            continue;
+        }
+
+        prev_blank = trimmed.is_empty();
+        out.push_str(&strip_inline_code(line));
+        out.push('\n');
+    }
+
+    out
+}
+
+/// Replace `` `code spans` `` in a single line with a space.
+fn strip_inline_code(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+
+    while let Some(start) = rest.find('`') {
+        let ticks = rest[start..].chars().take_while(|c| *c == '`').count();
+        let after = &rest[start + ticks..];
+        // Find a closing run of exactly the same length.
+        let close = after.match_indices(&"`".repeat(ticks)).find(|(i, _)| {
+            !after[i + ticks..].starts_with('`') && !after[..*i].ends_with('`')
+        });
+        match close {
+            Some((i, _)) => {
+                out.push_str(&rest[..start]);
+                out.push(' ');
+                rest = &after[i + ticks..];
+            }
+            // Unclosed span — keep the remainder as prose.
+            None => break,
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 fn extract_specific_tags(text: &str, max: usize) -> Vec<String> {
     let mut scores: HashMap<String, usize> = HashMap::new();
     let mut document_frequency: HashMap<String, usize> = HashMap::new();
@@ -331,7 +417,9 @@ pub fn collect_workspace_text(
         .map_err(|e| e.to_string())?;
 
     for content in rows.flatten() {
-        text.push_str(&content);
+        // Strip per message, not over the joined text: an unterminated fence
+        // in one message would otherwise swallow every message after it.
+        text.push_str(strip_code(&content).trim_end());
         text.push('\n');
         count += 1;
     }
@@ -745,7 +833,74 @@ pub fn find_best_workspace(
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_specific_tags, is_specific_topic_tag};
+    use super::{extract_specific_tags, is_specific_topic_tag, strip_code};
+
+    #[test]
+    fn strips_fenced_blocks_keeping_prose() {
+        let text = "how do I connect to a database\n\
+                    ```bash\n\
+                    psql -U postgres -d mydb\n\
+                    ```\n\
+                    thanks\n";
+        let out = strip_code(text);
+        assert!(out.contains("connect to a database"));
+        assert!(out.contains("thanks"));
+        assert!(!out.contains("psql"));
+        assert!(!out.contains("mydb"));
+    }
+
+    #[test]
+    fn identifiers_in_code_do_not_become_topics() {
+        // The reported bug: variable names and CLI tokens pasted into chat
+        // surfaced as knowledge-map nodes ("nums", "index", "main", "psql").
+        let text = "how do I connect to a database and sort results\n\
+                    ```python\n\
+                    def main(nums):\n\
+                        for index in range(len(nums)):\n\
+                            print(nums[index])\n\
+                    ```\n\
+                    I want to understand database indexing better\n";
+        let tags = extract_specific_tags(&strip_code(text), 20);
+        for junk in ["nums", "index", "main", "psql", "range", "print"] {
+            assert!(!tags.iter().any(|t| t == junk), "leaked code identifier: {junk}");
+        }
+        assert!(tags.iter().any(|t| t == "database"));
+    }
+
+    #[test]
+    fn tilde_and_long_fences_close_correctly() {
+        // A ``` inside a ````-fence must not close it early.
+        let text = "prose alpha\n````\ninner ```\nsecretvalue\n````\nprose bravo\n";
+        let out = strip_code(text);
+        assert!(out.contains("alpha") && out.contains("bravo"));
+        assert!(!out.contains("secretvalue"));
+
+        let tilde = "prose charlie\n~~~\ntildehidden\n~~~\nprose delta\n";
+        let out = strip_code(tilde);
+        assert!(out.contains("charlie") && out.contains("delta"));
+        assert!(!out.contains("tildehidden"));
+    }
+
+    #[test]
+    fn strips_indented_blocks_but_not_wrapped_prose() {
+        let code = "intro line\n\n    indentedsecret here\n\nafter\n";
+        let out = strip_code(code);
+        assert!(!out.contains("indentedsecret"));
+        assert!(out.contains("intro line") && out.contains("after"));
+
+        // Indented continuation directly under a prose line is still prose.
+        let prose = "talking about postgresql\n    continuedprose here\n";
+        assert!(strip_code(prose).contains("continuedprose"));
+    }
+
+    #[test]
+    fn strips_inline_spans_without_fusing_words() {
+        let out = strip_code("use `psql` to connect");
+        assert!(!out.contains("psql"));
+        assert!(out.contains("use") && out.contains("to connect"));
+        // An unclosed span is prose, not an accidental truncation.
+        assert!(strip_code("a ` b keepme").contains("keepme"));
+    }
 
     #[test]
     fn filters_generic_log_words() {

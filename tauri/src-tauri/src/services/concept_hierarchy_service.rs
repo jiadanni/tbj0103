@@ -361,6 +361,30 @@ struct ProposedGroup {
 struct ProposedGroups {
     #[serde(default)]
     groups: Vec<ProposedGroup>,
+    /// Entries the model judged to be noise or unplaceable. Left unlinked so
+    /// the orphan sweep files them under Uncategorized instead of inventing a
+    /// thematic parent for them.
+    #[serde(default)]
+    unclassifiable: Vec<String>,
+}
+
+/// Reject group names that are themselves noise, so a model that ignores the
+/// "unclassifiable" instruction can't smuggle junk in as a chapter heading.
+fn is_usable_group_name(name: &str) -> bool {
+    let n = name.trim();
+    if n.len() < 3 || n.len() > 60 {
+        return false;
+    }
+    if n.eq_ignore_ascii_case("uncategorized")
+        || n.eq_ignore_ascii_case("unclassifiable")
+        || n.eq_ignore_ascii_case("other")
+        || n.eq_ignore_ascii_case("miscellaneous")
+        || n.eq_ignore_ascii_case("misc")
+    {
+        return false;
+    }
+    // A real topic label contains a letter and isn't a bare identifier.
+    n.chars().any(|c| c.is_alphabetic()) && !n.contains('_') && !n.starts_with('-')
 }
 
 fn strip_code_fences(input: &str) -> &str {
@@ -422,14 +446,18 @@ fn build_group_synthesis_prompt(names: &[String]) -> String {
     format!(
         "You are organising a knowledge map. Group the following concepts into a small \
          number of clearly named topic groups (2-6 words each, e.g. \"Databases\", \
-         \"Python Fundamentals\"). Every concept must appear in exactly one group. \
-         Group concepts that are meaningfully related; do not create a group for a single \
-         unrelated concept unless there is no better fit — prefer fewer, broader groups \
-         over many narrow ones.\n\n\
+         \"Python Fundamentals\"). Group only concepts that are genuinely related to each \
+         other; prefer fewer, broader groups over many narrow ones.\n\n\
+         Some entries will be noise — variable names, CLI flags, file or person names, or \
+         terms too vague to be a subject. Put every such entry, and anything you cannot \
+         confidently place with related concepts, in \"unclassifiable\". Never invent a \
+         thematic group to house an entry that does not fit one; assigning an unrelated \
+         concept to a plausible-sounding group is worse than leaving it unclassified.\n\n\
          Concepts:\n{joined}\n\n\
          Reply with ONLY a JSON object of this exact shape, no explanation, no markdown \
          fences:\n\
-         {{\"groups\": [{{\"name\": \"Group Name\", \"concepts\": [\"concept 1\", \"concept 2\"]}}]}}"
+         {{\"groups\": [{{\"name\": \"Group Name\", \"concepts\": [\"concept 1\", \"concept 2\"]}}], \
+         \"unclassifiable\": [\"noise 1\"]}}"
     )
 }
 
@@ -499,18 +527,29 @@ async fn synthesize_topic_groups(
         let conn = pool.get().map_err(|e| {
             rusqlite::Error::InvalidParameterName(e.to_string())
         })?;
+        // Entries the model flagged as noise are skipped entirely; the orphan
+        // sweep files them under Uncategorized.
+        let unclassifiable: std::collections::HashSet<String> = parsed
+            .unclassifiable
+            .iter()
+            .map(|n| n.trim().to_lowercase())
+            .collect();
+
         let mut linked = 0usize;
         for group in &parsed.groups {
             let group_name = group.name.trim();
-            if group_name.is_empty() || group_name.eq_ignore_ascii_case("uncategorized") {
+            if !is_usable_group_name(group_name) {
                 continue;
             }
             let matched: Vec<&String> = group
                 .concepts
                 .iter()
+                .filter(|name| !unclassifiable.contains(&name.trim().to_lowercase()))
                 .filter_map(|name| by_name.get(&name.trim().to_lowercase()))
                 .collect();
-            if matched.is_empty() {
+            // A "group" holding one concept is usually the model shoehorning an
+            // unrelated entry somewhere rather than a real theme.
+            if matched.len() < 2 {
                 continue;
             }
 
@@ -839,6 +878,58 @@ async fn sweep_and_synthesize(
 mod tests {
     use super::*;
     use crate::db::test_utils::tests::setup_test_db;
+
+    #[test]
+    fn rejects_placeholder_and_identifier_group_names() {
+        assert!(is_usable_group_name("Databases"));
+        assert!(is_usable_group_name("Python Fundamentals"));
+        assert!(!is_usable_group_name("Uncategorized"));
+        assert!(!is_usable_group_name("misc"));
+        assert!(!is_usable_group_name("Other"));
+        assert!(!is_usable_group_name("db_conn"));
+        assert!(!is_usable_group_name("--verbose"));
+        assert!(!is_usable_group_name("x"));
+        assert!(!is_usable_group_name("   "));
+    }
+
+    #[test]
+    fn synthesis_prompt_offers_an_escape_hatch() {
+        // Regression: the old prompt required every concept to land in a
+        // group, which forced unrelated entries under plausible-sounding
+        // parents (e.g. "psql" filed under "GPU Computing").
+        let prompt = build_group_synthesis_prompt(&["psql".to_string(), "cuda".to_string()]);
+        assert!(prompt.contains("unclassifiable"));
+        assert!(!prompt.contains("must appear in exactly one group"));
+    }
+
+    #[test]
+    fn unclassifiable_entries_are_not_linked_into_groups() {
+        let reply = r#"{"groups":[{"name":"GPU Computing","concepts":["cuda","kernels","psql"]}],
+                        "unclassifiable":["psql"]}"#;
+        let parsed: ProposedGroups = serde_json::from_str(reply).unwrap();
+        let unclassifiable: std::collections::HashSet<String> = parsed
+            .unclassifiable
+            .iter()
+            .map(|n| n.trim().to_lowercase())
+            .collect();
+        let kept: Vec<&String> = parsed.groups[0]
+            .concepts
+            .iter()
+            .filter(|n| !unclassifiable.contains(&n.trim().to_lowercase()))
+            .collect();
+        assert_eq!(kept.len(), 2);
+        assert!(!kept.iter().any(|n| n.as_str() == "psql"));
+    }
+
+    #[test]
+    fn missing_unclassifiable_key_still_parses() {
+        // Older/smaller models may omit the field entirely.
+        let parsed: ProposedGroups =
+            serde_json::from_str(r#"{"groups":[{"name":"Databases","concepts":["a","b"]}]}"#)
+                .unwrap();
+        assert!(parsed.unclassifiable.is_empty());
+        assert_eq!(parsed.groups.len(), 1);
+    }
 
     fn insert_ws(conn: &Connection, id: &str) {
         conn.execute(
