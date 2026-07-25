@@ -7,7 +7,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
-import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, Pencil, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, GripVertical, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Search, UserCircle, SlidersHorizontal, X } from "lucide-react";
+import { Palette, Bot, ShieldCheck, HardDrive, Trash2, Plus, LayoutGrid, Network, Globe, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FileText, FolderInput, ScrollText, Eye, EyeOff, Pin, Info, Brain, ChevronDown, Lock, GraduationCap, Search, UserCircle, SlidersHorizontal, X } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat, type CoreSettings, type InferenceSettings, type AdvancedSettings, type InferenceJobSetting, type InferenceJobStatus, type BackgroundJobRunMode } from "../lib/api";
 import { resolveModelDisplayName, resolveModelSecondaryDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
@@ -42,6 +42,7 @@ import { usePrefsWindowMode } from "../lib/prefsWindowMode";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import LiveAppPreview from "./preferences/LiveAppPreview";
 import { Toggle } from "../components/Toggle";
+import { ModelsTable } from "../components/ModelsTable";
 import { AboutYouPreferencesPanel } from "../components/preferences/AboutYouPreferencesPanel";
 import { AppearancePreferencesPanel } from "../components/preferences/AppearancePreferencesPanel";
 import { LearningPreferencesPanel } from "../components/preferences/LearningPreferencesPanel";
@@ -302,31 +303,6 @@ function formatSystemName(specs: SystemSpecs): string {
   return [specs.os_name, specs.os_version].filter(Boolean).join(" ");
 }
 
-function formatModelSpeed(stat: ModelSpeedStat | undefined): { chatAverage: string; weighted: string } | null {
-  if (
-    !stat ||
-    !Number.isFinite(stat.avg_chat_tokens_per_second) ||
-    stat.avg_chat_tokens_per_second <= 0 ||
-    !Number.isFinite(stat.weighted_tokens_per_second) ||
-    stat.weighted_tokens_per_second <= 0
-  ) {
-    return null;
-  }
-
-  return {
-    chatAverage: `${stat.avg_chat_tokens_per_second.toFixed(1)} tok/s`,
-    weighted: `${stat.weighted_tokens_per_second.toFixed(1)} tok/s`,
-  };
-}
-
-function formatCapabilityLabel(capability: string): string {
-  return capability
-    .split(/[_\s-]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
 function getModelFitMeta(modelFit: ModelFit): {
   dotClassName: string;
   title: string;
@@ -565,81 +541,6 @@ function ShortcutRecorder({
             </svg>
           </button>
         </Tooltip>
-      )}
-    </div>
-  );
-}
-
-function ContextSizeInput({ modelName, savedValue, onSave, onClear }: {
-  modelName: string;
-  savedValue: number | null;
-  onSave: (value: number | null) => Promise<void>;
-  onClear: () => Promise<void>;
-}) {
-  const [draft, setDraft] = React.useState<string>(savedValue !== null ? String(savedValue) : "");
-
-  React.useEffect(() => {
-    setDraft(savedValue !== null ? String(savedValue) : "");
-  }, [savedValue]);
-
-  async function commit() {
-    const raw = draft.trim();
-    const parsed = raw === "" ? null : Number.parseInt(raw, 10);
-    const next = parsed === null ? null : Number.isFinite(parsed) && parsed > 0 ? Math.max(512, parsed) : null;
-    if ((savedValue ?? null) !== next) {
-      await onSave(next);
-    }
-    setDraft(next !== null ? String(next) : "");
-  }
-
-  return (
-    <div className="flex flex-col items-center">
-      <div className="flex items-center gap-1.5">
-        <Tooltip
-          content={
-            <div className="flex flex-col gap-1.5 w-48">
-              <div className="font-semibold text-xs">Context Window Size</div>
-              <div className="text-[11px] flex flex-col gap-0.5">
-                {savedValue !== null && (
-                  <div>Current: <span className="font-mono text-[var(--accent-color)]">{savedValue}</span> tok</div>
-                )}
-                <div>Default: <span className="font-mono">8192</span> tok</div>
-              </div>
-              <div className="mt-1 text-[11px] text-[var(--text-muted)] leading-snug">
-                Higher values allow the model to remember more context, but use significantly more memory and slow down generation. Recommended to use powers of 2 (e.g., 4096, 8192, 16384).
-              </div>
-            </div>
-          }
-        >
-          <input
-            type="number"
-            min={512}
-            step={512}
-            value={draft}
-            placeholder="8192"
-            className="w-[72px] rounded border border-[var(--border-color)] bg-[var(--bg-primary)] px-1.5 py-0.5 text-center text-[10px] tabular-nums text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-            aria-label={`Context window for ${modelName}`}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={commit}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.currentTarget.blur(); } }}
-          />
-        </Tooltip>
-        <span className="text-[9px] text-[var(--text-muted)] shrink-0">tok</span>
-        {savedValue !== null && (
-          <Tooltip content="Clear override — revert to Ollama's default context size for this model">
-            <button
-              onClick={async () => { await onClear(); setDraft(""); }}
-              className="text-[var(--text-muted)] hover:text-[var(--accent-color)] transition-colors shrink-0"
-            >
-              <RefreshCw size={10} />
-            </button>
-          </Tooltip>
-        )}
-      </div>
-      {savedValue !== null && (
-        <div className="text-[9px] text-[var(--text-muted)] mt-1">
-          default: 8192
-        </div>
       )}
     </div>
   );
@@ -2476,314 +2377,85 @@ export default function PreferencesView() {
         );
       })()}
 
+      {/* No background default at all — the more common broken state than a
+          too-small one, and previously unsurfaced. */}
+      {(() => {
+        const bgId = dbSettings.background_model as string | undefined;
+        const bgStillPresent = bgId ? aiModels.some((m) => m.model_id === bgId) : false;
+        if (bgStillPresent) {return null;}
+        if (aiModels.length === 0) {return null;}
+        return (
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-snug text-amber-300">
+            <span className="font-semibold">No background default set.</span>{" "}
+            {bgId
+              ? `The previously selected model (${bgId}) is no longer available. `
+              : ""}
+            Background jobs (memory extraction, summarization, flashcards, glossary, topic signatures) have no fallback model — pick one below with <span className="font-medium">Set as default</span>, or set per-job models in Inference Jobs.
+          </div>
+        );
+      })()}
+
       {aiModels.length === 0 ? (
         <p className="text-xs text-[var(--text-muted)] py-2">No models configured. Add one above to set up priority ordering.</p>
       ) : (
-      <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] overflow-hidden">
-        <div className="grid grid-cols-[minmax(160px,1.6fr)_70px_100px_100px_48px_48px] items-center gap-2 px-4 py-2.5 bg-[var(--bg-hover)]/30 border-b border-[var(--border-color)] text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-          <span>Ollama Models</span>
-          <Tooltip content="BG Default: fallback model for background AI tasks (memory extraction, summarization, flashcards, glossary, topic signatures) when no per-job model is set below. Per-job overrides take precedence." position="top">
-            <span className="text-center inline-flex items-center justify-center gap-1">
-              BG Default
-              <span className="text-[8px] opacity-60 normal-case tracking-normal font-normal">ⓘ</span>
-            </span>
-          </Tooltip>
-          <Tooltip content="Speed: measured in tokens per second during the last generation. Higher is faster. This is benchmarked live as you use the model and updates over time." position="top">
-            <span className="text-right inline-flex items-center justify-end gap-1">
-              Speed
-              <span className="text-[8px] opacity-60 normal-case tracking-normal font-normal">ⓘ</span>
-            </span>
-          </Tooltip>
-          <Tooltip content="Context window (tokens): the maximum number of tokens the model holds in memory at once. A larger value lets the model remember more conversation history but uses more VRAM. Leave blank to use Ollama's default for this model." position="top">
-            <span className="text-center inline-flex items-center justify-center gap-1">
-              Context
-              <span className="text-[8px] opacity-60 normal-case tracking-normal font-normal">ⓘ</span>
-            </span>
-          </Tooltip>
-          <Tooltip content="Active: enables or disables this model app-wide. Inactive models are never used for chat or background tasks, even if selected elsewhere." position="top">
-            <span className="text-center inline-flex items-center justify-center gap-1">
-              Active
-              <span className="text-[8px] opacity-60 normal-case tracking-normal font-normal">ⓘ</span>
-            </span>
-          </Tooltip>
-          <Tooltip content="Visible: controls whether this model appears in the chat model picker. Hide models you want active in the background but don't want cluttering the selector." position="top">
-            <span className="text-center inline-flex items-center justify-center gap-1">
-              Visible
-              <span className="text-[8px] opacity-60 normal-case tracking-normal font-normal">ⓘ</span>
-            </span>
-          </Tooltip>
-        </div>
-
-          <div className="divide-y divide-[var(--border-color)]">
-
-          {localGroupedAiModels.map((group) => (
-            <React.Fragment key={group.key}>
-              {localGroupedAiModels.length > 1 && (
-              <div
-                data-family-key={group.key}
-                onPointerDown={(e) => {
-                  if (composerMode !== "family") {return;}
-                  // Only start family drag from primary button
-                  if (e.button !== 0) {return;}
-                  e.preventDefault();
-                  setDraggedFamilyId(group.key);
-                }}
-                className={`relative pl-4 pr-4 py-1 transition-colors select-none ${draggedFamilyId === group.key ? "opacity-50" : ""} ${
-                  dragOverFamilyId === group.key && !dragOverModelId
-                    ? (draggedFamilyId
-                        ? "bg-[var(--accent-color)]/5 before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-[var(--accent-color)] before:z-10"
-                        : "bg-[var(--accent-color)]/20")
-                    : ""
-                } text-[9px] font-semibold tracking-[0.14em] uppercase text-[var(--text-muted)] border-t border-[var(--border-color)]/40 ${composerMode === "family" ? "cursor-grab active:cursor-grabbing" : ""}`}
-              >
-                {group.label}
-              </div>
-              )}
-
-              {group.models.map((m, _idx) => {
-                const ollamaMeta = ollamaModels.find((model) => model.name === m.model_id);
-                const speedStat = modelSpeedStats[m.model_id];
-                const speedLabels = formatModelSpeed(speedStat);
-                const modelParams = parseModelParamsB(m.model_id) ?? parseModelParamsB(m.name) ?? parseModelParamsB(ollamaMeta?.details?.parameter_size ?? "");
-                const formattedParams = formatParams(modelParams);
-                const formattedStorage = typeof ollamaMeta?.size === "number" ? formatBytes(ollamaMeta.size) : null;
-                const modelFit = systemGuidance
-                  ? classifyModelFit(modelParams, systemGuidance.recommendedMaxParamsB)
-                  : "unknown";
-                const fitMeta = getModelFitMeta(modelFit);
-                const metadataParts = [formattedParams, formattedStorage].filter(Boolean) as string[];
-                const isOllamaModel = m.provider === "ollama";
-                const isWebModel = m.provider.startsWith("web_");
-                // Sub-4B models can't be the background fallback: structured
-                // jobs (flashcards, glossary, prompts, memory) fall back to it
-                // and reliably fail to emit valid JSON at that size.
-                const tooSmallForBackground =
-                  modelParams != null && modelParams < STRUCTURED_OUTPUT_MIN_PARAMS_B;
-                const canBeBackgroundModel = isOllamaModel && m.enabled && !tooSmallForBackground;
-                const isBackgroundModel = dbSettings.background_model === m.model_id;
-                const providerMeta = group;
-                const capabilityBadges = (isOllamaModel ? ollamaMeta?.capabilities ?? [] : [])
-                  .filter((c) => c.toLowerCase() !== "completion");
-                const displayName = resolveModelDisplayName(m.model_id, modelLabels, aiModels);
-                const secondaryDisplayName = resolveModelSecondaryDisplayName(m.model_id, m.provider);
-
-                const isDragOver = dragOverModelId === m.id;
-                let dropIndicatorClass = "";
-                if (isDragOver && draggedModelId) {
-                  const draggedModel = aiModels.find(x => x.id === draggedModelId);
-                  if (draggedModel) {
-                    if (draggedModel.priority < m.priority) {
-                      dropIndicatorClass = "before:absolute before:inset-x-0 before:bottom-0 before:h-0.5 before:bg-[var(--accent-color)] before:z-10";
-                    } else {
-                      dropIndicatorClass = "before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-[var(--accent-color)] before:z-10";
-                    }
-                  }
-                }
-
-                return (
-                  <div
-                    key={m.id}
-                    data-model-id={m.id}
-                    data-family-key={group.key}
-                    className={`relative transition-colors select-none ${draggedModelId === m.id || draggedFamilyId === group.key ? "opacity-50" : ""} ${isDragOver ? `bg-[var(--accent-color)]/5 ${dropIndicatorClass}` : "hover:bg-[var(--bg-hover)]/5"} px-4 py-3`}
-                  >
-                    <div className="flex flex-col gap-2 md:grid md:grid-cols-[minmax(160px,1.6fr)_70px_100px_100px_48px_48px] md:items-start md:gap-2">
-                      <div className="flex min-w-0 items-start gap-2">
-                        <div
-                          className="flex items-center pt-1.5 text-[var(--text-muted)] cursor-grab hover:text-[var(--text-primary)]"
-                          onPointerDown={(e) => {
-                            if (editingModelId || m.id.startsWith("transient-") || e.button !== 0) {return;}
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setDraggedModelId(m.id);
-                          }}
-                        >
-                          <GripVertical size={14} />
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          {editingModelId === m.id ? (
-                            <input
-                              autoFocus
-                              value={editingName}
-                              onChange={(e) => setEditingName(e.target.value)}
-                              onBlur={async () => {
-                                const nextName = editingName.trim() || m.model_id;
-                                await api.aiModel.update(m.id, { name: nextName });
-                                setEditingModelId(null);
-                                loadAiModels();
-                              }}
-                              onKeyDown={async (e) => {
-                                if (e.key === "Enter") {
-                                  const nextName = editingName.trim() || m.model_id;
-                                  await api.aiModel.update(m.id, { name: nextName });
-                                  setEditingModelId(null);
-                                  loadAiModels();
-                                }
-                                if (e.key === "Escape") { setEditingModelId(null); }
-                              }}
-                              className="w-full rounded border border-[var(--accent-color)] bg-[var(--bg-primary)] px-1.5 py-0.5 text-sm text-[var(--text-primary)] outline-none"
-                            />
-                          ) : (
-                            <div className="group min-w-0">
-                              <div className="flex min-w-0 items-center gap-2">
-                                <Tooltip content={fitMeta.title}>
-                                  <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${fitMeta.dotClassName}`} />
-                                </Tooltip>
-                                <span className="truncate text-sm font-medium text-[var(--text-primary)]">{displayName}</span>
-                                {!m.id.startsWith("transient-") && (
-                                  <Tooltip content="Rename model">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setEditingModelId(m.id);
-                                        setEditingName(m.name);
-                                      }}
-                                      className="shrink-0 text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100 hover:text-[var(--text-primary)]"
-                                      aria-label={`Rename ${displayName}`}
-                                    >
-                                      <Pencil size={10} />
-                                    </button>
-                                  </Tooltip>
-                                )}
-                              </div>
-                              <div className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-[var(--text-secondary)]">
-                                {!isOllamaModel && (
-                                  <span className="rounded bg-[var(--bg-hover)] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-[var(--text-secondary)]">
-                                    {providerMeta.label}
-                                  </span>
-                                )}
-                                <span className="truncate">{secondaryDisplayName}</span>
-                                  {capabilityBadges.length > 0 && (
-                                    <Tooltip content={`Capabilities: ${capabilityBadges.map(formatCapabilityLabel).join(", ")}`}>
-                                      <div
-                                        className="ml-1 shrink-0 cursor-help text-[var(--text-muted)] transition-colors hover:text-[var(--accent-color)]"
-                                      >
-                                        <Info size={12} />
-                                      </div>
-                                    </Tooltip>
-                                  )}
-                              </div>
-                              {(metadataParts.length > 0 || fitMeta.label) && (
-                                <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-[var(--text-secondary)]">
-                                  {metadataParts.map((part, partIndex) => (
-                                    <React.Fragment key={`${m.id}-${part}`}>
-                                      {partIndex > 0 && <span className="text-[var(--text-muted)]">•</span>}
-                                      <span>{part}</span>
-                                    </React.Fragment>
-                                  ))}
-                                  {fitMeta.label && metadataParts.length > 0 && <span className="text-[var(--text-muted)]">•</span>}
-                                  {fitMeta.label && <span className={`font-medium ${fitMeta.textClassName}`}>{fitMeta.label}</span>}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {isOllamaModel && (
-                        <Tooltip content={canBeBackgroundModel ? "Use for background tasks" : tooSmallForBackground ? `Too small for background tasks — structured jobs (flashcards, glossary, prompts) need ~${STRUCTURED_OUTPUT_MIN_PARAMS_B}B+ to emit valid JSON` : "Enable this model to make it selectable for background tasks"}>
-                          <label
-                            className={`flex items-center justify-center md:w-[70px] ${canBeBackgroundModel ? "cursor-pointer text-[var(--text-secondary)]" : "cursor-not-allowed text-[var(--text-muted)] opacity-60"
-                              }`}
-                          >
-                            <input
-                              type="radio"
-                              name="background_model"
-                              checked={isBackgroundModel}
-                              disabled={!canBeBackgroundModel}
-                              onChange={() => set("background_model", m.model_id)}
-                              className="accent-[var(--accent-color)]"
-                              aria-label={`Use ${m.name} for background tasks`}
-                            />
-                            <span className="sr-only">Background model</span>
-                          </label>
-                        </Tooltip>
-                      )}
-                      {!isOllamaModel && <div className="hidden md:block md:w-[70px]" />}
-
-                      <div className="text-right text-[10px] leading-5 text-[var(--text-muted)] md:w-[100px]">
-                        {m.is_paid && (
-                          <div className="font-medium uppercase tracking-wide text-amber-400">Paid</div>
-                        )}
-                        {speedLabels && !isWebModel && (
-                          <Tooltip content={`Average generation speed across ${speedStat.chat_count} chats`}>
-                            <div className="tabular-nums whitespace-nowrap text-[var(--text-secondary)]">
-                              {speedLabels.chatAverage} avg
-                            </div>
-                          </Tooltip>
-                        )}
-                        {speedLabels && !isWebModel && (
-                          <Tooltip content="Weighted overall generation speed across all recorded assistant messages">
-                            <div className="tabular-nums whitespace-nowrap text-[var(--text-secondary)]">
-                              {speedLabels.weighted} weighted
-                            </div>
-                          </Tooltip>
-                        )}
-                        {!isWebModel && (
-                          <Tooltip content={`${m.tokens_used_total.toLocaleString()} total tokens recorded`}>
-                            <div className="tabular-nums whitespace-nowrap">
-                              {m.tokens_used_total.toLocaleString()} tok total
-                            </div>
-                          </Tooltip>
-                        )}
-                      </div>
-
-                      <div className="flex justify-center pt-0.5 md:w-[100px]">
-                        {!isWebModel && !m.id.startsWith("transient-") && (
-                          <ContextSizeInput
-                            modelName={m.name}
-                            savedValue={m.context_size ?? null}
-                            onSave={async (next) => { await api.aiModel.update(m.id, { context_size: next }); loadAiModels(); }}
-                            onClear={async () => { await api.aiModel.update(m.id, { context_size: null }); loadAiModels(); }}
-                          />
-                        )}
-                      </div>
-
-                      <div className="flex justify-center pt-0.5 md:w-[48px]">
-                        <Toggle
-                          on={m.enabled}
-                          onToggle={async () => {
-                            if (m.id.startsWith("transient-")) {
-                              // Auto-add to DB on first enable
-                              await api.aiModel.add(m.name, m.model_id, {
-                                provider: m.provider,
-                                enabled: true,
-                                priority: aiModels.length > 0 ? Math.max(...aiModels.map(x => x.priority)) + 1 : 1
-                              });
-                            } else {
-                              await api.aiModel.update(m.id, { enabled: !m.enabled });
-                            }
-                            loadAiModels();
-                            incrementModelRefreshCounter();
-                          }}
-                        />
-                      </div>
-
-                      <div className="flex justify-center pt-1 md:w-[48px]">
-                        <Tooltip content={m.is_hidden ? "Show in Chat" : "Hide from Chat"}>
-                          <button
-                            onClick={async () => {
-                              await api.aiModel.update(m.id, { is_hidden: !m.is_hidden });
-                              loadAiModels();
-                              incrementModelRefreshCounter();
-                            }}
-                            className={`p-1 transition-colors ${m.is_hidden ? "text-[var(--text-muted)] hover:text-[var(--text-primary)]" : "text-[var(--accent-color)] hover:opacity-80"}`}
-                          >
-                            {m.is_hidden ? <EyeOff size={14} /> : <Eye size={14} />}
-                          </button>
-                        </Tooltip>
-                      </div>
-
-                    </div>
-                  </div>
-                );
-              })}
-            </React.Fragment>
-          ))}
-          </div>
-        </div>
+      <ModelsTable
+        groups={localGroupedAiModels}
+        aiModels={aiModels}
+        ollamaModels={ollamaModels}
+        modelSpeedStats={modelSpeedStats}
+        modelLabels={modelLabels}
+        backgroundModelId={dbSettings.background_model as string | undefined}
+        recommendedMaxParamsB={systemGuidance ? systemGuidance.recommendedMaxParamsB : null}
+        composerMode={composerMode}
+        showFamilyHeadings={localGroupedAiModels.length > 1}
+        editingModelId={editingModelId}
+        editingName={editingName}
+        onEditingNameChange={setEditingName}
+        onStartRename={(m) => { setEditingModelId(m.id); setEditingName(m.name); }}
+        onCommitRename={async (m) => {
+          const nextName = editingName.trim() || m.model_id;
+          await api.aiModel.update(m.id, { name: nextName });
+          setEditingModelId(null);
+          loadAiModels();
+        }}
+        onCancelRename={() => setEditingModelId(null)}
+        draggedModelId={draggedModelId}
+        dragOverModelId={dragOverModelId}
+        draggedFamilyId={draggedFamilyId}
+        dragOverFamilyId={dragOverFamilyId}
+        onModelDragStart={setDraggedModelId}
+        onFamilyDragStart={setDraggedFamilyId}
+        onSelectBackgroundModel={(modelId) => set("background_model", modelId)}
+        onToggleEnabled={async (m) => {
+          if (m.id.startsWith("transient-")) {
+            // Auto-add to DB on first enable
+            await api.aiModel.add(m.name, m.model_id, {
+              provider: m.provider,
+              enabled: true,
+              priority: aiModels.length > 0 ? Math.max(...aiModels.map(x => x.priority)) + 1 : 1
+            });
+          } else {
+            await api.aiModel.update(m.id, { enabled: !m.enabled });
+          }
+          loadAiModels();
+          incrementModelRefreshCounter();
+        }}
+        onToggleHidden={async (m) => {
+          await api.aiModel.update(m.id, { is_hidden: !m.is_hidden });
+          loadAiModels();
+          incrementModelRefreshCounter();
+        }}
+        onSaveContextSize={async (m, next) => {
+          await api.aiModel.update(m.id, { context_size: next });
+          loadAiModels();
+        }}
+        onClearContextSize={async (m) => {
+          await api.aiModel.update(m.id, { context_size: null });
+          loadAiModels();
+        }}
+      />
       )}
+
 
       {composerMode === "family" && (
         <div className="pt-2">
