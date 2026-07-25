@@ -10,6 +10,24 @@ const LEVEL_MAP: Record<ConsoleMethod, string> = {
   error: "error",
 };
 
+/**
+ * Pre-patch console methods, captured at module load time (before
+ * `installConsoleTimestamps` runs). Use these instead of `console.error`/
+ * `console.warn` for diagnostics that must NOT be persisted to the backend's
+ * app_logs table — e.g. a failure inside the code path that fetches/reacts
+ * to app_logs itself, where forwarding would create a self-sustaining
+ * fetch-fail -> log -> event -> refetch -> fetch-fail loop.
+ */
+/* eslint-disable no-console */
+export const rawConsole: Pick<Console, ConsoleMethod> = {
+  debug: console.debug.bind(console),
+  error: console.error.bind(console),
+  info: console.info.bind(console),
+  log: console.log.bind(console),
+  warn: console.warn.bind(console),
+};
+/* eslint-enable no-console */
+
 let forwardToBackend = false;
 let forwardFn: ((level: string, source: string, message: string) => void) | null = null;
 let batchForwardFn: ((events: Array<{ level: string; source: string; message: string }>) => void) | null = null;

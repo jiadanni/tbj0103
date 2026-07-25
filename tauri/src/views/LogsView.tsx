@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 import { listen } from "@tauri-apps/api/event";
 import { AlertTriangle, ArrowDownToLine, Bug, Download, Info, RefreshCw, Search, Trash2, XCircle } from "lucide-react";
 import { api, type LogEntry } from "../lib/api";
+import { rawConsole } from "../lib/consoleTimestamps";
 import { CompactMenuSelect } from "../components/CompactMenuSelect";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { Tooltip } from "../components/Tooltip";
@@ -36,6 +37,11 @@ export default function LogsView() {
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const isFetchingRef = useRef(false);
+  // Set when a "logs-appended" event (or another fetchLogs call) arrives
+  // while a fetch is already in flight, so we refetch once more right after
+  // instead of silently dropping rows written during the in-flight fetch.
+  const refetchPendingRef = useRef(false);
+  const appendedDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Debounce search query
   useEffect(() => {
@@ -46,22 +52,35 @@ export default function LogsView() {
   }, [searchQuery]);
 
   const fetchLogs = useCallback(async () => {
-    if (isFetchingRef.current) { return; }
+    if (isFetchingRef.current) {
+      refetchPendingRef.current = true;
+      return;
+    }
     isFetchingRef.current = true;
     try {
-      const [entries, srcs] = await Promise.all([
-        api.logs.get({
-          level: levelFilter === "all" ? undefined : levelFilter,
-          source: sourceFilter === "all" ? undefined : sourceFilter,
-          search: debouncedSearchQuery || undefined,
-          limit: 1000,
-        }),
-        api.logs.getSources(),
-      ]);
-      setLogs(entries);
-      setSources(srcs);
-    } catch (e) {
-      console.error("Failed to fetch logs", e);
+      do {
+        refetchPendingRef.current = false;
+        try {
+          const [entries, srcs] = await Promise.all([
+            api.logs.get({
+              level: levelFilter === "all" ? undefined : levelFilter,
+              source: sourceFilter === "all" ? undefined : sourceFilter,
+              search: debouncedSearchQuery || undefined,
+              limit: 1000,
+            }),
+            api.logs.getSources(),
+          ]);
+          setLogs(entries);
+          setSources(srcs);
+        } catch (e) {
+          // Use rawConsole, not console.error: this view's own error path must
+          // not be forwarded to the backend log store, or a broken backend
+          // would log an error -> emit "logs-appended" -> refetch -> fail
+          // again, forever, at whatever cadence errors are batched.
+          rawConsole.error("Failed to fetch logs", e);
+          break;
+        }
+      } while (refetchPendingRef.current);
     } finally {
       isFetchingRef.current = false;
       setLoading(false);
@@ -75,12 +94,24 @@ export default function LogsView() {
 
   // Event-driven refresh: the backend emits "logs-appended" whenever a new
   // row is written to app_logs, so we refetch on-demand instead of blindly
-  // polling every few seconds regardless of whether anything changed.
+  // polling every few seconds regardless of whether anything changed. Bursts
+  // of events (e.g. a chatty background job) are coalesced with a short
+  // debounce instead of triggering one full refetch per row.
   useEffect(() => {
     const unlisten = listen("logs-appended", () => {
-      void fetchLogs();
+      if (appendedDebounceRef.current) { return; }
+      appendedDebounceRef.current = setTimeout(() => {
+        appendedDebounceRef.current = null;
+        void fetchLogs();
+      }, 400);
     });
-    return () => { unlisten.then((fn) => fn()); };
+    return () => {
+      unlisten.then((fn) => fn());
+      if (appendedDebounceRef.current) {
+        clearTimeout(appendedDebounceRef.current);
+        appendedDebounceRef.current = null;
+      }
+    };
   }, [fetchLogs]);
 
   // Auto-scroll to bottom

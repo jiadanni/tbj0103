@@ -1045,22 +1045,36 @@ Rules:\n\
     let mut name_to_id_owned = std::mem::take(name_to_id);
     let output_owned = output;
 
-    type ChunkSyncOutcome = (
-        ChunkStats,
-        Vec<(String, String, String)>,
-        Vec<(String, String, String, f64)>,
+    // `ChunkSyncResult` deliberately does NOT include the dedup map: the map
+    // is threaded through separately (see below) so it survives even when
+    // the inner closure bails out early via `?` partway through a chunk.
+    type ChunkSyncResult = Result<
+        (
+            ChunkStats,
+            Vec<(String, String, String)>,
+            Vec<(String, String, String, f64)>,
+            String,
+        ),
         String,
-        HashMap<String, String>,
-    );
+    >;
 
-    let (stats, newly_created_concepts, low_conf_concepts, supersede_mode, name_to_id_result): ChunkSyncOutcome =
-        tokio::task::spawn_blocking(move || -> Result<ChunkSyncOutcome, String> {
+    let (chunk_result, name_to_id_result): (ChunkSyncResult, HashMap<String, String>) =
+        tokio::task::spawn_blocking(move || {
             let pool = &pool_clone;
             let workspace_id = workspace_id_owned.as_str();
             let model = model_owned.as_str();
             let job_id = job_id_owned.as_str();
             let output = output_owned;
             let name_to_id = &mut name_to_id_owned;
+
+            // Run the fallible body as an inner closure (IIFE). Whether it
+            // returns Ok or bails early via `?`, `name_to_id_owned` (mutated
+            // in place through the `name_to_id` reference above) is always
+            // handed back below. Losing it on a mid-chunk error would
+            // silently drop the in-memory dedup map, causing every
+            // subsequent chunk in this analysis run to recreate concept
+            // nodes that already exist in the graph.
+            let result: ChunkSyncResult = (|| {
 
     let (upgrade_mode, supersede_mode, confidence_threshold) = {
         let conn = pool.get().map_err(|e| e.to_string())?;
@@ -1444,18 +1458,16 @@ Rules:\n\
         low_conf_concepts = rows.filter_map(Result::ok).collect();
     }
 
-            Ok((
-                stats,
-                newly_created_concepts,
-                low_conf_concepts,
-                supersede_mode,
-                name_to_id_owned,
-            ))
+                Ok((stats, newly_created_concepts, low_conf_concepts, supersede_mode))
+            })();
+
+            (result, name_to_id_owned)
         })
         .await
-        .map_err(|e| format!("Task join error: {e}"))??;
+        .map_err(|e| format!("Task join error: {e}"))?;
 
     *name_to_id = name_to_id_result;
+    let (stats, newly_created_concepts, low_conf_concepts, supersede_mode) = chunk_result?;
 
     let mut recommendations = Vec::new();
     if supersede_mode != "off"
