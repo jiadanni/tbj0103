@@ -35,6 +35,7 @@ import {
 import { BackForwardNavigation } from "../titlebar/BackForwardNavigation";
 import { TitlebarSortMenu } from "../titlebar/TitlebarSortMenu";
 import { TitlebarHistoryMenu } from "../titlebar/TitlebarHistoryMenu";
+import SchedulerPauseButton from "../titlebar/SchedulerPauseButton";
 import {
   WORKSPACE_ICON_OPTIONS,
   resolveWorkspaceSelection,
@@ -336,6 +337,7 @@ function WorkspaceTabBar({
           <BackForwardNavigation />
           <TitlebarSortMenu />
           <TitlebarHistoryMenu />
+          <SchedulerPauseButton />
           {!showSplitTitlebarWorkspaceNavigation && !splitUnsupportedRoute && (
             <Tooltip content="Preferences" position="bottom">
               <button

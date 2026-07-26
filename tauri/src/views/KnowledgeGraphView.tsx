@@ -58,14 +58,14 @@ const TYPE_COLORS: Record<string, string> = {
   person: "#60a5fa",
   place: "#34d399",
   event: "#f472b6",
-  topic: "#a78bfa",
+  topic: "var(--accent-color)",
   object: "#fb923c",
   theory: "#facc15",
   technology: "#38bdf8",
   definition: "#f87171",
-  question: "#fb923c",
+  question: "#2dd4bf",
   insight: "#4ade80",
-  resource: "#94a3b8",
+  resource: "#a1a1aa",
   custom: "#e879f9",
   other: "#94a3b8",
 };
@@ -1204,7 +1204,7 @@ export default function KnowledgeGraphView({
               </div>
               <span
                 className="mb-2 inline-block rounded-full px-2 py-1 text-[10px]"
-                style={{ backgroundColor: `${colorFor(selectedConcept.concept_type)}33`, color: colorFor(selectedConcept.concept_type) }}
+                style={{ backgroundColor: `color-mix(in srgb, ${colorFor(selectedConcept.concept_type)} 20%, transparent)`, color: colorFor(selectedConcept.concept_type) }}
               >
                 {selectedConcept.concept_type}
               </span>
@@ -1405,7 +1405,7 @@ export default function KnowledgeGraphView({
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
                   <p className="max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
-                    A top-down roadmap of your concepts. Topics anchor the spine; subtopics branch beneath them. Click a subtopic&apos;s +N badge to reveal its concepts. Scroll to zoom, drag to pan.
+                    A top-down visual roadmap of your knowledge. Core topics branch into subtopics and concepts. Click a subtopic&apos;s &quot;Show&quot; badge to expand or hide its concepts. Scroll to zoom and drag to pan.
                   </p>
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="relative w-48 sm:w-64">

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { api, type ActiveJob, type BackgroundTaskEvent } from "../lib/api";
+import { api, type ActiveJob, type BackgroundTaskEvent, type PauseStatus } from "../lib/api";
 
 export interface JobFailure {
   taskType: string;
@@ -19,20 +19,26 @@ interface BackgroundJobsState {
    */
   lastErrors: Map<string, JobFailure>;
   hydrated: boolean;
+  pauseStatus: PauseStatus | null;
   hydrate: () => Promise<void>;
   applyEvent: (event: BackgroundTaskEvent) => void;
   removeJob: (taskType: string) => void;
   dismissError: (taskType: string) => void;
+  fetchPauseStatus: () => Promise<void>;
+  pause: (durationSeconds: number | null) => Promise<void>;
+  resume: () => Promise<void>;
 }
 
 export const useBackgroundJobsStore = create<BackgroundJobsState>((set, get) => ({
   jobs: new Map(),
   lastErrors: new Map(),
   hydrated: false,
+  pauseStatus: null,
 
   hydrate: async () => {
     try {
       const activeJobs = await api.system.listActiveBackgroundJobs();
+      const pauseStatus = await api.backgroundJobs.getPauseStatus();
       set(() => {
         const nextJobs = new Map<string, ActiveJob>();
         activeJobs.forEach((job) => {
@@ -40,11 +46,39 @@ export const useBackgroundJobsStore = create<BackgroundJobsState>((set, get) => 
         });
         return {
           jobs: nextJobs,
+          pauseStatus,
           hydrated: true,
         };
       });
     } catch (e) {
       console.error("Failed to hydrate background jobs:", e);
+    }
+  },
+
+  fetchPauseStatus: async () => {
+    try {
+      const status = await api.backgroundJobs.getPauseStatus();
+      set({ pauseStatus: status });
+    } catch (e) {
+      console.error("Failed to fetch pause status:", e);
+    }
+  },
+
+  pause: async (durationSeconds) => {
+    try {
+      await api.backgroundJobs.pause(durationSeconds);
+      await get().fetchPauseStatus();
+    } catch (e) {
+      console.error("Failed to pause scheduler:", e);
+    }
+  },
+
+  resume: async () => {
+    try {
+      await api.backgroundJobs.resume();
+      await get().fetchPauseStatus();
+    } catch (e) {
+      console.error("Failed to resume scheduler:", e);
     }
   },
 

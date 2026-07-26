@@ -238,6 +238,7 @@ function JobPill({
   detail,
   model,
   workspaceName,
+  started_at,
   current,
   total,
   onStop,
@@ -246,6 +247,7 @@ function JobPill({
   detail?: string;
   model?: string;
   workspaceName?: string;
+  started_at?: string;
   current?: number;
   total?: number;
   onStop?: () => void;
@@ -254,8 +256,39 @@ function JobPill({
   const hasProgress = current !== undefined && total !== undefined && total > 0;
   const progressText = hasProgress ? `${current}/${total}` : undefined;
 
+  const [elapsed, setElapsed] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!started_at) {
+      return;
+    }
+    const update = () => {
+      const start = new Date(started_at).getTime();
+      const diff = Date.now() - start;
+      if (diff < 0) {
+        setElapsed("0s");
+        return;
+      }
+      const secs = Math.floor(diff / 1000);
+      if (secs < 60) {
+        setElapsed(`${secs}s`);
+      } else {
+        const mins = Math.floor(secs / 60);
+        const remSecs = secs % 60;
+        setElapsed(`${mins}m ${remSecs}s`);
+      }
+    };
+    update();
+    const interval = setInterval(update, 1000);
+    return () => {
+      clearInterval(interval);
+      setElapsed(null);
+    };
+  }, [started_at]);
+
   const tooltipLines = [
     `Task: ${formattedName}`,
+    elapsed ? `Duration: ${elapsed}` : null,
     workspaceName ? `Workspace: ${workspaceName}` : null,
     model ? `Model: ${model}` : null,
     progressText ? `Progress: ${progressText}` : null,
@@ -275,7 +308,12 @@ function JobPill({
         </span>
         {workspaceName && (
           <span className="text-[10px] text-emerald-400/80 leading-none font-medium truncate max-w-[90px]" title={`Workspace: ${workspaceName}`}>
-            [{workspaceName}]
+            - {workspaceName}
+          </span>
+        )}
+        {elapsed && (
+          <span className="text-[10px] text-emerald-400/70 leading-none font-mono tabular-nums">
+            ({elapsed})
           </span>
         )}
         {progressText && (
@@ -335,7 +373,7 @@ function QueuedJobPill({
         </span>
         {workspaceName && (
           <span className="text-[10px] text-[var(--text-muted)] leading-none font-medium truncate max-w-[90px]" title={`Workspace: ${workspaceName}`}>
-            [{workspaceName}]
+            - {workspaceName}
           </span>
         )}
         <span className="rounded-full border border-[var(--border-color)] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] text-[var(--text-muted)] leading-none">
@@ -890,6 +928,7 @@ export default function StatusBar() {
               detail={meta.message}
               model={meta.model}
               workspaceName={ws?.name}
+              started_at={meta.started_at}
               current={meta.current}
               total={meta.total}
               onStop={() => handleStopJob(type, meta.current_task_type)}

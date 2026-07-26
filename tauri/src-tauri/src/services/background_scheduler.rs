@@ -14,6 +14,73 @@ use tokio::sync::{broadcast, oneshot, OwnedSemaphorePermit, Semaphore};
 
 static SCHEDULER_RUNNING: AtomicBool = AtomicBool::new(false);
 
+static SCHEDULER_PAUSED_UNTIL: LazyLock<Mutex<Option<chrono::DateTime<chrono::Utc>>>> =
+    LazyLock::new(|| Mutex::new(None));
+static SCHEDULER_PAUSED_INDEFINITELY: AtomicBool = AtomicBool::new(false);
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub struct PauseStatus {
+    pub is_paused: bool,
+    pub paused_until: Option<String>,
+    pub paused_indefinitely: bool,
+}
+
+pub fn is_paused() -> bool {
+    if SCHEDULER_PAUSED_INDEFINITELY.load(Ordering::SeqCst) {
+        return true;
+    }
+    if let Ok(until_lock) = SCHEDULER_PAUSED_UNTIL.lock() {
+        if let Some(until) = *until_lock {
+            if chrono::Utc::now() < until {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+pub fn get_pause_status() -> PauseStatus {
+    let paused_indefinitely = SCHEDULER_PAUSED_INDEFINITELY.load(Ordering::SeqCst);
+    let mut paused_until = None;
+    let mut is_paused = paused_indefinitely;
+
+    if let Ok(until_lock) = SCHEDULER_PAUSED_UNTIL.lock() {
+        if let Some(until) = *until_lock {
+            paused_until = Some(until.to_rfc3339());
+            if chrono::Utc::now() < until {
+                is_paused = true;
+            }
+        }
+    }
+
+    PauseStatus {
+        is_paused,
+        paused_until,
+        paused_indefinitely,
+    }
+}
+
+pub fn pause_scheduler(duration_seconds: Option<u64>) {
+    if let Some(secs) = duration_seconds {
+        if let Ok(mut until_lock) = SCHEDULER_PAUSED_UNTIL.lock() {
+            *until_lock = Some(chrono::Utc::now() + chrono::Duration::seconds(secs as i64));
+        }
+        SCHEDULER_PAUSED_INDEFINITELY.store(false, Ordering::SeqCst);
+    } else {
+        if let Ok(mut until_lock) = SCHEDULER_PAUSED_UNTIL.lock() {
+            *until_lock = None;
+        }
+        SCHEDULER_PAUSED_INDEFINITELY.store(true, Ordering::SeqCst);
+    }
+}
+
+pub fn resume_scheduler() {
+    if let Ok(mut until_lock) = SCHEDULER_PAUSED_UNTIL.lock() {
+        *until_lock = None;
+    }
+    SCHEDULER_PAUSED_INDEFINITELY.store(false, Ordering::SeqCst);
+}
+
 /// In-process broadcast bus for background-task events. Sibling to the
 /// `app.emit("background-task", …)` IPC fire — anything in the Rust process
 /// that wants to observe scheduler progress (e.g., the workspace-refresh
@@ -1770,6 +1837,16 @@ pub fn start_scheduler(app: AppHandle) {
             flashcard_cleanup_tick += 1;
             memory_cleanup_tick += 1;
 
+            if is_paused() {
+                crate::logging::log_buffered(
+                    "info",
+                    "scheduler",
+                    "[TICK_SKIP] scheduler is paused",
+                    "{}",
+                );
+                continue;
+            }
+
             // Guard: skip this tick if the previous one is still running
             if SCHEDULER_RUNNING
                 .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -2483,6 +2560,9 @@ pub fn start_thought_due_watcher(app: AppHandle) {
         let mut interval = tokio::time::interval(Duration::from_secs(THOUGHT_DUE_WATCH_SECS));
         loop {
             interval.tick().await;
+            if is_paused() {
+                continue;
+            }
             let pool = app.state::<DbState>().0.clone();
             let has_due = tokio::task::spawn_blocking(move || -> bool {
                 let Ok(conn) = pool.get() else {

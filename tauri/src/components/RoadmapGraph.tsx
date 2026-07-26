@@ -12,14 +12,14 @@ const TYPE_COLORS: Record<string, string> = {
   person: "#60a5fa",
   place: "#34d399",
   event: "#f472b6",
-  topic: "#a78bfa",
+  topic: "var(--accent-color)",
   object: "#fb923c",
   theory: "#facc15",
   technology: "#38bdf8",
   definition: "#f87171",
-  question: "#fb923c",
+  question: "#2dd4bf",
   insight: "#4ade80",
-  resource: "#94a3b8",
+  resource: "#a1a1aa",
   custom: "#e879f9",
   other: "#94a3b8",
 };
@@ -34,11 +34,37 @@ function gradientIdFor(type: string): string {
   return `rg-grad-${TYPE_COLORS[key] ? key : "other"}`;
 }
 
-function hexToRgba(hex: string, alpha: number): string {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
+function getResolvedColor(hexOrVar: string): string {
+  if (hexOrVar.startsWith("var(")) {
+    if (typeof window !== "undefined") {
+      const varName = hexOrVar.slice(4, -1).trim();
+      const val = window.getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+      if (val) { return val; }
+    }
+    return "#6366f1";
+  }
+  return hexOrVar;
+}
+
+function hexToRgba(rawColor: string, alpha: number): string {
+  const color = getResolvedColor(rawColor);
+  if (color.startsWith("#")) {
+    const hex = color.length === 4 
+      ? `#${color[1]}${color[1]}${color[2]}${color[2]}${color[3]}${color[3]}` 
+      : color;
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    if (!isNaN(r) && !isNaN(g) && !isNaN(b)) {
+      return `rgba(${r},${g},${b},${alpha})`;
+    }
+  } else if (color.startsWith("rgb")) {
+    const parts = color.match(/\d+/g);
+    if (parts && parts.length >= 3) {
+      return `rgba(${parts[0]},${parts[1]},${parts[2]},${alpha})`;
+    }
+  }
+  return `rgba(99,102,241,${alpha})`;
 }
 
 interface BoxDims {
@@ -416,8 +442,8 @@ function RoadmapGraphInner(
           </filter>
           {Object.entries(TYPE_COLORS).map(([type, color]) => (
             <linearGradient key={type} id={`rg-grad-${type}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={hexToRgba(color, 0.26)} />
-              <stop offset="100%" stopColor={hexToRgba(color, 0.07)} />
+              <stop offset="0%" stopColor={hexToRgba(color, 0.35)} />
+              <stop offset="100%" stopColor={hexToRgba(color, 0.12)} />
             </linearGradient>
           ))}
         </defs>
@@ -491,14 +517,14 @@ function RoadmapGraphInner(
             const fillColor = isChapter || isSection ? "var(--bg-elevated)" : "var(--bg-primary)";
             const borderColor = isSelected
               ? "var(--accent-color)"
-              : hexToRgba(typeColor, isChapter ? 0.6 : isSection ? 0.45 : 0.3);
+              : hexToRgba(typeColor, isChapter ? 0.75 : isSection ? 0.65 : 0.6);
             const borderWidth = isSelected ? 2.5 : isChapter ? 1.5 : 1.25;
             const maxLen = isChapter ? 26 : isSection ? 21 : 18;
             const lines = wrapLabel(d.data.name, maxLen);
             const fontSize = isChapter ? 13.5 : isSection ? 12 : 11;
             const lineHeight = isChapter ? 17 : isSection ? 15 : 13;
             const fontWeight = isChapter ? 700 : isSection ? 600 : 500;
-            const tintOpacity = isChapter ? 1 : isSection ? 0.8 : 0.45;
+            const tintOpacity = isChapter ? 1 : isSection ? 0.85 : 0.65;
 
             const sourceNode = nodes.find((n) => n.id === d.data.id) ?? null;
 
@@ -585,7 +611,7 @@ function RoadmapGraphInner(
                       <path
                         d={chevronD}
                         fill="none"
-                        stroke={typeColor}
+                        stroke={getResolvedColor(typeColor)}
                         strokeWidth={1.8}
                         strokeLinecap="round"
                         strokeLinejoin="round"

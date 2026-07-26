@@ -250,10 +250,15 @@ export default function App() {
 
     let unlistenTask: (() => void) | null = null;
     let unlistenWorkspace: (() => void) | null = null;
+    let unlistenPauseStatus: (() => void) | null = null;
 
     async function setupListeners() {
       unlistenTask = await api.listenBackgroundTask((payload) => {
         useBackgroundJobsStore.getState().applyEvent(payload);
+      });
+
+      unlistenPauseStatus = await api.listenBackgroundSchedulerPauseStatus((status) => {
+        useBackgroundJobsStore.setState({ pauseStatus: status });
       });
 
       unlistenWorkspace = await api.knowledge.listenWorkspaceProgress((payload: WorkspaceAnalysisProgress) => {
@@ -294,6 +299,7 @@ export default function App() {
     return () => {
       unlistenTask?.();
       unlistenWorkspace?.();
+      unlistenPauseStatus?.();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);

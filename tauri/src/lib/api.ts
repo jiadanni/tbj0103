@@ -898,6 +898,12 @@ export interface CalendarAlarm {
   created_at: string;
 }
 
+export interface PauseStatus {
+  is_paused: boolean;
+  paused_until: string | null;
+  paused_indefinitely: boolean;
+}
+
 export interface StreamEvent { session_id: string; chunk: string; done: boolean; tokens_used?: number; duration_ms?: number; load_duration_ms?: number; }
 
 export interface ThoughtItem {
@@ -2267,6 +2273,11 @@ export const api = {
       onEvent();
     }),
 
+  listenBackgroundSchedulerPauseStatus: (onEvent: (status: PauseStatus) => void): Promise<UnlistenFn> =>
+    listen<PauseStatus>("background-scheduler-pause-status", (event) => {
+      onEvent(event.payload);
+    }),
+
   backgroundJobs: {
     confirm: (taskType: string) =>
       invoke<boolean>("confirm_background_job", { taskType }),
@@ -2286,6 +2297,12 @@ export const api = {
       invoke<void>("set_inference_job_setting", { key, value }),
     setCurrentWorkspaceId: (workspaceId: string | null) =>
       invoke<void>("set_current_workspace_id", { workspaceId }),
+    pause: (durationSeconds: number | null) =>
+      invoke<void>("pause_background_scheduler", { durationSeconds }),
+    resume: () =>
+      invoke<void>("resume_background_scheduler"),
+    getPauseStatus: () =>
+      invoke<PauseStatus>("get_background_scheduler_pause_status"),
   },
 
   mcp: {

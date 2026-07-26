@@ -116,6 +116,9 @@ pub fn get_due_thoughts(
     state: State<DbState>,
     workspace_id: String,
 ) -> Result<Vec<ThoughtItem>, String> {
+    if crate::services::background_scheduler::is_paused() {
+        return Ok(Vec::new());
+    }
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().to_rfc3339();
     let sql = format!(

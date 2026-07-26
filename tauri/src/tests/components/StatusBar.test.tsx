@@ -23,12 +23,16 @@ const { listWorkspaces, getPromptBankStatus } = vi.hoisted(() => ({
   listWorkspaces: vi.fn(),
   getPromptBankStatus: vi.fn(),
 }));
-const { confirmBackgroundJob, dismissBackgroundJob, cancelBackgroundJob, getInferenceJobStatuses } =
+const { confirmBackgroundJob, dismissBackgroundJob, cancelBackgroundJob, getInferenceJobStatuses, getPauseStatus, pauseScheduler, resumeScheduler, listenBackgroundSchedulerPauseStatus } =
   vi.hoisted(() => ({
     confirmBackgroundJob: vi.fn(),
     dismissBackgroundJob: vi.fn(),
     cancelBackgroundJob: vi.fn(),
     getInferenceJobStatuses: vi.fn(),
+    getPauseStatus: vi.fn(() => Promise.resolve({ is_paused: false, paused_until: null, paused_indefinitely: false })),
+    pauseScheduler: vi.fn(),
+    resumeScheduler: vi.fn(),
+    listenBackgroundSchedulerPauseStatus: vi.fn(() => Promise.resolve(() => {})),
   }));
 
 vi.mock("@/lib/api", () => ({
@@ -46,11 +50,15 @@ vi.mock("@/lib/api", () => ({
     },
     listenBackgroundTask,
     listenBackgroundTaskPrompt,
+    listenBackgroundSchedulerPauseStatus,
     backgroundJobs: {
       confirm: confirmBackgroundJob,
       dismiss: dismissBackgroundJob,
       cancel: cancelBackgroundJob,
       getInferenceJobStatuses,
+      getPauseStatus,
+      pause: pauseScheduler,
+      resume: resumeScheduler,
     },
   },
 }));
@@ -464,7 +472,7 @@ describe("StatusBar", () => {
     render(<StatusBar />);
 
     expect(screen.getByText("Memory Extraction")).toBeInTheDocument();
-    expect(screen.getByText("[Deep Learning]")).toBeInTheDocument();
+    expect(screen.getByText("- Deep Learning")).toBeInTheDocument();
     expect(screen.queryByText("Idle")).not.toBeInTheDocument();
   });
 });

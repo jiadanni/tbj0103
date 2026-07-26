@@ -1,7 +1,7 @@
 use crate::db::DbState;
 use crate::services::background_scheduler;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, State, Emitter};
 
 #[tauri::command]
 pub async fn confirm_background_job(task_type: String) -> Result<bool, String> {
@@ -167,4 +167,35 @@ pub async fn list_active_background_jobs(
     )
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn pause_background_scheduler(app: AppHandle, duration_seconds: Option<u64>) -> Result<(), String> {
+    background_scheduler::pause_scheduler(duration_seconds);
+    let status = background_scheduler::get_pause_status();
+    let _ = app.emit("background-scheduler-pause-status", status);
+
+    if let Some(secs) = duration_seconds {
+        let app_clone = app.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_secs(secs)).await;
+            let status = background_scheduler::get_pause_status();
+            let _ = app_clone.emit("background-scheduler-pause-status", status);
+        });
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn resume_background_scheduler(app: AppHandle) -> Result<(), String> {
+    background_scheduler::resume_scheduler();
+    let status = background_scheduler::get_pause_status();
+    let _ = app.emit("background-scheduler-pause-status", status);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_background_scheduler_pause_status() -> Result<background_scheduler::PauseStatus, String> {
+    Ok(background_scheduler::get_pause_status())
 }
