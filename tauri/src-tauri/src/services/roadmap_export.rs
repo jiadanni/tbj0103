@@ -30,6 +30,16 @@ pub struct RoadmapTree {
     pub cross_links: Vec<ConceptLink>,
 }
 
+/// Export-time metadata (workspace name + a preformatted timestamp string),
+/// kept separate from `RoadmapTree` so the renderers stay pure and the
+/// caller controls formatting. An empty `workspace_name` falls back to a
+/// generic "# Roadmap" header.
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct ExportMeta {
+    pub workspace_name: String,
+    pub exported_at: String,
+}
+
 /// Build the Chapter/Section/Concept forest from concepts + links.
 ///
 /// Convention: a `part_of` link has `source_id = child`, `target_id = parent`.
@@ -127,9 +137,16 @@ pub fn build_tree(nodes: Vec<ConceptNode>, links: Vec<ConceptLink>) -> RoadmapTr
 // Renderers
 // ---------------------------------------------------------------------------
 
-pub fn render_markdown_outline(tree: &RoadmapTree) -> String {
+pub fn render_markdown_outline(tree: &RoadmapTree, meta: &ExportMeta) -> String {
     let mut out = String::new();
-    out.push_str("# Roadmap\n\n");
+    if meta.workspace_name.trim().is_empty() {
+        out.push_str("# Roadmap\n\n");
+    } else {
+        out.push_str(&format!("# {} roadmap\n\n", meta.workspace_name));
+    }
+    if !meta.exported_at.trim().is_empty() {
+        out.push_str(&format!("_Exported {}_\n\n", meta.exported_at));
+    }
     for root in &tree.roots {
         write_markdown(&mut out, root, 0);
     }
@@ -168,13 +185,36 @@ fn write_markdown(out: &mut String, node: &RoadmapTreeNode, depth: usize) {
     }
 }
 
-pub fn render_json(tree: &RoadmapTree) -> Result<String, String> {
-    serde_json::to_string_pretty(tree).map_err(|e| e.to_string())
+/// Additive JSON wrapper — `{ workspace_name, exported_at, roots, cross_links }`.
+/// The frontend only writes this string to disk; nothing parses it back, so
+/// adding fields here is safe.
+#[derive(Debug, Clone, Serialize)]
+struct RoadmapExportJson<'a> {
+    workspace_name: &'a str,
+    exported_at: &'a str,
+    roots: &'a [RoadmapTreeNode],
+    cross_links: &'a [ConceptLink],
 }
 
-pub fn render_mermaid(tree: &RoadmapTree) -> String {
+pub fn render_json(tree: &RoadmapTree, meta: &ExportMeta) -> Result<String, String> {
+    let wrapper = RoadmapExportJson {
+        workspace_name: &meta.workspace_name,
+        exported_at: &meta.exported_at,
+        roots: &tree.roots,
+        cross_links: &tree.cross_links,
+    };
+    serde_json::to_string_pretty(&wrapper).map_err(|e| e.to_string())
+}
+
+pub fn render_mermaid(tree: &RoadmapTree, meta: &ExportMeta) -> String {
     let mut out = String::new();
     out.push_str("graph TD\n");
+    if !meta.workspace_name.trim().is_empty() {
+        out.push_str(&format!("  %% Workspace: {}\n", meta.workspace_name));
+    }
+    if !meta.exported_at.trim().is_empty() {
+        out.push_str(&format!("  %% Exported: {}\n", meta.exported_at));
+    }
 
     // Map raw id -> sanitized mermaid id
     let mut id_map: HashMap<String, String> = HashMap::new();
@@ -358,9 +398,21 @@ mod tests {
             make_node("n1", "Variables", HierarchyLevel::Concept),
         ];
         let links = vec![part_of("n1", "c1")];
-        let md = render_markdown_outline(&build_tree(nodes, links));
+        let md = render_markdown_outline(&build_tree(nodes, links), &ExportMeta::default());
         assert!(md.contains("## Intro"));
         assert!(md.contains("- **Variables**"));
+    }
+
+    #[test]
+    fn markdown_outline_uses_workspace_meta() {
+        let nodes = vec![make_node("c1", "Intro", HierarchyLevel::Chapter)];
+        let meta = ExportMeta {
+            workspace_name: "Python and ML".to_string(),
+            exported_at: "2026-07-26 09:00".to_string(),
+        };
+        let md = render_markdown_outline(&build_tree(nodes, vec![]), &meta);
+        assert!(md.starts_with("# Python and ML roadmap"));
+        assert!(md.contains("_Exported 2026-07-26 09:00_"));
     }
 
     #[test]
@@ -383,17 +435,35 @@ mod tests {
             make_node("n1", "Vars", HierarchyLevel::Concept),
         ];
         let links = vec![part_of("n1", "c1")];
-        let m = render_mermaid(&build_tree(nodes, links));
+        let m = render_mermaid(&build_tree(nodes, links), &ExportMeta::default());
         assert!(m.starts_with("graph TD"));
         assert!(m.contains("-->"));
     }
 
     #[test]
+    fn mermaid_includes_meta_comments() {
+        let nodes = vec![make_node("c1", "Intro", HierarchyLevel::Concept)];
+        let meta = ExportMeta {
+            workspace_name: "Python and ML".to_string(),
+            exported_at: "2026-07-26 09:00".to_string(),
+        };
+        let m = render_mermaid(&build_tree(nodes, vec![]), &meta);
+        assert!(m.contains("%% Workspace: Python and ML"));
+        assert!(m.contains("%% Exported: 2026-07-26 09:00"));
+    }
+
+    #[test]
     fn json_roundtrips() {
         let nodes = vec![make_node("a", "A", HierarchyLevel::Concept)];
-        let json = render_json(&build_tree(nodes, vec![])).unwrap();
+        let meta = ExportMeta {
+            workspace_name: "WS".to_string(),
+            exported_at: "2026-07-26 09:00".to_string(),
+        };
+        let json = render_json(&build_tree(nodes, vec![]), &meta).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert!(parsed["roots"].is_array());
         assert!(parsed["cross_links"].is_array());
+        assert_eq!(parsed["workspace_name"], "WS");
+        assert_eq!(parsed["exported_at"], "2026-07-26 09:00");
     }
 }

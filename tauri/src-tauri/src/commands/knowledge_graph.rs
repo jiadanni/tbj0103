@@ -209,15 +209,26 @@ pub fn set_concept_parent(
     Ok(())
 }
 
+/// `last_modified_by_job` stamp for concept nodes created by the periodic
+/// signature\u2192concept sync loop (see `flashcard_topic_service::sync_concepts_from_signatures`).
+/// Lets [`prune_stale_signature_topics`](crate::services::flashcard_topic_service::prune_stale_signature_topics)
+/// safely remove these nodes later if their tag falls out of the allowed set.
+pub const ORIGIN_SIGNATURE_TOPIC_SYNC: &str = "signature_topic_sync";
+/// `last_modified_by_job` stamp for concept nodes created via the manual
+/// "add tag" UI command ([`upsert_concept_from_tag`]) \u2014 never pruned by the
+/// signature-sync cleanup.
+pub const ORIGIN_MANUAL_TAG: &str = "manual_tag";
+
 /// Idempotent: returns the existing concept id when a case-insensitive match exists
 /// on `concept_nodes.name` or any entry in the `aliases` JSON array. Otherwise inserts
-/// a new concept with `hierarchy_level = 'concept'` and `concept_type = 'topic'`.
-///
-/// Used by the chat topic-signature bridge and exposed as a Tauri command for the UI.
-pub fn upsert_concept_from_tag_inner(
+/// a new concept with `hierarchy_level = 'concept'` and `concept_type = 'topic'`,
+/// stamping `last_modified_by_job = origin` on insert only \u2014 an existing match is
+/// left untouched, so the stamp always reflects the node's original creator.
+pub fn upsert_concept_from_tag_with_origin(
     conn: &rusqlite::Connection,
     workspace_id: &str,
     name: &str,
+    origin: Option<&str>,
 ) -> Result<String, String> {
     let trimmed = name.trim();
     if trimmed.is_empty() {
@@ -260,12 +271,22 @@ pub fn upsert_concept_from_tag_inner(
     let aliases_json = serde_json::to_string(&c.aliases).unwrap_or_else(|_| "[]".to_string());
     let refs_json = serde_json::to_string(&c.references).unwrap_or_else(|_| "[]".to_string());
     conn.execute(
-        "INSERT INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at, hierarchy_level)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
-        rusqlite::params![c.id, c.workspace_id, c.name, c.concept_description, type_str, tags_json, aliases_json, refs_json, c.x_position, c.y_position, c.review_count, c.created_at, c.updated_at, level_str],
+        "INSERT INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at, hierarchy_level, last_modified_by_job)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+        rusqlite::params![c.id, c.workspace_id, c.name, c.concept_description, type_str, tags_json, aliases_json, refs_json, c.x_position, c.y_position, c.review_count, c.created_at, c.updated_at, level_str, origin],
     )
     .map_err(|e| e.to_string())?;
     Ok(c.id)
+}
+
+/// Back-compat delegate for callers that don't need to stamp an origin
+/// (e.g. tests, non-sync callers). See [`upsert_concept_from_tag_with_origin`].
+pub fn upsert_concept_from_tag_inner(
+    conn: &rusqlite::Connection,
+    workspace_id: &str,
+    name: &str,
+) -> Result<String, String> {
+    upsert_concept_from_tag_with_origin(conn, workspace_id, name, None)
 }
 
 #[tauri::command]
@@ -275,7 +296,7 @@ pub fn upsert_concept_from_tag(
     name: String,
 ) -> Result<String, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
-    upsert_concept_from_tag_inner(&conn, &workspace_id, &name)
+    upsert_concept_from_tag_with_origin(&conn, &workspace_id, &name, Some(ORIGIN_MANUAL_TAG))
 }
 
 #[cfg(test)]
@@ -314,6 +335,57 @@ mod upsert_concept_tests {
         let conn = pool.get().unwrap();
         let err = upsert_concept_from_tag_inner(&conn, "ws_any", "   ").unwrap_err();
         assert!(err.contains("empty"));
+    }
+
+    #[test]
+    fn stamps_origin_on_insert_only() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        conn.execute(
+            "INSERT OR IGNORE INTO workspaces (id, name, created_at, updated_at)
+             VALUES ('ws_origin', 'WS', datetime('now'), datetime('now'))",
+            [],
+        )
+        .ok();
+
+        let id = upsert_concept_from_tag_with_origin(
+            &conn,
+            "ws_origin",
+            "Rust",
+            Some(ORIGIN_SIGNATURE_TOPIC_SYNC),
+        )
+        .unwrap();
+        let stamp: Option<String> = conn
+            .query_row(
+                "SELECT last_modified_by_job FROM concept_nodes WHERE id = ?1",
+                rusqlite::params![id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(stamp.as_deref(), Some(ORIGIN_SIGNATURE_TOPIC_SYNC));
+
+        // Second upsert (case-insensitive match) with a different origin must
+        // not overwrite the existing node's stamp.
+        let id2 = upsert_concept_from_tag_with_origin(
+            &conn,
+            "ws_origin",
+            "rust",
+            Some(ORIGIN_MANUAL_TAG),
+        )
+        .unwrap();
+        assert_eq!(id, id2);
+        let stamp2: Option<String> = conn
+            .query_row(
+                "SELECT last_modified_by_job FROM concept_nodes WHERE id = ?1",
+                rusqlite::params![id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            stamp2.as_deref(),
+            Some(ORIGIN_SIGNATURE_TOPIC_SYNC),
+            "existing node's origin stamp must not be overwritten"
+        );
     }
 }
 

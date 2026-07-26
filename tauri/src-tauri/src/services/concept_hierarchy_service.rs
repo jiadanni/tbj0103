@@ -653,12 +653,15 @@ fn sweep_orphan_concepts(conn: &Connection, workspace_id: &str) -> rusqlite::Res
 /// one has no tags to seed from.
 ///
 /// A knowledge reset (Data Controls) clears `workspaces.topic_signature`, and
-/// nothing else in the graph-scoped refresh path recreates it — the AI
-/// signature loop only fires every `topic_analysis_interval_minutes`. Since
-/// concept seeding reads the signature, "Refresh Knowledge Map" would
-/// otherwise stay stuck on an empty map (only the Uncategorized scaffold) no
-/// matter how often it runs. The heuristic rebuild is pure text processing
-/// over existing chat messages; the periodic AI pass upgrades it later.
+/// nothing else in the graph-scoped refresh path recreates it. The heuristic
+/// rebuild here is pure text processing over existing chat messages, so it
+/// runs on every tick regardless of Ollama reachability and still feeds
+/// prompts/UI immediately. Actually upgrading the signature to Ollama-backed
+/// tags (which is what makes it eligible to publish as roadmap topics \u2014 see
+/// `flashcard_topic_service::sync_concepts_from_signatures`) is handled
+/// separately and rate-limited by
+/// `topic_signature::ensure_ai_enriched_signature`, called earlier in this
+/// same tick.
 fn ensure_signature_seed(conn: &Connection, workspace_id: &str) {
     let sig_json: String = match conn.query_row(
         "SELECT topic_signature FROM workspaces WHERE id = ?1",
@@ -692,6 +695,32 @@ pub async fn tick_for_workspaces(
     let mut report = TickReport::default();
     let mut touched_workspaces: HashSet<String> = HashSet::new();
     let workspace_filter = workspace_filter.map(|ids| ids.to_vec());
+
+    // Auto-upgrade never-enriched workspaces via background AI enrichment
+    // (silent no-op when Ollama is unreachable or rate-limited) before the
+    // signature-seeding / concept-sync loop below runs against the signature.
+    let enrichment_ws_ids: Vec<String> = match workspace_filter.as_deref() {
+        Some(ids) => ids.to_vec(),
+        None => {
+            let pool = state.0.clone();
+            tokio::task::spawn_blocking(move || -> Vec<String> {
+                let Ok(conn) = pool.get() else {
+                    return Vec::new();
+                };
+                conn.prepare("SELECT id FROM workspaces WHERE is_hidden = 0")
+                    .and_then(|mut stmt| {
+                        stmt.query_map([], |r| r.get::<_, String>(0))?
+                            .collect::<Result<Vec<_>, _>>()
+                    })
+                    .unwrap_or_default()
+            })
+            .await
+            .unwrap_or_default()
+        }
+    };
+    for ws_id in &enrichment_ws_ids {
+        crate::services::topic_signature::ensure_ai_enriched_signature(state, ws_id).await;
+    }
 
     type CandidateGatherResult = Result<(Vec<Candidate>, Option<String>, Vec<String>), String>;
 
@@ -1015,6 +1044,8 @@ mod tests {
             "heuristic signature should be rebuilt from chat text"
         );
 
+        // Heuristic-only tags never become roadmap topics (too noisy without
+        // Ollama enrichment) — sync should seed nothing until enrichment runs.
         crate::services::flashcard_topic_service::sync_concepts_from_signatures(&conn, "w1")
             .unwrap();
         let seeded: i64 = conn
@@ -1024,7 +1055,10 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert!(seeded > 0, "sync should seed concepts from the rebuilt signature");
+        assert_eq!(
+            seeded, 0,
+            "heuristic-only signature should not publish concept nodes"
+        );
     }
 
     #[test]

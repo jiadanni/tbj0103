@@ -1226,7 +1226,11 @@ impl OllamaClient {
         // Cache miss — fetch from Ollama.
         let url = format!("{}/api/tags", self.base_url);
         let started_at = Instant::now();
-        let response = self.client.get(&url).send().await.map_err(|e| {
+        let mut req = self.client.get(&url);
+        if let Some(t) = ctx.timeout_override {
+            req = req.timeout(t);
+        }
+        let response = req.send().await.map_err(|e| {
             let message = format!("Failed to fetch models: {e}");
             self.log_http_error(
                 "GET",

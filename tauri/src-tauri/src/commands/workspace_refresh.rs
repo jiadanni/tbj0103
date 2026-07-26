@@ -74,6 +74,7 @@ pub async fn refresh_workspace_knowledge(
     if req.workspace_id.trim().is_empty() {
         return Err("workspace_id is required".to_string());
     }
+    background_scheduler::ensure_ollama_reachable(&app).await?;
     let sync_mode = matches!(req.mode.as_str(), "sync");
 
     let selected: Vec<&'static str> = if req.task_types.is_empty() {

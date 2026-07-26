@@ -1,5 +1,6 @@
 use crate::commands::background_jobs::QueueBackgroundProcessingRequest;
 use crate::db::DbState;
+use crate::ollama::client::{OllamaClient, RequestContext};
 use crate::services::model_settings::{
     get_confirm_timeout_seconds, get_heavy_model, get_model_for_job, get_run_mode, RunMode,
 };
@@ -962,6 +963,30 @@ async fn lookup_ollama_url(app: &AppHandle) -> Option<String> {
     .await
     .ok()
     .flatten()
+}
+
+/// Preflight check for the three user-initiated manual-processing entry
+/// points (Data Controls "Run Background Processing Now", the single-job
+/// "Run Now" button, and the Knowledge Graph / Data Controls refresh-now
+/// path). Automatic scheduler ticks stay silent when Ollama is down; these
+/// user-initiated paths should fail fast with an actionable message instead
+/// of showing a success banner and then silently doing nothing.
+///
+/// Note: `OllamaClient::list_models_observed` caches a successful
+/// `/api/tags` response for 30s, so this can briefly report "reachable"
+/// just after Ollama dies — acceptable for a UX guard, not a hard guarantee.
+pub async fn ensure_ollama_reachable(app: &AppHandle) -> Result<(), String> {
+    let url_override = lookup_ollama_url(app).await;
+    let client = OllamaClient::new(url_override)?;
+    let url = client.base_url.clone();
+    let ctx = RequestContext {
+        source: Some("manual_preflight"),
+        timeout_override: Some(Duration::from_secs(3)),
+        ..Default::default()
+    };
+    client.list_models_observed(&ctx).await.map(|_| ()).map_err(|e| {
+        format!("Ollama isn't reachable at {url}. Start Ollama, then try again. (probe error: {e})")
+    })
 }
 
 async fn run_manual_job(

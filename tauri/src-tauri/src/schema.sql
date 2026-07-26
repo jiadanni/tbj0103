@@ -185,6 +185,38 @@ CREATE TABLE IF NOT EXISTS concept_mentions (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Chunked workspace analysis job tracking (see migration v49_analyze_jobs).
+-- Must exist here too: schema.sql is applied as-is for fresh databases (with
+-- all migration names seeded as already-applied), so it needs to carry every
+-- migration's tables directly, not just rely on the migration ever running.
+CREATE TABLE IF NOT EXISTS analyze_jobs (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    model TEXT NOT NULL,
+    total_chunks INTEGER NOT NULL,
+    completed_chunks INTEGER NOT NULL DEFAULT 0,
+    failed_chunks INTEGER NOT NULL DEFAULT 0,
+    chunk_budget INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    error TEXT
+);
+CREATE TABLE IF NOT EXISTS analyze_job_chunks (
+    job_id TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL,
+    label TEXT NOT NULL,
+    char_count INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    nodes_created INTEGER NOT NULL DEFAULT 0,
+    links_created INTEGER NOT NULL DEFAULT 0,
+    error TEXT,
+    finished_at TEXT,
+    PRIMARY KEY (job_id, chunk_index)
+);
+CREATE INDEX IF NOT EXISTS idx_analyze_jobs_workspace
+    ON analyze_jobs(workspace_id, started_at DESC);
+
 CREATE TABLE IF NOT EXISTS concept_change_proposals (
     id TEXT PRIMARY KEY NOT NULL,
     workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,

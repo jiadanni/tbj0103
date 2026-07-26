@@ -91,6 +91,23 @@ fn load_tree(
     Ok(roadmap_export::build_tree(nodes, links))
 }
 
+/// Workspace name (empty on miss, no unwrap) + a preformatted local timestamp,
+/// passed to the pure renderers so exports carry a header and can be told
+/// apart from stale copies.
+fn load_meta(conn: &rusqlite::Connection, workspace_id: &str) -> roadmap_export::ExportMeta {
+    let workspace_name: String = conn
+        .query_row(
+            "SELECT name FROM workspaces WHERE id = ?1",
+            rusqlite::params![workspace_id],
+            |r| r.get(0),
+        )
+        .unwrap_or_default();
+    roadmap_export::ExportMeta {
+        workspace_name,
+        exported_at: chrono::Local::now().format("%Y-%m-%d %H:%M").to_string(),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Text-format commands
 // ---------------------------------------------------------------------------
@@ -104,7 +121,8 @@ pub fn export_roadmap_markdown(
     require_auth(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let tree = load_tree(&conn, &req.workspace_id)?;
-    Ok(roadmap_export::render_markdown_outline(&tree))
+    let meta = load_meta(&conn, &req.workspace_id);
+    Ok(roadmap_export::render_markdown_outline(&tree, &meta))
 }
 
 #[tauri::command]
@@ -116,7 +134,8 @@ pub fn export_roadmap_json(
     require_auth(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let tree = load_tree(&conn, &req.workspace_id)?;
-    roadmap_export::render_json(&tree)
+    let meta = load_meta(&conn, &req.workspace_id);
+    roadmap_export::render_json(&tree, &meta)
 }
 
 #[tauri::command]
@@ -128,7 +147,8 @@ pub fn export_roadmap_mermaid(
     require_auth(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let tree = load_tree(&conn, &req.workspace_id)?;
-    Ok(roadmap_export::render_mermaid(&tree))
+    let meta = load_meta(&conn, &req.workspace_id);
+    Ok(roadmap_export::render_mermaid(&tree, &meta))
 }
 
 #[tauri::command]

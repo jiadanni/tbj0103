@@ -20,6 +20,7 @@ pub async fn cancel_background_job(task_type: String) -> Result<bool, String> {
 
 #[tauri::command]
 pub async fn queue_background_job_now(app: AppHandle, task_type: String) -> Result<(), String> {
+    background_scheduler::ensure_ollama_reachable(&app).await?;
     background_scheduler::queue_manual_job(app, task_type)
 }
 
@@ -39,6 +40,7 @@ pub async fn queue_background_processing_now(
     app: AppHandle,
     req: QueueBackgroundProcessingRequest,
 ) -> Result<(), String> {
+    background_scheduler::ensure_ollama_reachable(&app).await?;
     background_scheduler::queue_manual_processing(app, req)
 }
 

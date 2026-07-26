@@ -664,8 +664,7 @@ pub async fn recompute_workspace_signature_with_ai(
     model_override: Option<String>,
     ollama_url_override: Option<String>,
     cancel_rx: Option<tokio::sync::watch::Receiver<u64>>,
-) -> Result<TopicSignature, String> {
-    let (existing, text, count, model, ollama_url, blocked_names) = {
+) -> Result<TopicSignature, String> {    let (existing, text, count, model, ollama_url, blocked_names) = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
         let existing_json: String = conn
             .query_row(
@@ -720,6 +719,65 @@ pub async fn recompute_workspace_signature_with_ai(
     .map_err(|e| e.to_string())?;
 
     Ok(sig)
+}
+
+/// Auto-upgrades a never-enriched workspace signature via background AI
+/// enrichment whenever Ollama is reachable. Rate-limited to at most once per
+/// `topic_analysis_interval_minutes` (reuses the existing setting that already
+/// governs the periodic AI signature loop in `lib.rs` \u2014 no new setting).
+/// Early-returns silently (never propagates an error) when the signature is
+/// already `ollama_enriched`, was regenerated too recently, or the AI call
+/// itself fails (e.g. Ollama down) \u2014 this runs on every background tick for
+/// every workspace, so it must be a no-op cost when there's nothing to do.
+pub async fn ensure_ai_enriched_signature(state: &DbState, workspace_id: &str) {
+    let (already_enriched, updated_at, interval_minutes) = {
+        let conn = match state.0.get() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        let sig_json: String = match conn.query_row(
+            "SELECT topic_signature FROM workspaces WHERE id = ?1",
+            rusqlite::params![workspace_id],
+            |r| r.get(0),
+        ) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let sig: TopicSignature = serde_json::from_str(&sig_json).unwrap_or_default();
+        let updated_at: Option<String> = conn
+            .query_row(
+                "SELECT signature_updated_at FROM workspaces WHERE id = ?1",
+                rusqlite::params![workspace_id],
+                |r| r.get(0),
+            )
+            .ok()
+            .flatten();
+        let interval_minutes: i64 = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'topic_analysis_interval_minutes'",
+                [],
+                |r| r.get::<_, String>(0),
+            )
+            .ok()
+            .and_then(|v| v.trim_matches('"').parse::<i64>().ok())
+            .unwrap_or(30);
+        (sig.ollama_enriched, updated_at, interval_minutes)
+    };
+
+    if already_enriched {
+        return;
+    }
+    if let Some(updated_at) = updated_at {
+        if let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(&updated_at) {
+            let elapsed =
+                chrono::Utc::now().signed_duration_since(parsed.with_timezone(&chrono::Utc));
+            if elapsed < chrono::Duration::minutes(interval_minutes) {
+                return;
+            }
+        }
+    }
+
+    let _ = recompute_workspace_signature_with_ai(state, workspace_id, None, None, None).await;
 }
 
 /// Common abbreviation/synonym pairs for fuzzy topic matching.

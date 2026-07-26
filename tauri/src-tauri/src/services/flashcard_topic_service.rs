@@ -1,10 +1,13 @@
 use crate::commands::flashcard::{generate_card_pairs, insert_card, CardDifficulty};
-use crate::commands::knowledge_graph::upsert_concept_from_tag_inner;
+use crate::commands::knowledge_graph::{
+    upsert_concept_from_tag_with_origin, ORIGIN_SIGNATURE_TOPIC_SYNC,
+};
 use crate::db::DbState;
 use crate::models::learning_card::LearningCard;
 use crate::models::workspace::TopicSignature;
 use crate::services::model_settings::get_model_for_job;
 use rusqlite::Connection;
+use std::collections::HashSet;
 
 /// One row from the `flashcard_topics` table.
 #[derive(Debug, Clone)]
@@ -99,6 +102,13 @@ pub fn sync_topics_from_signatures(_conn: &Connection, _workspace_id: &str) -> R
 /// as a top-level concept (no parent). Idempotent — case-insensitive match against
 /// `concept_nodes.name` and `aliases`. This is the new bridge that replaces the
 /// legacy `flashcard_topics` path so the Learning hub sees one taxonomy.
+///
+/// Heuristic-only auto tags (`source == "heuristic"`) never become roadmap
+/// topics — the word-frequency heuristic alone is too noisy (junk like
+/// "daniel"/"fatal"/"nums"). Only tags an Ollama enrichment pass actually
+/// proposed (`source == "ollama"`) are trustworthy enough to publish, plus
+/// `custom_tags` (user-added), which always sync. Ends by pruning any
+/// previously sync-created node whose tag has fallen out of this allowed set.
 pub fn sync_concepts_from_signatures(conn: &Connection, workspace_id: &str) -> Result<(), String> {
     let sig_json: String = conn
         .query_row(
@@ -115,7 +125,8 @@ pub fn sync_concepts_from_signatures(conn: &Connection, workspace_id: &str) -> R
     let mut seen: Vec<String> = Vec::new();
     for tag in &signature.auto_detected_tags {
         let t = tag.tag.trim();
-        if !t.is_empty()
+        if tag.source == "ollama"
+            && !t.is_empty()
             && !signature
                 .excluded_tags
                 .iter()
@@ -132,10 +143,126 @@ pub fn sync_concepts_from_signatures(conn: &Connection, workspace_id: &str) -> R
         }
     }
 
-    for tag in seen {
-        let _ = upsert_concept_from_tag_inner(conn, workspace_id, &tag);
+    let allowed_lower: HashSet<String> = seen.iter().map(|t| t.to_lowercase()).collect();
+
+    for tag in &seen {
+        let _ = upsert_concept_from_tag_with_origin(
+            conn,
+            workspace_id,
+            tag,
+            Some(ORIGIN_SIGNATURE_TOPIC_SYNC),
+        );
     }
+
+    prune_stale_signature_topics(conn, workspace_id, &allowed_lower)?;
     Ok(())
+}
+
+/// Deletes concept nodes previously created by [`sync_concepts_from_signatures`]
+/// whose tag has fallen out of the current allowed set (a heuristic-only tag
+/// that never got Ollama-enriched, a custom tag the user removed, etc). Two
+/// tiers, both gated on `lower(name)` not being in `allowed_lower`:
+///
+/// - **Stamped**: `last_modified_by_job = 'signature_topic_sync'` — nodes
+///   created after the origin-stamping change.
+/// - **Legacy fingerprint** (conservative): no stamp at all, but an exact
+///   match on the shape every sync-created node had before stamping existed
+///   (no description, no source model, default type/hierarchy, never
+///   reviewed, no user edits, not superseded). A *bare* legacy manually-added
+///   node with that same shape is indistinguishable from legacy sync junk
+///   and may be caught here too — the `manual_tag` stamp eliminates this
+///   ambiguity going forward.
+///
+/// Safety guards applied to both tiers: never deletes a node with any
+/// reviewed/studied `learning_cards`, never deletes a node that is the
+/// parent side of a `part_of` link (child-side edges cascade-delete
+/// instead), never deletes a node with any `user_edited_fields`, and never
+/// deletes a node that has picked up a `concept_description` (sync-created
+/// nodes always start with an empty description; a non-empty one means a
+/// user or AI enrichment pass has since added real content). Deleted nodes'
+/// unreviewed `learning_cards` rows are explicitly deleted too (no FK on
+/// `learning_cards.source_id`).
+///
+/// Empty-signature guard: when `allowed_lower` is empty and the signature
+/// has never been Ollama-enriched, this is far more likely a wiped/reset
+/// signature than "the user removed every topic" — no-op instead of
+/// nuking the whole graph.
+pub fn prune_stale_signature_topics(
+    conn: &Connection,
+    workspace_id: &str,
+    allowed_lower: &HashSet<String>,
+) -> Result<usize, String> {
+    if allowed_lower.is_empty() {
+        let sig_json: String = conn
+            .query_row(
+                "SELECT topic_signature FROM workspaces WHERE id = ?1",
+                rusqlite::params![workspace_id],
+                |r| r.get(0),
+            )
+            .unwrap_or_default();
+        let signature: TopicSignature = serde_json::from_str(&sig_json).unwrap_or_default();
+        if !signature.ollama_enriched {
+            return Ok(0);
+        }
+    }
+
+    const STUDIED_GUARD: &str = "NOT EXISTS (
+            SELECT 1 FROM learning_cards lc
+            WHERE lc.source_type = 'concept' AND lc.source_id = cn.id
+              AND (lc.repetitions > 0 OR lc.last_reviewed_at IS NOT NULL)
+        )";
+    const PARENT_GUARD: &str = "NOT EXISTS (
+            SELECT 1 FROM concept_links cl
+            WHERE cl.target_id = cn.id AND cl.link_type = 'part_of'
+        )";
+
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT cn.id, cn.name FROM concept_nodes cn
+             WHERE cn.workspace_id = ?1
+               AND cn.user_edited_fields = '[]'
+               AND cn.concept_description = ''
+               AND (
+                   cn.last_modified_by_job = 'signature_topic_sync'
+                   OR (
+                       cn.last_modified_by_job IS NULL
+                       AND cn.source_model IS NULL
+                       AND cn.concept_type = 'topic'
+                       AND (cn.hierarchy_level IS NULL OR cn.hierarchy_level = 'concept')
+                       AND cn.review_count = 0
+                       AND cn.superseded_by IS NULL
+                   )
+               )
+               AND {STUDIED_GUARD}
+               AND {PARENT_GUARD}"
+        ))
+        .map_err(|e| e.to_string())?;
+    let candidates: Vec<(String, String)> = stmt
+        .query_map(rusqlite::params![workspace_id], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
+    drop(stmt);
+
+    let to_delete: Vec<String> = candidates
+        .into_iter()
+        .filter(|(_, name)| !allowed_lower.contains(&name.trim().to_lowercase()))
+        .map(|(id, _)| id)
+        .collect();
+
+    for id in &to_delete {
+        conn.execute(
+            "DELETE FROM learning_cards WHERE source_type = 'concept' AND source_id = ?1",
+            rusqlite::params![id],
+        )
+        .map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM concept_nodes WHERE id = ?1", rusqlite::params![id])
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(to_delete.len())
 }
 
 /// Normalise a topic for grouping: lowercase, trim, collapse British/US z↔s.
@@ -564,6 +691,14 @@ pub async fn tick_for_workspaces(
 
     if model.is_empty() {
         return Ok(());
+    }
+
+    // Auto-upgrade never-enriched workspaces via background AI enrichment
+    // (silent no-op when Ollama is unreachable or rate-limited by
+    // `topic_analysis_interval_minutes`) before the sync loop reads the
+    // signature below.
+    for ws_id in &workspace_ids {
+        crate::services::topic_signature::ensure_ai_enriched_signature(state, ws_id).await;
     }
 
     for ws_id in &workspace_ids {
@@ -1458,5 +1593,306 @@ mod cleanup_tests {
         // Larger models must outrank smaller ones.
         assert!(model_params_b("gemma3:27b") > model_params_b("qwen3:4b"));
         assert!(model_params_b("qwen3:4b") > model_params_b("gemma3:270m"));
+    }
+}
+
+#[cfg(test)]
+mod sync_and_prune_tests {
+    use super::*;
+    use crate::db::test_utils::tests::setup_test_db;
+    use crate::models::workspace::TopicTag;
+
+    fn insert_ws(conn: &Connection, id: &str) {
+        conn.execute(
+            "INSERT INTO workspaces (id, name, created_at, updated_at)
+             VALUES (?1, ?1, datetime('now'), datetime('now'))",
+            rusqlite::params![id],
+        )
+        .unwrap();
+    }
+
+    fn tag(name: &str, source: &str) -> TopicTag {
+        TopicTag {
+            tag: name.to_string(),
+            weight: 5,
+            source: source.to_string(),
+        }
+    }
+
+    fn set_signature(conn: &Connection, ws: &str, sig: &TopicSignature) {
+        let json = serde_json::to_string(sig).unwrap();
+        conn.execute(
+            "UPDATE workspaces SET topic_signature = ?1, signature_updated_at = datetime('now') WHERE id = ?2",
+            rusqlite::params![json, ws],
+        )
+        .unwrap();
+    }
+
+    fn node_count(conn: &Connection, ws: &str, name: &str) -> i64 {
+        conn.query_row(
+            "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = ?1 AND lower(name) = lower(?2)",
+            rusqlite::params![ws, name],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    fn node_id(conn: &Connection, ws: &str, name: &str) -> String {
+        conn.query_row(
+            "SELECT id FROM concept_nodes WHERE workspace_id = ?1 AND lower(name) = lower(?2)",
+            rusqlite::params![ws, name],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn heuristic_only_tag_creates_no_node() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        insert_ws(&conn, "w1");
+        let sig = TopicSignature {
+            auto_detected_tags: vec![tag("daniel", "heuristic")],
+            ..Default::default()
+        };
+        set_signature(&conn, "w1", &sig);
+
+        sync_concepts_from_signatures(&conn, "w1").unwrap();
+
+        assert_eq!(node_count(&conn, "w1", "daniel"), 0);
+    }
+
+    #[test]
+    fn ollama_and_custom_tags_sync_and_are_stamped() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        insert_ws(&conn, "w1");
+        let sig = TopicSignature {
+            auto_detected_tags: vec![tag("rust", "ollama"), tag("daniel", "heuristic")],
+            custom_tags: vec!["kubernetes".to_string()],
+            ..Default::default()
+        };
+        set_signature(&conn, "w1", &sig);
+
+        sync_concepts_from_signatures(&conn, "w1").unwrap();
+
+        assert_eq!(node_count(&conn, "w1", "rust"), 1);
+        assert_eq!(node_count(&conn, "w1", "kubernetes"), 1);
+        assert_eq!(node_count(&conn, "w1", "daniel"), 0, "heuristic-only tag must not sync");
+
+        for name in ["rust", "kubernetes"] {
+            let stamp: String = conn
+                .query_row(
+                    "SELECT last_modified_by_job FROM concept_nodes WHERE id = ?1",
+                    rusqlite::params![node_id(&conn, "w1", name)],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(stamp, "signature_topic_sync");
+        }
+    }
+
+    #[test]
+    fn prune_deletes_stamped_node_no_longer_in_signature() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        insert_ws(&conn, "w1");
+        let sig = TopicSignature {
+            auto_detected_tags: vec![tag("old_topic", "ollama")],
+            ..Default::default()
+        };
+        set_signature(&conn, "w1", &sig);
+        sync_concepts_from_signatures(&conn, "w1").unwrap();
+        let old_id = node_id(&conn, "w1", "old_topic");
+
+        // Give it an unreviewed card and a child part_of link, to verify both
+        // are cleaned up when the node is pruned. The node under test is the
+        // *child* (source_id) of the link — being a `part_of` *parent*
+        // (target_id) is a protection guard tested separately below.
+        conn.execute(
+            "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, source_id)
+             VALUES ('card1', 'w1', 'Q', 'A', 'concept', ?1)",
+            rusqlite::params![old_id],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO concept_nodes (id, workspace_id, name, hierarchy_level, created_at, updated_at)
+             VALUES ('parent1', 'w1', 'parent_of_old', 'concept', datetime('now'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO concept_links (id, source_id, target_id, link_type, strength, context, created_at)
+             VALUES ('link1', ?1, 'parent1', 'part_of', 1.0, '', datetime('now'))",
+            rusqlite::params![old_id],
+        )
+        .unwrap();
+
+        // The tag leaves the (now-enriched) signature entirely.
+        let sig2 = TopicSignature {
+            ollama_enriched: true,
+            ..Default::default()
+        };
+        set_signature(&conn, "w1", &sig2);
+        sync_concepts_from_signatures(&conn, "w1").unwrap();
+
+        assert_eq!(
+            node_count(&conn, "w1", "old_topic"),
+            0,
+            "stale stamped node should be pruned"
+        );
+        let card_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM learning_cards WHERE id = 'card1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            card_count, 0,
+            "unreviewed cards for the deleted node should be removed too"
+        );
+        let link_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM concept_links WHERE id = 'link1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            link_count, 0,
+            "part_of link should cascade-delete with the target node"
+        );
+    }
+
+    #[test]
+    fn prune_keeps_protected_and_custom_tag_nodes() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        insert_ws(&conn, "w1");
+        let sig = TopicSignature {
+            auto_detected_tags: vec![
+                tag("reviewed_topic", "ollama"),
+                tag("desc_topic", "ollama"),
+                tag("parent_topic", "ollama"),
+                tag("edited_topic", "ollama"),
+            ],
+            custom_tags: vec!["kept_custom".to_string()],
+            ..Default::default()
+        };
+        set_signature(&conn, "w1", &sig);
+        sync_concepts_from_signatures(&conn, "w1").unwrap();
+
+        let reviewed_id = node_id(&conn, "w1", "reviewed_topic");
+        conn.execute(
+            "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, source_id, repetitions)
+             VALUES ('rc1', 'w1', 'Q', 'A', 'concept', ?1, 2)",
+            rusqlite::params![reviewed_id],
+        )
+        .unwrap();
+
+        let desc_id = node_id(&conn, "w1", "desc_topic");
+        conn.execute(
+            "UPDATE concept_nodes SET concept_description = 'has a description' WHERE id = ?1",
+            rusqlite::params![desc_id],
+        )
+        .unwrap();
+
+        let parent_id = node_id(&conn, "w1", "parent_topic");
+        conn.execute(
+            "INSERT INTO concept_nodes (id, workspace_id, name, hierarchy_level, created_at, updated_at)
+             VALUES ('child2', 'w1', 'child_of_parent', 'concept', datetime('now'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO concept_links (id, source_id, target_id, link_type, strength, context, created_at)
+             VALUES ('link2', 'child2', ?1, 'part_of', 1.0, '', datetime('now'))",
+            rusqlite::params![parent_id],
+        )
+        .unwrap();
+
+        let edited_id = node_id(&conn, "w1", "edited_topic");
+        conn.execute(
+            "UPDATE concept_nodes SET user_edited_fields = '[\"name\"]' WHERE id = ?1",
+            rusqlite::params![edited_id],
+        )
+        .unwrap();
+
+        // All four auto tags drop out of the signature; only the custom tag remains.
+        let sig2 = TopicSignature {
+            custom_tags: vec!["kept_custom".to_string()],
+            ollama_enriched: true,
+            ..Default::default()
+        };
+        set_signature(&conn, "w1", &sig2);
+        sync_concepts_from_signatures(&conn, "w1").unwrap();
+
+        assert_eq!(node_count(&conn, "w1", "reviewed_topic"), 1, "reviewed cards protect the node");
+        assert_eq!(node_count(&conn, "w1", "desc_topic"), 1, "a description protects the node");
+        assert_eq!(node_count(&conn, "w1", "parent_topic"), 1, "a part_of parent protects the node");
+        assert_eq!(node_count(&conn, "w1", "edited_topic"), 1, "user edits protect the node");
+        assert_eq!(node_count(&conn, "w1", "kept_custom"), 1, "custom tag still in the signature stays");
+    }
+
+    #[test]
+    fn prune_noops_when_signature_is_empty_and_unenriched() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        insert_ws(&conn, "w1");
+        // Pre-existing stamped node from an earlier sync.
+        conn.execute(
+            "INSERT INTO concept_nodes (id, workspace_id, name, hierarchy_level, created_at, updated_at, last_modified_by_job)
+             VALUES ('n1', 'w1', 'kept_topic', 'concept', datetime('now'), datetime('now'), 'signature_topic_sync')",
+            [],
+        )
+        .unwrap();
+
+        // Signature was wiped (e.g. by a knowledge reset) and never re-enriched.
+        set_signature(&conn, "w1", &TopicSignature::default());
+
+        sync_concepts_from_signatures(&conn, "w1").unwrap();
+
+        assert_eq!(
+            node_count(&conn, "w1", "kept_topic"),
+            1,
+            "a wiped, un-enriched signature must not nuke the graph"
+        );
+    }
+
+    #[test]
+    fn legacy_fingerprint_junk_pruned_but_source_model_rows_kept() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        insert_ws(&conn, "w1");
+        // Legacy junk: no stamp, no source_model, default shape (matches the fingerprint).
+        conn.execute(
+            "INSERT INTO concept_nodes (id, workspace_id, name, hierarchy_level, concept_type, created_at, updated_at)
+             VALUES ('legacy1', 'w1', 'legacy_junk', 'concept', 'topic', datetime('now'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+        // Legacy row with a source_model set (AI-hierarchy-created, not sync junk) -- must survive.
+        conn.execute(
+            "INSERT INTO concept_nodes (id, workspace_id, name, hierarchy_level, concept_type, source_model, created_at, updated_at)
+             VALUES ('legacy2', 'w1', 'legacy_ai_created', 'concept', 'topic', 'qwen3:4b', datetime('now'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+
+        let sig = TopicSignature {
+            ollama_enriched: true,
+            ..Default::default()
+        };
+        set_signature(&conn, "w1", &sig);
+
+        sync_concepts_from_signatures(&conn, "w1").unwrap();
+
+        assert_eq!(node_count(&conn, "w1", "legacy_junk"), 0, "legacy fingerprint match should be pruned");
+        assert_eq!(
+            node_count(&conn, "w1", "legacy_ai_created"),
+            1,
+            "rows with a source_model are not legacy sync junk"
+        );
     }
 }
