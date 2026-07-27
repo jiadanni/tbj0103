@@ -626,6 +626,32 @@ export default function StatusBar() {
   const promptTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const ollamaStatus = useSettingsStore((s) => s.ollamaStatus);
+  const checkOllamaReachability = useSettingsStore((s) => s.checkOllamaReachability);
+  const [startingOllama, setStartingOllama] = useState(false);
+
+  useEffect(() => {
+    void checkOllamaReachability();
+    const interval = setInterval(() => {
+      if (!document.hidden) {
+        void checkOllamaReachability();
+      }
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [checkOllamaReachability]);
+
+  const handleStartOllama = useCallback(async () => {
+    setStartingOllama(true);
+    try {
+      await api.ollama.ensureRunning();
+      await checkOllamaReachability();
+    } catch {
+      await checkOllamaReachability();
+    } finally {
+      setStartingOllama(false);
+    }
+  }, [checkOllamaReachability]);
+
   // Poll performance stats on a slower cadence, rescheduling after each
   // response completes so a slow backend sample never overlaps with the next.
   // Paused while the window is hidden — CPU/memory readings aren't useful when
@@ -906,6 +932,33 @@ export default function StatusBar() {
             </span>
           )}
         </button>
+
+        {startingOllama ? (
+          <div className="flex shrink-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-xs font-medium text-amber-400 bg-amber-500/10">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" aria-hidden="true" />
+            <span>Starting Ollama...</span>
+          </div>
+        ) : ollamaStatus === "offline" ? (
+          <Tooltip content="Ollama is unreachable at configured URL. Click to start server.">
+            <button
+              type="button"
+              onClick={handleStartOllama}
+              className="flex shrink-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-xs font-medium text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 transition-colors cursor-pointer"
+              aria-label="Ollama offline. Click to start Ollama."
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-rose-500" aria-hidden="true" />
+              <span>Ollama Offline</span>
+              <span className="text-[10px] font-semibold underline underline-offset-2 ml-0.5">Start</span>
+            </button>
+          </Tooltip>
+        ) : ollamaStatus === "online" ? (
+          <Tooltip content="Ollama local inference engine connected">
+            <div className="flex shrink-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-xs font-medium text-[var(--text-secondary)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+              <span>Ollama</span>
+            </div>
+          </Tooltip>
+        ) : null}
 
         {promptList.map(([type, meta]) => (
           <JobPromptPill

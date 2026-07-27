@@ -27,6 +27,11 @@ export function useAiModelSync(
   onModelsSynced: () => void
 ) {
   const syncingRef = useRef(false);
+  const onModelsSyncedRef = useRef(onModelsSynced);
+  useEffect(() => {
+    onModelsSyncedRef.current = onModelsSynced;
+  }, [onModelsSynced]);
+
   const modelLabels = useSettingsStore((s) => s.modelLabels);
   const incrementModelRefreshCounter = useSettingsStore((s) => s.incrementModelRefreshCounter);
 
@@ -101,7 +106,7 @@ export function useAiModelSync(
       .then((results) => {
         if (cancelled) { return; }
         if (results.some((result) => result.status === "fulfilled")) {
-          onModelsSynced();
+          onModelsSyncedRef.current();
           incrementModelRefreshCounter();
         }
       })
@@ -116,6 +121,5 @@ export function useAiModelSync(
     isLoadingollama,
     modelLabels,
     incrementModelRefreshCounter,
-    onModelsSynced
   ]);
 }

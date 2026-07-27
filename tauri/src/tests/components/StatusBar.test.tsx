@@ -1,15 +1,17 @@
 import React from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  BackgroundTaskEvent,
-  BackgroundTaskPromptEvent,
-  PerformanceStats,
-  InferenceJobStatus,
+import {
+  api,
+  type BackgroundTaskEvent,
+  type BackgroundTaskPromptEvent,
+  type PerformanceStats,
+  type InferenceJobStatus,
 } from "@/lib/api";
 import { useChatStore } from "@/stores/chatStore";
 import { useBackgroundJobsStore } from "@/stores/backgroundJobs";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 
 const { getPerformanceStats, listenBackgroundTask, listenBackgroundTaskPrompt, listenWorkspaceProgress, listActiveBackgroundJobs } =
   vi.hoisted(() => ({
@@ -51,6 +53,10 @@ vi.mock("@/lib/api", () => ({
     listenBackgroundTask,
     listenBackgroundTaskPrompt,
     listenBackgroundSchedulerPauseStatus,
+    ollama: {
+      listModelsFresh: vi.fn(() => Promise.resolve([])),
+      ensureRunning: vi.fn(() => Promise.resolve({ available: true, launched: false, message: "OK", models: [] })),
+    },
     backgroundJobs: {
       confirm: confirmBackgroundJob,
       dismiss: dismissBackgroundJob,
@@ -474,5 +480,18 @@ describe("StatusBar", () => {
     expect(screen.getByText("Memory Extraction")).toBeInTheDocument();
     expect(screen.getByText("- Deep Learning")).toBeInTheDocument();
     expect(screen.queryByText("Idle")).not.toBeInTheDocument();
+  });
+
+  it("renders Ollama status text badge according to settingsStore state", async () => {
+    vi.mocked(api.ollama.listModelsFresh).mockRejectedValue(new Error("Ollama down"));
+    act(() => {
+      useSettingsStore.setState({ ollamaStatus: "offline" });
+    });
+
+    render(<StatusBar />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Ollama Offline")).toBeInTheDocument();
+    });
   });
 });

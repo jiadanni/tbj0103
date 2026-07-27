@@ -92,10 +92,19 @@ vi.mock("@/lib/workspacePane", () => ({
 }));
 
 vi.mock("@/stores/settingsStore", () => ({
-  useSettingsStore: () => ({
-    preferredModel: "gemma3:1b",
-    ollamaUrl: "",
-  }),
+  useSettingsStore: (selector?: (s: Record<string, unknown>) => unknown) => {
+    const state = {
+      preferredModel: "gemma3:1b",
+      ollamaUrl: "",
+      ollamaStatus: "online",
+      modelLabels: {},
+      modelFamilyLabels: {},
+      customModelFamilies: [],
+      composerMode: "family",
+      checkOllamaReachability: vi.fn(),
+    };
+    return selector ? selector(state) : state;
+  },
 }));
 
 describe("KnowledgeGraphView", () => {

@@ -12,6 +12,7 @@ pub struct TopicListItem {
     pub card_count: i64,
     pub review_count: i64,
     pub source: String,
+    pub created_at: Option<String>,
 }
 
 #[tauri::command]
@@ -64,7 +65,8 @@ pub fn list_all_topics(
                 CASE
                     WHEN cn.source_model IS NOT NULL THEN 'ai'
                     ELSE 'heuristic'
-                END AS source
+                END AS source,
+                cn.created_at
              FROM concept_nodes cn
              LEFT JOIN blocked_topics bt
                 ON bt.workspace_id = cn.workspace_id
@@ -93,6 +95,7 @@ pub fn list_all_topics(
                 card_count: r.get(4)?,
                 review_count: r.get(5)?,
                 source: r.get(6)?,
+                created_at: r.get(7)?,
             })
         })
         .map_err(|e| e.to_string())?

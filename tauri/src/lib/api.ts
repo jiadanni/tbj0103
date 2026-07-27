@@ -232,6 +232,7 @@ export interface TopicListItem {
   card_count: number;
   review_count: number;
   source: string;
+  created_at?: string | null;
 }
 
 export interface BlockedTopicRow {

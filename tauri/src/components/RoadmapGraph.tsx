@@ -7,6 +7,7 @@ import { forwardRef, memo, useEffect, useImperativeHandle, useMemo, useRef, useS
 import * as d3 from "d3";
 import type { ConceptNode, ConceptLink } from "../lib/api";
 import { buildForest, pruneCollapsedSections, type RoadmapNode } from "../lib/conceptTree";
+import { formatTimestamp } from "../lib/dates";
 
 const TYPE_COLORS: Record<string, string> = {
   person: "#60a5fa",
@@ -557,6 +558,7 @@ function RoadmapGraphInner(
                   onSelectConcept(sourceNode);
                 }}
               >
+                <title>{`${d.data.name} (${d.data.concept_type})${sourceNode?.created_at ? ` • Extracted ${formatTimestamp(sourceNode.created_at)}` : ""}`}</title>
                 <rect
                   width={dim.width}
                   height={dim.height}

@@ -365,7 +365,6 @@ System/Area 2:
 - Tauri frontend tests live in `tauri/src/tests/` and run with `npx vitest run` (or the equivalent absolute `node` path if `npx` is not on `PATH`).
 - **Vitest only collects `tauri/src/tests/**`.** A test file placed anywhere else (e.g., a `__tests__/` folder next to a view) is silently never run — it won't fail, it just rots. One such file sat orphaned for weeks with stale assertions and a mock of a renamed API. If you write a test, run that exact file once and confirm vitest actually collected it.
 - **Known test-suite exclusions:**
-  - `src/tests/views/PreferencesView.test.tsx` is quarantined in `lint.sh` — it hangs rendering the full PreferencesView. Don't re-include it or add cases to it until the view is decomposed.
   - `*.ollama.test.ts` files are live-Ollama tests, excluded from the default vitest run via `vite.config.ts`.
   - The Rust Claude-export fixture test skips unless `AETHERIUM_CLAUDE_V2_SAMPLE` points at a local sample export.
 - **Never hardcode machine-specific paths in tests.** A Rust test with a hardcoded `/home/<user>/...` path kept `cargo test` red on develop for seven weeks. Use an env var (skip when unset, fail loudly when set but invalid) for tests that need local fixtures.

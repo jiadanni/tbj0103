@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Ban, RotateCcw, Search } from "lucide-react";
 import { api, type TopicListItem } from "../lib/api";
+import { formatTimestamp } from "../lib/dates";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 
 export default function TopicsListView() {
@@ -158,6 +159,11 @@ export default function TopicsListView() {
                     <span className="rounded-full border border-[var(--border-color)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
                       {topic.source}
                     </span>
+                    {topic.created_at && (
+                      <span className="text-[10px] text-[var(--text-muted)]">
+                        Extracted {formatTimestamp(topic.created_at)}
+                      </span>
+                    )}
                   </div>
                   {(topic.card_count > 0 || topic.review_count > 0) && (
                     <div className="mt-0.5 text-xs text-[var(--text-secondary)]">

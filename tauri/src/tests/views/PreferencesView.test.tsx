@@ -146,10 +146,13 @@ const settingsStoreState = {
   setTopicSignatureModel: vi.fn(),
   setGoalSuggestionModel: vi.fn(),
   setConceptHierarchyModel: vi.fn(),
+  setWorkspaceAnalysisModel: vi.fn(),
   setQuickSearchWorkspaceScope: vi.fn(),
   setQuickSearchTypeFilters: vi.fn(),
   setQuickSearchShortcut: vi.fn(),
-  setModelLabel: vi.fn(),
+  setModelLabel: vi.fn((id, label) => {
+    (settingsStoreState.modelLabels as Record<string, string>)[id] = label;
+  }),
 };
 
 const workspaceStoreState = {
@@ -206,7 +209,14 @@ vi.mock("@/lib/api", () => ({
       list: apiMocks.aiModelList,
       listSpeedStats: apiMocks.aiModelListSpeedStats,
       add: vi.fn(() => Promise.resolve()),
-      update: vi.fn(() => Promise.resolve()),
+      update: vi.fn((id: string, patch: Record<string, unknown>) => {
+        const current = (apiMocks.aiModelList as ReturnType<typeof vi.fn>).mock.results?.[0]?.value;
+        if (Array.isArray(current)) {
+          const updated = current.map((m: { id: string }) => m.id === id ? { ...m, ...patch } : m);
+          apiMocks.aiModelList.mockResolvedValue(updated);
+        }
+        return Promise.resolve();
+      }),
       delete: vi.fn(() => Promise.resolve()),
     },
     system: {
@@ -561,7 +571,7 @@ describe("PreferencesView", () => {
 
     await screen.findByText("Gemma 4");
 
-    fireEvent.click(screen.getByText("Scheduled Tasks"));
+    fireEvent.click(screen.getByText("Inference Jobs"));
 
     expect(await screen.findByText("Play-button confirmation timeout")).toBeInTheDocument();
     expect(screen.getByText("Memory Extraction")).toBeInTheDocument();
@@ -579,7 +589,7 @@ describe("PreferencesView", () => {
 
     expect(await screen.findByText("Run Background Processing Now")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByLabelText("Selected workspaces"));
+    fireEvent.click(screen.getAllByLabelText("Selected workspaces")[0]);
     fireEvent.click(screen.getByLabelText("Imported Chats"));
     fireEvent.click(screen.getByText("Summarization"));
 

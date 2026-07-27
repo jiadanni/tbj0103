@@ -57,6 +57,7 @@ export default defineConfig(async () => ({
     // suite stays fast and offline.
     include: ["src/tests/**/*.test.ts", "src/tests/**/*.test.tsx"],
     exclude: ["src/tests/**/*.ollama.test.ts"],
+    teardownTimeout: 5000,
     pool: "forks",
     poolOptions: {
       forks: {

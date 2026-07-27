@@ -31,6 +31,7 @@ import {
   X,
 } from "lucide-react";
 import RoadmapGraph, { type RoadmapGraphHandle } from "../components/RoadmapGraph";
+import { formatTimestamp, formatDateShort } from "../lib/dates";
 import {
   api,
   REFRESH_WORKSPACE_TASK_TYPES,
@@ -1149,6 +1150,7 @@ export default function KnowledgeGraphView({
                             <button
                               key={node.id}
                               onClick={() => setSelectedConcept(selectedConcept?.id === node.id ? null : node)}
+                              title={node.created_at ? `Extracted ${formatTimestamp(node.created_at)}` : undefined}
                               className={`ml-3 flex w-full items-center gap-1.5 rounded px-2 py-0.5 text-left text-xs transition-colors ${
                                 selectedConcept?.id === node.id
                                   ? "bg-[var(--accent-color)]/20 text-[var(--accent-color)]"
@@ -1176,6 +1178,7 @@ export default function KnowledgeGraphView({
                     <button
                       key={node.id}
                       onClick={() => setSelectedConcept(selectedConcept?.id === node.id ? null : node)}
+                      title={node.created_at ? `Extracted ${formatTimestamp(node.created_at)}` : undefined}
                       className={`flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs transition-colors ${
                         selectedConcept?.id === node.id
                           ? "bg-[var(--accent-color)]/20 text-[var(--accent-color)]"
@@ -1202,12 +1205,19 @@ export default function KnowledgeGraphView({
                   <X size={12} className="text-[var(--text-muted)]" />
                 </button>
               </div>
-              <span
-                className="mb-2 inline-block rounded-full px-2 py-1 text-[10px]"
-                style={{ backgroundColor: `color-mix(in srgb, ${colorFor(selectedConcept.concept_type)} 20%, transparent)`, color: colorFor(selectedConcept.concept_type) }}
-              >
-                {selectedConcept.concept_type}
-              </span>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span
+                  className="inline-block rounded-full px-2 py-1 text-[10px]"
+                  style={{ backgroundColor: `color-mix(in srgb, ${colorFor(selectedConcept.concept_type)} 20%, transparent)`, color: colorFor(selectedConcept.concept_type) }}
+                >
+                  {selectedConcept.concept_type}
+                </span>
+                {selectedConcept.created_at && (
+                  <span className="text-[10px] text-[var(--text-muted)]" title={`Extracted ${formatTimestamp(selectedConcept.created_at)}`}>
+                    Extracted {formatDateShort(selectedConcept.created_at)}
+                  </span>
+                )}
+              </div>
               {selectedConcept.concept_description && (
                 <p className="mb-3 text-[11px] leading-relaxed text-[var(--text-secondary)]">{selectedConcept.concept_description}</p>
               )}
@@ -1361,7 +1371,29 @@ export default function KnowledgeGraphView({
                   </div>
                 </div>
                 {analyzeError && (
-                  <p className="max-w-xs text-right text-xs text-red-400">{analyzeError}</p>
+                  <div className="flex items-center gap-2 text-right text-xs text-red-400">
+                    <p className="max-w-xs">{analyzeError}</p>
+                    {(analyzeError.includes("Ollama isn't reachable") || analyzeError.includes("Failed to fetch models")) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void (async () => {
+                            try {
+                              await api.ollama.ensureRunning();
+                              await useSettingsStore.getState().checkOllamaReachability();
+                              setAnalyzeError("");
+                              void handleRefresh("async");
+                            } catch (e) {
+                              setAnalyzeError(e instanceof Error ? e.message : String(e));
+                            }
+                          })();
+                        }}
+                        className="shrink-0 rounded bg-rose-500/20 px-2 py-0.5 text-[11px] font-semibold text-rose-300 hover:bg-rose-500/30 transition-colors"
+                      >
+                        Start Ollama
+                      </button>
+                    )}
+                  </div>
                 )}
                 {!analyzeError && refreshFailedCount > 0 && !isAnalyzing && (
                   <p className="max-w-xs text-right text-xs text-amber-400">
@@ -1711,7 +1743,15 @@ export default function KnowledgeGraphView({
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-sm font-medium text-[var(--text-primary)]">{selectedConcept.name}</div>
-                      <div className="mt-1 text-xs text-[var(--text-secondary)]">{selectedConcept.concept_type}</div>
+                      <div className="mt-1 flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                        <span className="capitalize">{selectedConcept.concept_type}</span>
+                        {selectedConcept.created_at && (
+                          <>
+                            <span className="text-[var(--text-muted)]">•</span>
+                            <span className="text-[var(--text-muted)]">Extracted {formatTimestamp(selectedConcept.created_at)}</span>
+                          </>
+                        )}
+                      </div>
                     </div>
                     <button
                       onClick={() => setSelectedConcept(null)}

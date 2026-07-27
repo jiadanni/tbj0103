@@ -3,6 +3,7 @@ import { ChevronDown, Loader2, RefreshCw, RotateCcw } from "lucide-react";
 import { api, REFRESH_WORKSPACE_TASK_TYPES, type BackgroundProcessingScope, type BackgroundTaskEvent, type KnowledgeResetOptions, type KnowledgeResetResult } from "../../lib/api";
 import { INFERENCE_JOBS_CATALOG } from "../../lib/inferenceJobsCatalog";
 import { useWorkspaceStore } from "../../stores/workspaceStore";
+import { useSettingsStore } from "../../stores/settingsStore";
 import SuccessDialog from "../SuccessDialog";
 import {
   DEFAULT_KNOWLEDGE_RESET_OPTIONS,
@@ -224,6 +225,24 @@ export function DataControlsPreferences() {
     }
   }
 
+  const [startingOllamaInPanel, setStartingOllamaInPanel] = useState(false);
+  const checkOllamaReachability = useSettingsStore((s) => s.checkOllamaReachability);
+
+  async function handleStartOllamaAndRetry() {
+    setStartingOllamaInPanel(true);
+    try {
+      await api.ollama.ensureRunning();
+      await checkOllamaReachability();
+      setError(null);
+      void queueBackgroundProcessing();
+    } catch (err) {
+      await checkOllamaReachability();
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setStartingOllamaInPanel(false);
+    }
+  }
+
   function toggleProcessingJob(jobKey: string, checked: boolean) {
     setSelectedProcessingJobs((current) => checked
       ? Array.from(new Set([...current, jobKey]))
@@ -421,6 +440,29 @@ export function DataControlsPreferences() {
           {success && (
             <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
               {success}
+            </div>
+          )}
+
+          {error && (
+            <div className="rounded-xl border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <div className="font-semibold text-rose-300">
+                  {error.includes("Ollama isn't reachable") || error.includes("Failed to fetch models")
+                    ? "Ollama Is Unreachable"
+                    : "Background Processing Error"}
+                </div>
+                <div className="text-xs text-rose-300/80 mt-0.5">{error}</div>
+              </div>
+              {(error.includes("Ollama isn't reachable") || error.includes("Failed to fetch models")) && (
+                <button
+                  type="button"
+                  onClick={() => { void handleStartOllamaAndRetry(); }}
+                  disabled={startingOllamaInPanel}
+                  className="inline-flex shrink-0 items-center justify-center rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-600 disabled:opacity-50 transition-colors"
+                >
+                  {startingOllamaInPanel ? "Starting Ollama..." : "Start Ollama & Retry"}
+                </button>
+              )}
             </div>
           )}
 

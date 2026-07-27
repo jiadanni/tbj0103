@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { X, Plus, Eye, Zap, AlertCircle } from "lucide-react";
 import type { TopicSignature, TopicTag } from "../lib/api";
 import { api } from "../lib/api";
+import { formatTimestamp } from "../lib/dates";
 
 interface TopicsSectionProps {
   workspaceId: string;
@@ -263,6 +264,11 @@ export const TopicsSection: React.FC<TopicsSectionProps> = ({
         <p className="mt-2 leading-relaxed">
           <strong>Excluded Topics</strong> won&apos;t appear in future topic regenerations. Click to restore them.
         </p>
+        {topicSignature.generated_at && (
+          <p className="mt-2 text-[10px] text-[var(--text-muted)]">
+            Last extracted: {formatTimestamp(topicSignature.generated_at)}
+          </p>
+        )}
       </div>
     </div>
   );

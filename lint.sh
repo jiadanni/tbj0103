@@ -98,19 +98,9 @@ if [ "${SKIP_TESTS:-0}" = "1" ]; then
 else
   # ── 6. Frontend tests (vitest) ─────────────────────────────────────────────
   #
-  # QUARANTINE: src/tests/views/PreferencesView.test.tsx is excluded because it
-  # hangs — it spins at ~100% CPU on its first case ("renders visible provider
-  # group headers in the AI settings tab") rendering the 6,691-line
-  # PreferencesView, and never reaches the other 5 cases. Reproduced on a clean
-  # checkout, so it predates this exclusion. Without it the suite is ~90s; with
-  # it, it never terminates.
-  #
-  # Re-include it (delete VITEST_EXCLUDE below) once that test is fixed.
-  VITEST_EXCLUDE="src/tests/views/PreferencesView.test.tsx"
   info "Running frontend tests (vitest)..."
-  echo "  note: quarantined (hangs): $VITEST_EXCLUDE"
   if [ -n "$NODE_BIN" ] && [ -x "$TAURI/node_modules/.bin/vitest" ]; then
-    if (cd "$TAURI" && node_modules/.bin/vitest run --exclude "$VITEST_EXCLUDE" 2>&1); then
+    if (cd "$TAURI" && node_modules/.bin/vitest run 2>&1); then
       pass "Vitest"
     else
       fail "Vitest"

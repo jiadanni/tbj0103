@@ -2,7 +2,7 @@
  * PreferencesView — integrated preferences hub with focused tabs for app,
  * navigation, appearance, chat, inference, security, backup, and workspace controls.
  */
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { message } from "@tauri-apps/plugin-dialog";
@@ -1647,7 +1647,7 @@ export default function PreferencesView() {
     }
   }
 
-  function loadAiModels() {
+  const loadAiModels = useCallback(() => {
     api.aiModel.list().then((models) => {
       setAiModels(models);
       // Sync names to modelLabels store
@@ -1665,7 +1665,7 @@ export default function PreferencesView() {
         }, {})
       );
     }).catch(() => { });
-  }
+  }, []);
 
   useAiModelSync(
     aiModels,
@@ -1920,7 +1920,7 @@ export default function PreferencesView() {
       unlistenWorkspaces.then((fn) => fn());
       unlistenSettings.then((fn) => fn());
     };
-  }, [setWorkspaces]);
+  }, [setWorkspaces, loadAiModels]);
 
   // Tab-gated backend probes: only fire each (potentially slow) backend call
   // once, when the user first visits the tab that needs the data. This keeps

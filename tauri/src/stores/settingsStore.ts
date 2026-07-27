@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
+import { api } from "../lib/api";
 import {
   normalizeCodeBlockColorPalette,
   normalizeCodeBlockContainerStyle,
@@ -107,7 +108,12 @@ interface AppSettings {
   aboutYou: string;
 }
 
+export type OllamaStatus = "unknown" | "checking" | "online" | "offline";
+
 interface SettingsStore extends AppSettings {
+  ollamaStatus: OllamaStatus;
+  setOllamaStatus: (status: OllamaStatus) => void;
+  checkOllamaReachability: () => Promise<boolean>;
   setPreferredModel: (m: string) => void;
   setBackgroundModel: (m: string) => void;
   setSummarizationModel: (m: string) => void;
@@ -175,7 +181,7 @@ interface SettingsStore extends AppSettings {
 
 export const useSettingsStore = create<SettingsStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       preferredModel: "",
       backgroundModel: "",
       summarizationModel: "",
@@ -237,6 +243,20 @@ export const useSettingsStore = create<SettingsStore>()(
       chatTitleAutoRefresh: "initial_only",
       chatTitleRefreshInterval: 5,
       aboutYou: "",
+      ollamaStatus: "unknown",
+      setOllamaStatus: (ollamaStatus) => set({ ollamaStatus }),
+      checkOllamaReachability: async () => {
+        set({ ollamaStatus: "checking" });
+        try {
+          const models = await api.ollama.listModelsFresh(get().ollamaUrl || undefined);
+          const reachable = Array.isArray(models);
+          set({ ollamaStatus: reachable ? "online" : "offline" });
+          return reachable;
+        } catch {
+          set({ ollamaStatus: "offline" });
+          return false;
+        }
+      },
       setPreferredModel: (preferredModel) => set({ preferredModel }),
       setBackgroundModel: (backgroundModel) => set({ backgroundModel }),
       setSummarizationModel: (summarizationModel) => set({ summarizationModel }),
@@ -317,11 +337,11 @@ export const useSettingsStore = create<SettingsStore>()(
     {
       name: "aetherium-settings",
       storage: createJSONStorage(() => createDebouncedLocalStorage(200)),
-      // modelRefreshCounter is a transient signal — never persist it.
+      // modelRefreshCounter and ollamaStatus are transient signals — never persist them.
       partialize: (state) => {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { modelRefreshCounter, ...rest } = state;
-        return rest as Omit<SettingsStore, "modelRefreshCounter">;
+        const { modelRefreshCounter, ollamaStatus, ...rest } = state;
+        return rest as Omit<SettingsStore, "modelRefreshCounter" | "ollamaStatus">;
       },
       merge: (persistedState, currentState) => {
         const persisted = persistedState as
@@ -343,8 +363,9 @@ export const useSettingsStore = create<SettingsStore>()(
           codeBlockContainerStyle: normalizeCodeBlockContainerStyle(state.codeBlockContainerStyle ?? currentState.codeBlockContainerStyle),
           codeBlockColorPalette: normalizeCodeBlockColorPalette(state.codeBlockColorPalette ?? currentState.codeBlockColorPalette),
           codeBlockKeywordColor: normalizeCodeBlockKeywordColor(state.codeBlockKeywordColor ?? currentState.codeBlockKeywordColor),
-          // Always reset to 0 on startup — it's a transient counter.
+          // Always reset transient state on startup.
           modelRefreshCounter: 0,
+          ollamaStatus: "unknown",
         };
       },
     }
