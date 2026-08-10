@@ -1,3 +1,4 @@
+use crate::commands::security::{require_auth_for_destructive_ops, AuthState};
 use crate::db::DbState;
 use crate::models::glossary::{
     ResolvedWorkspaceGlossaryTerm, UpsertWorkspaceGlossaryTermRequest, WorkspaceGlossaryTerm,
@@ -41,9 +42,11 @@ pub fn upsert_workspace_glossary_term<R: Runtime>(
 #[tauri::command]
 pub fn delete_workspace_glossary_term<R: Runtime>(
     app: AppHandle<R>,
+    auth: State<AuthState>,
     state: State<DbState>,
     id: String,
 ) -> Result<(), String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     workspace_glossary::delete_term(&conn, &id)?;
     let _ = app.emit("workspaces-changed", ());

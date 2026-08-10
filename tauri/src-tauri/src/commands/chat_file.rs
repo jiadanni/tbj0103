@@ -396,7 +396,7 @@ pub async fn import_chat_from_json(
     crypto: State<'_, ChatCryptoState>,
     db_state: State<'_, DbState>,
 ) -> Result<ChatSession, String> {
-    require_auth(&auth, &db_state)?;
+    require_auth_for_destructive_ops(&auth, &db_state)?;
     let chats_dir = chats_dir_state.0.clone();
     let pass = crypto.0.lock().ok().and_then(|g| g.clone());
     let pool = db_state.0.clone();

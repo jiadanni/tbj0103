@@ -693,9 +693,11 @@ pub fn undo_last_analysis(state: State<DbState>, workspace_id: String) -> Result
 #[tauri::command]
 pub fn reset_knowledge_state<R: Runtime>(
     app: AppHandle<R>,
+    auth: State<AuthState>,
     state: State<DbState>,
     req: KnowledgeResetRequest,
 ) -> Result<KnowledgeResetResult, String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let mut conn = state.0.get().map_err(|e| e.to_string())?;
     let result = knowledge_graph_service::reset_knowledge_state_inner(&mut conn, req)?;
     if !result.dry_run {

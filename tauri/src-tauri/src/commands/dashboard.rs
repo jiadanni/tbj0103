@@ -1,3 +1,4 @@
+use crate::commands::security::{require_auth_for_destructive_ops, AuthState};
 use crate::commands::settings::get_setting;
 use crate::db::DbState;
 use crate::logging;
@@ -133,9 +134,11 @@ pub fn set_dashboard_layout(
 
 #[tauri::command]
 pub fn reset_dashboard_layout(
+    auth: State<AuthState>,
     state: State<DbState>,
     workspace_id: String,
 ) -> Result<DashboardLayout, String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
     conn.execute(
         "DELETE FROM settings WHERE key = ?1",
