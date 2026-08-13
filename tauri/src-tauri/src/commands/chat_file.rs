@@ -6,7 +6,7 @@ use crate::models::chat::ChatSession;
 use crate::services::chat_file_store;
 use serde::Serialize;
 use std::process::Command;
-use tauri::State;
+use tauri::{AppHandle, Emitter, Runtime, State};
 
 /// In-memory passphrase state — populated at startup from keyring if
 /// encryption is enabled, or when the user calls `setup_chat_encryption`.
@@ -1874,6 +1874,34 @@ pub async fn cluster_unmatched_claude_chats(
     }))
 }
 
+/// Emit a `background-task` event for the import AI-matching job so the
+/// status bar shows progress while the (potentially minutes-long) IPC call
+/// runs. Both matching strategies share the `claude_import_match` task type.
+fn emit_match_task<R: Runtime>(
+    app: &AppHandle<R>,
+    status: &str,
+    message: &str,
+    model: Option<String>,
+    current: Option<u32>,
+    total: Option<u32>,
+) {
+    let _ = app.emit(
+        "background-task",
+        crate::services::background_scheduler::BackgroundTaskEvent {
+            task_type: "claude_import_match".to_string(),
+            status: status.to_string(),
+            message: message.to_string(),
+            model,
+            workspace_id: None,
+            current,
+            total,
+            current_task_type: None,
+            workspace_index: None,
+            workspace_total: None,
+        },
+    );
+}
+
 /// Re-run deterministic project matching after distilling each project's
 /// prompt/description/memory into a topic list with one LLM call per few projects.
 ///
@@ -1884,7 +1912,8 @@ pub async fn cluster_unmatched_claude_chats(
 /// Returns `{ suggestions, topics_by_project, projects_with_topics }` so the UI
 /// can report how many projects were successfully enriched.
 #[tauri::command]
-pub async fn match_claude_with_topics(
+pub async fn match_claude_with_topics<R: Runtime>(
+    app: AppHandle<R>,
     conversations: Vec<serde_json::Value>,
     projects: Vec<serde_json::Value>,
     memories_by_project: std::collections::HashMap<String, String>,
@@ -1954,11 +1983,30 @@ pub async fn match_claude_with_topics(
         })
         .collect();
 
-    let topics = chat_file_store::claude_v2_match::generate_project_topics(
+    emit_match_task(
+        &app,
+        "started",
+        "Generating project topics",
+        Some(model.clone()),
+        None,
+        None,
+    );
+
+    let outcome = chat_file_store::claude_v2_match::generate_project_topics(
         &proj_previews,
         &memories_by_project,
         &ollama,
         &model,
+        |done, total| {
+            emit_match_task(
+                &app,
+                "processing",
+                &format!("Generating project topics (batch {done} of {total})"),
+                Some(model.clone()),
+                Some(done as u32),
+                Some(total as u32),
+            );
+        },
     )
     .await;
 
@@ -1969,14 +2017,46 @@ pub async fn match_claude_with_topics(
             &conv_previews,
             &proj_previews,
             &memories_by_project,
-            &topics,
+            &outcome.topics,
         );
+
+    if outcome.batches_failed > 0 && outcome.batches_failed == outcome.batches_total {
+        emit_match_task(
+            &app,
+            "failed",
+            &format!(
+                "Topic generation failed for all {} batches: {}",
+                outcome.batches_total,
+                outcome.last_error.as_deref().unwrap_or("unknown error"),
+            ),
+            Some(model.clone()),
+            None,
+            None,
+        );
+    } else {
+        emit_match_task(
+            &app,
+            "completed",
+            &format!(
+                "Matched {} chats using topics from {} of {} projects",
+                suggestions.len(),
+                outcome.topics.len(),
+                proj_previews.len(),
+            ),
+            Some(model.clone()),
+            None,
+            None,
+        );
+    }
 
     Ok(serde_json::json!({
         "suggestions": suggestions,
-        "topics_by_project": topics,
-        "projects_with_topics": topics.len(),
+        "topics_by_project": outcome.topics,
+        "projects_with_topics": outcome.topics.len(),
         "projects_total": proj_previews.len(),
+        "topic_batches_total": outcome.batches_total,
+        "topic_batches_failed": outcome.batches_failed,
+        "llm_error": outcome.last_error,
     }))
 }
 
@@ -1988,7 +2068,8 @@ pub async fn match_claude_with_topics(
 /// `projects` is a list of `{ uuid, name, prompt_template, description }` objects.
 /// `memories_by_project` maps project UUID → memory text.
 #[tauri::command]
-pub async fn match_claude_with_llm(
+pub async fn match_claude_with_llm<R: Runtime>(
+    app: AppHandle<R>,
     conversations: Vec<serde_json::Value>,
     projects: Vec<serde_json::Value>,
     memories_by_project: std::collections::HashMap<String, String>,
@@ -2043,16 +2124,63 @@ pub async fn match_claude_with_llm(
         })
         .collect();
 
-    let suggestions = chat_file_store::claude_v2_match::suggest_project_with_llm(
+    emit_match_task(
+        &app,
+        "started",
+        &format!("Classifying {} chats", conv_previews.len()),
+        Some(model.clone()),
+        None,
+        None,
+    );
+
+    let outcome = chat_file_store::claude_v2_match::suggest_project_with_llm(
         &conv_previews,
         &proj_previews,
         &memories_by_project,
         &ollama,
         &model,
+        |done, total| {
+            emit_match_task(
+                &app,
+                "processing",
+                &format!("Classifying chats (batch {done} of {total})"),
+                Some(model.clone()),
+                Some(done as u32),
+                Some(total as u32),
+            );
+        },
     )
     .await;
 
-    Ok(serde_json::json!(suggestions))
+    if let Some(err) = &outcome.llm_error {
+        emit_match_task(
+            &app,
+            "failed",
+            &format!(
+                "AI matching stopped after batch {} of {} ({}) — remaining chats used keyword fallback",
+                outcome.batches_completed, outcome.batches_total, err,
+            ),
+            Some(model.clone()),
+            Some(outcome.batches_completed as u32),
+            Some(outcome.batches_total as u32),
+        );
+    } else {
+        emit_match_task(
+            &app,
+            "completed",
+            &format!("Classified {} chats", outcome.suggestions.len()),
+            Some(model.clone()),
+            None,
+            None,
+        );
+    }
+
+    Ok(serde_json::json!({
+        "suggestions": outcome.suggestions,
+        "batches_total": outcome.batches_total,
+        "batches_completed": outcome.batches_completed,
+        "llm_error": outcome.llm_error,
+    }))
 }
 
 /// Destination for imported chats/memories: a workspace, optionally with a folder inside it.

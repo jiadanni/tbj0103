@@ -176,6 +176,10 @@ export default function ImportSettingsSection() {
   const [claudeSuggestions, setClaudeSuggestions] = useState<ChatSuggestion[]>([]);
   // How many projects the topic pass successfully enriched (null = not run yet).
   const [topicCoverage, setTopicCoverage] = useState<{ enriched: number; total: number } | null>(null);
+  // Partial-failure notice from the last AI matching run (e.g. an Ollama
+  // timeout mid-run). Suggestions from completed batches are still applied;
+  // this tells the user the rest degraded to keyword matching.
+  const [matchWarning, setMatchWarning] = useState<string | null>(null);
   const [claudeMemoriesByProject, setClaudeMemoriesByProject] = useState<Record<string, string>>({});
   // chat_uuid → project_uuid (or null = unassigned). Initialised from server suggestions on scan.
   const [chatAssignments, setChatAssignments] = useState<Record<string, string | null>>({});
@@ -766,6 +770,7 @@ export default function ImportSettingsSection() {
   ) {
     if (claudeOrphans.length === 0 || claudeProjects.length === 0) { return; }
     setError(null);
+    setMatchWarning(null);
     setClaudeEmbeddingMatching(true);
     setShowMatchModelMenu(false);
     const effectiveModel = opts?.modelOverride ?? importMatchModel;
@@ -799,8 +804,15 @@ export default function ImportSettingsSection() {
           enriched: result.projects_with_topics,
           total: result.projects_total,
         });
+        if (result.topic_batches_failed > 0) {
+          setMatchWarning(
+            result.topic_batches_failed === result.topic_batches_total
+              ? `Topic generation failed (${result.llm_error ?? "Ollama error"}) — all chats were matched on base project vocabulary only.`
+              : `Topic generation failed for ${result.topic_batches_failed} of ${result.topic_batches_total} batches (${result.llm_error ?? "Ollama error"}) — affected projects matched on base vocabulary only.`,
+          );
+        }
       } else {
-        suggestions = (await api.chatFile.matchClaudeWithLlm({
+        const result = await api.chatFile.matchClaudeWithLlm({
           conversations: targetConvs.map((c) => ({
             uuid: c.uuid,
             name: c.name,
@@ -809,7 +821,13 @@ export default function ImportSettingsSection() {
           projects: projectArgs,
           memoriesByProject: claudeMemoriesByProject,
           modelOverride: effectiveModel || undefined,
-        })) as ChatSuggestion[];
+        });
+        suggestions = result.suggestions as ChatSuggestion[];
+        if (result.llm_error) {
+          setMatchWarning(
+            `AI matching stopped after batch ${result.batches_completed} of ${result.batches_total} (${result.llm_error}) — remaining chats used keyword fallback.`,
+          );
+        }
       }
 
       // If re-running all, start fresh; otherwise merge into existing.
@@ -2009,6 +2027,19 @@ export default function ImportSettingsSection() {
                           </button>
                         </div>
                       </div>
+                      {matchWarning && (
+                        <div className="flex items-start justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5">
+                          <span className="text-[11px] text-amber-500">{matchWarning}</span>
+                          <button
+                            type="button"
+                            onClick={() => setMatchWarning(null)}
+                            className="shrink-0 text-[11px] text-amber-500/70 hover:text-amber-500"
+                            aria-label="Dismiss matching warning"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      )}
                       <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3">
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] text-[var(--text-muted)]">

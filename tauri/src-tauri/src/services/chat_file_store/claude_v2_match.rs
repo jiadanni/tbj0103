@@ -28,6 +28,30 @@ pub struct MatchSuggestion {
     pub reason: &'static str, // "title" | "keywords" | "topics" | "llm" | "none"
 }
 
+/// Result of `generate_project_topics`, carrying failure stats so callers can
+/// surface degraded batches instead of silently falling back.
+pub struct TopicGenerationOutcome {
+    /// Project UUID → distilled topic terms. Projects from failed batches are
+    /// simply absent and match on base vocabulary.
+    pub topics: HashMap<String, Vec<String>>,
+    pub batches_total: usize,
+    pub batches_failed: usize,
+    /// Error string from the last failed Ollama call, if any.
+    pub last_error: Option<String>,
+}
+
+/// Result of `suggest_project_with_llm`. `suggestions` always covers every
+/// input conversation — conversations from batches after `llm_error` occurred
+/// carry keyword-fallback suggestions instead of LLM ones.
+pub struct LlmMatchOutcome {
+    pub suggestions: Vec<MatchSuggestion>,
+    pub batches_total: usize,
+    /// LLM batches that completed before an error (or all of them on success).
+    pub batches_completed: usize,
+    /// Error string from the Ollama call that aborted the LLM pass, if any.
+    pub llm_error: Option<String>,
+}
+
 /// Minimum fraction of the chat's *IDF mass* that must be covered by the winning
 /// project's vocabulary. Coverage = Σidf(chat ∩ project) / Σidf(chat), so a chat
 /// that matches one rare, discriminative term scores higher than one matching
@@ -450,7 +474,10 @@ pub async fn generate_project_topics(
     memories_by_project: &HashMap<String, String>,
     ollama: &crate::ollama::client::OllamaClient,
     model: &str,
-) -> HashMap<String, Vec<String>> {
+    // Called after each batch finishes (success or failure) with
+    // (batches_done, batches_total). Used to emit progress events.
+    mut on_progress: impl FnMut(usize, usize),
+) -> TopicGenerationOutcome {
     use crate::ollama::client::OllamaMessage;
 
     const SYSTEM_PROMPT: &str = "You extract topic keywords that describe what a project is about.\n\
@@ -463,6 +490,10 @@ pub async fn generate_project_topics(
          SUBJECT, not how to answer. No explanations, no extra lines.";
 
     let mut out: HashMap<String, Vec<String>> = HashMap::new();
+    let batches_total = projects.len().div_ceil(TOPIC_BATCH_SIZE);
+    let mut batches_done = 0usize;
+    let mut batches_failed = 0usize;
+    let mut last_error: Option<String> = None;
 
     for chunk in projects.chunks(TOPIC_BATCH_SIZE) {
         let mut user_msg = String::new();
@@ -498,12 +529,26 @@ pub async fn generate_project_topics(
             },
         ];
 
-        let Ok(reply) = ollama
+        let reply = match ollama
             .send_message_with_options("claude_import_topics", model, messages, Some("5m"))
             .await
-        else {
-            // A failed batch just means those projects match on base vocabulary.
-            continue;
+        {
+            Ok(reply) => reply,
+            Err(e) => {
+                // A failed batch just means those projects match on base
+                // vocabulary — but record it so the caller can tell the user.
+                eprintln!(
+                    "[claude_import_topics] batch {}/{} failed: {}",
+                    batches_done + 1,
+                    batches_total,
+                    e
+                );
+                batches_failed += 1;
+                last_error = Some(e);
+                batches_done += 1;
+                on_progress(batches_done, batches_total);
+                continue;
+            }
         };
 
         for line in reply.lines() {
@@ -532,9 +577,16 @@ pub async fn generate_project_topics(
                 out.insert(proj.uuid.clone(), terms);
             }
         }
+        batches_done += 1;
+        on_progress(batches_done, batches_total);
     }
 
-    out
+    TopicGenerationOutcome {
+        topics: out,
+        batches_total,
+        batches_failed,
+        last_error,
+    }
 }
 
 // ── LLM-based classifier ─────────────────────────────────────────────────────
@@ -549,14 +601,18 @@ const LLM_BATCH_SIZE: usize = 10;
 /// conversation: `<conv_index>: <project_number>` (or 0 for no match).
 ///
 /// Falls back to keyword matcher for any conversation the LLM response
-/// cannot be parsed for, or if the Ollama call fails entirely.
+/// cannot be parsed for, or if the Ollama call fails entirely. Results from
+/// batches that completed before a failure are kept — only the remainder
+/// falls back to keywords.
 pub async fn suggest_project_with_llm(
     conversations: &[ClaudeConversationPreview],
     projects: &[ClaudeProjectPreview],
     memories_by_project: &HashMap<String, String>,
     ollama: &crate::ollama::client::OllamaClient,
     model: &str,
-) -> Vec<MatchSuggestion> {
+    // Called after each batch finishes with (batches_done, batches_total).
+    mut on_progress: impl FnMut(usize, usize),
+) -> LlmMatchOutcome {
     use crate::ollama::client::OllamaMessage;
 
     // Title-match lookup — same fast pre-pass as the keyword path.
@@ -623,10 +679,14 @@ pub async fn suggest_project_with_llm(
         needs_llm.push(idx);
     }
 
-    // LLM pass — batched.
-    let mut llm_failed = false;
+    // LLM pass — batched, sequential. Aborts on the first Ollama error (a
+    // timeout at batch N would very likely repeat for every later batch) but
+    // keeps the results of batches that already completed.
+    let batches_total = needs_llm.len().div_ceil(LLM_BATCH_SIZE);
+    let mut batches_completed = 0usize;
+    let mut llm_error: Option<String> = None;
     for chunk in needs_llm.chunks(LLM_BATCH_SIZE) {
-        if llm_failed { break; }
+        if llm_error.is_some() { break; }
 
         // Build the user message listing conversations in this batch.
         let mut user_msg = String::new();
@@ -685,15 +745,24 @@ pub async fn suggest_project_with_llm(
                         results[conv_idx] = kw.into_iter().next();
                     }
                 }
+                batches_completed += 1;
+                on_progress(batches_completed, batches_total);
             }
-            Err(_) => {
-                llm_failed = true;
+            Err(e) => {
+                eprintln!(
+                    "[claude_import_match] batch {}/{} failed: {}",
+                    batches_completed + 1,
+                    batches_total,
+                    e
+                );
+                llm_error = Some(e);
             }
         }
     }
 
-    // If the LLM failed entirely, fall back to keyword matcher for everything that wasn't title-matched.
-    if llm_failed {
+    // If the LLM pass aborted, fall back to keyword matcher for everything not
+    // already resolved by a title match or a completed batch.
+    if llm_error.is_some() {
         let remaining_indices: Vec<usize> = needs_llm
             .iter()
             .copied()
@@ -711,7 +780,7 @@ pub async fn suggest_project_with_llm(
     }
 
     // Any remaining None slots (shouldn't happen) get a no-match entry.
-    conversations
+    let suggestions = conversations
         .iter()
         .enumerate()
         .map(|(i, conv)| {
@@ -722,7 +791,14 @@ pub async fn suggest_project_with_llm(
                 reason: "none",
             })
         })
-        .collect()
+        .collect();
+
+    LlmMatchOutcome {
+        suggestions,
+        batches_total,
+        batches_completed,
+        llm_error,
+    }
 }
 
 fn contains_whole_word(haystack: &str, needle: &str) -> bool {
@@ -934,6 +1010,69 @@ mod tests {
             has_memory: false,
             prompt_template: prompt.to_string(),
         }
+    }
+
+    /// Regression: an Ollama failure mid-LLM-pass must be reported, not
+    /// swallowed. Every conversation still gets a suggestion (keyword
+    /// fallback), and the outcome carries the error + batch stats so the UI
+    /// can tell the user the run degraded.
+    #[tokio::test]
+    async fn llm_failure_is_surfaced_not_swallowed() {
+        // Loopback port 9 (discard) — connection refused immediately, no
+        // Ollama needed.
+        let ollama = crate::ollama::client::OllamaClient::new(Some("http://127.0.0.1:9".to_string()))
+            .expect("loopback base URL is valid");
+        let projects = vec![proj("p1", "Java", "object oriented programming jvm collections")];
+        let convs = vec![
+            // Title-matches "Java" without the LLM.
+            conv("c1", "Learning Java collections", ""),
+            // Needs the LLM, which will fail → keyword/none fallback.
+            conv("c2", "Untitled", "what should I cook tonight"),
+        ];
+        let mut progress_calls = 0usize;
+        let outcome = suggest_project_with_llm(
+            &convs,
+            &projects,
+            &HashMap::new(),
+            &ollama,
+            "test-model",
+            |_, _| progress_calls += 1,
+        )
+        .await;
+
+        assert!(outcome.llm_error.is_some(), "connection error must be reported");
+        assert_eq!(outcome.batches_completed, 0);
+        assert_eq!(outcome.batches_total, 1);
+        assert_eq!(progress_calls, 0, "no batch completed, so no progress ticks");
+        // Suggestions still cover every conversation.
+        assert_eq!(outcome.suggestions.len(), 2);
+        assert_eq!(outcome.suggestions[0].project_uuid.as_deref(), Some("p1"));
+        assert_eq!(outcome.suggestions[0].reason, "title");
+        assert_ne!(outcome.suggestions[1].reason, "llm");
+    }
+
+    /// Regression: topic generation reports failed batches instead of
+    /// silently returning an empty map.
+    #[tokio::test]
+    async fn topic_generation_failure_is_counted() {
+        let ollama = crate::ollama::client::OllamaClient::new(Some("http://127.0.0.1:9".to_string()))
+            .expect("loopback base URL is valid");
+        let projects = vec![proj("p1", "Java", "jvm collections")];
+        let mut progress_calls = 0usize;
+        let outcome = generate_project_topics(
+            &projects,
+            &HashMap::new(),
+            &ollama,
+            "test-model",
+            |_, _| progress_calls += 1,
+        )
+        .await;
+
+        assert!(outcome.topics.is_empty());
+        assert_eq!(outcome.batches_total, 1);
+        assert_eq!(outcome.batches_failed, 1);
+        assert!(outcome.last_error.is_some());
+        assert_eq!(progress_calls, 1, "failed batches still tick progress");
     }
 
     #[test]

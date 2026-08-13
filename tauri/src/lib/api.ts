@@ -1463,7 +1463,14 @@ export const api = {
       memoriesByProject: Record<string, string>;
       modelOverride?: string;
     }) =>
-      invoke<{ conversation_uuid: string; project_uuid: string | null; score: number; reason: string }[]>(
+      invoke<{
+        suggestions: { conversation_uuid: string; project_uuid: string | null; score: number; reason: string }[];
+        batches_total: number;
+        /** LLM batches that finished before an error (or all on success). */
+        batches_completed: number;
+        /** Ollama error that aborted the LLM pass; chats after the abort used keyword fallback. */
+        llm_error: string | null;
+      }>(
         "match_claude_with_llm",
         {
           conversations: args.conversations,
@@ -1491,6 +1498,11 @@ export const api = {
         topics_by_project: Record<string, string[]>;
         projects_with_topics: number;
         projects_total: number;
+        topic_batches_total: number;
+        /** Topic-distillation batches that errored; their projects match on base vocabulary. */
+        topic_batches_failed: number;
+        /** Last Ollama error from a failed topic batch, if any. */
+        llm_error: string | null;
       }>("match_claude_with_topics", {
         conversations: args.conversations,
         projects: args.projects,
