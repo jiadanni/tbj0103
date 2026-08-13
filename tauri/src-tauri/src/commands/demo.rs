@@ -497,32 +497,53 @@ Compared to RNNs ($O(n \\cdot d^2)$), self-attention is $O(n^2 \\cdot d)$, makin
         create_demo_chat(&conn, DEMO_WS_MUSIC, pid, id, title, msgs, &now)?;
     }
 
-    // Concepts for Music Theory workspace — expanded
-    let music_concepts: Vec<(&str, &str, &str, &str)> = vec![
-        ("demo-concept-major-scale-0000000000001", "Major Scale", "Seven-note scale (W-W-H-W-W-W-H) foundational for chords, intervals, and keys.", "definition"),
-        ("demo-concept-intervals-00000000000000001", "Intervals", "Distance between pitches in half-steps. Determine chord quality and melodic character.", "definition"),
-        ("demo-concept-circle-fifths-000000000001", "Circle of Fifths", "Diagram showing relationships between 12 pitches and their key signatures.", "topic"),
-        ("demo-concept-tritone-000000000000000001", "Tritone", "3 whole steps (6 half-steps) — drives dominant-to-tonic resolution.", "definition"),
-        ("demo-concept-cadence-000000000000000001", "Cadence", "Chord progression signaling phrase end. Types: authentic (V-I), plagal (IV-I), deceptive (V-vi).", "definition"),
-        ("demo-concept-time-signature-000000000001", "Time Signature", "Indicates beats per measure and which note gets the beat (e.g., 4/4, 3/4, 6/8).", "definition"),
-        ("demo-concept-polyrhythm-00000000000001", "Polyrhythm", "Layering different rhythmic patterns creating tension: 3:2, 4:3, 5:4.", "resource"),
-        ("demo-concept-syncopation-00000000000001", "Syncopation", "Emphasizing offbeats creating swing, jazz feel, and rhythmic interest.", "definition"),
-        ("demo-concept-chord-progression-00000001", "Chord Progression", "Sequence of chords following circle of fifths: I→V→vi→IV most common.", "topic"),
+    // Concepts for Music Theory workspace — expanded with Chapter/Section hierarchy
+    let music_concepts: Vec<(&str, &str, &str, &str, &str)> = vec![
+        // Chapters (level 1) & Sections (level 2)
+        ("demo-concept-chap-harmony-000000001", "Harmony & Composition", "Core structures of tonal harmony, chord relationships, scales, and cadences.", "topic", "chapter"),
+        ("demo-concept-sec-tonality-0000000001", "Scales & Keys", "Foundation of pitch organization and key relationships.", "topic", "section"),
+        ("demo-concept-sec-chords-00000000001", "Chords & Progression", "Chord construction, voice leading, and movement.", "topic", "section"),
+        ("demo-concept-chap-rhythm-0000000001", "Rhythm & Meter", "Temporal organization, meters, subdivisions, and rhythmic patterns.", "topic", "chapter"),
+        ("demo-concept-sec-meter-000000000001", "Meter & Groove", "Time signatures, feel, and offbeat emphasis.", "topic", "section"),
+
+        // Concepts (level 3)
+        ("demo-concept-major-scale-0000000000001", "Major Scale", "Seven-note scale (W-W-H-W-W-W-H) foundational for chords, intervals, and keys.", "definition", "concept"),
+        ("demo-concept-intervals-00000000000000001", "Intervals", "Distance between pitches in half-steps. Determine chord quality and melodic character.", "definition", "concept"),
+        ("demo-concept-circle-fifths-000000000001", "Circle of Fifths", "Diagram showing relationships between 12 pitches and their key signatures.", "topic", "concept"),
+        ("demo-concept-tritone-000000000000000001", "Tritone", "3 whole steps (6 half-steps) — drives dominant-to-tonic resolution.", "definition", "concept"),
+        ("demo-concept-cadence-000000000000000001", "Cadence", "Chord progression signaling phrase end. Types: authentic (V-I), plagal (IV-I), deceptive (V-vi).", "definition", "concept"),
+        ("demo-concept-time-signature-000000000001", "Time Signature", "Indicates beats per measure and which note gets the beat (e.g., 4/4, 3/4, 6/8).", "definition", "concept"),
+        ("demo-concept-polyrhythm-00000000000001", "Polyrhythm", "Layering different rhythmic patterns creating tension: 3:2, 4:3, 5:4.", "resource", "concept"),
+        ("demo-concept-syncopation-00000000000001", "Syncopation", "Emphasizing offbeats creating swing, jazz feel, and rhythmic interest.", "definition", "concept"),
+        ("demo-concept-chord-progression-00000001", "Chord Progression", "Sequence of chords following circle of fifths: I→V→vi→IV most common.", "topic", "concept"),
     ];
-    for (id, name, desc, ctype) in &music_concepts {
+    for (id, name, desc, ctype, hlevel) in &music_concepts {
         conn.execute(
-            "INSERT OR IGNORE INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, '[]', '[]', '[]', 0, 0, 0, ?6, ?7)",
-            rusqlite::params![id, DEMO_WS_MUSIC, name, desc, ctype, now, now],
+            "INSERT OR IGNORE INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, hierarchy_level, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, '[]', '[]', '[]', 0, 0, 0, ?7, ?8)",
+            rusqlite::params![id, DEMO_WS_MUSIC, name, desc, ctype, hlevel, now, now],
         ).map_err(|e| e.to_string())?;
     }
 
     let music_links: Vec<(&str, &str, &str)> = vec![
-        (
-            "demo-concept-intervals-00000000000000001",
-            "demo-concept-major-scale-0000000000001",
-            "part_of",
-        ),
+        // Hierarchy links (part_of: source = child, target = parent)
+        ("demo-concept-sec-tonality-0000000001", "demo-concept-chap-harmony-000000001", "part_of"),
+        ("demo-concept-sec-chords-00000000001", "demo-concept-chap-harmony-000000001", "part_of"),
+        ("demo-concept-sec-meter-000000000001", "demo-concept-chap-rhythm-0000000001", "part_of"),
+
+        ("demo-concept-major-scale-0000000000001", "demo-concept-sec-tonality-0000000001", "part_of"),
+        ("demo-concept-intervals-00000000000000001", "demo-concept-sec-tonality-0000000001", "part_of"),
+        ("demo-concept-circle-fifths-000000000001", "demo-concept-sec-tonality-0000000001", "part_of"),
+
+        ("demo-concept-tritone-000000000000000001", "demo-concept-sec-chords-00000000001", "part_of"),
+        ("demo-concept-cadence-000000000000000001", "demo-concept-sec-chords-00000000001", "part_of"),
+        ("demo-concept-chord-progression-00000001", "demo-concept-sec-chords-00000000001", "part_of"),
+
+        ("demo-concept-time-signature-000000000001", "demo-concept-sec-meter-000000000001", "part_of"),
+        ("demo-concept-polyrhythm-00000000000001", "demo-concept-sec-meter-000000000001", "part_of"),
+        ("demo-concept-syncopation-00000000000001", "demo-concept-sec-meter-000000000001", "part_of"),
+
+        // Non-hierarchy cross-links
         (
             "demo-concept-tritone-000000000000000001",
             "demo-concept-intervals-00000000000000001",

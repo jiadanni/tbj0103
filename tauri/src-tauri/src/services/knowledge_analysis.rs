@@ -923,7 +923,7 @@ Respond with ONLY raw JSON:\n\
 {{\"chapters\":[{{\"name\":\"...\",\"description\":\"...\",\"sections\":[{{\"name\":\"...\",\"description\":\"...\",\"concepts\":[{{\"name\":\"...\",\"description\":\"one clear sentence\",\"type\":\"definition\"}}]}}]}}],\"relationships\":[{{\"source\":\"exact concept name\",\"target\":\"exact concept name\",\"type\":\"prerequisite\",\"description\":\"why\"}}]}}\n\n\
 Rules:\n\
 - 2-4 chapters, 2-3 sections per chapter, 3-6 concepts per section\n\
-- concept type: topic, definition, technology, insight, question, resource\n\
+- concept type: topic, definition, technology, insight, question, resource, person, place, event, theory, object, custom\n\
 - relationship type: related, prerequisite, supports, contradicts, example\n\
 - source/target MUST be the exact concept name as listed in the hierarchy\n\
 - Every concept MUST be specific and named: use proper nouns, library names, theorem names, algorithm names, named techniques, or domain-specific terms\n\
@@ -1344,6 +1344,12 @@ Rules:\n\
                         "insight",
                         "question",
                         "resource",
+                        "person",
+                        "place",
+                        "event",
+                        "theory",
+                        "object",
+                        "custom",
                     ];
                     let con_type = if valid_types.contains(&con_type) {
                         con_type
