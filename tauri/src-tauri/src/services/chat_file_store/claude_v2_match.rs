@@ -453,6 +453,32 @@ const TOPIC_SOURCE_CHARS: usize = 1200;
 /// Upper bound on topics kept per project.
 const MAX_TOPICS_PER_PROJECT: usize = 30;
 
+/// Build the per-project source text for the LLM passes, memory first.
+///
+/// Project memory is distilled subject matter ("user is building X, cares
+/// about Y") while prompt templates are mostly tone/format instructions the
+/// topic prompt tells the model to ignore. Concatenating memory *last* (the
+/// old behavior) let a verbose template crowd the memory out of the budget
+/// entirely — measured on a real 18-project export, only 2 projects got more
+/// than half their memory through. Memory now gets first claim on the budget
+/// minus whatever description + prompt actually need, and the head's share is
+/// itself capped at 1/4 of the budget — so memory is never squeezed below 3/4
+/// even by a verbose template, and a short (or empty) head costs memory
+/// nothing. Projects without memory give the head the whole budget.
+pub(super) fn project_source_text(
+    prompt_template: &str,
+    description: &str,
+    memory: &str,
+    budget: usize,
+) -> String {
+    let head = format!("{} {}", description.trim(), prompt_template.trim());
+    let head = head.trim();
+    let mem_cap = budget - head.chars().count().min(budget / 4);
+    let mem: String = memory.trim().chars().take(mem_cap).collect();
+    let head_take: String = head.chars().take(budget - mem.chars().count()).collect();
+    format!("{} {}", mem.trim(), head_take.trim()).trim().to_string()
+}
+
 /// Distil each project's prompt/description/memory into a list of topic terms.
 ///
 /// This is the cheap half of the cost asymmetry: a Claude export has ~20 projects
@@ -502,10 +528,12 @@ pub async fn generate_project_topics(
                 .get(&proj.uuid)
                 .map(String::as_str)
                 .unwrap_or("");
-            let source: String = format!("{} {} {}", proj.prompt_template, proj.description, memory)
-                .chars()
-                .take(TOPIC_SOURCE_CHARS)
-                .collect();
+            let source = project_source_text(
+                &proj.prompt_template,
+                &proj.description,
+                memory,
+                TOPIC_SOURCE_CHARS,
+            );
             user_msg.push_str(&format!(
                 "{}. Name: \"{}\"\nSource: {}\n\n",
                 i + 1,
@@ -625,11 +653,9 @@ pub async fn suggest_project_with_llm(
             .get(&proj.uuid)
             .map(String::as_str)
             .unwrap_or("");
-        // Truncate prompt + memory so the context doesn't blow up.
-        let context: String = format!("{} {} {}", proj.prompt_template, proj.description, memory)
-            .chars()
-            .take(300)
-            .collect();
+        // Truncate so the context doesn't blow up, memory first — see
+        // `project_source_text`.
+        let context = project_source_text(&proj.prompt_template, &proj.description, memory, 300);
         project_list.push_str(&format!(
             "{}. {}{}\n",
             i + 1,
@@ -1010,6 +1036,41 @@ mod tests {
             has_memory: false,
             prompt_template: prompt.to_string(),
         }
+    }
+
+    /// Regression: a long prompt template must not crowd project memory out
+    /// of the LLM source text — memory gets first claim on the budget.
+    #[test]
+    fn source_text_is_memory_first() {
+        let prompt = "instruction boilerplate ".repeat(100); // 2400 chars
+        let memory = "jvm collections generics streams ".repeat(40); // 1360 chars
+        let source = project_source_text(&prompt, "", &memory, 1200);
+        assert!(source.chars().count() <= 1200);
+        // Memory fills its 3/4 share (900), the prompt only the remainder.
+        assert!(source.starts_with("jvm collections"));
+        assert!(source.contains("instruction boilerplate"));
+        let mem_part = source.find("instruction").unwrap();
+        assert!(mem_part >= 800, "memory share was {mem_part} chars");
+    }
+
+    #[test]
+    fn source_text_without_memory_keeps_full_budget_for_prompt() {
+        let prompt = "a".repeat(2000);
+        let source = project_source_text(&prompt, "", "", 1200);
+        assert_eq!(source.chars().count(), 1200);
+    }
+
+    #[test]
+    fn source_text_without_prompt_gives_memory_full_budget() {
+        let memory = "b".repeat(2000);
+        let source = project_source_text("", "", &memory, 1200);
+        assert_eq!(source.chars().count(), 1200);
+    }
+
+    #[test]
+    fn source_text_short_inputs_pass_through() {
+        let source = project_source_text("prompt", "desc", "memory", 1200);
+        assert_eq!(source, "memory desc prompt");
     }
 
     /// Regression: an Ollama failure mid-LLM-pass must be reported, not
