@@ -1870,6 +1870,12 @@ pub struct ClaudeConversationPreview {
     /// orphan conversations to projects when the title is generic ("Chat").
     #[serde(default)]
     pub first_user_message: String,
+    /// Claude-generated conversation overview from the export (~84% of chats
+    /// carry one). The highest-signal matching text: already distilled, and
+    /// present even when the title is generic and the opener is vague.
+    /// Truncated to ~600 chars.
+    #[serde(default)]
+    pub summary: String,
     /// All messages for in-app preview (role + content).
     #[serde(default)]
     pub messages: Vec<ClaudeMessagePreview>,
@@ -1955,6 +1961,7 @@ pub fn preview_claude_conversations(
                 updated_at: c.updated_at,
                 project_uuid: c.project.map(|p| p.uuid),
                 first_user_message,
+                summary: truncate_chars(c.summary.as_deref().unwrap_or(""), 600),
                 messages,
             }
         })
@@ -2307,6 +2314,42 @@ mod tests {
             assert!(
                 !parsed_orphans.is_empty(),
                 "parsed orphan conversations should not be empty"
+            );
+
+            // 7. Keyword matcher — the export's per-chat `summary` field must
+            // improve deterministic matching, never hurt it. Run the matcher
+            // with summaries stripped vs. present and compare.
+            let memories_map: std::collections::HashMap<String, String> = memories
+                .folder_memories
+                .iter()
+                .map(|m| (m.project_uuid.clone(), m.memory.clone()))
+                .collect();
+            let mut without_summary = orphans.clone();
+            for c in &mut without_summary {
+                c.summary = String::new();
+            }
+            let count_matched = |suggestions: &[claude_v2_match::MatchSuggestion]| {
+                suggestions.iter().filter(|s| s.project_uuid.is_some()).count()
+            };
+            let before = count_matched(&claude_v2_match::suggest_project_for_conversations(
+                &without_summary,
+                &projects,
+                &memories_map,
+            ));
+            let after = count_matched(&claude_v2_match::suggest_project_for_conversations(
+                &orphans,
+                &projects,
+                &memories_map,
+            ));
+            eprintln!(
+                "keyword matcher on {} orphans: {} matched without summaries, {} with",
+                orphans.len(),
+                before,
+                after
+            );
+            assert!(
+                after >= before,
+                "summaries must not reduce keyword matches ({before} -> {after})"
             );
         }
     }

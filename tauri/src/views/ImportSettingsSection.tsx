@@ -39,6 +39,8 @@ interface ClaudeConvPreview {
   updated_at: string;
   project_uuid: string | null;
   first_user_message?: string;
+  /** Claude-generated conversation overview from the export — used by the matcher. */
+  summary?: string;
   messages?: { role: string; content: string }[];
 }
 
@@ -793,6 +795,7 @@ export default function ImportSettingsSection() {
             uuid: c.uuid,
             name: c.name,
             first_user_message: c.first_user_message ?? "",
+            summary: c.summary ?? "",
             messages: c.messages,
           })),
           projects: projectArgs,
@@ -817,6 +820,7 @@ export default function ImportSettingsSection() {
             uuid: c.uuid,
             name: c.name,
             first_user_message: c.first_user_message ?? "",
+            summary: c.summary ?? "",
           })),
           projects: projectArgs,
           memoriesByProject: claudeMemoriesByProject,

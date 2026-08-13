@@ -543,6 +543,7 @@ mod tests {
             updated_at: String::new(),
             project_uuid: None,
             first_user_message: body.to_string(),
+            summary: String::new(),
             messages: vec![ClaudeMessagePreview {
                 role: "user".to_string(),
                 content: body.to_string(),

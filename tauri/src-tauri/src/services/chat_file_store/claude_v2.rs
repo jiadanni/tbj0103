@@ -264,6 +264,9 @@ pub fn preview_v2_design_chats(
             updated_at: chat.updated_at.clone(),
             project_uuid: Some(chat.project.uuid.clone()),
             first_user_message,
+            // Design chats are already project-linked; they never go through
+            // the matcher, so no summary is needed.
+            summary: String::new(),
             messages,
         };
         by_project

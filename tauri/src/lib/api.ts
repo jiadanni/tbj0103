@@ -1441,8 +1441,8 @@ export const api = {
           has_memory: boolean;
           prompt_template?: string;
         }[];
-        conversations_by_project: Record<string, { uuid: string; name: string; message_count: number; created_at: string; updated_at: string; project_uuid: string | null; first_user_message?: string; messages?: { role: string; content: string }[] }[]>;
-        orphan_conversations: { uuid: string; name: string; message_count: number; created_at: string; updated_at: string; project_uuid: string | null; first_user_message?: string; messages?: { role: string; content: string }[] }[];
+        conversations_by_project: Record<string, { uuid: string; name: string; message_count: number; created_at: string; updated_at: string; project_uuid: string | null; first_user_message?: string; summary?: string; messages?: { role: string; content: string }[] }[]>;
+        orphan_conversations: { uuid: string; name: string; message_count: number; created_at: string; updated_at: string; project_uuid: string | null; first_user_message?: string; summary?: string; messages?: { role: string; content: string }[] }[];
         orphan_count: number;
         memories: {
           conversations_memory: string;
@@ -1458,7 +1458,7 @@ export const api = {
         includeMemories: args.includeMemories,
       }),
     matchClaudeWithLlm: (args: {
-      conversations: { uuid: string; name: string; first_user_message: string }[];
+      conversations: { uuid: string; name: string; first_user_message: string; summary?: string }[];
       projects: { uuid: string; name: string; prompt_template: string; description: string }[];
       memoriesByProject: Record<string, string>;
       modelOverride?: string;
@@ -1487,6 +1487,7 @@ export const api = {
         uuid: string;
         name: string;
         first_user_message: string;
+        summary?: string;
         messages?: { role: string; content: string }[];
       }[];
       projects: { uuid: string; name: string; prompt_template: string; description: string }[];

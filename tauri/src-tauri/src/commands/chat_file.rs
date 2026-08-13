@@ -1794,6 +1794,7 @@ pub async fn cluster_unmatched_claude_chats(
                 updated_at: String::new(),
                 project_uuid: None,
                 first_user_message: v["first_user_message"].as_str().unwrap_or("").to_string(),
+                summary: v["summary"].as_str().unwrap_or("").to_string(),
                 messages,
             })
         })
@@ -1962,6 +1963,7 @@ pub async fn match_claude_with_topics<R: Runtime>(
                 updated_at: String::new(),
                 project_uuid: None,
                 first_user_message: v["first_user_message"].as_str().unwrap_or("").to_string(),
+                summary: v["summary"].as_str().unwrap_or("").to_string(),
                 messages,
             })
         })
@@ -2103,6 +2105,7 @@ pub async fn match_claude_with_llm<R: Runtime>(
                 updated_at: String::new(),
                 project_uuid: None,
                 first_user_message: v["first_user_message"].as_str().unwrap_or("").to_string(),
+                summary: v["summary"].as_str().unwrap_or("").to_string(),
                 messages: Vec::new(),
             })
         })

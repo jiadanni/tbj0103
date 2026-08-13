@@ -330,12 +330,61 @@ fn score_conversation_inner(
         }
     }
 
-    // 2. IDF-weighted coverage: what share of the chat's discriminative mass does
-    //    each project's vocabulary account for?
-    let chat_tokens = tokenize(&chat_context_text(conv));
+    // 2. IDF-weighted coverage on the base text (title + transcript).
+    if let Some(hit) = coverage_suggestion(
+        conv,
+        &chat_context_text(conv),
+        vocabs,
+        idf,
+        boostable,
+        coverage_min,
+        margin_min,
+    ) {
+        return hit;
+    }
+
+    // 3. Summary rescue: the export's Claude-written overview is distilled,
+    //    high-signal text, but its verbose prose dilutes IDF coverage when
+    //    concatenated unconditionally — measured on a real 924-chat export,
+    //    always-on summaries *lost* 53 previously-confident matches. So the
+    //    summary only enters for chats the base text couldn't place, where a
+    //    new confident match is a strict gain.
+    let summary = conv.summary.trim();
+    if !summary.is_empty() {
+        let with_summary = format!("{} {}", chat_context_text(conv), summary);
+        if let Some(hit) = coverage_suggestion(
+            conv,
+            &with_summary,
+            vocabs,
+            idf,
+            boostable,
+            coverage_min,
+            margin_min,
+        ) {
+            return hit;
+        }
+    }
+
+    no_match(conv)
+}
+
+/// IDF-weighted coverage scoring for one chat text against every project
+/// vocabulary. Returns `None` unless one project passes both the coverage
+/// threshold and the runner-up margin.
+#[allow(clippy::too_many_arguments)]
+fn coverage_suggestion(
+    conv: &ClaudeConversationPreview,
+    text: &str,
+    vocabs: &[ProjectVocab],
+    idf: &HashMap<String, f32>,
+    boostable: &HashSet<String>,
+    coverage_min: f32,
+    margin_min: f32,
+) -> Option<MatchSuggestion> {
+    let chat_tokens = tokenize(text);
     let chat_n = chat_tokens.len();
     if chat_n < MIN_CHAT_TOKENS {
-        return no_match(conv);
+        return None;
     }
 
     // Denominator: total IDF mass of the chat. Unknown tokens (present in no
@@ -346,7 +395,7 @@ fn score_conversation_inner(
         .map(|t| idf.get(t).copied().unwrap_or(UNKNOWN_TOKEN_IDF))
         .sum();
     if total_mass <= 0.0 {
-        return no_match(conv);
+        return None;
     }
 
     let mut scored: Vec<(&str, f32, bool)> = Vec::with_capacity(vocabs.len());
@@ -375,21 +424,19 @@ fn score_conversation_inner(
     // off the two best scores.
     scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-    let Some(&(top_uuid, top_score, top_hit_topic)) = scored.first() else {
-        return no_match(conv);
-    };
+    let &(top_uuid, top_score, top_hit_topic) = scored.first()?;
     let runner_up = scored.get(1).map(|s| s.1).unwrap_or(0.0);
 
     if top_score >= coverage_min && (top_score - runner_up) >= margin_min {
-        return MatchSuggestion {
+        return Some(MatchSuggestion {
             conversation_uuid: conv.uuid.clone(),
             project_uuid: Some(top_uuid.to_string()),
             score: top_score.min(0.85),
             reason: if top_hit_topic { "topics" } else { "keywords" },
-        };
+        });
     }
 
-    no_match(conv)
+    None
 }
 
 fn no_match(conv: &ClaudeConversationPreview) -> MatchSuggestion {
@@ -718,12 +765,20 @@ pub async fn suggest_project_with_llm(
         let mut user_msg = String::new();
         for (batch_pos, &conv_idx) in chunk.iter().enumerate() {
             let conv = &conversations[conv_idx];
-            let first_msg: String = conv.first_user_message.chars().take(200).collect();
+            // Prefer the export's distilled summary over the raw opener —
+            // it describes the whole chat, not just how it started.
+            let gist_label = if conv.summary.trim().is_empty() { "First message" } else { "Summary" };
+            let gist: String = if conv.summary.trim().is_empty() {
+                conv.first_user_message.chars().take(200).collect()
+            } else {
+                conv.summary.trim().chars().take(300).collect()
+            };
             user_msg.push_str(&format!(
-                "{}. Title: \"{}\" | First message: \"{}\"\n",
+                "{}. Title: \"{}\" | {}: \"{}\"\n",
                 batch_pos + 1,
                 conv.name.replace('"', "'"),
-                first_msg.replace('"', "'"),
+                gist_label,
+                gist.replace('"', "'"),
             ));
         }
 
@@ -995,6 +1050,7 @@ mod tests {
             updated_at: String::new(),
             project_uuid: None,
             first_user_message: msg.to_string(),
+            summary: String::new(),
             messages: vec![],
         }
     }
@@ -1021,6 +1077,7 @@ mod tests {
             updated_at: String::new(),
             project_uuid: None,
             first_user_message,
+            summary: String::new(),
             messages,
         }
     }
@@ -1036,6 +1093,40 @@ mod tests {
             has_memory: false,
             prompt_template: prompt.to_string(),
         }
+    }
+
+    /// The export's Claude-written summary must participate in matching: a
+    /// chat with a generic title and vague opener still matches when its
+    /// summary carries the project's vocabulary.
+    #[test]
+    fn summary_rescues_vague_title_and_opener() {
+        let projects = vec![
+            proj(
+                "p1",
+                "Beach stage",
+                "DJ controller CDJS mixer house music recordbox vinyl tracks beatmatching",
+            ),
+            proj("p2", "Cooking", "recipes ingredients pasta sauce kitchen"),
+        ];
+        let mut c = conv("c1", "Untitled", "hey can you help me with something");
+        // Without a summary, this chat has nothing to match on.
+        let none = suggest_project_for_conversations(
+            std::slice::from_ref(&c),
+            &projects,
+            &HashMap::new(),
+        );
+        assert_eq!(none[0].project_uuid, None);
+
+        c.summary = "The user asked about beatmatching tracks on their CDJS \
+                     mixer while preparing a house music set."
+            .to_string();
+        let out = suggest_project_for_conversations(
+            std::slice::from_ref(&c),
+            &projects,
+            &HashMap::new(),
+        );
+        assert_eq!(out[0].project_uuid.as_deref(), Some("p1"));
+        assert_eq!(out[0].reason, "keywords");
     }
 
     /// Regression: a long prompt template must not crowd project memory out
