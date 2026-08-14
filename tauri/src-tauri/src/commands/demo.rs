@@ -9,10 +9,11 @@ use rusqlite::OptionalExtension;
 /// Each workspace showcases a different subject area with rich content.
 /// All demo data uses hardcoded IDs so it can be cleanly removed on deactivate.
 const DEMO_WS_AI: &str = "demo-workspace-ai-ml-000000000000000";
+const DEMO_WS_HUMANITIES: &str = "demo-workspace-humanities-0000000";
 const DEMO_WS_MUSIC: &str = "demo-workspace-music-theory-0000000";
 const DEMO_WS_ROME: &str = "demo-workspace-rome-000000000000000";
 
-const DEMO_WORKSPACE_IDS: [&str; 3] = [DEMO_WS_AI, DEMO_WS_MUSIC, DEMO_WS_ROME];
+const DEMO_WORKSPACE_IDS: [&str; 4] = [DEMO_WS_AI, DEMO_WS_HUMANITIES, DEMO_WS_MUSIC, DEMO_WS_ROME];
 
 const DEMO_PROJECT_AI: &str = "demo-project-transformers-000000000000";
 const DEMO_PROJECT_AI_LLMS: &str = "demo-project-ai-llms-00000000000000";
@@ -385,10 +386,16 @@ Compared to RNNs ($O(n \\cdot d^2)$), self-attention is $O(n^2 \\cdot d)$, makin
         ],
     ).map_err(|e| e.to_string())?;
 
-    // ── Workspace 2: Music Theory ────────────────────────────────────
+    // ── Workspace 2: Humanities & Arts (Parent Workspace) ───────────────
     conn.execute(
-        "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES (?1, '🎼 Music Theory', ?2, ?3)",
-        rusqlite::params![DEMO_WS_MUSIC, now, now],
+        "INSERT INTO workspaces (id, name, description, created_at, updated_at) VALUES (?1, '🎨 Humanities & Arts', 'Parent workspace combining music theory, classical history, and interdisciplinary humanistic studies.', ?2, ?3)",
+        rusqlite::params![DEMO_WS_HUMANITIES, now, now],
+    ).map_err(|e| e.to_string())?;
+
+    // ── Sub-Workspace 2a: Music Theory ────────────────────────────────────
+    conn.execute(
+        "INSERT INTO workspaces (id, name, parent_workspace_id, created_at, updated_at) VALUES (?1, '🎼 Music Theory', ?2, ?3, ?4)",
+        rusqlite::params![DEMO_WS_MUSIC, DEMO_WS_HUMANITIES, now, now],
     ).map_err(|e| e.to_string())?;
 
     conn.execute(
@@ -732,10 +739,10 @@ Key topics:
         rusqlite::params![uuid::Uuid::new_v4().to_string(), "demo-concept-jazz-harmony-000000001", "demo-concept-chord-progression-00000001", now],
     ).map_err(|e| e.to_string())?;
 
-    // ── Workspace 3: Roman Empire ──────────────────────────────────────
+    // ── Sub-Workspace 2b: Roman Empire ──────────────────────────────────
     conn.execute(
-        "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES (?1, '🏛️ Roman Empire', ?2, ?3)",
-        rusqlite::params![DEMO_WS_ROME, now, now],
+        "INSERT INTO workspaces (id, name, parent_workspace_id, created_at, updated_at) VALUES (?1, '🏛️ Roman Empire', ?2, ?3, ?4)",
+        rusqlite::params![DEMO_WS_ROME, DEMO_WS_HUMANITIES, now, now],
     ).map_err(|e| e.to_string())?;
 
     conn.execute(
