@@ -255,7 +255,6 @@ describe("ImportSettingsSection", () => {
     renderImportSettings();
 
     expect(screen.getByText("LM Studio")).toBeInTheDocument();
-    expect(screen.getByText(/Select one folder to preview/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByText("Select")[0]);
 
