@@ -843,28 +843,52 @@ Key topics:
     for (id, pid, title, msgs) in rome_chats {
         create_demo_chat(&conn, DEMO_WS_ROME, pid, id, title, msgs, &now)?;
     }
+    let rome_concepts: Vec<(&str, &str, &str, &str, &str)> = vec![
+        // Chapters (level 1) & Sections (level 2)
+        ("demo-concept-chap-rome-republic-01", "Fall of the Republic", "Political crisis, civil wars, and transformation into the Empire.", "topic", "chapter"),
+        ("demo-concept-sec-rome-politics-01", "Political Crisis", "Rise of dictators, triumvirates, and senate struggles.", "topic", "section"),
+        ("demo-concept-sec-rome-emperors-01", "Imperial Transition", "The Principate under Augustus and imperial consolidation.", "topic", "section"),
+        ("demo-concept-chap-rome-military-01", "Roman Military & Legions", "Organization, professionalization, and leadership of the Roman army.", "topic", "chapter"),
+        ("demo-concept-sec-rome-legions-01", "Legionary Command", "Structure of cohorts, maniples, and field officers.", "topic", "section"),
 
-    // Concepts for Rome workspace — expanded
-    let rome_concepts: Vec<(&str, &str, &str, &str)> = vec![
-        ("demo-concept-caesar-000000000000000001", "Julius Caesar", "General and statesman who transformed Roman Republic into Empire.", "person"),
-        ("demo-concept-republic-00000000000000001", "Roman Republic", "Ancient Roman civilization (509–27 BC) with republican government.", "topic"),
-        ("demo-concept-augustus-000000000000000001", "Augustus", "First Roman Emperor (Octavian). Maintained republican facades while holding absolute power.", "person"),
-        ("demo-concept-senate-0000000000000000001", "Roman Senate", "Governing body gradually losing power to military strongmen in late Republic.", "custom"),
-        ("demo-concept-legion-000000000000000001", "Roman Legion", "Military unit (~5,500 troops) organized into cohorts, maniples, centuries, contubernium.", "resource"),
-        ("demo-concept-centurion-0000000000000001", "Centurion", "Professional military officer commanding century (~80 troops). Backbone of Roman discipline.", "definition"),
-        ("demo-concept-marius-00000000000000001", "Gaius Marius", "Military reformer who professionalized legions and shifted loyalty from state to general.", "person"),
-        ("demo-concept-cicero-00000000000000001", "Cicero", "Orator and statesman who opposed [[Caesar]] and [[Mark Antony]] in final Republic crisis.", "person"),
-        ("demo-concept-tacitus-00000000000000001", "Tacitus", "Historian documenting Roman-Germanic conflicts and military tactics.", "person"),
+        // Concepts (level 3)
+        ("demo-concept-caesar-000000000000000001", "Julius Caesar", "General and statesman who transformed Roman Republic into Empire.", "person", "concept"),
+        ("demo-concept-republic-00000000000000001", "Roman Republic", "Ancient Roman civilization (509–27 BC) with republican government.", "topic", "concept"),
+        ("demo-concept-augustus-000000000000000001", "Augustus", "First Roman Emperor (Octavian). Maintained republican facades while holding absolute power.", "person", "concept"),
+        ("demo-concept-senate-0000000000000000001", "Roman Senate", "Governing body gradually losing power to military strongmen in late Republic.", "custom", "concept"),
+        ("demo-concept-legion-000000000000000001", "Roman Legion", "Military unit (~5,500 troops) organized into cohorts, maniples, centuries, contubernium.", "resource", "concept"),
+        ("demo-concept-centurion-0000000000000001", "Centurion", "Professional military officer commanding century (~80 troops). Backbone of Roman discipline.", "definition", "concept"),
+        ("demo-concept-marius-00000000000000001", "Gaius Marius", "Military reformer who professionalized legions and shifted loyalty from state to general.", "person", "concept"),
+        ("demo-concept-cicero-00000000000000001", "Cicero", "Orator and statesman who opposed [[Caesar]] and [[Mark Antony]] in final Republic crisis.", "person", "concept"),
+        ("demo-concept-tacitus-00000000000000001", "Tacitus", "Historian documenting Roman-Germanic conflicts and military tactics.", "person", "concept"),
     ];
-    for (id, name, desc, ctype) in &rome_concepts {
+    for (id, name, desc, ctype, hlevel) in &rome_concepts {
         conn.execute(
-            "INSERT OR IGNORE INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, '[]', '[]', '[]', 0, 0, 0, ?6, ?7)",
-            rusqlite::params![id, DEMO_WS_ROME, name, desc, ctype, now, now],
+            "INSERT OR IGNORE INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, hierarchy_level, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, '[]', '[]', '[]', 0, 0, 0, ?7, ?8)",
+            rusqlite::params![id, DEMO_WS_ROME, name, desc, ctype, hlevel, now, now],
         ).map_err(|e| e.to_string())?;
     }
 
     let rome_links: Vec<(&str, &str, &str)> = vec![
+        // Hierarchy links (part_of: source = child, target = parent)
+        ("demo-concept-sec-rome-politics-01", "demo-concept-chap-rome-republic-01", "part_of"),
+        ("demo-concept-sec-rome-emperors-01", "demo-concept-chap-rome-republic-01", "part_of"),
+        ("demo-concept-sec-rome-legions-01", "demo-concept-chap-rome-military-01", "part_of"),
+
+        ("demo-concept-caesar-000000000000000001", "demo-concept-sec-rome-politics-01", "part_of"),
+        ("demo-concept-republic-00000000000000001", "demo-concept-sec-rome-politics-01", "part_of"),
+        ("demo-concept-senate-0000000000000000001", "demo-concept-sec-rome-politics-01", "part_of"),
+        ("demo-concept-cicero-00000000000000001", "demo-concept-sec-rome-politics-01", "part_of"),
+
+        ("demo-concept-augustus-000000000000000001", "demo-concept-sec-rome-emperors-01", "part_of"),
+
+        ("demo-concept-legion-000000000000000001", "demo-concept-sec-rome-legions-01", "part_of"),
+        ("demo-concept-centurion-0000000000000001", "demo-concept-sec-rome-legions-01", "part_of"),
+        ("demo-concept-marius-00000000000000001", "demo-concept-sec-rome-legions-01", "part_of"),
+        ("demo-concept-tacitus-00000000000000001", "demo-concept-sec-rome-legions-01", "part_of"),
+
+        // Non-hierarchy cross-links
         (
             "demo-concept-caesar-000000000000000001",
             "demo-concept-republic-00000000000000001",
@@ -876,19 +900,9 @@ Key topics:
             "supports",
         ),
         (
-            "demo-concept-senate-0000000000000000001",
-            "demo-concept-republic-00000000000000001",
-            "part_of",
-        ),
-        (
             "demo-concept-marius-00000000000000001",
             "demo-concept-legion-000000000000000001",
             "supports",
-        ),
-        (
-            "demo-concept-centurion-0000000000000001",
-            "demo-concept-legion-000000000000000001",
-            "part_of",
         ),
         (
             "demo-concept-cicero-00000000000000001",
