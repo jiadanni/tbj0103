@@ -3,7 +3,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ask, message, open } from "@tauri-apps/plugin-dialog";
-import { Check, CheckSquare, ChevronDown, ChevronRight, FolderInput, Info, RefreshCw, Square, X } from "lucide-react";
+import { Check, CheckSquare, ChevronDown, ChevronRight, Eye, FolderInput, Info, RefreshCw, Square, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useWorkspaceStore } from "../stores/workspaceStore";
@@ -175,6 +175,8 @@ export default function ImportSettingsSection() {
   const [expandedInstructions, setExpandedInstructions] = useState<Set<string>>(new Set());
   const [focusedConvUuid, setFocusedConvUuid] = useState<string | null>(null);
   const [orphansExpanded, setOrphansExpanded] = useState(false);
+  // Inline preview toggle for a row in the unassigned-conversations table.
+  const [previewConvUuid, setPreviewConvUuid] = useState<string | null>(null);
   const [claudeSuggestions, setClaudeSuggestions] = useState<ChatSuggestion[]>([]);
   // How many projects the topic pass successfully enriched (null = not run yet).
   const [topicCoverage, setTopicCoverage] = useState<{ enriched: number; total: number } | null>(null);
@@ -2078,8 +2080,13 @@ export default function ImportSettingsSection() {
                               const ticked = claudeSelected.has(conv.uuid);
                               const suggestion = claudeSuggestions.find((s) => s.conversation_uuid === conv.uuid);
                               const suggestedProj = suggestion?.project_uuid ? projectsByUuid.get(suggestion.project_uuid) : null;
+                              const previewOpen = previewConvUuid === conv.uuid;
+                              // Empty-named chats (Claude never auto-titled them) get a
+                              // snippet from the summary / opener so the row is identifiable.
+                              const snippet = !conv.name ? (conv.summary || conv.first_user_message || "").slice(0, 120) : "";
                               return (
-                                <div key={conv.uuid} className="flex items-center gap-2 border-b border-[var(--border-color)] px-3 py-1.5 last:border-b-0 hover:bg-[var(--bg-hover)]">
+                                <div key={conv.uuid} className="border-b border-[var(--border-color)] last:border-b-0">
+                                <div className="flex items-center gap-2 px-3 py-1.5 hover:bg-[var(--bg-hover)]">
                                   <input
                                     type="checkbox"
                                     checked={assigned !== null || ticked}
@@ -2102,13 +2109,30 @@ export default function ImportSettingsSection() {
                                     }}
                                   />
                                   <div className="flex min-w-0 flex-1 flex-col">
-                                    <span className="truncate text-[11px] text-[var(--text-primary)]">{conv.name || "Untitled"}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setPreviewConvUuid(previewOpen ? null : conv.uuid)}
+                                      className="truncate text-left text-[11px] text-[var(--text-primary)] hover:underline"
+                                      title="Toggle chat preview"
+                                    >
+                                      {conv.name || "Untitled"}
+                                      {snippet && <span className="text-[var(--text-muted)]"> — {snippet}</span>}
+                                    </button>
                                     {suggestedProj && assigned !== suggestion?.project_uuid && (
                                       <span className="text-[10px] text-[var(--text-muted)]">
                                         suggested: {suggestedProj.name} ({suggestion?.reason})
                                       </span>
                                     )}
                                   </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setPreviewConvUuid(previewOpen ? null : conv.uuid)}
+                                    className={`shrink-0 rounded p-0.5 ${previewOpen ? "text-[var(--accent-color)]" : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"}`}
+                                    aria-label={previewOpen ? "Hide chat preview" : "Show chat preview"}
+                                    aria-expanded={previewOpen}
+                                  >
+                                    <Eye size={12} />
+                                  </button>
                                   <div className="relative shrink-0 max-w-[180px]">
                                     <select
                                       value={assigned ?? ""}
@@ -2134,6 +2158,30 @@ export default function ImportSettingsSection() {
                                     <ChevronDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
                                   </div>
                                   <span className="shrink-0 text-[10px] text-[var(--text-muted)]">{conv.message_count} msg{conv.message_count === 1 ? "" : "s"}</span>
+                                </div>
+                                {previewOpen && (
+                                  <div className="border-t border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2">
+                                    {conv.summary && (
+                                      <p className="mb-2 whitespace-pre-wrap text-[11px] italic text-[var(--text-secondary)]">
+                                        {conv.summary}
+                                      </p>
+                                    )}
+                                    {conv.messages && conv.messages.length > 0 ? (
+                                      <div className="max-h-64 overflow-y-auto rounded-md border border-[var(--border-color)]">
+                                        {conv.messages.map((msg, i) => (
+                                          <div key={i} className={`flex flex-col gap-0.5 border-b border-[var(--border-color)] px-3 py-2 last:border-b-0 ${msg.role === "user" ? "bg-[var(--bg-elevated)]" : "bg-[var(--bg-primary)]"}`}>
+                                            <span className="text-[10px] font-medium text-[var(--text-muted)]">{msg.role === "user" ? "You" : "Claude"}</span>
+                                            <p className="whitespace-pre-wrap text-[11px] text-[var(--text-secondary)]">{msg.content}</p>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : conv.first_user_message ? (
+                                      <p className="whitespace-pre-wrap text-[11px] text-[var(--text-secondary)]">{conv.first_user_message}</p>
+                                    ) : !conv.summary ? (
+                                      <p className="text-[11px] text-[var(--text-muted)]">No preview available for this chat.</p>
+                                    ) : null}
+                                  </div>
+                                )}
                                 </div>
                               );
                             })}

@@ -14,6 +14,7 @@ vi.mock("lucide-react", () => ({
   CheckSquare: () => <div data-testid="icon-check-square" />,
   ChevronDown: () => <div data-testid="icon-chevron-down" />,
   ChevronRight: () => <div data-testid="icon-chevron-right" />,
+  Eye: () => <div data-testid="icon-eye" />,
   FolderInput: () => <div data-testid="icon-folder-input" />,
   Info: () => <div data-testid="icon-info" />,
   RefreshCw: () => <div data-testid="icon-refresh-cw" />,
@@ -182,6 +183,47 @@ vi.mock("@/lib/api", () => ({
         errors: 0,
         error_messages: [],
       })),
+      detectClaudeFormat: vi.fn(() => Promise.resolve({
+        format: "v2",
+        files_found: { conversations: true, projects: true, memories: false },
+      })),
+      previewClaudeFiles: vi.fn(() => Promise.resolve({
+        format: "v2",
+        folders: [
+          {
+            uuid: "proj-1",
+            name: "Rust Learning",
+            description: "",
+            has_prompt: false,
+            doc_count: 0,
+            conversation_count: 0,
+            has_memory: false,
+            prompt_template: "",
+          },
+        ],
+        conversations_by_project: {},
+        orphan_conversations: [
+          {
+            uuid: "orphan-1",
+            name: "",
+            message_count: 2,
+            created_at: "2024-01-01T00:00:00Z",
+            updated_at: "2024-01-01T00:00:00Z",
+            project_uuid: null,
+            first_user_message: "How do lifetimes work in Rust?",
+            summary: "A walkthrough of Rust lifetime annotations.",
+            messages: [
+              { role: "user", content: "How do lifetimes work in Rust?" },
+              { role: "assistant", content: "Lifetimes describe how long references are valid." },
+            ],
+          },
+        ],
+        orphan_count: 1,
+        memories: null,
+        memories_by_project: {},
+        suggestions: [],
+        files_found: { conversations: true, projects: true, memories: false },
+      })),
     },
   },
 }));
@@ -293,5 +335,35 @@ describe("ImportSettingsSection", () => {
       expect.stringContaining("1 conversation imported."),
       expect.objectContaining({ title: "ChatGPT import complete" }),
     );
+  });
+
+  it("shows a snippet for untitled Claude chats and an inline preview on demand", async () => {
+    vi.mocked(openDialog).mockResolvedValue("/imports/claude");
+
+    renderImportSettings();
+
+    // The select buttons are rendered inside the grids: LM Studio is 0, Gemini is 1, Claude is 2, ChatGPT is 3.
+    fireEvent.click(screen.getAllByText("Select")[2]);
+
+    // Expand the unassigned-conversations panel.
+    fireEvent.click(await screen.findByText(/1 conversation$/));
+
+    // The empty-named chat shows "Untitled" plus a summary snippet.
+    const titleButton = await screen.findByText(/Untitled/);
+    expect(titleButton.textContent).toContain("A walkthrough of Rust lifetime annotations.");
+
+    // No message content until the preview is toggled open.
+    expect(screen.queryByText("Lifetimes describe how long references are valid.")).not.toBeInTheDocument();
+
+    fireEvent.click(titleButton);
+
+    expect(await screen.findByText("How do lifetimes work in Rust?")).toBeInTheDocument();
+    expect(screen.getByText("Lifetimes describe how long references are valid.")).toBeInTheDocument();
+
+    // Toggling again hides the preview.
+    fireEvent.click(screen.getByText(/Untitled/));
+    await waitFor(() => {
+      expect(screen.queryByText("Lifetimes describe how long references are valid.")).not.toBeInTheDocument();
+    });
   });
 });
