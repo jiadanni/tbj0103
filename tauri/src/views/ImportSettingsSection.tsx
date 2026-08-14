@@ -1097,71 +1097,97 @@ export default function ImportSettingsSection() {
           </div>
         )}
 
-        {/* ── Import source chips (single compact row; descriptions live in tooltips) ── */}
-        <div className="shrink-0 flex flex-wrap items-center gap-2">
-          {/* LM Studio (single + multiple merged) */}
-          <Tooltip content="Select one folder to preview conversations, or multiple folders to import directly." position="bottom">
-            <div className={`inline-flex items-center gap-2 rounded-lg border px-2.5 py-1 transition-opacity ${activeLmStudio ? "border-[var(--accent-color)]/50 bg-[var(--bg-elevated)]" : "border-[var(--border-color)] bg-[var(--bg-elevated)]"} ${anyActive && !activeLmStudio ? "opacity-40 pointer-events-none" : ""}`}>
-              <FolderInput size={13} className="shrink-0 text-[var(--accent-color)]" />
-              <h2 className="text-xs font-medium text-[var(--text-primary)]">LM Studio</h2>
-              <button
-                onClick={() => void pickLmStudioFolders()}
-                disabled={lmStudioScanning || importingLmStudio}
-                className="shrink-0 inline-flex items-center gap-1 rounded-md border border-[var(--border-color)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
-              >
-                {(lmStudioScanning || importingLmStudio) && <RefreshCw size={10} className="animate-spin" />}
-                {lmStudioScanning ? "Scanning…" : importingLmStudio ? "Importing…" : "Select"}
-              </button>
-            </div>
-          </Tooltip>
+        {/* ── Import sources ──────────────────────────────────────────
+            Full descriptive cards while nothing is selected; collapse to a
+            single compact chip row once a source is active so the review UI
+            below gets the vertical space. */}
+        {(() => {
+          const sources = [
+            {
+              key: "lm-studio",
+              name: "LM Studio",
+              description: "Select one folder to preview conversations, or multiple folders to import directly.",
+              active: activeLmStudio,
+              busy: lmStudioScanning || importingLmStudio,
+              label: lmStudioScanning ? "Scanning…" : importingLmStudio ? "Importing…" : "Select",
+              onPick: () => void pickLmStudioFolders(),
+            },
+            {
+              key: "gemini",
+              name: "Google Gemini",
+              description: "Import conversations from a Google Takeout HTML activity export.",
+              active: activeGemini,
+              busy: geminiScanning || importingGemini,
+              label: geminiScanning ? "Scanning…" : importingGemini ? "Importing…" : geminiFilePath ? "Change" : "Select",
+              onPick: () => void pickGeminiFile(),
+            },
+            {
+              key: "claude",
+              name: "Claude",
+              description: "Import conversations, projects, and memories from a Claude Desktop export folder. Documents and files attached to projects are not supported.",
+              active: activeClaude,
+              busy: claudeScanning || importingClaude,
+              label: claudeFolderPath ? "Change" : "Select",
+              onPick: () => void pickClaudeFolder(),
+            },
+            {
+              key: "chatgpt",
+              name: "ChatGPT",
+              description: "Import conversations from a ChatGPT export folder containing conversations.json files.",
+              active: activeChatGpt,
+              busy: chatGptScanning || importingChatGpt,
+              label: chatGptScanning ? "Scanning…" : importingChatGpt ? "Importing…" : chatGptFolderPath ? "Change" : "Select",
+              onPick: () => void pickChatGptFolder(),
+            },
+          ];
 
-          {/* Google Takeout */}
-          <Tooltip content="Import conversations from a Google Takeout HTML activity export." position="bottom">
-            <div className={`inline-flex items-center gap-2 rounded-lg border px-2.5 py-1 transition-opacity ${activeGemini ? "border-[var(--accent-color)]/50 bg-[var(--bg-elevated)]" : "border-[var(--border-color)] bg-[var(--bg-elevated)]"} ${anyActive && !activeGemini ? "opacity-40 pointer-events-none" : ""}`}>
-              <FolderInput size={13} className="shrink-0 text-[var(--accent-color)]" />
-              <h2 className="text-xs font-medium text-[var(--text-primary)]">Google Gemini</h2>
-              <button
-                onClick={() => void pickGeminiFile()}
-                disabled={geminiScanning || importingGemini}
-                className="shrink-0 inline-flex items-center gap-1 rounded-md border border-[var(--border-color)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
-              >
-                {(geminiScanning || importingGemini) && <RefreshCw size={10} className="animate-spin" />}
-                {geminiScanning ? "Scanning…" : importingGemini ? "Importing…" : geminiFilePath ? "Change" : "Select"}
-              </button>
-            </div>
-          </Tooltip>
+          if (!anyActive) {
+            return (
+              <div className="shrink-0 grid grid-cols-2 gap-3 max-w-3xl">
+                {sources.map((src) => (
+                  <section key={src.key} className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 flex flex-col gap-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <FolderInput size={15} className="shrink-0 text-[var(--accent-color)]" />
+                        <h2 className="text-xs font-medium text-[var(--text-primary)]">{src.name}</h2>
+                      </div>
+                      <button
+                        onClick={src.onPick}
+                        disabled={src.busy}
+                        className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
+                      >
+                        {src.busy ? <RefreshCw size={11} className="animate-spin" /> : <FolderInput size={11} />}
+                        {src.label}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-[var(--text-muted)]">{src.description}</p>
+                  </section>
+                ))}
+              </div>
+            );
+          }
 
-          {/* Claude Desktop Export */}
-          <Tooltip content="Import conversations, projects, and memories from a Claude Desktop export folder. Documents and files attached to projects are not supported." position="bottom">
-            <div className={`inline-flex items-center gap-2 rounded-lg border px-2.5 py-1 transition-opacity ${activeClaude ? "border-[var(--accent-color)]/50 bg-[var(--bg-elevated)]" : "border-[var(--border-color)] bg-[var(--bg-elevated)]"} ${anyActive && !activeClaude ? "opacity-40 pointer-events-none" : ""}`}>
-              <FolderInput size={13} className="shrink-0 text-[var(--accent-color)]" />
-              <h2 className="text-xs font-medium text-[var(--text-primary)]">Claude</h2>
-              <button
-                onClick={() => void pickClaudeFolder()}
-                disabled={claudeScanning || importingClaude}
-                className="shrink-0 inline-flex items-center gap-1 rounded-md border border-[var(--border-color)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
-              >
-                {claudeFolderPath ? "Change" : "Select"}
-              </button>
+          return (
+            <div className="shrink-0 flex flex-wrap items-center gap-2">
+              {sources.map((src) => (
+                <Tooltip key={src.key} content={src.description} position="bottom">
+                  <div className={`inline-flex items-center gap-2 rounded-lg border bg-[var(--bg-elevated)] px-2.5 py-1 transition-opacity ${src.active ? "border-[var(--accent-color)]/50" : "border-[var(--border-color)]"} ${!src.active ? "opacity-40 pointer-events-none" : ""}`}>
+                    <FolderInput size={13} className="shrink-0 text-[var(--accent-color)]" />
+                    <h2 className="text-xs font-medium text-[var(--text-primary)]">{src.name}</h2>
+                    <button
+                      onClick={src.onPick}
+                      disabled={src.busy}
+                      className="shrink-0 inline-flex items-center gap-1 rounded-md border border-[var(--border-color)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
+                    >
+                      {src.busy && <RefreshCw size={10} className="animate-spin" />}
+                      {src.label}
+                    </button>
+                  </div>
+                </Tooltip>
+              ))}
             </div>
-          </Tooltip>
-
-          {/* ChatGPT Export */}
-          <Tooltip content="Import conversations from a ChatGPT export folder containing conversations.json files." position="bottom">
-            <div className={`inline-flex items-center gap-2 rounded-lg border px-2.5 py-1 transition-opacity ${activeChatGpt ? "border-[var(--accent-color)]/50 bg-[var(--bg-elevated)]" : "border-[var(--border-color)] bg-[var(--bg-elevated)]"} ${anyActive && !activeChatGpt ? "opacity-40 pointer-events-none" : ""}`}>
-              <FolderInput size={13} className="shrink-0 text-[var(--accent-color)]" />
-              <h2 className="text-xs font-medium text-[var(--text-primary)]">ChatGPT</h2>
-              <button
-                onClick={() => void pickChatGptFolder()}
-                disabled={chatGptScanning || importingChatGpt}
-                className="shrink-0 inline-flex items-center gap-1 rounded-md border border-[var(--border-color)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
-              >
-                {(chatGptScanning || importingChatGpt) && <RefreshCw size={10} className="animate-spin" />}
-                {chatGptScanning ? "Scanning…" : importingChatGpt ? "Importing…" : chatGptFolderPath ? "Change" : "Select"}
-              </button>
-            </div>
-          </Tooltip>
-        </div>{/* end source chips */}
+          );
+        })()}
 
         {/* ── LM Studio preview (below grid, only when a single folder was scanned) ── */}
         {lmStudioPreviews.length > 0 && (

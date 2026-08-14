@@ -255,6 +255,7 @@ describe("ImportSettingsSection", () => {
     renderImportSettings();
 
     expect(screen.getByText("LM Studio")).toBeInTheDocument();
+    expect(screen.getByText(/Select one folder to preview/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByText("Select")[0]);
 
@@ -346,6 +347,10 @@ describe("ImportSettingsSection", () => {
 
     // Expand the unassigned-conversations panel.
     fireEvent.click(await screen.findByText(/1 conversation$/));
+
+    // Once a source is active, the descriptive cards collapse into chips —
+    // the description paragraphs move into hover tooltips.
+    expect(screen.queryByText(/Select one folder to preview/i)).not.toBeInTheDocument();
 
     // The empty-named chat shows "Untitled" plus a summary snippet.
     const titleButton = await screen.findByText(/Untitled/);
