@@ -1143,7 +1143,7 @@ export default function ImportSettingsSection() {
 
           if (!anyActive) {
             return (
-              <div className="shrink-0 grid grid-cols-2 gap-3 max-w-3xl">
+              <div className="shrink-0 grid grid-cols-4 gap-3">
                 {sources.map((src) => (
                   <section key={src.key} className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 flex flex-col gap-2">
                     <div className="flex items-center justify-between gap-2">
