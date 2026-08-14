@@ -182,6 +182,10 @@ export default function ImportSettingsSection() {
   // timeout mid-run). Suggestions from completed batches are still applied;
   // this tells the user the rest degraded to keyword matching.
   const [matchWarning, setMatchWarning] = useState<string | null>(null);
+  // Completion notice for the last AI matching run — how many chats got a
+  // suggestion and what to do next. Without this, the only sign the run
+  // finished was the job pill vanishing from the status bar.
+  const [matchSummary, setMatchSummary] = useState<string | null>(null);
   const [claudeMemoriesByProject, setClaudeMemoriesByProject] = useState<Record<string, string>>({});
   // chat_uuid → project_uuid (or null = unassigned). Initialised from server suggestions on scan.
   const [chatAssignments, setChatAssignments] = useState<Record<string, string | null>>({});
@@ -773,6 +777,7 @@ export default function ImportSettingsSection() {
     if (claudeOrphans.length === 0 || claudeProjects.length === 0) { return; }
     setError(null);
     setMatchWarning(null);
+    setMatchSummary(null);
     setClaudeEmbeddingMatching(true);
     setShowMatchModelMenu(false);
     const effectiveModel = opts?.modelOverride ?? importMatchModel;
@@ -834,10 +839,10 @@ export default function ImportSettingsSection() {
         }
       }
 
-      // If re-running all, start fresh; otherwise merge into existing.
-      const newAssignments = opts?.rerunAll
-        ? Object.fromEntries(claudeOrphans.map((c) => [c.uuid, null as string | null]))
-        : { ...chatAssignments };
+      // Suggest-only: record suggestions for review — never auto-assign.
+      // Matched chats stay in the "Unassigned conversations" list showing
+      // their suggested project until the user accepts them (per-row
+      // dropdown or the "Accept N suggestions" button).
       const newSuggestions = opts?.rerunAll
         ? []
         : claudeSuggestions.filter(
@@ -845,25 +850,20 @@ export default function ImportSettingsSection() {
           );
       for (const s of suggestions) {
         newSuggestions.push({ ...s, reason: s.reason as ChatSuggestion["reason"] });
-        if (s.project_uuid && !newAssignments[s.conversation_uuid]) {
-          newAssignments[s.conversation_uuid] = s.project_uuid;
-          setClaudeSelected((prev) => {
-            const next = new Set(prev);
-            next.delete(s.conversation_uuid);
-            return next;
-          });
-        }
       }
       if (opts?.rerunAll) {
-        // Re-seed the unassigned-tick set from the new suggestions.
-        setClaudeSelected(new Set(
-          claudeOrphans
-            .filter((c) => !newAssignments[c.uuid])
-            .map((c) => c.uuid),
-        ));
+        // Re-run resets assignments; every chat is unassigned again until
+        // its (new) suggestion is accepted.
+        setChatAssignments(Object.fromEntries(claudeOrphans.map((c) => [c.uuid, null as string | null])));
+        setClaudeSelected(new Set(claudeOrphans.map((c) => c.uuid)));
       }
-      setChatAssignments(newAssignments);
       setClaudeSuggestions(newSuggestions);
+      const suggestedCount = suggestions.filter((s) => s.project_uuid).length;
+      setMatchSummary(
+        suggestedCount === 0
+          ? `AI matching finished: no confident project match for the ${targetConvs.length} chat${targetConvs.length === 1 ? "" : "s"} checked.`
+          : `AI matching finished: suggested projects for ${suggestedCount} of ${targetConvs.length} chats. Review the suggestions below, then accept them individually or all at once.`,
+      );
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "AI matching failed";
       setError(msg);
@@ -2031,6 +2031,19 @@ export default function ImportSettingsSection() {
                           </button>
                         </div>
                       </div>
+                      {matchSummary && (
+                        <div className="flex items-start justify-between gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1.5">
+                          <span className="text-[11px] text-emerald-500">{matchSummary}</span>
+                          <button
+                            type="button"
+                            onClick={() => setMatchSummary(null)}
+                            className="shrink-0 text-[11px] text-emerald-500/70 hover:text-emerald-500"
+                            aria-label="Dismiss matching summary"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      )}
                       {matchWarning && (
                         <div className="flex items-start justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5">
                           <span className="text-[11px] text-amber-500">{matchWarning}</span>
