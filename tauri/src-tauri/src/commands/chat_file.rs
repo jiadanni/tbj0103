@@ -1674,9 +1674,18 @@ pub async fn preview_claude_files(
             .cloned()
             .collect();
         let suggestions = if include_conversations && !projects.is_empty() {
+            // Projects the export gave no text for get a recap from their own
+            // conversations so the scan-time keyword matcher isn't left with
+            // just the project name. The recap stays out of the returned
+            // `folders` — it must not leak into created workspace descriptions.
+            let match_projects = chat_file_store::claude_v2_match::recap_textless_projects(
+                &projects,
+                &memories_by_project,
+                &convs_by_project,
+            );
             chat_file_store::claude_v2_match::suggest_project_for_conversations_with_options(
                 &unlinked_orphans,
-                &projects,
+                &match_projects,
                 &memories_by_project,
                 &std::collections::HashMap::new(),
                 match_margin,
@@ -1816,9 +1825,16 @@ pub async fn preview_claude_files(
             .cloned()
             .collect();
         let suggestions = if include_conversations && !claude_projects.is_empty() {
+            // Same recap as the v2 branch: text-less projects match on a
+            // digest of their own conversations instead of just their name.
+            let match_projects = chat_file_store::claude_v2_match::recap_textless_projects(
+                &claude_projects,
+                &memories_by_project,
+                &convs_by_project,
+            );
             chat_file_store::claude_v2_match::suggest_project_for_conversations_with_options(
                 &unlinked_orphans,
-                &claude_projects,
+                &match_projects,
                 &memories_by_project,
                 &std::collections::HashMap::new(),
                 match_margin,

@@ -193,6 +193,67 @@ pub fn suggest_project_for_conversations_with_topics(
     )
 }
 
+/// Stand-in descriptions for projects the export gave no text for (no
+/// description, prompt template, or memory): recap up to 40 of the project's
+/// own conversations (title + summary/opener) into the description field so
+/// the matcher has vocabulary to score against instead of just the name.
+/// Deterministic and cheap — no LLM involved. Projects with any real text,
+/// or with no conversations, are returned unchanged.
+pub fn recap_textless_projects(
+    projects: &[ClaudeProjectPreview],
+    memories_by_project: &HashMap<String, String>,
+    convs_by_project: &HashMap<String, Vec<ClaudeConversationPreview>>,
+) -> Vec<ClaudeProjectPreview> {
+    projects
+        .iter()
+        .map(|p| {
+            let memory = memories_by_project
+                .get(&p.uuid)
+                .map(String::as_str)
+                .unwrap_or("");
+            let has_text = !p.description.trim().is_empty()
+                || !p.prompt_template.trim().is_empty()
+                || !memory.trim().is_empty();
+            let convs = convs_by_project.get(&p.uuid);
+            if has_text || convs.is_none() {
+                return p.clone();
+            }
+            let mut parts: Vec<String> = Vec::new();
+            for c in convs.unwrap().iter().take(40) {
+                let name = c.name.trim();
+                let title = if name.is_empty() || name.eq_ignore_ascii_case("untitled") {
+                    ""
+                } else {
+                    name
+                };
+                let gist_src = if c.summary.trim().is_empty() {
+                    c.first_user_message.trim()
+                } else {
+                    c.summary.trim()
+                };
+                let gist: String = gist_src.chars().take(100).collect();
+                let part = match (title.is_empty(), gist.is_empty()) {
+                    (false, false) => format!("{title} — {gist}"),
+                    (false, true) => title.to_string(),
+                    (true, false) => gist,
+                    (true, true) => continue,
+                };
+                parts.push(part);
+            }
+            if parts.is_empty() {
+                return p.clone();
+            }
+            let mut recap = format!("Conversations in this project: {}", parts.join("; "));
+            if recap.chars().count() > 4000 {
+                recap = recap.chars().take(4000).collect();
+            }
+            let mut enriched = p.clone();
+            enriched.description = recap;
+            enriched
+        })
+        .collect()
+}
+
 /// As `suggest_project_for_conversations_with_topics`, with a caller-supplied
 /// runner-up margin (from the persisted strictness setting via
 /// `margin_for_strictness`).
@@ -1171,6 +1232,35 @@ mod tests {
             has_memory: false,
             prompt_template: prompt.to_string(),
         }
+    }
+
+    /// Text-less projects (no description/prompt/memory) get a recap built
+    /// from their own conversations; projects with real text stay unchanged.
+    #[test]
+    fn recap_textless_projects_digests_own_conversations() {
+        let textless = proj("p1", "Kitchen", "");
+        let with_prompt = proj("p2", "Rust", "You are a Rust tutor covering ownership and traits.");
+        let no_chats = proj("p3", "Empty", "");
+        let mut convs_by_project = HashMap::new();
+        convs_by_project.insert(
+            "p1".to_string(),
+            vec![
+                conv("c1", "Pasta carbonara", "how do I make carbonara without cream"),
+                conv("c2", "Untitled", "best pan for searing steak"),
+            ],
+        );
+        let out = recap_textless_projects(
+            &[textless, with_prompt, no_chats],
+            &HashMap::new(),
+            &convs_by_project,
+        );
+        assert!(out[0].description.starts_with("Conversations in this project:"));
+        assert!(out[0].description.contains("Pasta carbonara"));
+        // Generic "Untitled" name is dropped but the opener still contributes.
+        assert!(out[0].description.contains("searing steak"));
+        assert!(!out[0].description.contains("Untitled"));
+        assert_eq!(out[1].description, "");
+        assert_eq!(out[2].description, "");
     }
 
     /// The export's Claude-written summary must participate in matching: a
