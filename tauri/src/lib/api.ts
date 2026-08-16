@@ -1548,6 +1548,27 @@ export const api = {
         memoriesByProject: args.memoriesByProject,
         modelOverride: args.modelOverride ?? null,
       }),
+    /// Generate short (1-2 sentence) descriptions for Claude projects from
+    /// their name, memory excerpt, and chat titles. Batched like topic
+    /// distillation — cost scales with project count. Projects the model
+    /// fails on are absent from `descriptions`.
+    generateClaudeProjectDescriptions: (args: {
+      projects: { uuid: string; name: string; prompt_template: string; description: string }[];
+      memoriesByProject: Record<string, string>;
+      chatTitlesByProject: Record<string, string[]>;
+      modelOverride?: string;
+    }) =>
+      invoke<{
+        descriptions: Record<string, string>;
+        batches_total: number;
+        batches_failed: number;
+        llm_error: string | null;
+      }>("generate_claude_project_descriptions", {
+        projects: args.projects,
+        memoriesByProject: args.memoriesByProject,
+        chatTitlesByProject: args.chatTitlesByProject,
+        modelOverride: args.modelOverride ?? null,
+      }),
     /// Propose new-workspace groups for chats that matched no project.
     /// Embedding clustering (one Ollama call per chat — minutes at scale, with
     /// background-task progress events), falling back to lexical title

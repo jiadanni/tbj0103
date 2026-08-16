@@ -584,6 +584,7 @@ pub fn run() {
             commands::chat_file::preview_claude_files,
             commands::chat_file::match_claude_with_llm,
             commands::chat_file::match_claude_with_topics,
+            commands::chat_file::generate_claude_project_descriptions,
             commands::chat_file::cluster_unmatched_claude_chats,
             commands::chat_file::detect_claude_format,
             // Web AI (Playwright bridge)

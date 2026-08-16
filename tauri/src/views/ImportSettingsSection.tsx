@@ -219,6 +219,12 @@ export default function ImportSettingsSection() {
   // Conversations the export contains no content for (deleted/stripped husks) —
   // dropped from the preview, surfaced as a count so totals stay explainable.
   const [claudeSkippedEmpty, setClaudeSkippedEmpty] = useState(0);
+  // LLM-generated descriptions for projects the export left blank
+  // (uuid → text). Used as matching input in place of long narrative
+  // memories, shown in the project detail pane, and written onto the
+  // workspace/folder the project imports into.
+  const [generatedDescriptions, setGeneratedDescriptions] = useState<Record<string, string>>({});
+  const [descGenerating, setDescGenerating] = useState(false);
   // Match-threshold slider: re-assigns every reviewable chat from the scores
   // already in claudeSuggestions (no matcher re-run). Each drag session pushes
   // one snapshot onto the history so it can be undone.
@@ -698,6 +704,8 @@ export default function ImportSettingsSection() {
     setClaudeConvsByProject({});
     setClaudeOrphans([]);
     setClaudeSkippedEmpty(0);
+    setGeneratedDescriptions({});
+    setDescGenerating(false);
     setClaudeSelected(new Set());
     setClaudeSelectedProjects(new Set());
     setProjectDestinations({});
@@ -871,20 +879,88 @@ export default function ImportSettingsSection() {
   /// Distil project prompts into topic lists, then re-match deterministically.
   /// Cost scales with project count (~20 calls' worth) rather than chat count,
   /// so this is the default for large exports.
-  async function runTopicMatch(opts?: { rerunAll?: boolean; modelOverride?: string }) {
+  /// Write real 1-2 sentence descriptions for projects the export left blank,
+  /// from their memory excerpt and chat titles. The result feeds matching (in
+  /// place of long narrative memories), shows in the project detail pane, and
+  /// is written onto the workspace/folder the project imports into. Matching
+  /// re-runs automatically with the new descriptions.
+  async function generateProjectDescriptions() {
+    setError(null);
+    const targets = claudeProjects.filter((p) => !(p.description ?? "").trim());
+    if (targets.length === 0) {
+      setMatchSummary("Every project already has a description — nothing to generate.");
+      return;
+    }
+    setDescGenerating(true);
+    try {
+      const chatTitlesByProject: Record<string, string[]> = {};
+      for (const p of targets) {
+        const native = (claudeConvsByProject[p.uuid] ?? []).map((c) => c.name);
+        const assigned = claudeOrphans
+          .filter((c) => chatAssignments[c.uuid] === p.uuid)
+          .map((c) => c.name);
+        chatTitlesByProject[p.uuid] = [...native, ...assigned]
+          .map((n) => n.trim())
+          .filter((n) => n && !isGenericConversationName(n))
+          .slice(0, 10);
+      }
+      const result = await api.chatFile.generateClaudeProjectDescriptions({
+        projects: targets.map((p) => ({
+          uuid: p.uuid,
+          name: p.name,
+          prompt_template: p.prompt_template ?? "",
+          description: p.description,
+        })),
+        memoriesByProject: claudeMemoriesByProject,
+        chatTitlesByProject,
+        modelOverride: importMatchModel || undefined,
+      });
+      const generated = result.descriptions ?? {};
+      const n = Object.keys(generated).length;
+      setGeneratedDescriptions((prev) => ({ ...prev, ...generated }));
+      if (n === 0) {
+        setMatchWarning(
+          `Description generation produced nothing (${result.llm_error ?? "model returned no parseable lines"}) — matching continues on the existing project text.`,
+        );
+        return;
+      }
+      if (result.batches_failed > 0) {
+        setMatchWarning(
+          `Description generation failed for ${result.batches_failed} of ${result.batches_total} batches (${result.llm_error ?? "Ollama error"}) — affected projects keep their existing text.`,
+        );
+      }
+      // Re-run matching immediately with the fresh descriptions (state hasn't
+      // committed yet, so pass them explicitly).
+      await runTopicMatch({ descriptionOverrides: generated });
+      setMatchSummary((prev) =>
+        `Generated descriptions for ${n} of ${targets.length} blank project${targets.length === 1 ? "" : "s"}; they'll also be set on the imported workspaces. ${prev ?? ""}`.trim(),
+      );
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "Description generation failed";
+      setError(msg);
+    } finally {
+      setDescGenerating(false);
+    }
+  }
+
+  async function runTopicMatch(opts?: MatchOpts) {
     return runMatch("topics", opts);
   }
 
   /// Classify each chat directly with the LLM. Accurate but expensive — one call
   /// per ~10 chats, so ~100 sequential calls for a 1000-chat export.
-  async function runEmbeddingMatch(opts?: { rerunAll?: boolean; modelOverride?: string }) {
+  async function runEmbeddingMatch(opts?: MatchOpts) {
     return runMatch("llm", opts);
   }
 
-  async function runMatch(
-    strategy: "topics" | "llm",
-    opts?: { rerunAll?: boolean; modelOverride?: string },
-  ) {
+  interface MatchOpts {
+    rerunAll?: boolean;
+    modelOverride?: string;
+    /** Freshly generated descriptions to use before React state has caught up. */
+    descriptionOverrides?: Record<string, string>;
+  }
+
+  async function runMatch(strategy: "topics" | "llm", opts?: MatchOpts) {
     if (claudeOrphans.length === 0 || claudeProjects.length === 0) { return; }
     setError(null);
     setMatchWarning(null);
@@ -896,17 +972,18 @@ export default function ImportSettingsSection() {
       const targetConvs = opts?.rerunAll
         ? claudeOrphans
         : claudeOrphans.filter((c) => !chatAssignments[c.uuid]);
-      // Projects the export gave no text for (no description, prompt, or
-      // memory) would reach topic distillation as just a name. Recap them
-      // from their own conversations' titles and gists so the matcher has
-      // vocabulary to work with.
+      // Description priority: LLM-generated (distilled, replaces the blank
+      // export field) → the export's own description. Projects with no text
+      // anywhere get a deterministic recap from their own conversations so
+      // topic distillation isn't left with just a name.
+      const descs = { ...generatedDescriptions, ...(opts?.descriptionOverrides ?? {}) };
       let recappedProjects = 0;
       const projectArgs = claudeProjects.map((p) => {
+        let description = (descs[p.uuid] ?? "").trim() || p.description;
         const hasText =
-          (p.description ?? "").trim() ||
+          (description ?? "").trim() ||
           (p.prompt_template ?? "").trim() ||
           (claudeMemoriesByProject[p.uuid] ?? "").trim();
-        let description = p.description;
         if (!hasText) {
           const recap = projectRecap(p.uuid);
           if (recap) {
@@ -1349,6 +1426,10 @@ export default function ImportSettingsSection() {
         const proj = claudeProjects.find((p) => p.uuid === projUuid);
         const instrEnabled = projectInstructionsEnabled[projUuid] && proj?.has_prompt;
         const promptTemplate = instrEnabled ? (proj?.prompt_template ?? "") : "";
+        // Generated description wins over the export's (it only exists where
+        // the export field was blank). Applied to newly created destinations
+        // only — existing/remembered workspaces are never overwritten.
+        const projDescription = (generatedDescriptions[projUuid] ?? proj?.description ?? "").trim();
 
         // Remembered destination from a prior import: as long as the user left
         // this project's picker untouched, reuse the existing workspace/folder
@@ -1367,7 +1448,7 @@ export default function ImportSettingsSection() {
             return;
           }
           const existingWs = workspaces.find((w) => w.name.toLowerCase() === resolvedName.toLowerCase());
-          const ws = existingWs ?? await api.workspace.create(resolvedName);
+          const ws = existingWs ?? await api.workspace.create(resolvedName, projDescription || undefined);
           if (promptTemplate) {
             await api.workspace.update(ws.id, ws.name, ws.description, promptTemplate);
           }
@@ -1381,7 +1462,8 @@ export default function ImportSettingsSection() {
             (w) => w.parent_workspace_id === dest.parentId
               && w.name.trim().toLowerCase() === dest.name.trim().toLowerCase(),
           );
-          const ws = existingChild ?? await api.workspace.createChild(dest.parentId, dest.name.trim());
+          const ws = existingChild
+            ?? await api.workspace.createChild(dest.parentId, dest.name.trim(), projDescription || undefined);
           if (promptTemplate) {
             await api.workspace.update(ws.id, ws.name, ws.description, promptTemplate);
           }
@@ -1396,6 +1478,7 @@ export default function ImportSettingsSection() {
           );
           const folder = existingFolder ?? await api.folder.create(dest.subWorkspaceId, dest.name.trim(), {
             ...(promptTemplate ? { custom_instructions: promptTemplate } : {}),
+            ...(projDescription ? { folder_description: projDescription } : {}),
           });
           target = { workspace_id: dest.subWorkspaceId, folder_id: folder.id };
         }
@@ -2167,6 +2250,17 @@ export default function ImportSettingsSection() {
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                               <div className="truncate text-sm font-medium text-[var(--text-primary)]">{proj.name}</div>
+                              {generatedDescriptions[proj.uuid] && !proj.description && (
+                                <div className="mt-1 text-[11px] text-[var(--text-muted)] line-clamp-3">
+                                  <span
+                                    className="mr-1 rounded bg-[var(--accent-color)]/15 px-1 py-0.5 text-[9px] text-[var(--accent-color)]"
+                                    title="Written by the AI from this project's memory and chat titles. Used for matching and set as the description of the workspace this project imports into."
+                                  >
+                                    generated
+                                  </span>
+                                  {generatedDescriptions[proj.uuid]}
+                                </div>
+                              )}
                               {proj.description && (
                                 <div className="mt-1 text-[11px] text-[var(--text-muted)] line-clamp-3">{proj.description}</div>
                               )}
@@ -2561,6 +2655,18 @@ export default function ImportSettingsSection() {
                                   ))}
                                   <div className="my-1 border-t border-[var(--border-color)]" />
                                   <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Actions</div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setShowMatchModelMenu(false);
+                                      void generateProjectDescriptions();
+                                    }}
+                                    disabled={descGenerating}
+                                    title="Writes a 1-2 sentence description for every project the export left blank (from its memory and chat titles), re-runs matching with them, and sets them on the imported workspaces. One AI call per 5 blank projects."
+                                    className="w-full text-left px-3 py-1.5 text-xs text-[var(--text-primary)] hover:bg-[var(--bg-hover)] ml-0 disabled:opacity-40 disabled:pointer-events-none"
+                                  >
+                                    {descGenerating ? "Generating descriptions…" : "Generate descriptions for blank projects"}
+                                  </button>
                                   <button
                                     type="button"
                                     onClick={() => void runTopicMatch({ rerunAll: true })}
