@@ -2303,6 +2303,118 @@ pub async fn match_claude_with_topics<R: Runtime>(
     }))
 }
 
+/// Generate short descriptions for Claude projects (typically ones the export
+/// left blank) from their name, memory excerpt, and a sample of chat titles.
+/// The review UI uses the result as matching input — a distilled substitute
+/// for long narrative memories — and as the description of the workspace the
+/// project imports into.
+#[tauri::command]
+pub async fn generate_claude_project_descriptions<R: Runtime>(
+    app: AppHandle<R>,
+    projects: Vec<serde_json::Value>,
+    memories_by_project: std::collections::HashMap<String, String>,
+    chat_titles_by_project: std::collections::HashMap<String, Vec<String>>,
+    // Optional model override — uses the configured background/chat model if absent.
+    model_override: Option<String>,
+    db_state: State<'_, DbState>,
+) -> Result<serde_json::Value, String> {
+    use crate::services::model_settings::{
+        get_configured_background_model, get_configured_chat_model,
+    };
+    use chat_file_store::ClaudeProjectPreview;
+
+    let model = {
+        let conn = db_state.0.get().map_err(|e| e.to_string())?;
+        if let Some(m) = model_override.filter(|s| !s.is_empty()) {
+            m
+        } else {
+            get_configured_background_model(&conn)
+                .or_else(|| get_configured_chat_model(&conn))
+                .ok_or("No AI model configured. Set one in Settings \u{2192} AI Models.")?
+        }
+    };
+    let ollama = crate::ollama::client::OllamaClient::new(None)?;
+
+    let proj_previews: Vec<ClaudeProjectPreview> = projects
+        .iter()
+        .filter_map(|v| {
+            Some(ClaudeProjectPreview {
+                uuid: v["uuid"].as_str()?.to_string(),
+                name: v["name"].as_str().unwrap_or("").to_string(),
+                description: v["description"].as_str().unwrap_or("").to_string(),
+                has_prompt: false,
+                doc_count: 0,
+                conversation_count: 0,
+                has_memory: false,
+                prompt_template: v["prompt_template"].as_str().unwrap_or("").to_string(),
+            })
+        })
+        .collect();
+
+    emit_match_task(
+        &app,
+        "started",
+        "Generating project descriptions",
+        Some(model.clone()),
+        None,
+        None,
+    );
+
+    let outcome = chat_file_store::claude_v2_match::generate_project_descriptions(
+        &proj_previews,
+        &memories_by_project,
+        &chat_titles_by_project,
+        &ollama,
+        &model,
+        |done, total| {
+            emit_match_task(
+                &app,
+                "processing",
+                &format!("Generating project descriptions (batch {done} of {total})"),
+                Some(model.clone()),
+                Some(done as u32),
+                Some(total as u32),
+            );
+        },
+    )
+    .await;
+
+    if outcome.batches_failed > 0 && outcome.batches_failed == outcome.batches_total {
+        emit_match_task(
+            &app,
+            "failed",
+            &format!(
+                "Description generation failed for all {} batches: {}",
+                outcome.batches_total,
+                outcome.last_error.as_deref().unwrap_or("unknown error"),
+            ),
+            Some(model.clone()),
+            None,
+            None,
+        );
+    } else {
+        emit_match_task(
+            &app,
+            "completed",
+            &format!(
+                "Generated descriptions for {} of {} projects",
+                outcome.descriptions.len(),
+                proj_previews.len(),
+            ),
+            Some(model.clone()),
+            None,
+            None,
+        );
+    }
+
+    Ok(serde_json::json!({
+        "descriptions": outcome.descriptions,
+        "batches_total": outcome.batches_total,
+        "batches_failed": outcome.batches_failed,
+        "llm_error": outcome.last_error,
+    }))
+}
+
 /// Re-run project matching for a set of orphan conversations using an LLM.
 /// Called on demand from the import UI — the scan completes with keyword
 /// suggestions first; the user can then request a more accurate LLM pass.

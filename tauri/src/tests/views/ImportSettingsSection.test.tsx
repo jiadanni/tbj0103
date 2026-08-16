@@ -248,6 +248,12 @@ vi.mock("@/lib/api", () => ({
         topic_batches_failed: 0,
         llm_error: null,
       })),
+      generateClaudeProjectDescriptions: vi.fn(() => Promise.resolve({
+        descriptions: {},
+        batches_total: 0,
+        batches_failed: 0,
+        llm_error: null,
+      })),
       matchClaudeWithLlm: vi.fn(() => Promise.resolve({
         suggestions: [],
         batches_total: 0,
@@ -710,6 +716,41 @@ describe("ImportSettingsSection", () => {
     fireEvent.click(undo);
     expect(screen.getByText(/1 conversation$/)).toBeInTheDocument();
     expect(undo).toBeDisabled();
+  });
+
+  it("generates descriptions for blank projects and re-runs matching with them", async () => {
+    vi.mocked(openDialog).mockResolvedValue("/imports/claude");
+    vi.mocked(api.chatFile.previewClaudeFiles).mockResolvedValueOnce(claudePreviewWithSuggestion());
+    vi.mocked(api.chatFile.generateClaudeProjectDescriptions).mockResolvedValueOnce({
+      descriptions: { "proj-2": "Cooking techniques and recipes, mostly Italian pasta dishes." },
+      batches_total: 1,
+      batches_failed: 0,
+      llm_error: null,
+    });
+
+    renderImportSettings();
+    fireEvent.click(screen.getAllByText("Select")[2]);
+    await screen.findByText(/1 conversation$/);
+
+    fireEvent.click(screen.getByLabelText("AI matching options"));
+    fireEvent.click(await screen.findByText("Generate descriptions for blank projects"));
+
+    await waitFor(() => {
+      expect(api.chatFile.generateClaudeProjectDescriptions).toHaveBeenCalledTimes(1);
+    });
+    // Both fixture projects have blank descriptions → both are sent, with the
+    // Cooking project's native chat title as context.
+    const genArgs = vi.mocked(api.chatFile.generateClaudeProjectDescriptions).mock.calls[0][0];
+    expect(genArgs.projects.map((p: { uuid: string }) => p.uuid).sort()).toEqual(["proj-1", "proj-2"]);
+    expect(genArgs.chatTitlesByProject["proj-2"]).toContain("Pasta carbonara");
+
+    // Matching re-runs immediately, carrying the generated description.
+    await waitFor(() => {
+      expect(api.chatFile.matchClaudeWithTopics).toHaveBeenCalled();
+    });
+    const matchArgs = vi.mocked(api.chatFile.matchClaudeWithTopics).mock.calls[0][0];
+    const cooking = matchArgs.projects.find((p: { uuid: string }) => p.uuid === "proj-2") as { description: string };
+    expect(cooking.description).toContain("Italian pasta");
   });
 
   it("writes the strictness setting and re-runs matching from the menu", async () => {
