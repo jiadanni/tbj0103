@@ -1698,6 +1698,31 @@ pub(super) fn extract_claude_message_content_v2(msg: &claude_v2::V2Message) -> S
     parts.join("\n\n")
 }
 
+/// Derive a chat title, falling back to the first user message (truncated to
+/// ~120 chars, char-safe) and then `"Untitled Chat"` when the export supplied
+/// no name. Claude Desktop leaves ~7% of conversation names empty.
+pub(super) fn claude_title_or_fallback(name: &str, messages: &[ChatFileMessage]) -> String {
+    let trimmed = name.trim();
+    if !trimmed.is_empty() {
+        return trimmed.to_string();
+    }
+    let first_prompt = messages
+        .iter()
+        .find(|m| m.role == "user")
+        .map(|m| m.content.clone())
+        .unwrap_or_default();
+    let flat_prompt = first_prompt.replace('\n', " ");
+    let flat_prompt = flat_prompt.trim();
+    if flat_prompt.is_empty() {
+        "Untitled Chat".to_string()
+    } else if flat_prompt.chars().count() > 120 {
+        let truncated: String = flat_prompt.chars().take(117).collect();
+        format!("{truncated}...")
+    } else {
+        flat_prompt.to_string()
+    }
+}
+
 /// Convert a single parsed Claude conversation into `(ChatFileData, project_uuid)`.
 /// Returns `None` if the conversation has no importable messages.
 fn claude_conversation_to_chat_data(
@@ -1739,7 +1764,7 @@ fn claude_conversation_to_chat_data(
     }
     let data = ChatFileData {
         id: conv.uuid.clone(),
-        title: conv.name.clone(),
+        title: claude_title_or_fallback(&conv.name, &messages),
         model: "claude".to_string(),
         system_prompt: String::new(),
         created_at: conv.created_at.clone(),
@@ -2039,6 +2064,80 @@ mod tests {
         };
         let out = extract_claude_message_content_v2(&msg);
         assert_eq!(out, "legacy body");
+    }
+
+    #[test]
+    fn claude_empty_name_falls_back_to_first_user_message() {
+        // Claude Desktop leaves ~7% of conversation names empty; those must not
+        // import as blank titles (rendered "Untitled" in the UI).
+        let conv: ClaudeConversation = serde_json::from_str(
+            r#"{
+                "uuid": "c1",
+                "name": "",
+                "created_at": "2026-05-20T00:00:00Z",
+                "updated_at": "2026-05-20T00:01:00Z",
+                "chat_messages": [
+                    { "uuid": "m1", "text": "How do I center a div?", "sender": "human", "created_at": "2026-05-20T00:00:00Z" },
+                    { "uuid": "m2", "text": "Use flexbox.", "sender": "assistant", "created_at": "2026-05-20T00:00:30Z" }
+                ]
+            }"#,
+        )
+        .unwrap();
+        let (data, _) = claude_conversation_to_chat_data(&conv).unwrap();
+        assert_eq!(data.title, "How do I center a div?");
+    }
+
+    #[test]
+    fn claude_whitespace_name_falls_back_to_untitled_when_no_user_message() {
+        let conv: ClaudeConversation = serde_json::from_str(
+            r#"{
+                "uuid": "c2",
+                "name": "   ",
+                "created_at": "2026-05-20T00:00:00Z",
+                "updated_at": "2026-05-20T00:01:00Z",
+                "chat_messages": [
+                    { "uuid": "m1", "text": "Sure, here you go.", "sender": "assistant", "created_at": "2026-05-20T00:00:00Z" }
+                ]
+            }"#,
+        )
+        .unwrap();
+        let (data, _) = claude_conversation_to_chat_data(&conv).unwrap();
+        assert_eq!(data.title, "Untitled Chat");
+    }
+
+    #[test]
+    fn claude_present_name_is_preserved() {
+        let conv: ClaudeConversation = serde_json::from_str(
+            r#"{
+                "uuid": "c3",
+                "name": "CSS Layout Help",
+                "created_at": "2026-05-20T00:00:00Z",
+                "updated_at": "2026-05-20T00:01:00Z",
+                "chat_messages": [
+                    { "uuid": "m1", "text": "hi", "sender": "human", "created_at": "2026-05-20T00:00:00Z" }
+                ]
+            }"#,
+        )
+        .unwrap();
+        let (data, _) = claude_conversation_to_chat_data(&conv).unwrap();
+        assert_eq!(data.title, "CSS Layout Help");
+    }
+
+    #[test]
+    fn claude_title_fallback_truncates_long_first_message() {
+        let long = "a ".repeat(200);
+        let msgs = vec![ChatFileMessage {
+            id: "m1".into(),
+            role: "user".into(),
+            content: long,
+            model: None,
+            tokens_used: None,
+            duration_ms: None,
+            timestamp: "2026-05-20T00:00:00Z".into(),
+        }];
+        let title = claude_title_or_fallback("", &msgs);
+        assert!(title.ends_with("..."));
+        assert_eq!(title.chars().count(), 120);
     }
 
     #[test]

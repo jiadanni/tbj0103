@@ -144,7 +144,7 @@ fn design_chat_to_chat_data(chat: &V2DesignChat) -> Option<ChatFileData> {
     }
     Some(ChatFileData {
         id: chat.uuid.clone(),
-        title: chat.title.clone(),
+        title: super::claude_title_or_fallback(&chat.title, &messages),
         model: "claude".to_string(),
         system_prompt: String::new(),
         created_at: chat.created_at.clone(),
