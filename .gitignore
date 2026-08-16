@@ -110,6 +110,6 @@ Samples/
 .antigravitycli/
 
 # Personal local user decks
-boomscroll/public/my_deck.json
-boomscroll/public/econ_geo_deck.json
+boomscroll/public/*.json
+!boomscroll/public/demo.json
 *.deck.json

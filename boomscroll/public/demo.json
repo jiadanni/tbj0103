@@ -1,48 +1,56 @@
 {
   "format": "aetherium.boomscroll.deck",
-  "version": 2,
+  "version": 3,
   "exported_at": "2026-07-20T11:05:00Z",
   "card_count": 64,
   "workspaces": [
     {
       "id": "demo-workspace-ai-ml-000000000000000",
-      "name": "🧠 AI & Machine Learning",
-      "card_count": 8
+      "name": "\ud83e\udde0 AI & Machine Learning",
+      "card_count": 8,
+      "preset": "standard_5_star"
     },
     {
       "id": "demo-workspace-music-theory-0000000",
-      "name": "🎼 Music Theory",
-      "card_count": 8
+      "name": "\ud83c\udfbc Music Theory",
+      "card_count": 8,
+      "preset": "standard_5_star"
     },
     {
       "id": "demo-workspace-rome-000000000000000",
-      "name": "🏛️ Roman Empire",
-      "card_count": 8
+      "name": "\ud83c\udfdb\ufe0f Roman Empire",
+      "card_count": 8,
+      "preset": "standard_5_star"
     },
     {
       "id": "demo-workspace-quantum-000000000000",
-      "name": "⚡ Quantum Computing & Physics",
-      "card_count": 8
+      "name": "\u26a1 Quantum Computing & Physics",
+      "card_count": 8,
+      "preset": "standard_5_star"
     },
     {
       "id": "demo-workspace-biology-00000000000",
-      "name": "🌱 Biology & Genetics",
-      "card_count": 8
+      "name": "\ud83c\udf31 Biology & Genetics",
+      "card_count": 8,
+      "preset": "standard_5_star"
     },
     {
       "id": "demo-workspace-python-000000000000",
-      "name": "🐍 Software Architecture & Python",
-      "card_count": 8
+      "name": "\ud83d\udc0d Software Architecture & Python",
+      "card_count": 8,
+      "preset": "standard_5_star"
     },
     {
       "id": "demo-workspace-geography-0000000000",
-      "name": "🌐 Earth Science & Geography",
-      "card_count": 8
+      "name": "\ud83c\udf10 Earth Science & Geography",
+      "card_count": 8,
+      "preset": "standard_5_star"
     },
     {
       "id": "demo-workspace-economics-000000000",
-      "name": "💰 Macro & Micro Economics",
-      "card_count": 8
+      "name": "\ud83d\udcb0 Macro & Micro Economics",
+      "card_count": 8,
+      "preset": "standard_5_star"
     }
   ],
   "cards": [
@@ -50,25 +58,28 @@
       "id": "demo-card-ai-1",
       "kind": "flashcard",
       "front": "What does Q, K, V stand for in attention?",
-      "back": "Query, Key, Value — Q asks 'what to look for', K advertises 'what I am', and V states 'what I contain'.",
+      "back": "Query, Key, Value \u2014 Q asks 'what to look for', K advertises 'what I am', and V states 'what I contain'.",
       "topic": "Attention Mechanism",
-      "workspace_id": "demo-workspace-ai-ml-000000000000000"
+      "workspace_id": "demo-workspace-ai-ml-000000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-ai-2",
       "kind": "flashcard",
       "front": "What is the scaling factor in attention and why?",
-      "back": "√d_k — prevents dot products from growing too large in high dimensions, keeping softmax gradients stable.",
+      "back": "\u221ad_k \u2014 prevents dot products from growing too large in high dimensions, keeping softmax gradients stable.",
       "topic": "Attention Mechanism",
-      "workspace_id": "demo-workspace-ai-ml-000000000000000"
+      "workspace_id": "demo-workspace-ai-ml-000000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-ai-3",
       "kind": "flashcard",
       "front": "What are scaling laws?",
-      "back": "Empirical observation that performance improves predictably as N^(-α) where N is model/data size and α ≈ 0.07-0.1.",
+      "back": "Empirical observation that performance improves predictably as N^(-\u03b1) where N is model/data size and \u03b1 \u2248 0.07-0.1.",
       "topic": "Scaling Laws",
-      "workspace_id": "demo-workspace-ai-ml-000000000000000"
+      "workspace_id": "demo-workspace-ai-ml-000000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-ai-4",
@@ -76,7 +87,8 @@
       "front": "Name three emergent abilities in LLMs.",
       "back": "In-context learning, chain-of-thought reasoning, and instruction following. These appear only above certain scales.",
       "topic": "Emergent Abilities",
-      "workspace_id": "demo-workspace-ai-ml-000000000000000"
+      "workspace_id": "demo-workspace-ai-ml-000000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-ai-5",
@@ -84,7 +96,8 @@
       "front": "What is the compute-optimal model size?",
       "back": "For fixed compute, the optimal model size is ~20x smaller than data tokens. Violates early intuitions about model vs data trade-offs.",
       "topic": "Scaling Laws",
-      "workspace_id": "demo-workspace-ai-ml-000000000000000"
+      "workspace_id": "demo-workspace-ai-ml-000000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-ai-6",
@@ -92,7 +105,8 @@
       "front": "What is tokenization?",
       "back": "The process of breaking text into atomic units (tokens) that transformers process. Can be characters, words, or subwords.",
       "topic": "NLP Basics",
-      "workspace_id": "demo-workspace-ai-ml-000000000000000"
+      "workspace_id": "demo-workspace-ai-ml-000000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-ai-7",
@@ -100,7 +114,8 @@
       "front": "Explain multi-head attention.",
       "back": "Running N parallel attention heads with different projections, then concatenating. Each head specializes in different patterns.",
       "topic": "Attention Mechanism",
-      "workspace_id": "demo-workspace-ai-ml-000000000000000"
+      "workspace_id": "demo-workspace-ai-ml-000000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-ai-8",
@@ -108,39 +123,44 @@
       "front": "What is fine-tuning?",
       "back": "Continuing training of a pre-trained model on domain-specific data with low learning rates to adapt to new tasks.",
       "topic": "Transfer Learning",
-      "workspace_id": "demo-workspace-ai-ml-000000000000000"
+      "workspace_id": "demo-workspace-ai-ml-000000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-music-1",
       "kind": "flashcard",
       "front": "What interval is a tritone?",
-      "back": "Three whole steps (6 half-steps) — e.g. C to F#. Divides the octave exactly in half, driving V-I resolution.",
+      "back": "Three whole steps (6 half-steps) \u2014 e.g. C to F#. Divides the octave exactly in half, driving V-I resolution.",
       "topic": "Intervals",
-      "workspace_id": "demo-workspace-music-theory-0000000"
+      "workspace_id": "demo-workspace-music-theory-0000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-music-2",
       "kind": "flashcard",
       "front": "What are the chord qualities in a major key?",
-      "back": "I=Major, ii=minor, iii=minor, IV=Major, V=Major, vi=minor, vii°=diminished.",
+      "back": "I=Major, ii=minor, iii=minor, IV=Major, V=Major, vi=minor, vii\u00b0=diminished.",
       "topic": "Chords",
-      "workspace_id": "demo-workspace-music-theory-0000000"
+      "workspace_id": "demo-workspace-music-theory-0000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-music-3",
       "kind": "flashcard",
       "front": "What is a perfect cadence?",
-      "back": "V → I (or V7 → I). The strongest resolution, signaling a definitive phrase end.",
+      "back": "V \u2192 I (or V7 \u2192 I). The strongest resolution, signaling a definitive phrase end.",
       "topic": "Cadences",
-      "workspace_id": "demo-workspace-music-theory-0000000"
+      "workspace_id": "demo-workspace-music-theory-0000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-music-4",
       "kind": "flashcard",
       "front": "What is the relative minor of C major?",
-      "back": "A minor — same white keys but starts on A, giving a different tonal center.",
+      "back": "A minor \u2014 same white keys but starts on A, giving a different tonal center.",
       "topic": "Keys",
-      "workspace_id": "demo-workspace-music-theory-0000000"
+      "workspace_id": "demo-workspace-music-theory-0000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-music-5",
@@ -148,7 +168,8 @@
       "front": "What does a 4/4 time signature mean?",
       "back": "4 beats per measure, quarter note gets the beat. The most common signature in Western music.",
       "topic": "Rhythm",
-      "workspace_id": "demo-workspace-music-theory-0000000"
+      "workspace_id": "demo-workspace-music-theory-0000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-music-6",
@@ -156,7 +177,8 @@
       "front": "Define polyrhythm.",
       "back": "Layering different rhythmic patterns: 3:2, 4:3, etc. Creates tension through metric conflict.",
       "topic": "Rhythm",
-      "workspace_id": "demo-workspace-music-theory-0000000"
+      "workspace_id": "demo-workspace-music-theory-0000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-music-7",
@@ -164,15 +186,17 @@
       "front": "What is syncopation?",
       "back": "Emphasizing offbeats or unexpected rhythmic placement, creating swing and rhythmic interest.",
       "topic": "Rhythm",
-      "workspace_id": "demo-workspace-music-theory-0000000"
+      "workspace_id": "demo-workspace-music-theory-0000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-music-8",
       "kind": "flashcard",
       "front": "What is the most common chord progression?",
-      "back": "I→V→vi→IV (C→G→Am→F). Appears in hundreds of pop songs because of its satisfying arc.",
+      "back": "I\u2192V\u2192vi\u2192IV (C\u2192G\u2192Am\u2192F). Appears in hundreds of pop songs because of its satisfying arc.",
       "topic": "Chords",
-      "workspace_id": "demo-workspace-music-theory-0000000"
+      "workspace_id": "demo-workspace-music-theory-0000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-rome-1",
@@ -180,7 +204,8 @@
       "front": "What ended the Roman Republic?",
       "back": "Civil wars culminating in Augustus defeating Antony at Actium (31 BC), becoming the first Emperor (27 BC).",
       "topic": "Republican Collapse",
-      "workspace_id": "demo-workspace-rome-000000000000000"
+      "workspace_id": "demo-workspace-rome-000000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-rome-2",
@@ -188,7 +213,8 @@
       "front": "When did Caesar cross the Rubicon?",
       "back": "49 BC. Bringing his army past Rome's pomerium was an act of war, triggering civil war with Pompey.",
       "topic": "Julius Caesar",
-      "workspace_id": "demo-workspace-rome-000000000000000"
+      "workspace_id": "demo-workspace-rome-000000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-rome-3",
@@ -196,7 +222,8 @@
       "front": "What was Marius's military reform?",
       "back": "Professionalized legions by recruiting poor citizens and paying them. Soldiers became loyal to generals, destabilizing the state.",
       "topic": "Military Reforms",
-      "workspace_id": "demo-workspace-rome-000000000000000"
+      "workspace_id": "demo-workspace-rome-000000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-rome-4",
@@ -204,7 +231,8 @@
       "front": "Describe a Roman legion.",
       "back": "~5,500 troops organized: 10 cohorts, each with maniples/centuries. Centurions (professional NCOs) enforced discipline.",
       "topic": "Military Organization",
-      "workspace_id": "demo-workspace-rome-000000000000000"
+      "workspace_id": "demo-workspace-rome-000000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-rome-5",
@@ -212,7 +240,8 @@
       "front": "What is a centurion?",
       "back": "A professional military officer commanding a century (~80 troops). The backbone of Roman military organization and discipline.",
       "topic": "Military Organization",
-      "workspace_id": "demo-workspace-rome-000000000000000"
+      "workspace_id": "demo-workspace-rome-000000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-rome-6",
@@ -220,7 +249,8 @@
       "front": "Why were Roman tactics superior?",
       "back": "Formation discipline, centurion command, standardized weapons, fortifications, logistics, and years of training vs seasonal warriors.",
       "topic": "Tactics",
-      "workspace_id": "demo-workspace-rome-000000000000000"
+      "workspace_id": "demo-workspace-rome-000000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-rome-7",
@@ -228,7 +258,8 @@
       "front": "What did Augustus accomplish?",
       "back": "Ended civil wars, became first Emperor. Kept republican institutions as cover while consolidating absolute power.",
       "topic": "Augustan Era",
-      "workspace_id": "demo-workspace-rome-000000000000000"
+      "workspace_id": "demo-workspace-rome-000000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-rome-8",
@@ -236,15 +267,17 @@
       "front": "Name three figures in the Republic's fall.",
       "back": "Julius Caesar, Octavian (Augustus), Pompey, Marius, Cicero, Antony. All played roles in the ~100 year decline.",
       "topic": "Republican Collapse",
-      "workspace_id": "demo-workspace-rome-000000000000000"
+      "workspace_id": "demo-workspace-rome-000000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-quantum-1",
       "kind": "flashcard",
       "front": "What is Quantum Superposition?",
-      "back": "A fundamental principle where a physical system exists in a linear combination of multiple state basis vectors (|0⟩ and |1⟩) until measured.",
+      "back": "A fundamental principle where a physical system exists in a linear combination of multiple state basis vectors (|0\u27e9 and |1\u27e9) until measured.",
       "topic": "Quantum Foundations",
-      "workspace_id": "demo-workspace-quantum-000000000000"
+      "workspace_id": "demo-workspace-quantum-000000000000",
+      "difficulty": 3
     },
     {
       "id": "demo-card-quantum-2",
@@ -252,31 +285,35 @@
       "front": "What is Quantum Entanglement?",
       "back": "A phenomenon where quantum states of two or more particles become inextricably linked, so that measuring one instantly determines the state of the other.",
       "topic": "Quantum Foundations",
-      "workspace_id": "demo-workspace-quantum-000000000000"
+      "workspace_id": "demo-workspace-quantum-000000000000",
+      "difficulty": 3
     },
     {
       "id": "demo-card-quantum-3",
       "kind": "flashcard",
       "front": "What does a Hadamard gate (H) do?",
-      "back": "Maps basis states |0⟩ and |1⟩ into equal superposition states (|0⟩+|1⟩)/√2 and (|0⟩-|1⟩)/√2, creating quantum randomness.",
+      "back": "Maps basis states |0\u27e9 and |1\u27e9 into equal superposition states (|0\u27e9+|1\u27e9)/\u221a2 and (|0\u27e9-|1\u27e9)/\u221a2, creating quantum randomness.",
       "topic": "Quantum Gates",
-      "workspace_id": "demo-workspace-quantum-000000000000"
+      "workspace_id": "demo-workspace-quantum-000000000000",
+      "difficulty": 3
     },
     {
       "id": "demo-card-quantum-4",
       "kind": "flashcard",
       "front": "Explain Shor's Algorithm speedup.",
-      "back": "Factors large integers in polynomial time O((log N)³), exponentially faster than classical number field sieve algorithms, threatening RSA encryption.",
+      "back": "Factors large integers in polynomial time O((log N)\u00b3), exponentially faster than classical number field sieve algorithms, threatening RSA encryption.",
       "topic": "Quantum Algorithms",
-      "workspace_id": "demo-workspace-quantum-000000000000"
+      "workspace_id": "demo-workspace-quantum-000000000000",
+      "difficulty": 3
     },
     {
       "id": "demo-card-quantum-5",
       "kind": "flashcard",
       "front": "What is Grover's Algorithm?",
-      "back": "A quantum search algorithm providing quadratic speedup O(√N) for searching unsorted databases with N items.",
+      "back": "A quantum search algorithm providing quadratic speedup O(\u221aN) for searching unsorted databases with N items.",
       "topic": "Quantum Algorithms",
-      "workspace_id": "demo-workspace-quantum-000000000000"
+      "workspace_id": "demo-workspace-quantum-000000000000",
+      "difficulty": 3
     },
     {
       "id": "demo-card-quantum-6",
@@ -284,23 +321,26 @@
       "front": "What is Decoherence in quantum computing?",
       "back": "Loss of quantum coherence caused by environmental interaction, causing qubits to collapse into classical states and introducing computational noise.",
       "topic": "Hardware & Error Correction",
-      "workspace_id": "demo-workspace-quantum-000000000000"
+      "workspace_id": "demo-workspace-quantum-000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-quantum-7",
       "kind": "flashcard",
       "front": "State Heisenberg's Uncertainty Principle.",
-      "back": "Impossibility of simultaneously measuring position (x) and momentum (p) with arbitrary precision: Δx · Δp ≥ ℏ/2.",
+      "back": "Impossibility of simultaneously measuring position (x) and momentum (p) with arbitrary precision: \u0394x \u00b7 \u0394p \u2265 \u210f/2.",
       "topic": "Quantum Physics",
-      "workspace_id": "demo-workspace-quantum-000000000000"
+      "workspace_id": "demo-workspace-quantum-000000000000",
+      "difficulty": 3
     },
     {
       "id": "demo-card-quantum-8",
       "kind": "flashcard",
       "front": "What is a CNOT gate?",
-      "back": "Controlled-NOT gate — flips the target qubit if and only if the control qubit is in state |1⟩. Crucial for generating entanglement.",
+      "back": "Controlled-NOT gate \u2014 flips the target qubit if and only if the control qubit is in state |1\u27e9. Crucial for generating entanglement.",
       "topic": "Quantum Gates",
-      "workspace_id": "demo-workspace-quantum-000000000000"
+      "workspace_id": "demo-workspace-quantum-000000000000",
+      "difficulty": 3
     },
     {
       "id": "demo-card-bio-1",
@@ -308,7 +348,8 @@
       "front": "What are the central steps of Molecular Biology?",
       "back": "Central Dogma: DNA is transcribed into RNA in the nucleus, which is then translated into proteins by ribosomes in the cytoplasm.",
       "topic": "Molecular Biology",
-      "workspace_id": "demo-workspace-biology-00000000000"
+      "workspace_id": "demo-workspace-biology-00000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-bio-2",
@@ -316,7 +357,8 @@
       "front": "How does CRISPR-Cas9 edit DNA?",
       "back": "Uses a guide RNA to locate specific genomic sequences and the Cas9 endonuclease enzyme to make targeted double-strand breaks for precise editing.",
       "topic": "Biotechnology",
-      "workspace_id": "demo-workspace-biology-00000000000"
+      "workspace_id": "demo-workspace-biology-00000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-bio-3",
@@ -324,7 +366,8 @@
       "front": "What is the net ATP yield of Cellular Respiration?",
       "back": "~30-32 ATP molecules per glucose molecule, produced via Glycolysis, Krebs Cycle, and Oxidative Phosphorylation.",
       "topic": "Cellular Energy",
-      "workspace_id": "demo-workspace-biology-00000000000"
+      "workspace_id": "demo-workspace-biology-00000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-bio-4",
@@ -332,7 +375,8 @@
       "front": "Difference between Mitosis and Meiosis?",
       "back": "Mitosis produces 2 identical diploid somatic cells. Meiosis produces 4 genetically unique haploid gametes with crossover variation.",
       "topic": "Cell Division",
-      "workspace_id": "demo-workspace-biology-00000000000"
+      "workspace_id": "demo-workspace-biology-00000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-bio-5",
@@ -340,7 +384,8 @@
       "front": "What is Mendel's Law of Segregation?",
       "back": "Allele pairs separate during gamete formation, so each gamete carries only one allele for each gene locus.",
       "topic": "Genetics",
-      "workspace_id": "demo-workspace-biology-00000000000"
+      "workspace_id": "demo-workspace-biology-00000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-bio-6",
@@ -348,7 +393,8 @@
       "front": "What is Epigenetics?",
       "back": "Heritable changes in gene expression (e.g. DNA methylation, histone modification) that do not alter the underlying DNA sequence.",
       "topic": "Genetics",
-      "workspace_id": "demo-workspace-biology-00000000000"
+      "workspace_id": "demo-workspace-biology-00000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-bio-7",
@@ -356,15 +402,17 @@
       "front": "Role of Ribosomes in the cell?",
       "back": "Cellular organelle structures that read mRNA codons and assemble amino acids into polypeptide chains (proteins).",
       "topic": "Cell Biology",
-      "workspace_id": "demo-workspace-biology-00000000000"
+      "workspace_id": "demo-workspace-biology-00000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-bio-8",
       "kind": "flashcard",
       "front": "What occurs in the Light Reactions of Photosynthesis?",
-      "back": "Chlorophyll absorbs light energy to split H₂O, releasing oxygen gas while generating ATP and NADPH for the Calvin Cycle.",
+      "back": "Chlorophyll absorbs light energy to split H\u2082O, releasing oxygen gas while generating ATP and NADPH for the Calvin Cycle.",
       "topic": "Cellular Energy",
-      "workspace_id": "demo-workspace-biology-00000000000"
+      "workspace_id": "demo-workspace-biology-00000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-python-1",
@@ -372,7 +420,8 @@
       "front": "What is the Global Interpreter Lock (GIL) in Python?",
       "back": "A mutex in CPython preventing multiple native threads from executing Python bytecode simultaneously, limiting multi-core CPU parallelism.",
       "topic": "Python Concurrency",
-      "workspace_id": "demo-workspace-python-000000000000"
+      "workspace_id": "demo-workspace-python-000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-python-2",
@@ -380,7 +429,8 @@
       "front": "Difference between Generator and List Comprehension?",
       "back": "List comprehensions create full in-memory lists `[x for x in data]`. Generators `(x for x in data)` evaluate lazily on-demand using `yield`.",
       "topic": "Python Fundamentals",
-      "workspace_id": "demo-workspace-python-000000000000"
+      "workspace_id": "demo-workspace-python-000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-python-3",
@@ -388,7 +438,8 @@
       "front": "What does SOLID stand for in Software Architecture?",
       "back": "Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, and Dependency Inversion principles.",
       "topic": "Software Architecture",
-      "workspace_id": "demo-workspace-python-000000000000"
+      "workspace_id": "demo-workspace-python-000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-python-4",
@@ -396,7 +447,8 @@
       "front": "How do Python Decorators `@decorator` work?",
       "back": "Functions that take another function as an argument, wrap it with extra functionality, and return the wrapper without altering original code.",
       "topic": "Python Design Patterns",
-      "workspace_id": "demo-workspace-python-000000000000"
+      "workspace_id": "demo-workspace-python-000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-python-5",
@@ -404,7 +456,8 @@
       "front": "What is Dependency Inversion Principle?",
       "back": "High-level modules should not depend on low-level modules; both should depend on abstractions (interfaces/protocols).",
       "topic": "Software Architecture",
-      "workspace_id": "demo-workspace-python-000000000000"
+      "workspace_id": "demo-workspace-python-000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-python-6",
@@ -412,7 +465,8 @@
       "front": "Explain Python `asyncio` event loop.",
       "back": "A single-threaded event loop that schedules co-routines, suspending I/O-bound tasks at `await` keywords so other tasks execute asynchronously.",
       "topic": "Python Concurrency",
-      "workspace_id": "demo-workspace-python-000000000000"
+      "workspace_id": "demo-workspace-python-000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-python-7",
@@ -420,7 +474,8 @@
       "front": "What is reference counting in Python memory management?",
       "back": "Python automatically deallocates objects when their reference count reaches 0, supported by a cyclic garbage collector for circular references.",
       "topic": "Python Internals",
-      "workspace_id": "demo-workspace-python-000000000000"
+      "workspace_id": "demo-workspace-python-000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-python-8",
@@ -428,7 +483,8 @@
       "front": "Difference between `__str__` and `__repr__`?",
       "back": "`__str__` is intended to be user-friendly/readable. `__repr__` should be unambiguous, developer-oriented, ideally valid Python code.",
       "topic": "Python OOP",
-      "workspace_id": "demo-workspace-python-000000000000"
+      "workspace_id": "demo-workspace-python-000000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-geo-1",
@@ -436,7 +492,8 @@
       "front": "What causes Plate Tectonics?",
       "back": "Thermal convection currents within Earth's semi-fluid asthenosphere driving movement of rigid lithospheric plates.",
       "topic": "Geology",
-      "workspace_id": "demo-workspace-geography-0000000000"
+      "workspace_id": "demo-workspace-geography-0000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-geo-2",
@@ -444,7 +501,8 @@
       "front": "What is Thermohaline Circulation?",
       "back": "Deep ocean circulation driven by global density gradients created by surface temperature (thermo) and salinity (haline).",
       "topic": "Oceanography",
-      "workspace_id": "demo-workspace-geography-0000000000"
+      "workspace_id": "demo-workspace-geography-0000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-geo-3",
@@ -452,7 +510,8 @@
       "front": "What is the Coriolis Effect?",
       "back": "Apparent deflection of moving objects (winds, currents) due to Earth's rotation: to the right in Northern Hemisphere, left in Southern.",
       "topic": "Climatology",
-      "workspace_id": "demo-workspace-geography-0000000000"
+      "workspace_id": "demo-workspace-geography-0000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-geo-4",
@@ -460,7 +519,8 @@
       "front": "What is the Pacific Ring of Fire?",
       "back": "A 40,000 km horseshoe-shaped basin around the Pacific Ocean characterized by frequent earthquakes and active volcanoes.",
       "topic": "Geology",
-      "workspace_id": "demo-workspace-geography-0000000000"
+      "workspace_id": "demo-workspace-geography-0000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-geo-5",
@@ -468,7 +528,8 @@
       "front": "Name the primary layers of Earth's atmosphere.",
       "back": "Troposphere (weather), Stratosphere (ozone layer), Mesosphere (meteors burn), Thermosphere (auroras), Exosphere (outer space transition).",
       "topic": "Atmospheric Science",
-      "workspace_id": "demo-workspace-geography-0000000000"
+      "workspace_id": "demo-workspace-geography-0000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-geo-6",
@@ -476,7 +537,8 @@
       "front": "What creates Glacial U-shaped valleys?",
       "back": "Glacial erosion via plucking and abrasion as heavy glaciers carve through pre-existing V-shaped river valleys.",
       "topic": "Geomorphology",
-      "workspace_id": "demo-workspace-geography-0000000000"
+      "workspace_id": "demo-workspace-geography-0000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-geo-7",
@@ -484,15 +546,17 @@
       "front": "What is the Rain Shadow Effect?",
       "back": "Moist air rises over a mountain range, cools and drops rain on windward side; dry air descends leeward creating arid conditions.",
       "topic": "Climatology",
-      "workspace_id": "demo-workspace-geography-0000000000"
+      "workspace_id": "demo-workspace-geography-0000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-geo-8",
       "kind": "flashcard",
       "front": "What defines a Mediterranean Climate biome?",
-      "back": "Warm to hot, dry summers and mild, wet winters, typically found on western coasts between 30° and 45° latitude.",
+      "back": "Warm to hot, dry summers and mild, wet winters, typically found on western coasts between 30\u00b0 and 45\u00b0 latitude.",
       "topic": "Biomes",
-      "workspace_id": "demo-workspace-geography-0000000000"
+      "workspace_id": "demo-workspace-geography-0000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-econ-1",
@@ -500,7 +564,8 @@
       "front": "What is Price Elasticity of Demand?",
       "back": "Measure of how much quantity demanded responds to a change in price: % change in Quantity / % change in Price.",
       "topic": "Microeconomics",
-      "workspace_id": "demo-workspace-economics-000000000"
+      "workspace_id": "demo-workspace-economics-000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-econ-2",
@@ -508,7 +573,8 @@
       "front": "What is Opportunity Cost?",
       "back": "The loss of potential gain from alternative choices when one alternative is chosen over others.",
       "topic": "Core Principles",
-      "workspace_id": "demo-workspace-economics-000000000"
+      "workspace_id": "demo-workspace-economics-000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-econ-3",
@@ -516,7 +582,8 @@
       "front": "Difference between Fiscal and Monetary policy?",
       "back": "Fiscal policy uses government spending and taxation (Congress/Parliament). Monetary policy controls money supply and interest rates (Central Bank).",
       "topic": "Macroeconomics",
-      "workspace_id": "demo-workspace-economics-000000000"
+      "workspace_id": "demo-workspace-economics-000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-econ-4",
@@ -524,7 +591,8 @@
       "front": "What is a Nash Equilibrium in Game Theory?",
       "back": "A set of strategies where no player has an incentive to unilaterally change their strategy given the strategies of opponents.",
       "topic": "Game Theory",
-      "workspace_id": "demo-workspace-economics-000000000"
+      "workspace_id": "demo-workspace-economics-000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-econ-5",
@@ -532,7 +600,8 @@
       "front": "What is Comparative Advantage?",
       "back": "The ability of an economy/producer to produce a good at a lower opportunity cost than competitors, forming the basis of free trade.",
       "topic": "International Trade",
-      "workspace_id": "demo-workspace-economics-000000000"
+      "workspace_id": "demo-workspace-economics-000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-econ-6",
@@ -540,7 +609,8 @@
       "front": "Difference between GDP and GNP?",
       "back": "GDP measures value created within a country's physical borders. GNP measures value created by citizens and businesses of a nation globally.",
       "topic": "Macroeconomics",
-      "workspace_id": "demo-workspace-economics-000000000"
+      "workspace_id": "demo-workspace-economics-000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-econ-7",
@@ -548,7 +618,8 @@
       "front": "What is the Law of Diminishing Marginal Utility?",
       "back": "As a consumer consumes more units of a specific good, the additional satisfaction (utility) derived from each additional unit decreases.",
       "topic": "Consumer Theory",
-      "workspace_id": "demo-workspace-economics-000000000"
+      "workspace_id": "demo-workspace-economics-000000000",
+      "difficulty": 2
     },
     {
       "id": "demo-card-econ-8",
@@ -556,7 +627,8 @@
       "front": "What is inflation and how is it measured?",
       "back": "General increase in prices and fall in purchasing power, commonly measured via the Consumer Price Index (CPI) basket of goods.",
       "topic": "Macroeconomics",
-      "workspace_id": "demo-workspace-economics-000000000"
+      "workspace_id": "demo-workspace-economics-000000000",
+      "difficulty": 2
     }
   ]
 }
