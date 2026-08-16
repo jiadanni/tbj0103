@@ -652,21 +652,30 @@ describe("ImportSettingsSection", () => {
     await screen.findByText(/1 conversation$/);
 
     const slider = screen.getByLabelText("Match threshold");
+    fireEvent.click(screen.getByText(/1 conversation$/)); // expand the row list
 
-    // Raise above 0.6 → the suggested chat drops back to Unassigned.
+    // Raise above 0.6 → the suggested chat drops back to Unassigned, marked as moved.
     fireEvent.change(slider, { target: { value: "0.7" } });
     fireEvent.pointerUp(slider);
     expect(screen.getByText(/2 conversations$/)).toBeInTheDocument();
+    expect(screen.getByText("moved")).toBeInTheDocument();
+    // The project it left shows a −1 delta chip.
+    expect(screen.getByText("-1")).toBeInTheDocument();
 
-    // Lower below 0.6 → it re-assigns.
+    // Lower below 0.6 → it re-assigns, but stays visible under the
+    // unassigned-only filter (pinned as moved) so the change can be examined.
     fireEvent.change(slider, { target: { value: "0.2" } });
     fireEvent.pointerUp(slider);
-    expect(screen.getByText(/1 conversation$/)).toBeInTheDocument();
+    expect(screen.getByText(/2 conversations$/)).toBeInTheDocument();
+    expect(screen.getByText("moved")).toBeInTheDocument();
+    expect(screen.getByText("+1")).toBeInTheDocument();
 
-    // Undo restores per drag session: first back to the 0.7 state, then the original.
+    // Undo restores per drag session and clears the markers: first back to the
+    // 0.7 state (both unassigned, no markers), then the original single row.
     const undo = screen.getByRole("button", { name: "Undo" });
     fireEvent.click(undo);
     expect(screen.getByText(/2 conversations$/)).toBeInTheDocument();
+    expect(screen.queryByText("moved")).not.toBeInTheDocument();
     fireEvent.click(undo);
     expect(screen.getByText(/1 conversation$/)).toBeInTheDocument();
     expect(undo).toBeDisabled();

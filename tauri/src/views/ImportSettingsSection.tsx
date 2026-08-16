@@ -227,6 +227,11 @@ export default function ImportSettingsSection() {
     { assignments: Record<string, string | null>; selected: Set<string> }[]
   >([]);
   const sliderSnapshotTaken = useRef(false);
+  // Rows changed by the most recent slider drag (uuid → {from, to}). They stay
+  // visible under the unassigned-only filter so the change can be examined,
+  // and clear on undo, rescan, matcher re-runs, and Clear all.
+  const [sliderMoves, setSliderMoves] = useState<Record<string, { from: string | null; to: string | null }>>({});
+  const sliderSessionBase = useRef<Record<string, string | null> | null>(null);
   const [claudeSelected, setClaudeSelected] = useState<Set<string>>(new Set()); // orphan conv UUIDs
   const [claudeSelectedFolders, setClaudeSelectedProjects] = useState<Set<string>>(new Set()); // project UUIDs
   const [projectDestinations, setProjectDestinations] = useState<Record<string, ProjectDestination>>({});
@@ -712,6 +717,8 @@ export default function ImportSettingsSection() {
     setScoreThreshold(0.5);
     setAssignmentHistory([]);
     sliderSnapshotTaken.current = false;
+    setSliderMoves({});
+    sliderSessionBase.current = null;
     prefilledDestsRef.current = {};
   }
 
@@ -957,6 +964,7 @@ export default function ImportSettingsSection() {
         }
         return next;
       });
+      setSliderMoves({});
       // Newly assigned chats leave the import-as-unassigned tick set.
       setClaudeSelected((prev) => {
         const base = opts?.rerunAll ? new Set(claudeOrphans.map((c) => c.uuid)) : new Set(prev);
@@ -1040,6 +1048,7 @@ export default function ImportSettingsSection() {
       setProposedGroups((prev) => ({ ...prev, ...groups }));
       setProjectDestinations((prev) => ({ ...prev, ...dests }));
       setChatAssignments((prev) => ({ ...prev, ...assignments }));
+      setSliderMoves({});
       setClaudeSelected((prev) => {
         const next = new Set(prev);
         for (const uuid of Object.keys(assignments)) { next.delete(uuid); }
@@ -1071,8 +1080,10 @@ export default function ImportSettingsSection() {
       c.name.toLowerCase().includes(searchQuery) ||
       (c.first_user_message ?? "").toLowerCase().includes(searchQuery) ||
       (c.summary ?? "").toLowerCase().includes(searchQuery);
+    // Rows the last slider change moved stay visible even when assigned, so
+    // the change can be examined (and undone) instead of vanishing from view.
     return (rowFilter === "unassigned"
-      ? claudeOrphans.filter((c) => !chatAssignments[c.uuid])
+      ? claudeOrphans.filter((c) => !chatAssignments[c.uuid] || sliderMoves[c.uuid])
       : claudeOrphans
     ).filter(matchesSearch);
   }
@@ -1173,22 +1184,28 @@ export default function ImportSettingsSection() {
   function applyScoreThreshold(t: number) {
     if (!sliderSnapshotTaken.current) {
       sliderSnapshotTaken.current = true;
+      sliderSessionBase.current = { ...chatAssignments };
       setAssignmentHistory((h) => [
         ...h.slice(-19),
         { assignments: { ...chatAssignments }, selected: new Set(claudeSelected) },
       ]);
     }
+    const base = sliderSessionBase.current ?? {};
     const byConv = new Map(claudeSuggestions.map((s) => [s.conversation_uuid, s]));
     const nextAssignments: Record<string, string | null> = {};
     const nextSelected = new Set<string>();
+    const moves: Record<string, { from: string | null; to: string | null }> = {};
     for (const c of claudeOrphans) {
       const best = bestCandidate(byConv.get(c.uuid));
       const assigned = best && best.score >= t ? best.uuid : null;
       nextAssignments[c.uuid] = assigned;
       if (!assigned) { nextSelected.add(c.uuid); }
+      const prevAssigned = base[c.uuid] ?? null;
+      if (assigned !== prevAssigned) { moves[c.uuid] = { from: prevAssigned, to: assigned }; }
     }
     setChatAssignments(nextAssignments);
     setClaudeSelected(nextSelected);
+    setSliderMoves(moves);
   }
 
   function undoThresholdChange() {
@@ -1197,7 +1214,9 @@ export default function ImportSettingsSection() {
     setAssignmentHistory((h) => h.slice(0, -1));
     setChatAssignments(last.assignments);
     setClaudeSelected(last.selected);
+    setSliderMoves({});
     sliderSnapshotTaken.current = false;
+    sliderSessionBase.current = null;
   }
 
   function applyBulkDestination() {
@@ -1968,6 +1987,12 @@ export default function ImportSettingsSection() {
                       const assignedCount = Object.values(chatAssignments).filter((p) => p === proj.uuid).length;
                       const totalChats = proj.conversation_count + assignedCount;
                       const isFocused = focusedProjectUuid === proj.uuid;
+                      // Net gain/loss from the last threshold-slider change.
+                      let sliderDelta = 0;
+                      for (const mv of Object.values(sliderMoves)) {
+                        if (mv.to === proj.uuid) { sliderDelta += 1; }
+                        if (mv.from === proj.uuid) { sliderDelta -= 1; }
+                      }
                       return (
                         <button
                           key={proj.uuid}
@@ -2004,6 +2029,14 @@ export default function ImportSettingsSection() {
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5">
                               <span className="truncate text-xs font-medium text-[var(--text-primary)]">{proj.name}</span>
+                              {sliderDelta !== 0 && (
+                                <span
+                                  className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${sliderDelta > 0 ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"}`}
+                                  title="Net change from the last match-threshold adjustment"
+                                >
+                                  {sliderDelta > 0 ? `+${sliderDelta}` : sliderDelta}
+                                </span>
+                              )}
                               {totalChats === 0 && (
                                 <span className="shrink-0 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-400">no chats</span>
                               )}
@@ -2485,6 +2518,7 @@ export default function ImportSettingsSection() {
                               const cleared: Record<string, string | null> = {};
                               for (const c of claudeOrphans) { cleared[c.uuid] = null; }
                               setChatAssignments(cleared);
+                              setSliderMoves({});
                               setClaudeSelected(new Set(claudeOrphans.map((c) => c.uuid)));
                             }}
                             className="text-xs text-[var(--text-muted)] hover:underline"
@@ -2579,6 +2613,7 @@ export default function ImportSettingsSection() {
                             </span>
                             <span className="text-[11px] text-[var(--text-muted)]">
                               {assignedTotal} assigned · {unassignedTotal} unassigned
+                              {Object.keys(sliderMoves).length > 0 && ` · ${Object.keys(sliderMoves).length} moved by last change`}
                             </span>
                             <button
                               type="button"
@@ -2602,9 +2637,11 @@ export default function ImportSettingsSection() {
                               // Generic-named chats (empty or literal "Untitled") get a
                               // snippet from the summary / opener so the row is identifiable.
                               const snippet = isGenericConversationName(conv.name) ? conversationGist(conv, 120) : "";
+                              const move = sliderMoves[conv.uuid];
+                              const moveLabel = (v: string | null) => (v ? nameForKey(v) : "Unassigned");
                               return (
                                 <div key={conv.uuid} className="border-b border-[var(--border-color)] last:border-b-0">
-                                <div className="flex items-center gap-2 px-3 py-1.5 hover:bg-[var(--bg-hover)]">
+                                <div className={`flex items-center gap-2 px-3 py-1.5 hover:bg-[var(--bg-hover)] ${move ? "bg-[var(--accent-color)]/5" : ""}`}>
                                   <input
                                     type="checkbox"
                                     checked={assigned !== null || ticked}
@@ -2639,6 +2676,14 @@ export default function ImportSettingsSection() {
                                           title="This chat was imported before and still sits in Unassigned Imports — assigning it moves the existing chat."
                                         >
                                           imported, still unassigned
+                                        </span>
+                                      )}
+                                      {move && (
+                                        <span
+                                          className="mr-1 rounded bg-[var(--accent-color)]/15 px-1 py-0.5 text-[9px] text-[var(--accent-color)]"
+                                          title={`Moved by the threshold slider: ${moveLabel(move.from)} → ${moveLabel(move.to)}. Undo restores it.`}
+                                        >
+                                          moved
                                         </span>
                                       )}
                                       {conv.name || "Untitled"}
