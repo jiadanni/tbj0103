@@ -1700,10 +1700,11 @@ pub(super) fn extract_claude_message_content_v2(msg: &claude_v2::V2Message) -> S
 
 /// Derive a chat title, falling back to the first user message (truncated to
 /// ~120 chars, char-safe) and then `"Untitled Chat"` when the export supplied
-/// no name. Claude Desktop leaves ~7% of conversation names empty.
+/// no usable name. Claude Desktop leaves ~7% of conversation names empty and
+/// names others literally "Untitled" — both count as missing here.
 pub(super) fn claude_title_or_fallback(name: &str, messages: &[ChatFileMessage]) -> String {
     let trimmed = name.trim();
-    if !trimmed.is_empty() {
+    if !trimmed.is_empty() && !trimmed.eq_ignore_ascii_case("untitled") {
         return trimmed.to_string();
     }
     let first_prompt = messages
@@ -2103,6 +2104,26 @@ mod tests {
         .unwrap();
         let (data, _) = claude_conversation_to_chat_data(&conv).unwrap();
         assert_eq!(data.title, "Untitled Chat");
+    }
+
+    #[test]
+    fn claude_literal_untitled_name_falls_back_to_first_user_message() {
+        // Claude exports name some conversations literally "Untitled"; treat
+        // that the same as an empty name so the imported title is meaningful.
+        let conv: ClaudeConversation = serde_json::from_str(
+            r#"{
+                "uuid": "c4",
+                "name": "Untitled",
+                "created_at": "2026-05-20T00:00:00Z",
+                "updated_at": "2026-05-20T00:01:00Z",
+                "chat_messages": [
+                    { "uuid": "m1", "text": "Translate to English", "sender": "human", "created_at": "2026-05-20T00:00:00Z" }
+                ]
+            }"#,
+        )
+        .unwrap();
+        let (data, _) = claude_conversation_to_chat_data(&conv).unwrap();
+        assert_eq!(data.title, "Translate to English");
     }
 
     #[test]

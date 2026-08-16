@@ -6,7 +6,7 @@ import { ask, message, open } from "@tauri-apps/plugin-dialog";
 import { Check, CheckSquare, ChevronDown, ChevronRight, Eye, FolderInput, RefreshCw, Square, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api, type ChatSuggestion } from "../lib/api";
-import { conversationGist } from "../lib/conversationGist";
+import { conversationGist, isGenericConversationName } from "../lib/conversationGist";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import PromptDialog from "../components/PromptDialog";
 import { Tooltip } from "../components/Tooltip";
@@ -202,7 +202,8 @@ export default function ImportSettingsSection() {
   const [proposedGroups, setProposedGroups] = useState<Record<string, ProposedGroup>>({});
   const [clusterProposing, setClusterProposing] = useState(false);
   // Review-table filter: show every review row or only still-unassigned ones.
-  const [rowFilter, setRowFilter] = useState<"all" | "unassigned">("all");
+  const [rowFilter, setRowFilter] = useState<"all" | "unassigned">("unassigned");
+  const [rowSearch, setRowSearch] = useState("");
   // Snapshot of scan-time destination pre-fills. When the user leaves a
   // project's picker untouched, import reuses the remembered destination ids
   // instead of creating workspaces/folders.
@@ -2166,9 +2167,16 @@ export default function ImportSettingsSection() {
                   // The review table shows EVERY orphan (assigned rows keep
                   // their destination pre-selected) so the user can see what
                   // was classified; the filter narrows to the leftovers.
-                  const reviewRows = rowFilter === "unassigned"
+                  const searchQuery = rowSearch.trim().toLowerCase();
+                  const matchesSearch = (c: ClaudeConvPreview) =>
+                    !searchQuery ||
+                    c.name.toLowerCase().includes(searchQuery) ||
+                    (c.first_user_message ?? "").toLowerCase().includes(searchQuery) ||
+                    (c.summary ?? "").toLowerCase().includes(searchQuery);
+                  const reviewRows = (rowFilter === "unassigned"
                     ? claudeOrphans.filter((c) => !chatAssignments[c.uuid])
-                    : claudeOrphans;
+                    : claudeOrphans
+                  ).filter(matchesSearch);
                   // Render cap: at 1k-10k chats a full list stalls the DOM.
                   const ROW_CAP = 300;
                   const visibleRows = reviewRows.slice(0, ROW_CAP);
@@ -2343,6 +2351,13 @@ export default function ImportSettingsSection() {
                             Assigned chats import to their pre-selected destination; the rest go to &ldquo;Unassigned Imports&rdquo;. Change any row that&rsquo;s wrong.
                           </span>
                           <div className="flex items-center gap-2">
+                            <input
+                              type="search"
+                              value={rowSearch}
+                              onChange={(e) => setRowSearch(e.target.value)}
+                              placeholder="Filter conversations…"
+                              className="w-44 rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)]"
+                            />
                             <button
                               type="button"
                               onClick={() => setRowFilter((f) => (f === "all" ? "unassigned" : "all"))}
@@ -2369,9 +2384,9 @@ export default function ImportSettingsSection() {
                               const suggestion = claudeSuggestions.find((s) => s.conversation_uuid === conv.uuid);
                               const suggestedProj = suggestion?.project_uuid ? projectsByUuid.get(suggestion.project_uuid) : null;
                               const previewOpen = previewConvUuid === conv.uuid;
-                              // Empty-named chats (Claude never auto-titled them) get a
+                              // Generic-named chats (empty or literal "Untitled") get a
                               // snippet from the summary / opener so the row is identifiable.
-                              const snippet = !conv.name ? conversationGist(conv, 120) : "";
+                              const snippet = isGenericConversationName(conv.name) ? conversationGist(conv, 120) : "";
                               return (
                                 <div key={conv.uuid} className="border-b border-[var(--border-color)] last:border-b-0">
                                 <div className="flex items-center gap-2 px-3 py-1.5 hover:bg-[var(--bg-hover)]">

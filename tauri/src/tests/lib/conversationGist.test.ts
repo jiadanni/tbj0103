@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { conversationGist } from "@/lib/conversationGist";
+import { conversationGist, isGenericConversationName } from "@/lib/conversationGist";
 
 describe("conversationGist", () => {
   it("prefers Claude's own export summary when present", () => {
@@ -43,5 +43,24 @@ describe("conversationGist", () => {
 
   it("returns empty string when there is nothing to summarize", () => {
     expect(conversationGist({ name: "" })).toBe("");
+  });
+});
+
+describe("isGenericConversationName", () => {
+  it("treats empty, whitespace, and undefined names as generic", () => {
+    expect(isGenericConversationName("")).toBe(true);
+    expect(isGenericConversationName("   ")).toBe(true);
+    expect(isGenericConversationName(undefined)).toBe(true);
+  });
+
+  it("treats the literal export name \"Untitled\" as generic, any casing", () => {
+    expect(isGenericConversationName("Untitled")).toBe(true);
+    expect(isGenericConversationName("untitled")).toBe(true);
+    expect(isGenericConversationName(" UNTITLED ")).toBe(true);
+  });
+
+  it("keeps real names, including ones that merely contain \"untitled\"", () => {
+    expect(isGenericConversationName("CSS Layout Help")).toBe(false);
+    expect(isGenericConversationName("Untitled document cleanup")).toBe(false);
   });
 });

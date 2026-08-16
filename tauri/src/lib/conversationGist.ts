@@ -7,6 +7,17 @@ export interface GistConversation {
 }
 
 /**
+ * True when the export supplied no usable conversation name: empty,
+ * whitespace-only, or the literal "Untitled" Claude writes for chats it never
+ * auto-titled. Rows with a generic name get a gist snippet so they stay
+ * identifiable.
+ */
+export function isGenericConversationName(name: string | undefined): boolean {
+  const trimmed = (name ?? "").trim();
+  return trimmed === "" || trimmed.toLowerCase() === "untitled";
+}
+
+/**
  * Quick, offline gist for the Claude import review UI. Prefers Claude's own
  * export summary; where that is missing (~16% of orphans, all design chats) it
  * synthesizes one from the conversation's own text — never touches the raw
