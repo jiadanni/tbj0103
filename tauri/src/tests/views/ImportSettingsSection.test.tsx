@@ -597,6 +597,17 @@ describe("ImportSettingsSection", () => {
             { project_uuid: "proj-2", score: 0.31 },
           ],
         },
+        // Below-threshold guess: unassigned, but with a best candidate the
+        // threshold slider can act on.
+        {
+          conversation_uuid: "orphan-linked",
+          project_uuid: null,
+          score: 0,
+          reason: "none" as const,
+          alternates: [
+            { project_uuid: "proj-2", score: 0.24 },
+          ],
+        },
       ],
       folders: [
         ...base.folders,
@@ -654,33 +665,32 @@ describe("ImportSettingsSection", () => {
     const slider = screen.getByLabelText("Match threshold");
     fireEvent.click(screen.getByText(/1 conversation$/)); // expand the row list
 
-    // Raise above 0.6 → the suggested chat drops back to Unassigned; the
-    // filter auto-switches to the changed-by-threshold view showing that row.
-    fireEvent.change(slider, { target: { value: "0.7" } });
-    fireEvent.pointerUp(slider);
-    expect(screen.getByText("showing: changed by threshold")).toBeInTheDocument();
-    expect(screen.getByText(/1 conversation$/)).toBeInTheDocument();
-    expect(screen.getByText("moved")).toBeInTheDocument();
-    // The project it left shows a −1 delta chip.
-    expect(screen.getByText("-1")).toBeInTheDocument();
-
-    // Lower below 0.6 → it re-assigns; the changed-by-threshold view keeps it
-    // visible so the change can be examined instead of vanishing.
+    // Lower below 0.24 → the unassigned chat gets assigned to its best guess
+    // and the filter auto-switches to the changed-by-threshold view.
     fireEvent.change(slider, { target: { value: "0.2" } });
     fireEvent.pointerUp(slider);
     expect(screen.getByText("showing: changed by threshold")).toBeInTheDocument();
     expect(screen.getByText(/1 conversation$/)).toBeInTheDocument();
-    expect(screen.getByText("moved")).toBeInTheDocument();
+    expect(screen.getByText("assigned by threshold")).toBeInTheDocument();
+    // The project it joined shows a +1 delta chip.
     expect(screen.getByText("+1")).toBeInTheDocument();
 
-    // Undo restores per drag session, clears the markers, and falls back to
-    // the unassigned view: first the 0.7 state (both unassigned), then the
-    // original single unassigned row.
+    // Raise above both scores → only the slider-owned chat is demoted; the
+    // matcher-assigned chat (0.6 < 0.75) is never touched by the slider.
+    fireEvent.change(slider, { target: { value: "0.75" } });
+    fireEvent.pointerUp(slider);
+    expect(screen.getByText("showing: changed by threshold")).toBeInTheDocument();
+    expect(screen.getByText(/1 conversation$/)).toBeInTheDocument();
+    expect(screen.getByText("unassigned by threshold")).toBeInTheDocument();
+    expect(screen.getByText("-1")).toBeInTheDocument();
+
+    // Undo restores per drag session and falls back to the unassigned view:
+    // first the assigned-at-0.2 state (nothing unassigned), then the original.
     const undo = screen.getByRole("button", { name: "Undo" });
     fireEvent.click(undo);
     expect(screen.getByText("showing: unassigned only")).toBeInTheDocument();
-    expect(screen.getByText(/2 conversations$/)).toBeInTheDocument();
-    expect(screen.queryByText("moved")).not.toBeInTheDocument();
+    expect(screen.getByText(/0 conversations$/)).toBeInTheDocument();
+    expect(screen.queryByText("unassigned by threshold")).not.toBeInTheDocument();
     fireEvent.click(undo);
     expect(screen.getByText(/1 conversation$/)).toBeInTheDocument();
     expect(undo).toBeDisabled();

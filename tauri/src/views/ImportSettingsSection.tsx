@@ -224,14 +224,19 @@ export default function ImportSettingsSection() {
   // one snapshot onto the history so it can be undone.
   const [scoreThreshold, setScoreThreshold] = useState(0.5);
   const [assignmentHistory, setAssignmentHistory] = useState<
-    { assignments: Record<string, string | null>; selected: Set<string> }[]
+    { assignments: Record<string, string | null>; selected: Set<string>; owned: Set<string> }[]
   >([]);
   const sliderSnapshotTaken = useRef(false);
-  // Rows changed by the most recent slider drag (uuid → {from, to}). They stay
-  // visible under the unassigned-only filter so the change can be examined,
-  // and clear on undo, rescan, matcher re-runs, and Clear all.
+  // Rows changed by the most recent slider drag (uuid → {from, to}), shown in
+  // the changed-by-threshold view; cleared on undo, rescan, matcher re-runs,
+  // and Clear all.
   const [sliderMoves, setSliderMoves] = useState<Record<string, { from: string | null; to: string | null }>>({});
+  // Rows whose current assignment was made by the slider. The slider only
+  // governs unassigned rows and these — it never demotes matcher or manual
+  // assignments (their scores don't correspond to any single cutoff).
+  const [sliderOwned, setSliderOwned] = useState<Set<string>>(new Set());
   const sliderSessionBase = useRef<Record<string, string | null> | null>(null);
+  const sliderOwnedSessionBase = useRef<Set<string> | null>(null);
   const [claudeSelected, setClaudeSelected] = useState<Set<string>>(new Set()); // orphan conv UUIDs
   const [claudeSelectedFolders, setClaudeSelectedProjects] = useState<Set<string>>(new Set()); // project UUIDs
   const [projectDestinations, setProjectDestinations] = useState<Record<string, ProjectDestination>>({});
@@ -718,7 +723,9 @@ export default function ImportSettingsSection() {
     setAssignmentHistory([]);
     sliderSnapshotTaken.current = false;
     setSliderMoves({});
+    setSliderOwned(new Set());
     sliderSessionBase.current = null;
+    sliderOwnedSessionBase.current = null;
     prefilledDestsRef.current = {};
   }
 
@@ -1190,26 +1197,39 @@ export default function ImportSettingsSection() {
     if (!sliderSnapshotTaken.current) {
       sliderSnapshotTaken.current = true;
       sliderSessionBase.current = { ...chatAssignments };
+      sliderOwnedSessionBase.current = new Set(sliderOwned);
       setAssignmentHistory((h) => [
         ...h.slice(-19),
-        { assignments: { ...chatAssignments }, selected: new Set(claudeSelected) },
+        { assignments: { ...chatAssignments }, selected: new Set(claudeSelected), owned: new Set(sliderOwned) },
       ]);
     }
     const base = sliderSessionBase.current ?? {};
+    const baseOwned = sliderOwnedSessionBase.current ?? new Set<string>();
     const byConv = new Map(claudeSuggestions.map((s) => [s.conversation_uuid, s]));
     const nextAssignments: Record<string, string | null> = {};
     const nextSelected = new Set<string>();
+    const nextOwned = new Set<string>();
     const moves: Record<string, { from: string | null; to: string | null }> = {};
     for (const c of claudeOrphans) {
-      const best = bestCandidate(byConv.get(c.uuid));
-      const assigned = best && best.score >= t ? best.uuid : null;
+      const prevAssigned = base[c.uuid] ?? null;
+      // The slider only governs rows that were unassigned when the drag
+      // started, plus rows the slider itself assigned. Matcher and manual
+      // assignments are never demoted — the matcher assigns by margin over
+      // the runner-up, so its picks don't correspond to any single cutoff.
+      const governed = prevAssigned === null || baseOwned.has(c.uuid);
+      let assigned = prevAssigned;
+      if (governed) {
+        const best = bestCandidate(byConv.get(c.uuid));
+        assigned = best && best.score >= t ? best.uuid : null;
+        if (assigned) { nextOwned.add(c.uuid); }
+      }
       nextAssignments[c.uuid] = assigned;
       if (!assigned) { nextSelected.add(c.uuid); }
-      const prevAssigned = base[c.uuid] ?? null;
       if (assigned !== prevAssigned) { moves[c.uuid] = { from: prevAssigned, to: assigned }; }
     }
     setChatAssignments(nextAssignments);
     setClaudeSelected(nextSelected);
+    setSliderOwned(nextOwned);
     setSliderMoves(moves);
     // Jump to the changed-by-threshold view so rows the slider assigned don't
     // vanish from the unassigned-only filter — they're assigned, but only
@@ -1220,6 +1240,7 @@ export default function ImportSettingsSection() {
   /** Clear the changed-by-threshold markers; the filter falls back to unassigned. */
   function clearSliderMoves() {
     setSliderMoves({});
+    setSliderOwned(new Set());
     setRowFilter((f) => (f === "moved" ? "unassigned" : f));
   }
 
@@ -1230,8 +1251,10 @@ export default function ImportSettingsSection() {
     setChatAssignments(last.assignments);
     setClaudeSelected(last.selected);
     clearSliderMoves();
+    setSliderOwned(new Set(last.owned));
     sliderSnapshotTaken.current = false;
     sliderSessionBase.current = null;
+    sliderOwnedSessionBase.current = null;
   }
 
   function applyBulkDestination() {
@@ -2617,7 +2640,7 @@ export default function ImportSettingsSection() {
                           <div className="mt-2 flex items-center gap-2">
                             <span
                               className="text-[11px] text-[var(--text-muted)] whitespace-nowrap"
-                              title="Drag to re-categorize on the fly: each chat is assigned to its best-scoring match when that score is at or above the threshold, and returns to Unassigned below it. Undo restores the previous assignments."
+                              title="Drag to assign unassigned chats whose best match scores at or above the threshold; raising it un-assigns only chats the slider itself assigned. Matcher and manual assignments are never demoted (the matcher decides by margin over the runner-up, a separate threshold — see the strict/balanced/loose presets). Undo restores the previous assignments."
                             >
                               Match threshold
                             </span>
@@ -2709,10 +2732,10 @@ export default function ImportSettingsSection() {
                                       )}
                                       {move && (
                                         <span
-                                          className="mr-1 rounded bg-[var(--accent-color)]/15 px-1 py-0.5 text-[9px] text-[var(--accent-color)]"
-                                          title={`Moved by the threshold slider: ${moveLabel(move.from)} → ${moveLabel(move.to)}. Undo restores it.`}
+                                          className={`mr-1 rounded px-1 py-0.5 text-[9px] ${move.to ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"}`}
+                                          title={`${moveLabel(move.from)} → ${moveLabel(move.to)}. Undo restores it.`}
                                         >
-                                          moved
+                                          {move.to ? "assigned by threshold" : "unassigned by threshold"}
                                         </span>
                                       )}
                                       {conv.name || "Untitled"}
