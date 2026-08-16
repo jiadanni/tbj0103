@@ -587,6 +587,22 @@ describe("ImportSettingsSection", () => {
       ...base,
       linked_conversations: {},
       known_destinations: {},
+      // proj-2 has no description/prompt/memory but owns a conversation —
+      // AI matching should recap it from that chat.
+      conversations_by_project: {
+        "proj-2": [
+          {
+            uuid: "cooking-1",
+            name: "Pasta carbonara",
+            message_count: 2,
+            created_at: "2024-01-05T00:00:00Z",
+            updated_at: "2024-01-05T00:00:00Z",
+            project_uuid: "proj-2",
+            first_user_message: "How do I make carbonara without cream?",
+            messages: [],
+          },
+        ],
+      },
       suggestions: [
         {
           conversation_uuid: "orphan-new",
@@ -723,6 +739,15 @@ describe("ImportSettingsSection", () => {
     await waitFor(() => {
       expect(api.chatFile.matchClaudeWithTopics).toHaveBeenCalled();
     });
+
+    // Projects without any export text are recapped from their own chats
+    // before matching; projects with no chats are left untouched.
+    const matchArgs = vi.mocked(api.chatFile.matchClaudeWithTopics).mock.calls[0][0];
+    const cooking = matchArgs.projects.find((p: { uuid: string }) => p.uuid === "proj-2") as { description: string };
+    expect(cooking.description).toContain("Pasta carbonara");
+    expect(cooking.description).toContain("carbonara without cream");
+    const rust = matchArgs.projects.find((p: { uuid: string }) => p.uuid === "proj-1") as { description: string };
+    expect(rust.description).toBe("");
   });
 
   it("proposes new workspaces for leftovers and imports them under synthetic keys", async () => {
