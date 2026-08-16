@@ -9,6 +9,8 @@
  * so the feed can always show where a card came from.
  */
 
+import type { DifficultyScore } from "./difficulty";
+
 export interface DeckCard {
   id: string;
   kind: string;
@@ -17,12 +19,16 @@ export interface DeckCard {
   topic: string | null;
   workspaceId: string;
   workspaceName: string;
+  difficulty?: DifficultyScore;
+  difficultyPreset?: string;
+  difficultyLabel?: string;
 }
 
 export interface DeckWorkspace {
   id: string;
   name: string;
   cardCount: number;
+  preset?: string;
 }
 
 export interface Deck {
@@ -32,7 +38,7 @@ export interface Deck {
 }
 
 const DECK_FORMAT = "aetherium.boomscroll.deck";
-const SUPPORTED_VERSIONS = [1, 2];
+const SUPPORTED_VERSIONS = [1, 2, 3];
 
 export function parseDeck(raw: string): Deck {
   let data: unknown;
@@ -59,8 +65,9 @@ export function parseDeck(raw: string): Deck {
     throw new Error("This deck has no cards array.");
   }
 
-  // Workspace list: v2 has `workspaces`; v1 has a single `workspace`.
+  // Workspace list: v2/v3 has `workspaces`; v1 has a single `workspace`.
   const nameById = new Map<string, string>();
+  const presetById = new Map<string, string>();
   const declared: DeckWorkspace[] = [];
   const rawWorkspaces = Array.isArray(obj.workspaces)
     ? obj.workspaces
@@ -71,10 +78,14 @@ export function parseDeck(raw: string): Deck {
     const ws = entry as Record<string, unknown>;
     if (typeof ws.id !== "string" || typeof ws.name !== "string") {continue;}
     nameById.set(ws.id, ws.name);
+    if (typeof ws.preset === "string") {
+      presetById.set(ws.id, ws.preset);
+    }
     declared.push({
       id: ws.id,
       name: ws.name,
       cardCount: typeof ws.card_count === "number" ? ws.card_count : 0,
+      preset: typeof ws.preset === "string" ? ws.preset : undefined,
     });
   }
   const fallbackName = declared.length === 1 ? declared[0].name : "Deck";
@@ -87,6 +98,12 @@ export function parseDeck(raw: string): Deck {
     if (typeof card.front !== "string" || typeof card.back !== "string") {continue;}
     if (card.front.trim() === "" && card.back.trim() === "") {continue;}
     const workspaceId = typeof card.workspace_id === "string" ? card.workspace_id : fallbackId;
+
+    let difficulty: DifficultyScore | undefined;
+    if (typeof card.difficulty === "number" && card.difficulty >= 1 && card.difficulty <= 5) {
+      difficulty = Math.round(card.difficulty) as DifficultyScore;
+    }
+
     cards.push({
       id: typeof card.id === "string" ? card.id : `card-${cards.length}`,
       // Unknown kinds are tolerated and rendered as plain front/back.
@@ -96,6 +113,13 @@ export function parseDeck(raw: string): Deck {
       topic: typeof card.topic === "string" ? card.topic : null,
       workspaceId,
       workspaceName: nameById.get(workspaceId) ?? fallbackName,
+      difficulty,
+      difficultyPreset:
+        typeof card.difficulty_preset === "string"
+          ? card.difficulty_preset
+          : presetById.get(workspaceId),
+      difficultyLabel:
+        typeof card.difficulty_label === "string" ? card.difficulty_label : undefined,
     });
   }
 

@@ -221,7 +221,7 @@ pub(crate) fn build_feed_deck(
 
     let mut card_stmt = conn
         .prepare(
-            "SELECT lc.id, lc.front, lc.back, ft.topic, lc.kind
+            "SELECT lc.id, lc.front, lc.back, ft.topic, lc.kind, lc.ease_factor, lc.repetitions
              FROM learning_cards lc
              LEFT JOIN flashcard_topics ft ON ft.id = lc.topic_id
              WHERE lc.workspace_id = ?1
@@ -245,6 +245,22 @@ pub(crate) fn build_feed_deck(
 
         let ws_cards: Vec<serde_json::Value> = card_stmt
             .query_map(rusqlite::params![workspace_id], |r| {
+                let ease: f64 = r.get(5).unwrap_or(2.5);
+                let reps: i32 = r.get(6).unwrap_or(0);
+                
+                // Map ease_factor (typically 1.3 - 2.5+) and repetitions into 1-5 difficulty
+                let difficulty = if reps == 0 && ease >= 2.5 {
+                    1
+                } else if ease >= 2.4 {
+                    2
+                } else if ease >= 2.0 {
+                    3
+                } else if ease >= 1.7 {
+                    4
+                } else {
+                    5
+                };
+
                 Ok(serde_json::json!({
                     "id": r.get::<_, String>(0)?,
                     "front": r.get::<_, String>(1)?,
@@ -252,6 +268,7 @@ pub(crate) fn build_feed_deck(
                     "topic": r.get::<_, Option<String>>(3)?,
                     "kind": r.get::<_, String>(4)?,
                     "workspace_id": ws_id,
+                    "difficulty": difficulty,
                 }))
             })
             .map_err(|e| e.to_string())?
@@ -272,7 +289,7 @@ pub(crate) fn build_feed_deck(
 
     let deck = serde_json::json!({
         "format": "aetherium.boomscroll.deck",
-        "version": 2,
+        "version": 3,
         "exported_at": chrono::Utc::now().to_rfc3339(),
         "workspaces": workspaces,
         "card_count": cards.len(),
@@ -348,7 +365,7 @@ mod feed_deck_tests {
             build_feed_deck(&conn, &["ws_a".to_string(), "ws_b".to_string()]).unwrap();
         let deck: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(deck["format"], "aetherium.boomscroll.deck");
-        assert_eq!(deck["version"], 2);
+        assert_eq!(deck["version"], 3);
         assert_eq!(deck["card_count"], 3);
         let workspaces = deck["workspaces"].as_array().unwrap();
         assert_eq!(workspaces.len(), 2);
@@ -360,6 +377,7 @@ mod feed_deck_tests {
         assert_eq!(cards[0]["kind"], "flashcard");
         assert_eq!(cards[0]["topic"], "Ownership");
         assert_eq!(cards[0]["workspace_id"], "ws_a");
+        assert_eq!(cards[0]["difficulty"], 1);
         assert!(cards[1]["topic"].is_null());
         assert_eq!(cards[2]["workspace_id"], "ws_b");
     }

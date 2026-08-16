@@ -1,4 +1,5 @@
 import type { DeckCard } from "../lib/deck";
+import { formatDifficultyLabel, getDifficultyColor } from "../lib/difficulty";
 
 export type FeedMode = "study" | "test";
 
@@ -6,6 +7,7 @@ interface FeedCardProps {
   card: DeckCard;
   mode: FeedMode;
   revealed: boolean;
+  activePresetId?: string;
 }
 
 /**
@@ -15,9 +17,14 @@ interface FeedCardProps {
  *   decided by the caller (the "Show answer immediately" preference) and
  *   passed in as `revealed`.
  */
-export default function FeedCard({ card, mode, revealed }: FeedCardProps) {
+export default function FeedCard({ card, mode, revealed, activePresetId }: FeedCardProps) {
   const isStudy = mode === "study";
   const showBack = isStudy || revealed;
+
+  const diffInfo = card.difficulty
+    ? formatDifficultyLabel(card.difficulty, activePresetId ?? card.difficultyPreset, card.difficultyLabel)
+    : null;
+  const diffColors = diffInfo ? getDifficultyColor(diffInfo.score) : null;
 
   return (
     <div className="flex h-full w-full flex-col items-center justify-between bg-zinc-950 px-6 pt-[calc(var(--safe-top)+3.5rem)] pb-[calc(var(--safe-bottom)+1.5rem)] text-center select-none overflow-hidden touch-none">
@@ -29,6 +36,14 @@ export default function FeedCard({ card, mode, revealed }: FeedCardProps) {
           {card.topic && (
             <span className="rounded-full border border-zinc-700/80 bg-zinc-900/80 px-3 py-1 text-[11px] font-medium tracking-wider text-zinc-400 uppercase">
               {card.topic}
+            </span>
+          )}
+          {diffInfo && diffColors && (
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold tracking-wider uppercase ${diffColors.bg} ${diffColors.border} ${diffColors.text}`}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${diffColors.dot}`} />
+              L{diffInfo.score} • {diffInfo.label}
             </span>
           )}
         </div>

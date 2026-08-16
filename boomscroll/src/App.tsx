@@ -12,6 +12,12 @@ import {
   shuffle,
 } from "./lib/deck";
 import type { Deck, DeckCard } from "./lib/deck";
+import {
+  DIFFICULTY_PRESETS,
+  DEFAULT_PRESET_ID,
+  getDifficultyColor,
+} from "./lib/difficulty";
+import type { DifficultyScore } from "./lib/difficulty";
 
 const COMMIT_THRESHOLD_PX = 80;
 const RUBBER_BAND_MAX_PX = 30;
@@ -20,6 +26,10 @@ const TAP_SLOP_PX = 10;
 export default function App() {
   const [deck, setDeck] = useState<Deck | null>(null);
   const [enabledIds, setEnabledIds] = useState<Set<string>>(new Set());
+  const [enabledDifficulties, setEnabledDifficulties] = useState<Set<DifficultyScore>>(
+    new Set<DifficultyScore>([1, 2, 3, 4, 5]),
+  );
+  const [activePresetId, setActivePresetId] = useState<string>(DEFAULT_PRESET_ID);
   const [showFilter, setShowFilter] = useState(false);
   const [order, setOrder] = useState<DeckCard[]>([]);
   const [index, setIndex] = useState(0);
@@ -58,6 +68,10 @@ export default function App() {
     try {
       const savedIdsRaw = localStorage.getItem("boomscroll_enabled_ids");
       const savedIds = savedIdsRaw ? new Set<string>(JSON.parse(savedIdsRaw)) : undefined;
+      const savedPreset = localStorage.getItem("boomscroll_active_preset");
+      if (savedPreset && DIFFICULTY_PRESETS[savedPreset]) {
+        setActivePresetId(savedPreset);
+      }
       loadDeckFromText(savedDeck, savedIds, true);
     } catch {
       localStorage.removeItem("boomscroll_active_deck");
@@ -81,8 +95,19 @@ export default function App() {
     return matching.length > 0 ? matching : cards;
   }
 
-  function startFeed(sourceDeck: Deck, ids: Set<string>, activeMode: FeedMode = mode) {
-    const wsCards = sourceDeck.cards.filter((card) => ids.has(card.workspaceId));
+  function startFeed(
+    sourceDeck: Deck,
+    ids: Set<string>,
+    diffs: Set<DifficultyScore> = enabledDifficulties,
+    activeMode: FeedMode = mode,
+  ) {
+    const wsCards = sourceDeck.cards.filter((card) => {
+      if (!ids.has(card.workspaceId)) {return false;}
+      if (card.difficulty !== undefined && !diffs.has(card.difficulty)) {
+        return false;
+      }
+      return true;
+    });
     const modeCards = filterCardsForMode(wsCards, activeMode);
     setOrder(shuffle(modeCards));
     setIndex(0);
@@ -95,7 +120,7 @@ export default function App() {
   function switchFeedMode(newMode: FeedMode) {
     setMode(newMode);
     if (deck) {
-      startFeed(deck, enabledIds, newMode);
+      startFeed(deck, enabledIds, enabledDifficulties, newMode);
     }
   }
 
@@ -310,29 +335,131 @@ export default function App() {
 
   // Workspace filter screen
   if (showFilter || !current) {
-    const enabledCards = deck.cards.filter((card) => enabledIds.has(card.workspaceId)).length;
+    const enabledCards = deck.cards.filter((card) => {
+      if (!enabledIds.has(card.workspaceId)) {return false;}
+      if (card.difficulty !== undefined && !enabledDifficulties.has(card.difficulty)) {
+        return false;
+      }
+      return true;
+    }).length;
     const allSelected = deck.workspaces.length > 0 && deck.workspaces.every((ws) => enabledIds.has(ws.id));
+    const allDiffsSelected = enabledDifficulties.size === 5;
+    const preset = DIFFICULTY_PRESETS[activePresetId] ?? DIFFICULTY_PRESETS[DEFAULT_PRESET_ID];
 
     return (
-      <main className="safe-screen flex h-full flex-col items-center justify-center gap-4 px-8">
-        <h1 className="shrink-0 text-xl font-bold tracking-tight">Choose workspaces</h1>
-        <div className="flex w-full max-w-sm shrink-0 items-center justify-between">
-          <span className="text-xs text-zinc-500">
-            {enabledIds.size} of {deck.workspaces.length} selected
+      <main className="safe-screen flex h-full flex-col items-center justify-center gap-4 px-6 py-4">
+        <div className="w-full max-w-sm shrink-0 flex items-center justify-between">
+          <h1 className="text-xl font-bold tracking-tight">Filter Deck</h1>
+          <button
+            onClick={() => {
+              if (current) {
+                setShowFilter(false);
+              } else {
+                startFeed(deck, enabledIds, enabledDifficulties);
+              }
+            }}
+            className="text-xs text-zinc-400 hover:text-zinc-200"
+          >
+            Done
+          </button>
+        </div>
+
+        <div className="w-full max-w-sm shrink-0 space-y-2 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-3.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
+              Domain Preset
+            </span>
+            <select
+              value={activePresetId}
+              onChange={(e) => {
+                const nextPreset = e.target.value;
+                setActivePresetId(nextPreset);
+                localStorage.setItem("boomscroll_active_preset", nextPreset);
+              }}
+              className="rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-100 focus:outline-none"
+            >
+              {Object.values(DIFFICULTY_PRESETS).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.icon} {p.shortName}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="pt-2">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
+                Difficulty Range (1–5)
+              </span>
+              <button
+                onClick={() =>
+                  setEnabledDifficulties(
+                    allDiffsSelected
+                      ? new Set<DifficultyScore>([1])
+                      : new Set<DifficultyScore>([1, 2, 3, 4, 5]),
+                  )
+                }
+                className="text-[11px] text-purple-400 hover:text-purple-300"
+              >
+                {allDiffsSelected ? "Solo Level 1" : "All Levels"}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-5 gap-1.5">
+              {([1, 2, 3, 4, 5] as DifficultyScore[]).map((level) => {
+                const isSelected = enabledDifficulties.has(level);
+                const color = getDifficultyColor(level);
+                const label = preset.labels[level];
+                return (
+                  <button
+                    key={level}
+                    onClick={() =>
+                      setEnabledDifficulties((prev) => {
+                        const nextSet = new Set(prev);
+                        if (nextSet.has(level)) {
+                          if (nextSet.size > 1) {nextSet.delete(level);}
+                        } else {
+                          nextSet.add(level);
+                        }
+                        return nextSet;
+                      })
+                    }
+                    className={`flex flex-col items-center justify-center rounded-xl border p-1.5 transition-all ${
+                      isSelected
+                        ? `${color.bg} ${color.border} ${color.text} shadow-sm font-semibold`
+                        : "border-zinc-800 bg-zinc-950/40 text-zinc-500 opacity-60"
+                    }`}
+                    title={label}
+                  >
+                    <span className="text-xs font-bold">L{level}</span>
+                    <span className="text-[9px] truncate max-w-full leading-tight mt-0.5">
+                      {label.split(" ")[0]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex w-full max-w-sm shrink-0 items-center justify-between pt-1">
+          <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
+            Workspaces ({enabledIds.size}/{deck.workspaces.length})
           </span>
           <button
             onClick={() =>
               setEnabledIds(allSelected ? new Set() : new Set(deck.workspaces.map((ws) => ws.id)))
             }
-            className="rounded-full border border-zinc-800 px-3 py-1 text-xs font-medium text-zinc-300 hover:bg-zinc-900/50 hover:text-zinc-100 active:opacity-80 transition-colors"
+            className="rounded-full border border-zinc-800 px-3 py-1 text-[11px] font-medium text-zinc-300 hover:bg-zinc-900/50 hover:text-zinc-100 active:opacity-80 transition-colors"
           >
             {allSelected ? "Unselect all" : "Select all"}
           </button>
         </div>
-        <ul className="w-full max-w-sm min-h-0 flex-1 space-y-2 overflow-y-auto touch-pan-y">
+
+        <ul className="w-full max-w-sm min-h-0 flex-1 space-y-2 overflow-y-auto touch-pan-y pr-1">
           {deck.workspaces.map((ws) => (
             <li key={ws.id}>
-              <label className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 px-4 py-3">
+              <label className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3 cursor-pointer hover:border-zinc-700 transition-colors">
                 <span className="flex items-center gap-3 text-sm">
                   <input
                     type="checkbox"
@@ -356,9 +483,10 @@ export default function App() {
             </li>
           ))}
         </ul>
-        <div className="flex shrink-0 flex-col items-center gap-3 w-full max-w-sm">
+
+        <div className="flex shrink-0 flex-col items-center gap-2.5 w-full max-w-sm pt-2">
           <button
-            onClick={() => startFeed(deck, enabledIds)}
+            onClick={() => startFeed(deck, enabledIds, enabledDifficulties)}
             disabled={enabledCards === 0}
             className="w-full rounded-full bg-zinc-50 px-6 py-3 text-sm font-semibold text-zinc-900 active:opacity-80 disabled:opacity-40"
           >
@@ -457,7 +585,7 @@ export default function App() {
       {/* Background card (next in feed) */}
       {next && (
         <div className="absolute inset-0 z-0">
-          <FeedCard card={next} mode={mode} revealed={false} />
+          <FeedCard card={next} mode={mode} revealed={false} activePresetId={activePresetId} />
         </div>
       )}
 
@@ -473,7 +601,7 @@ export default function App() {
         }}
         className="absolute inset-0 z-0 select-none touch-none"
       >
-        <FeedCard card={current} mode={mode} revealed={revealed} />
+        <FeedCard card={current} mode={mode} revealed={revealed} activePresetId={activePresetId} />
       </div>
 
       {/* Hidden file input for browser dev mode fallback */}

@@ -108,3 +108,8 @@ tauri/.claude/settings.local.json
 tauri/.antigravitycli/
 Samples/
 .antigravitycli/
+
+# Personal local user decks
+boomscroll/public/my_deck.json
+boomscroll/public/econ_geo_deck.json
+*.deck.json
