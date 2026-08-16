@@ -219,6 +219,14 @@ export default function ImportSettingsSection() {
   // Conversations the export contains no content for (deleted/stripped husks) —
   // dropped from the preview, surfaced as a count so totals stay explainable.
   const [claudeSkippedEmpty, setClaudeSkippedEmpty] = useState(0);
+  // Match-threshold slider: re-assigns every reviewable chat from the scores
+  // already in claudeSuggestions (no matcher re-run). Each drag session pushes
+  // one snapshot onto the history so it can be undone.
+  const [scoreThreshold, setScoreThreshold] = useState(0.5);
+  const [assignmentHistory, setAssignmentHistory] = useState<
+    { assignments: Record<string, string | null>; selected: Set<string> }[]
+  >([]);
+  const sliderSnapshotTaken = useRef(false);
   const [claudeSelected, setClaudeSelected] = useState<Set<string>>(new Set()); // orphan conv UUIDs
   const [claudeSelectedFolders, setClaudeSelectedProjects] = useState<Set<string>>(new Set()); // project UUIDs
   const [projectDestinations, setProjectDestinations] = useState<Record<string, ProjectDestination>>({});
@@ -701,6 +709,9 @@ export default function ImportSettingsSection() {
     setClusterProposing(false);
     setRowFilter("unassigned");
     setRowSearch("");
+    setScoreThreshold(0.5);
+    setAssignmentHistory([]);
+    sliderSnapshotTaken.current = false;
     prefilledDestsRef.current = {};
   }
 
@@ -1143,6 +1154,50 @@ export default function ImportSettingsSection() {
       const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "Export failed";
       setError(msg);
     }
+  }
+
+  /** Best candidate (project uuid + score) for a conversation from the latest matcher run. */
+  function bestCandidate(s: ChatSuggestion | undefined): { uuid: string; score: number } | null {
+    if (!s) { return null; }
+    if (s.project_uuid) { return { uuid: s.project_uuid, score: s.score }; }
+    const alt = s.alternates[0];
+    return alt ? { uuid: alt.project_uuid, score: alt.score } : null;
+  }
+
+  /**
+   * Apply the match threshold: every reviewable chat whose best candidate
+   * scores at or above `t` is assigned to it; the rest return to Unassigned.
+   * The first movement of a drag session snapshots the current assignments
+   * onto the undo history.
+   */
+  function applyScoreThreshold(t: number) {
+    if (!sliderSnapshotTaken.current) {
+      sliderSnapshotTaken.current = true;
+      setAssignmentHistory((h) => [
+        ...h.slice(-19),
+        { assignments: { ...chatAssignments }, selected: new Set(claudeSelected) },
+      ]);
+    }
+    const byConv = new Map(claudeSuggestions.map((s) => [s.conversation_uuid, s]));
+    const nextAssignments: Record<string, string | null> = {};
+    const nextSelected = new Set<string>();
+    for (const c of claudeOrphans) {
+      const best = bestCandidate(byConv.get(c.uuid));
+      const assigned = best && best.score >= t ? best.uuid : null;
+      nextAssignments[c.uuid] = assigned;
+      if (!assigned) { nextSelected.add(c.uuid); }
+    }
+    setChatAssignments(nextAssignments);
+    setClaudeSelected(nextSelected);
+  }
+
+  function undoThresholdChange() {
+    const last = assignmentHistory[assignmentHistory.length - 1];
+    if (!last) { return; }
+    setAssignmentHistory((h) => h.slice(0, -1));
+    setChatAssignments(last.assignments);
+    setClaudeSelected(last.selected);
+    sliderSnapshotTaken.current = false;
   }
 
   function applyBulkDestination() {
@@ -2495,6 +2550,47 @@ export default function ImportSettingsSection() {
                             </button>
                           </div>
                         </div>
+                        {claudeSuggestions.length > 0 && (
+                          <div className="mt-2 flex items-center gap-2">
+                            <span
+                              className="text-[11px] text-[var(--text-muted)] whitespace-nowrap"
+                              title="Drag to re-categorize on the fly: each chat is assigned to its best-scoring match when that score is at or above the threshold, and returns to Unassigned below it. Undo restores the previous assignments."
+                            >
+                              Match threshold
+                            </span>
+                            <input
+                              type="range"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={scoreThreshold}
+                              aria-label="Match threshold"
+                              onChange={(e) => {
+                                const v = Number(e.target.value);
+                                setScoreThreshold(v);
+                                applyScoreThreshold(v);
+                              }}
+                              onPointerUp={() => { sliderSnapshotTaken.current = false; }}
+                              onKeyUp={() => { sliderSnapshotTaken.current = false; }}
+                              className="w-40 accent-[var(--accent-color)]"
+                            />
+                            <span className="w-9 text-[11px] tabular-nums text-[var(--text-secondary)]">
+                              {Math.round(scoreThreshold * 100)}%
+                            </span>
+                            <span className="text-[11px] text-[var(--text-muted)]">
+                              {assignedTotal} assigned · {unassignedTotal} unassigned
+                            </span>
+                            <button
+                              type="button"
+                              onClick={undoThresholdChange}
+                              disabled={assignmentHistory.length === 0}
+                              className="ml-auto text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] underline decoration-dotted disabled:opacity-40 disabled:pointer-events-none"
+                              title="Restore the assignments from before the last threshold change"
+                            >
+                              Undo
+                            </button>
+                          </div>
+                        )}
                         {orphansExpanded && reviewRows.length > 0 && (
                           <div className="mt-2 max-h-96 overflow-y-auto rounded-md border border-[var(--border-color)]">
                             {visibleRows.map((conv) => {

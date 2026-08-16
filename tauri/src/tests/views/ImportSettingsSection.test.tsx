@@ -642,6 +642,36 @@ describe("ImportSettingsSection", () => {
     expect(screen.queryByText(/Accept .* suggestion/)).not.toBeInTheDocument();
   });
 
+  it("re-categorizes live from the match-threshold slider and undoes per drag session", async () => {
+    vi.mocked(openDialog).mockResolvedValue("/imports/claude");
+    vi.mocked(api.chatFile.previewClaudeFiles).mockResolvedValueOnce(claudePreviewWithSuggestion());
+
+    renderImportSettings();
+    fireEvent.click(screen.getAllByText("Select")[2]);
+    // orphan-new is suggested at 0.6 → assigned; orphan-linked has no match.
+    await screen.findByText(/1 conversation$/);
+
+    const slider = screen.getByLabelText("Match threshold");
+
+    // Raise above 0.6 → the suggested chat drops back to Unassigned.
+    fireEvent.change(slider, { target: { value: "0.7" } });
+    fireEvent.pointerUp(slider);
+    expect(screen.getByText(/2 conversations$/)).toBeInTheDocument();
+
+    // Lower below 0.6 → it re-assigns.
+    fireEvent.change(slider, { target: { value: "0.2" } });
+    fireEvent.pointerUp(slider);
+    expect(screen.getByText(/1 conversation$/)).toBeInTheDocument();
+
+    // Undo restores per drag session: first back to the 0.7 state, then the original.
+    const undo = screen.getByRole("button", { name: "Undo" });
+    fireEvent.click(undo);
+    expect(screen.getByText(/2 conversations$/)).toBeInTheDocument();
+    fireEvent.click(undo);
+    expect(screen.getByText(/1 conversation$/)).toBeInTheDocument();
+    expect(undo).toBeDisabled();
+  });
+
   it("writes the strictness setting and re-runs matching from the menu", async () => {
     vi.mocked(openDialog).mockResolvedValue("/imports/claude");
     vi.mocked(api.chatFile.previewClaudeFiles).mockResolvedValueOnce(claudePreviewWithSuggestion());
