@@ -840,20 +840,23 @@ fn fetch_workspace_corpus(
 
     let workspace_meta = conn
         .query_row(
-            "SELECT name, description, prompt_instructions FROM workspaces WHERE id = ?1",
+            "SELECT name, description, prompt_instructions, ignore_name_in_ai_context FROM workspaces WHERE id = ?1",
             params![workspace_id],
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
                 ))
             },
         )
         .optional()
         .map_err(|e| e.to_string())?;
-    if let Some((name, description, prompt)) = workspace_meta {
-        texts.push(name);
+    if let Some((name, description, prompt, ignore_name)) = workspace_meta {
+        if ignore_name == 0 {
+            texts.push(name);
+        }
         if !description.trim().is_empty() {
             texts.push(description);
         }

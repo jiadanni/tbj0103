@@ -114,6 +114,7 @@ function buildWorkspace(overrides: Partial<{
   description: string;
   prompt_instructions: string;
   parent_workspace_id: string | null;
+  ignore_name_in_ai_context: boolean;
 }> = {}) {
   return {
     id: "ws-1",
@@ -247,6 +248,42 @@ describe("WorkspaceSettingsView", () => {
     fireEvent.click(screen.getByTitle("Rename"));
 
     expect(screen.queryByPlaceholderText("Optional description…")).not.toBeInTheDocument();
+  });
+
+  it("toggles ignoring the workspace name in AI context", async () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        makeWorkspace({ id: "root-1", name: "Parent Workspace", ignore_name_in_ai_context: false }),
+      ],
+      activeWorkspaceId: "root-1",
+      activeParentWorkspaceId: "root-1",
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkspaceSettingsView />
+      </MemoryRouter>
+    );
+
+    const toggle = await screen.findByRole("switch", { name: /ignore name in ai context/i });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+
+    fireEvent.click(toggle);
+
+    await waitFor(() => {
+      expect(apiMocks.updateWorkspace).toHaveBeenCalledWith(
+        "root-1",
+        "Parent Workspace",
+        "",
+        "",
+        undefined,
+        undefined,
+        undefined,
+        true
+      );
+    });
+
+    expect(toggle).toHaveAttribute("aria-checked", "true");
   });
 
   it("deletes all workspace facts without removing preferences from the memory panel", async () => {

@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS workspaces (
     order_index INTEGER NOT NULL DEFAULT 0,
     last_message_at TEXT,
     survey_data TEXT,
-    about_you TEXT NOT NULL DEFAULT ''
+    about_you TEXT NOT NULL DEFAULT '',
+    ignore_name_in_ai_context INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS folders (
