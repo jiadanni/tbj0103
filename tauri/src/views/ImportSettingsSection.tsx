@@ -203,7 +203,7 @@ export default function ImportSettingsSection() {
   const [proposedGroups, setProposedGroups] = useState<Record<string, ProposedGroup>>({});
   const [clusterProposing, setClusterProposing] = useState(false);
   // Review-table filter: show every review row or only still-unassigned ones.
-  const [rowFilter, setRowFilter] = useState<"all" | "unassigned">("unassigned");
+  const [rowFilter, setRowFilter] = useState<"all" | "unassigned" | "moved">("unassigned");
   const [rowSearch, setRowSearch] = useState("");
   const [projectsSectionOpen, setProjectsSectionOpen] = useState(true);
   // Snapshot of scan-time destination pre-fills. When the user leaves a
@@ -964,7 +964,7 @@ export default function ImportSettingsSection() {
         }
         return next;
       });
-      setSliderMoves({});
+      clearSliderMoves();
       // Newly assigned chats leave the import-as-unassigned tick set.
       setClaudeSelected((prev) => {
         const base = opts?.rerunAll ? new Set(claudeOrphans.map((c) => c.uuid)) : new Set(prev);
@@ -1048,7 +1048,7 @@ export default function ImportSettingsSection() {
       setProposedGroups((prev) => ({ ...prev, ...groups }));
       setProjectDestinations((prev) => ({ ...prev, ...dests }));
       setChatAssignments((prev) => ({ ...prev, ...assignments }));
-      setSliderMoves({});
+      clearSliderMoves();
       setClaudeSelected((prev) => {
         const next = new Set(prev);
         for (const uuid of Object.keys(assignments)) { next.delete(uuid); }
@@ -1080,12 +1080,15 @@ export default function ImportSettingsSection() {
       c.name.toLowerCase().includes(searchQuery) ||
       (c.first_user_message ?? "").toLowerCase().includes(searchQuery) ||
       (c.summary ?? "").toLowerCase().includes(searchQuery);
-    // Rows the last slider change moved stay visible even when assigned, so
-    // the change can be examined (and undone) instead of vanishing from view.
-    return (rowFilter === "unassigned"
-      ? claudeOrphans.filter((c) => !chatAssignments[c.uuid] || sliderMoves[c.uuid])
-      : claudeOrphans
-    ).filter(matchesSearch);
+    // "moved" shows only rows changed by the last slider adjustment — the
+    // slider auto-switches to it so assigned rows don't vanish from view.
+    const base =
+      rowFilter === "moved"
+        ? claudeOrphans.filter((c) => sliderMoves[c.uuid])
+        : rowFilter === "unassigned"
+          ? claudeOrphans.filter((c) => !chatAssignments[c.uuid])
+          : claudeOrphans;
+    return base.filter(matchesSearch);
   }
 
   /**
@@ -1097,7 +1100,8 @@ export default function ImportSettingsSection() {
    */
   async function exportReviewForAi() {
     const exportedAt = new Date();
-    const scope = rowFilter === "unassigned" ? "unassigned-only" : "all";
+    const scope =
+      rowFilter === "moved" ? "changed-by-threshold" : rowFilter === "unassigned" ? "unassigned-only" : "all";
     const searchQuery = rowSearch.trim();
     const payload = {
       format: "aetherium-claude-import-review",
@@ -1154,9 +1158,10 @@ export default function ImportSettingsSection() {
     if (!dest) { return; }
     try {
       await writeTextFile(dest, JSON.stringify(payload, null, 2));
-      const scopeLabel = scope === "unassigned-only"
-        ? `${payload.conversations.length} of ${claudeOrphans.length} conversations (unassigned only${searchQuery ? ", filtered by search" : ""})`
-        : `${payload.conversations.length} of ${claudeOrphans.length} conversations${searchQuery ? " (filtered by search)" : ""}`;
+      const scopeNote =
+        scope === "changed-by-threshold" ? "changed by threshold" : scope === "unassigned-only" ? "unassigned only" : "";
+      const notes = [scopeNote, searchQuery ? "filtered by search" : ""].filter(Boolean).join(", ");
+      const scopeLabel = `${payload.conversations.length} of ${claudeOrphans.length} conversations${notes ? ` (${notes})` : ""}`;
       await message(
         `Exported ${scopeLabel}.\n${payload.projects.length} projects are included as matching context.`,
         { title: "Export complete" },
@@ -1206,6 +1211,16 @@ export default function ImportSettingsSection() {
     setChatAssignments(nextAssignments);
     setClaudeSelected(nextSelected);
     setSliderMoves(moves);
+    // Jump to the changed-by-threshold view so rows the slider assigned don't
+    // vanish from the unassigned-only filter — they're assigned, but only
+    // because of the new threshold, and need reviewing as exactly that.
+    if (Object.keys(moves).length > 0) { setRowFilter("moved"); }
+  }
+
+  /** Clear the changed-by-threshold markers; the filter falls back to unassigned. */
+  function clearSliderMoves() {
+    setSliderMoves({});
+    setRowFilter((f) => (f === "moved" ? "unassigned" : f));
   }
 
   function undoThresholdChange() {
@@ -1214,7 +1229,7 @@ export default function ImportSettingsSection() {
     setAssignmentHistory((h) => h.slice(0, -1));
     setChatAssignments(last.assignments);
     setClaudeSelected(last.selected);
-    setSliderMoves({});
+    clearSliderMoves();
     sliderSnapshotTaken.current = false;
     sliderSessionBase.current = null;
   }
@@ -2518,7 +2533,7 @@ export default function ImportSettingsSection() {
                               const cleared: Record<string, string | null> = {};
                               for (const c of claudeOrphans) { cleared[c.uuid] = null; }
                               setChatAssignments(cleared);
-                              setSliderMoves({});
+                              clearSliderMoves();
                               setClaudeSelected(new Set(claudeOrphans.map((c) => c.uuid)));
                             }}
                             className="text-xs text-[var(--text-muted)] hover:underline"
@@ -2568,11 +2583,25 @@ export default function ImportSettingsSection() {
                             />
                             <button
                               type="button"
-                              onClick={() => setRowFilter((f) => (f === "all" ? "unassigned" : "all"))}
+                              onClick={() =>
+                                setRowFilter((f) => {
+                                  // Cycle all → unassigned → changed-by-threshold → all;
+                                  // the third state is skipped when nothing has moved.
+                                  if (f === "all") { return "unassigned"; }
+                                  if (f === "unassigned") {
+                                    return Object.keys(sliderMoves).length > 0 ? "moved" : "all";
+                                  }
+                                  return "all";
+                                })
+                              }
                               className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] underline decoration-dotted"
-                              title="Toggle between every reviewable chat and only the still-unassigned ones"
+                              title="Cycle between every reviewable chat, only the still-unassigned ones, and rows changed by the last threshold adjustment"
                             >
-                              {rowFilter === "all" ? "showing: all" : "showing: unassigned only"}
+                              {rowFilter === "all"
+                                ? "showing: all"
+                                : rowFilter === "unassigned"
+                                  ? "showing: unassigned only"
+                                  : "showing: changed by threshold"}
                             </button>
                             <button
                               type="button"
