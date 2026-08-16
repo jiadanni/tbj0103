@@ -2,8 +2,9 @@
  * ImportSettingsSection — external conversation imports.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ask, message, open } from "@tauri-apps/plugin-dialog";
-import { Check, CheckSquare, ChevronDown, ChevronRight, Eye, FolderInput, RefreshCw, Square, X } from "lucide-react";
+import { ask, message, open, save } from "@tauri-apps/plugin-dialog";
+import { writeTextFile } from "@tauri-apps/plugin-fs";
+import { Check, CheckSquare, ChevronDown, ChevronRight, Download, Eye, FolderInput, RefreshCw, Square, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api, type ChatSuggestion } from "../lib/api";
 import { conversationGist, isGenericConversationName } from "../lib/conversationGist";
@@ -204,6 +205,7 @@ export default function ImportSettingsSection() {
   // Review-table filter: show every review row or only still-unassigned ones.
   const [rowFilter, setRowFilter] = useState<"all" | "unassigned">("unassigned");
   const [rowSearch, setRowSearch] = useState("");
+  const [projectsSectionOpen, setProjectsSectionOpen] = useState(true);
   // Snapshot of scan-time destination pre-fills. When the user leaves a
   // project's picker untouched, import reuses the remembered destination ids
   // instead of creating workspaces/folders.
@@ -1044,6 +1046,67 @@ export default function ImportSettingsSection() {
     }
   }
 
+  /**
+   * Write the review state (projects + orphan conversations + current
+   * assignments/suggestions) to a JSON file the user can hand to an external
+   * AI (chat or CLI tool) for analysis. Export-only for now — there is no
+   * re-import of the AI's answers yet.
+   */
+  async function exportReviewForAi() {
+    const payload = {
+      format: "aetherium-claude-import-review",
+      version: 1,
+      exported_at: new Date().toISOString(),
+      instructions:
+        "Each conversation needs a destination. Set assigned_project_uuid to the uuid of the best-fitting project " +
+        "(from `projects`) or proposed workspace (from `proposed_workspaces`), or leave it null when nothing fits. " +
+        "Use `summary`, `gist`, `first_user_message`, and `messages` to judge the topic. " +
+        "`suggestion` is the app's own heuristic guess — feel free to overrule it.",
+      projects: claudeProjects.map((p) => ({
+        uuid: p.uuid,
+        name: p.name,
+        description: p.description,
+        prompt_template: p.prompt_template ?? "",
+      })),
+      proposed_workspaces: Object.entries(proposedGroups).map(([key, g]) => ({
+        uuid: key,
+        name: g.name,
+        terms: g.terms,
+      })),
+      conversations: claudeOrphans.map((c) => {
+        const suggestion = claudeSuggestions.find((s) => s.conversation_uuid === c.uuid);
+        return {
+          uuid: c.uuid,
+          name: c.name,
+          gist: conversationGist(c, 300),
+          first_user_message: c.first_user_message ?? "",
+          summary: c.summary ?? "",
+          message_count: c.message_count,
+          created_at: c.created_at,
+          updated_at: c.updated_at,
+          assigned_project_uuid: chatAssignments[c.uuid] ?? null,
+          suggestion: suggestion
+            ? { project_uuid: suggestion.project_uuid, score: suggestion.score, reason: suggestion.reason }
+            : null,
+          messages: c.messages ?? [],
+        };
+      }),
+    };
+    const date = new Date().toISOString().slice(0, 10);
+    const dest = await save({
+      defaultPath: `claude-import-review-${date}.json`,
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    });
+    if (!dest) { return; }
+    try {
+      await writeTextFile(dest, JSON.stringify(payload, null, 2));
+      await message(`Exported ${payload.conversations.length} conversations and ${payload.projects.length} projects.`, { title: "Export complete" });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "Export failed";
+      setError(msg);
+    }
+  }
+
   function applyBulkDestination() {
     setProjectDestinations((prev) => {
       const next = { ...prev };
@@ -1745,17 +1808,26 @@ export default function ImportSettingsSection() {
 
             {/* ── Per-project rows ─────────────────────────────── */}
             {claudeProjects.length > 0 && (
-              <div className="flex-1 min-h-[400px] flex flex-col gap-2">
+              <div className={`flex flex-col gap-2 ${projectsSectionOpen ? "flex-1 min-h-[400px]" : ""}`}>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-[var(--text-primary)]">
+                  <button
+                    type="button"
+                    onClick={() => setProjectsSectionOpen((v) => !v)}
+                    className="flex items-center gap-1 text-xs font-medium text-[var(--text-primary)]"
+                    aria-expanded={projectsSectionOpen}
+                  >
+                    {projectsSectionOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                     Projects ({claudeSelectedFolders.size}/{claudeProjects.length})
-                  </span>
-                  <div className="flex gap-2">
-                    <button onClick={() => setClaudeSelectedProjects(new Set(claudeProjects.map((p) => p.uuid)))} className="text-xs text-[var(--accent-color)] hover:underline">All</button>
-                    <button onClick={() => setClaudeSelectedProjects(new Set())} className="text-xs text-[var(--text-muted)] hover:underline">None</button>
-                  </div>
+                  </button>
+                  {projectsSectionOpen && (
+                    <div className="flex gap-2">
+                      <button onClick={() => setClaudeSelectedProjects(new Set(claudeProjects.map((p) => p.uuid)))} className="text-xs text-[var(--accent-color)] hover:underline">All</button>
+                      <button onClick={() => setClaudeSelectedProjects(new Set())} className="text-xs text-[var(--text-muted)] hover:underline">None</button>
+                    </div>
+                  )}
                 </div>
 
+                {projectsSectionOpen && (<>
                 {/* Bulk action */}
                 <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
                   <span className="text-[11px] text-[var(--text-muted)]">Bulk:</span>
@@ -2119,6 +2191,7 @@ export default function ImportSettingsSection() {
                     })()}
                   </div>
                 </div>
+                </>)}
               </div>
             )}
 
@@ -2305,6 +2378,15 @@ export default function ImportSettingsSection() {
                               )}
                             </div>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => void exportReviewForAi()}
+                            title="Export projects and these conversations (with transcripts, assignments, and the app's suggestions) as JSON, to hand to an external AI for analysis."
+                            className="inline-flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                          >
+                            <Download size={11} />
+                            Export for AI
+                          </button>
                           <button
                             type="button"
                             onClick={() => {

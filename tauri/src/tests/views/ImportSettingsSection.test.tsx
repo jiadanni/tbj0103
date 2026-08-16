@@ -14,6 +14,7 @@ vi.mock("lucide-react", () => ({
   CheckSquare: () => <div data-testid="icon-check-square" />,
   ChevronDown: () => <div data-testid="icon-chevron-down" />,
   ChevronRight: () => <div data-testid="icon-chevron-right" />,
+  Download: () => <div data-testid="icon-download" />,
   Eye: () => <div data-testid="icon-eye" />,
   FolderInput: () => <div data-testid="icon-folder-input" />,
   Info: () => <div data-testid="icon-info" />,
@@ -26,6 +27,11 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
   ask: vi.fn(() => Promise.resolve(true)),
   message: vi.fn(() => Promise.resolve(undefined)),
   open: vi.fn(),
+  save: vi.fn(() => Promise.resolve(null)),
+}));
+
+vi.mock("@tauri-apps/plugin-fs", () => ({
+  writeTextFile: vi.fn(() => Promise.resolve(undefined)),
 }));
 
 vi.mock("react-router-dom", async () => {
