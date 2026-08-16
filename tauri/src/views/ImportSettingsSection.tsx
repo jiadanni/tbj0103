@@ -1148,7 +1148,14 @@ export default function ImportSettingsSection() {
           updated_at: c.updated_at,
           assigned_project_uuid: chatAssignments[c.uuid] ?? null,
           suggestion: suggestion
-            ? { project_uuid: suggestion.project_uuid, score: suggestion.score, reason: suggestion.reason }
+            ? {
+                project_uuid: suggestion.project_uuid,
+                score: suggestion.score,
+                reason: suggestion.reason,
+                // Runner-up candidates; for "none" (no confident match) these
+                // are the best below-threshold guesses with their scores.
+                alternates: suggestion.alternates,
+              }
             : null,
           messages: c.messages ?? [],
         };
