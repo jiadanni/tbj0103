@@ -235,6 +235,20 @@ pub fn upsert_memory_link(
     Ok(())
 }
 
+/// True when a previously imported chat currently sits in the unassigned area —
+/// either the remembered `__orphans__` destination or anywhere in the
+/// "Unassigned Imports" workspace. Such chats re-enter matching on every scan
+/// instead of being auto-merged in place, so the user can iteratively assign
+/// leftovers across repeated imports.
+pub fn is_unassigned_location(
+    info: &LinkedSessionInfo,
+    orphans: Option<&KnownDestination>,
+) -> bool {
+    info.workspace_name == "Unassigned Imports"
+        || orphans
+            .is_some_and(|d| d.workspace_id == info.workspace_id && d.folder_id == info.folder_id)
+}
+
 /// Pick the dedup candidate for an unlinked chat from the sessions sharing its
 /// (title, created_at): the one already at the resolved destination wins;
 /// otherwise a candidate is only trusted when it is unambiguous (exactly one —
@@ -393,6 +407,35 @@ mod tests {
         // Deleting the memory cascades the link away.
         conn.execute("DELETE FROM memories WHERE id = 'm1'", []).unwrap();
         assert!(load_memory_links(&conn, SOURCE_CLAUDE).unwrap().is_empty());
+    }
+
+    #[test]
+    fn unassigned_location_matches_orphans_dest_and_unassigned_workspace() {
+        let info = |ws_id: &str, ws_name: &str, folder: &str| LinkedSessionInfo {
+            session_id: "s".into(),
+            source_conversation_uuid: "c".into(),
+            title: "t".into(),
+            workspace_id: ws_id.into(),
+            workspace_name: ws_name.into(),
+            folder_id: folder.into(),
+            folder_name: String::new(),
+        };
+        let orphans = KnownDestination {
+            source_project_uuid: ORPHANS_KEY.into(),
+            source_project_name: String::new(),
+            workspace_id: "w-orph".into(),
+            workspace_name: "Anywhere".into(),
+            folder_id: "f-orph".into(),
+            folder_name: "Claude Import".into(),
+        };
+        // Exact orphans-destination match.
+        assert!(is_unassigned_location(&info("w-orph", "Anywhere", "f-orph"), Some(&orphans)));
+        // Same workspace, different folder → not the orphans destination.
+        assert!(!is_unassigned_location(&info("w-orph", "Anywhere", "other"), Some(&orphans)));
+        // Anywhere inside "Unassigned Imports" counts, even with no orphans row.
+        assert!(is_unassigned_location(&info("w2", "Unassigned Imports", ""), None));
+        // A normal project home is not unassigned.
+        assert!(!is_unassigned_location(&info("w3", "Rust Learning", ""), Some(&orphans)));
     }
 
     #[test]

@@ -227,8 +227,32 @@ vi.mock("@/lib/api", () => ({
         memories_by_project: {},
         suggestions: [],
         linked_conversations: {},
+        linked_unassigned: {},
         known_destinations: {},
+        match_strictness: "balanced",
         files_found: { conversations: true, projects: true, memories: false },
+      })),
+      matchClaudeWithTopics: vi.fn(() => Promise.resolve({
+        suggestions: [],
+        topics_by_project: {},
+        projects_with_topics: 0,
+        projects_total: 0,
+        topic_batches_total: 0,
+        topic_batches_failed: 0,
+        llm_error: null,
+      })),
+      matchClaudeWithLlm: vi.fn(() => Promise.resolve({
+        suggestions: [],
+        batches_total: 0,
+        batches_completed: 0,
+        llm_error: null,
+      })),
+      clusterUnmatchedClaudeChats: vi.fn(() => Promise.resolve({
+        clusters: [],
+        strategy: "lexical",
+        embedded: 0,
+        failed: 0,
+        names_generated: 0,
       })),
       importClaudeFiles: vi.fn(() => Promise.resolve({
         imported: 0,
@@ -238,12 +262,19 @@ vi.mock("@/lib/api", () => ({
         cloned: 0,
         linked: 1,
         moved_back: 0,
+        reassigned: 0,
         memories_imported: 0,
         memories_updated: 0,
         memories_skipped: 0,
         errors: 0,
         error_messages: [],
       })),
+    },
+    settings: {
+      updateOne: vi.fn(() => Promise.resolve(undefined)),
+    },
+    ollama: {
+      listModels: vi.fn(() => Promise.resolve([])),
     },
   },
 }));
@@ -434,7 +465,9 @@ describe("ImportSettingsSection", () => {
       orphan_count: 2,
       memories: null,
       memories_by_project: {},
-      suggestions: [],
+      suggestions: [] as import("@/lib/api").ChatSuggestion[],
+      linked_unassigned: {} as Record<string, import("@/lib/api").LinkedImportInfo>,
+      match_strictness: "balanced" as const,
       linked_conversations: {
         "orphan-linked": {
           session_id: "session-linked",
@@ -445,7 +478,7 @@ describe("ImportSettingsSection", () => {
           folder_id: "",
           folder_name: "",
         },
-      },
+      } as Record<string, import("@/lib/api").LinkedImportInfo>,
       known_destinations: {
         "proj-1": {
           source_project_uuid: "proj-1",
@@ -538,5 +571,156 @@ describe("ImportSettingsSection", () => {
     expect(api.workspace.create).not.toHaveBeenCalled();
     expect(api.workspace.createChild).not.toHaveBeenCalled();
     expect(api.folder.create).not.toHaveBeenCalled();
+  });
+
+  function claudePreviewWithSuggestion() {
+    const base = claudePreviewWithLinks();
+    return {
+      ...base,
+      linked_conversations: {},
+      known_destinations: {},
+      suggestions: [
+        {
+          conversation_uuid: "orphan-new",
+          project_uuid: "proj-1",
+          score: 0.6,
+          reason: "keywords" as const,
+          alternates: [
+            { project_uuid: "proj-2", score: 0.31 },
+          ],
+        },
+      ],
+      folders: [
+        ...base.folders,
+        {
+          uuid: "proj-2",
+          name: "Cooking",
+          description: "",
+          has_prompt: false,
+          doc_count: 0,
+          conversation_count: 0,
+          has_memory: false,
+          prompt_template: "",
+        },
+      ],
+    };
+  }
+
+  it("pre-selects the suggested project in the dropdown, keeps the row visible, and shows alternates", async () => {
+    vi.mocked(openDialog).mockResolvedValue("/imports/claude");
+    vi.mocked(api.chatFile.previewClaudeFiles).mockResolvedValueOnce(claudePreviewWithSuggestion());
+
+    renderImportSettings();
+    fireEvent.click(screen.getAllByText("Select")[2]);
+
+    // Both orphans stay visible (the suggested one is assigned, not hidden).
+    fireEvent.click(await screen.findByText(/2 conversations$/));
+    // The chat may also render in the project detail pane; the review row's
+    // title is a <button> with a sibling destination dropdown.
+    const rowTitle = screen.getAllByText(/Fresh chat/).find((el) => el.closest("button"));
+    expect(rowTitle).toBeTruthy();
+    const rowContainer = rowTitle?.closest("div.border-b") as HTMLElement;
+    const select = within(rowContainer).getByRole("combobox") as HTMLSelectElement;
+    expect(select.value).toBe("proj-1");
+
+    // Classification and runner-up are visible.
+    expect(screen.getByText(/suggested: Rust Learning \(keywords\)/)).toBeInTheDocument();
+    expect(screen.getByText(/also: Cooking 31%/)).toBeInTheDocument();
+
+    // The old bulk-accept flow is gone.
+    expect(screen.queryByText(/Accept .* suggestion/)).not.toBeInTheDocument();
+  });
+
+  it("writes the strictness setting and re-runs matching from the menu", async () => {
+    vi.mocked(openDialog).mockResolvedValue("/imports/claude");
+    vi.mocked(api.chatFile.previewClaudeFiles).mockResolvedValueOnce(claudePreviewWithSuggestion());
+    vi.mocked(api.chatFile.matchClaudeWithTopics).mockResolvedValue({
+      suggestions: [],
+      topics_by_project: {},
+      projects_with_topics: 0,
+      projects_total: 2,
+      topic_batches_total: 0,
+      topic_batches_failed: 0,
+      llm_error: null,
+    });
+
+    renderImportSettings();
+    fireEvent.click(screen.getAllByText("Select")[2]);
+    await screen.findByText(/2 conversations$/);
+
+    fireEvent.click(screen.getByLabelText("AI matching options"));
+    fireEvent.click(await screen.findByText(/Strict — only clear winners/));
+
+    await waitFor(() => {
+      expect(api.settings.updateOne).toHaveBeenCalledWith("import.match_strictness", "strict");
+    });
+    await waitFor(() => {
+      expect(api.chatFile.matchClaudeWithTopics).toHaveBeenCalled();
+    });
+  });
+
+  it("proposes new workspaces for leftovers and imports them under synthetic keys", async () => {
+    vi.mocked(openDialog).mockResolvedValue("/imports/claude");
+    const preview = claudePreviewWithSuggestion();
+    preview.suggestions = []; // both orphans unassigned
+    vi.mocked(api.chatFile.previewClaudeFiles).mockResolvedValueOnce(preview);
+    vi.mocked(api.chatFile.clusterUnmatchedClaudeChats).mockResolvedValueOnce({
+      clusters: [
+        {
+          id: "cluster-0",
+          label: "Docker & Containers",
+          terms: ["docker", "containers"],
+          conversation_uuids: ["orphan-new", "orphan-linked"],
+        },
+      ],
+      strategy: "embedding",
+      embedded: 2,
+      failed: 0,
+      names_generated: 1,
+    });
+
+    renderImportSettings();
+    fireEvent.click(screen.getAllByText("Select")[2]);
+    await screen.findByText(/2 conversations$/);
+
+    fireEvent.click(screen.getByLabelText("AI matching options"));
+    fireEvent.click(await screen.findByText(/Propose new workspaces for leftovers/));
+
+    await waitFor(() => {
+      expect(api.chatFile.clusterUnmatchedClaudeChats).toHaveBeenCalledTimes(1);
+    });
+    expect(await screen.findByText(/Proposed 1 new workspace/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Import" }));
+    await waitFor(() => {
+      expect(api.chatFile.importClaudeFiles).toHaveBeenCalledTimes(1);
+    });
+    const args = vi.mocked(api.chatFile.importClaudeFiles).mock.calls[0][0];
+    const syntheticKeys = Object.keys(args.folderMappings).filter((k) => k.startsWith("proposed:"));
+    expect(syntheticKeys).toHaveLength(1);
+    const key = syntheticKeys[0];
+    expect(args.chatProjectOverrides?.["orphan-new"]).toBe(key);
+    expect(args.chatProjectOverrides?.["orphan-linked"]).toBe(key);
+    expect(args.projectNameOverrides?.[key]).toBe("Docker & Containers");
+  });
+
+  it("keeps linked-but-unassigned chats in the review table with a flag", async () => {
+    vi.mocked(openDialog).mockResolvedValue("/imports/claude");
+    const preview = claudePreviewWithLinks();
+    // The linked chat sits in Unassigned Imports → reviewable, not auto-merge.
+    preview.linked_unassigned = preview.linked_conversations;
+    preview.linked_conversations = {};
+    vi.mocked(api.chatFile.previewClaudeFiles).mockResolvedValueOnce(preview);
+
+    renderImportSettings();
+    fireEvent.click(screen.getAllByText("Select")[2]);
+
+    // No auto-merge summary (nothing is silently linked).
+    expect(await screen.findByText(/2 conversations$/)).toBeInTheDocument();
+    expect(screen.queryByText(/will merge automatically/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText(/2 conversations$/));
+    expect(screen.getByText(/imported, still unassigned/)).toBeInTheDocument();
+    expect(screen.getByText(/Already imported chat/)).toBeInTheDocument();
   });
 });

@@ -20,12 +20,24 @@ use serde::Serialize;
 
 use super::{ClaudeConversationPreview, ClaudeProjectPreview};
 
+/// A runner-up project from the coverage ranking, surfaced so the UI can show
+/// secondary/tertiary candidates next to the primary suggestion.
+#[derive(Debug, Clone, Serialize)]
+pub struct AltCandidate {
+    pub project_uuid: String,
+    pub score: f32,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct MatchSuggestion {
     pub conversation_uuid: String,
     pub project_uuid: Option<String>,
     pub score: f32,
     pub reason: &'static str, // "title" | "keywords" | "topics" | "llm" | "none"
+    /// Up to two runner-up candidates from the coverage ranking. Empty for the
+    /// title and LLM tiers. For "none" suggestions these are the best guesses
+    /// that fell below the coverage/margin thresholds.
+    pub alternates: Vec<AltCandidate>,
 }
 
 /// Result of `generate_project_topics`, carrying failure stats so callers can
@@ -61,6 +73,18 @@ const COVERAGE_MIN: f32 = 0.25;
 /// otherwise the chat is generic enough to overlap multiple projects equally
 /// and assigning it to any one would be a guess.
 const MARGIN_MIN: f32 = 0.08;
+
+/// Map the persisted `import.match_strictness` setting to a runner-up margin.
+/// "loose" must stay above zero: an exact tie has margin 0.0 and must never be
+/// auto-assigned (see `exact_tie_is_not_assigned`). Unknown values fall back to
+/// the balanced default.
+pub fn margin_for_strictness(strictness: &str) -> f32 {
+    match strictness {
+        "strict" => 0.15,
+        "loose" => 0.03,
+        _ => MARGIN_MIN,
+    }
+}
 /// Chats with fewer significant tokens than this are too short to discriminate.
 const MIN_CHAT_TOKENS: usize = 4;
 const MIN_TOKEN_LEN: usize = 4;
@@ -160,6 +184,25 @@ pub fn suggest_project_for_conversations_with_topics(
     memories_by_project: &HashMap<String, String>,
     topics_by_project: &HashMap<String, Vec<String>>,
 ) -> Vec<MatchSuggestion> {
+    suggest_project_for_conversations_with_options(
+        conversations,
+        projects,
+        memories_by_project,
+        topics_by_project,
+        MARGIN_MIN,
+    )
+}
+
+/// As `suggest_project_for_conversations_with_topics`, with a caller-supplied
+/// runner-up margin (from the persisted strictness setting via
+/// `margin_for_strictness`).
+pub fn suggest_project_for_conversations_with_options(
+    conversations: &[ClaudeConversationPreview],
+    projects: &[ClaudeProjectPreview],
+    memories_by_project: &HashMap<String, String>,
+    topics_by_project: &HashMap<String, Vec<String>>,
+    margin_min: f32,
+) -> Vec<MatchSuggestion> {
     let vocabs = build_vocabs(projects, memories_by_project, topics_by_project);
 
     // Inverse document frequency over the project pool. A token in 1 of 20
@@ -173,7 +216,17 @@ pub fn suggest_project_for_conversations_with_topics(
 
     conversations
         .iter()
-        .map(|conv| score_conversation(conv, &title_candidates, &vocabs, &idf, &boostable))
+        .map(|conv| {
+            score_conversation_inner(
+                conv,
+                &title_candidates,
+                &vocabs,
+                &idf,
+                &boostable,
+                COVERAGE_MIN,
+                margin_min,
+            )
+        })
         .collect()
 }
 
@@ -286,24 +339,6 @@ fn build_idf(vocabs: &[ProjectVocab]) -> HashMap<String, f32> {
         .collect()
 }
 
-fn score_conversation(
-    conv: &ClaudeConversationPreview,
-    title_candidates: &[(String, String)],
-    vocabs: &[ProjectVocab],
-    idf: &HashMap<String, f32>,
-    boostable: &HashSet<String>,
-) -> MatchSuggestion {
-    score_conversation_inner(
-        conv,
-        title_candidates,
-        vocabs,
-        idf,
-        boostable,
-        COVERAGE_MIN,
-        MARGIN_MIN,
-    )
-}
-
 #[allow(clippy::too_many_arguments)]
 fn score_conversation_inner(
     conv: &ClaudeConversationPreview,
@@ -325,13 +360,14 @@ fn score_conversation_inner(
                     project_uuid: Some(uuid.clone()),
                     score: 0.9,
                     reason: "title",
+                    alternates: Vec::new(),
                 };
             }
         }
     }
 
     // 2. IDF-weighted coverage on the base text (title + transcript).
-    if let Some(hit) = coverage_suggestion(
+    let (hit, base_alternates) = coverage_suggestion(
         conv,
         &chat_context_text(conv),
         vocabs,
@@ -339,7 +375,8 @@ fn score_conversation_inner(
         boostable,
         coverage_min,
         margin_min,
-    ) {
+    );
+    if let Some(hit) = hit {
         return hit;
     }
 
@@ -352,7 +389,7 @@ fn score_conversation_inner(
     let summary = conv.summary.trim();
     if !summary.is_empty() {
         let with_summary = format!("{} {}", chat_context_text(conv), summary);
-        if let Some(hit) = coverage_suggestion(
+        let (hit, summary_alternates) = coverage_suggestion(
             conv,
             &with_summary,
             vocabs,
@@ -360,17 +397,22 @@ fn score_conversation_inner(
             boostable,
             coverage_min,
             margin_min,
-        ) {
+        );
+        if let Some(hit) = hit {
             return hit;
         }
+        // The summary pass is the more informed ranking when it ran.
+        return no_match(conv, summary_alternates);
     }
 
-    no_match(conv)
+    no_match(conv, base_alternates)
 }
 
 /// IDF-weighted coverage scoring for one chat text against every project
-/// vocabulary. Returns `None` unless one project passes both the coverage
-/// threshold and the runner-up margin.
+/// vocabulary. The first element is `None` unless one project passes both the
+/// coverage threshold and the runner-up margin. The second element carries up
+/// to two ranked candidates the suggestion does not include: the runner-ups on
+/// success, the best below-threshold guesses on failure (for "none" rows).
 #[allow(clippy::too_many_arguments)]
 fn coverage_suggestion(
     conv: &ClaudeConversationPreview,
@@ -380,11 +422,11 @@ fn coverage_suggestion(
     boostable: &HashSet<String>,
     coverage_min: f32,
     margin_min: f32,
-) -> Option<MatchSuggestion> {
+) -> (Option<MatchSuggestion>, Vec<AltCandidate>) {
     let chat_tokens = tokenize(text);
     let chat_n = chat_tokens.len();
     if chat_n < MIN_CHAT_TOKENS {
-        return None;
+        return (None, Vec::new());
     }
 
     // Denominator: total IDF mass of the chat. Unknown tokens (present in no
@@ -395,7 +437,7 @@ fn coverage_suggestion(
         .map(|t| idf.get(t).copied().unwrap_or(UNKNOWN_TOKEN_IDF))
         .sum();
     if total_mass <= 0.0 {
-        return None;
+        return (None, Vec::new());
     }
 
     let mut scored: Vec<(&str, f32, bool)> = Vec::with_capacity(vocabs.len());
@@ -424,27 +466,51 @@ fn coverage_suggestion(
     // off the two best scores.
     scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-    let &(top_uuid, top_score, top_hit_topic) = scored.first()?;
+    // Ranked candidates from a given offset, clamped like the primary score so
+    // an alternate never displays above the suggestion it accompanies.
+    let alternates_from = |start: usize| -> Vec<AltCandidate> {
+        scored
+            .iter()
+            .skip(start)
+            .filter(|(_, cov, _)| *cov > 0.0)
+            .take(2)
+            .map(|(uuid, cov, _)| AltCandidate {
+                project_uuid: uuid.to_string(),
+                score: cov.min(0.85),
+            })
+            .collect()
+    };
+
+    let Some(&(top_uuid, top_score, top_hit_topic)) = scored.first() else {
+        return (None, Vec::new());
+    };
     let runner_up = scored.get(1).map(|s| s.1).unwrap_or(0.0);
 
     if top_score >= coverage_min && (top_score - runner_up) >= margin_min {
-        return Some(MatchSuggestion {
-            conversation_uuid: conv.uuid.clone(),
-            project_uuid: Some(top_uuid.to_string()),
-            score: top_score.min(0.85),
-            reason: if top_hit_topic { "topics" } else { "keywords" },
-        });
+        return (
+            Some(MatchSuggestion {
+                conversation_uuid: conv.uuid.clone(),
+                project_uuid: Some(top_uuid.to_string()),
+                score: top_score.min(0.85),
+                reason: if top_hit_topic { "topics" } else { "keywords" },
+                alternates: alternates_from(1),
+            }),
+            Vec::new(),
+        );
     }
 
-    None
+    // No confident winner — surface the best guesses so "none" rows still show
+    // what the matcher was considering.
+    (None, alternates_from(0))
 }
 
-fn no_match(conv: &ClaudeConversationPreview) -> MatchSuggestion {
+fn no_match(conv: &ClaudeConversationPreview, alternates: Vec<AltCandidate>) -> MatchSuggestion {
     MatchSuggestion {
         conversation_uuid: conv.uuid.clone(),
         project_uuid: None,
         score: 0.0,
         reason: "none",
+        alternates,
     }
 }
 
@@ -685,6 +751,8 @@ pub async fn suggest_project_with_llm(
     memories_by_project: &HashMap<String, String>,
     ollama: &crate::ollama::client::OllamaClient,
     model: &str,
+    // Runner-up margin for the keyword fallback paths (see margin_for_strictness).
+    fallback_margin: f32,
     // Called after each batch finishes with (batches_done, batches_total).
     mut on_progress: impl FnMut(usize, usize),
 ) -> LlmMatchOutcome {
@@ -745,6 +813,7 @@ pub async fn suggest_project_with_llm(
                     project_uuid: Some(uuid),
                     score: 0.9,
                     reason: "title",
+                    alternates: Vec::new(),
                 });
                 continue;
             }
@@ -815,13 +884,16 @@ pub async fn suggest_project_with_llm(
                             project_uuid: Some(proj.uuid.clone()),
                             score: 0.8,
                             reason: "llm",
+                            alternates: Vec::new(),
                         });
                     } else {
                         // LLM said no match (0) or parse failed — keyword fallback per conv.
-                        let kw = suggest_project_for_conversations(
+                        let kw = suggest_project_for_conversations_with_options(
                             std::slice::from_ref(conv),
                             projects,
                             memories_by_project,
+                            &HashMap::new(),
+                            fallback_margin,
                         );
                         results[conv_idx] = kw.into_iter().next();
                     }
@@ -853,8 +925,13 @@ pub async fn suggest_project_with_llm(
             .iter()
             .map(|&i| conversations[i].clone())
             .collect();
-        let fallback =
-            suggest_project_for_conversations(&remaining, projects, memories_by_project);
+        let fallback = suggest_project_for_conversations_with_options(
+            &remaining,
+            projects,
+            memories_by_project,
+            &HashMap::new(),
+            fallback_margin,
+        );
         for (fb, &conv_idx) in fallback.into_iter().zip(remaining_indices.iter()) {
             results[conv_idx] = Some(fb);
         }
@@ -870,6 +947,7 @@ pub async fn suggest_project_with_llm(
                 project_uuid: None,
                 score: 0.0,
                 reason: "none",
+                alternates: Vec::new(),
             })
         })
         .collect();
@@ -1188,6 +1266,7 @@ mod tests {
             &HashMap::new(),
             &ollama,
             "test-model",
+            MARGIN_MIN,
             |_, _| progress_calls += 1,
         )
         .await;
@@ -1659,5 +1738,165 @@ mod tests {
         );
         let text = chat_context_text(&with_transcript);
         assert!(text.contains("kubernetes") && text.contains("helm"));
+    }
+
+    #[test]
+    fn margin_for_strictness_presets() {
+        assert_eq!(margin_for_strictness("strict"), 0.15);
+        assert_eq!(margin_for_strictness("balanced"), 0.08);
+        assert_eq!(margin_for_strictness("loose"), 0.03);
+        assert_eq!(margin_for_strictness("garbage"), 0.08);
+        assert!(margin_for_strictness("loose") > 0.0, "loose must never allow exact ties");
+    }
+
+    #[test]
+    fn loose_margin_still_rejects_exact_tie() {
+        // Same fixture as exact_tie_is_not_assigned: the loose preset must
+        // still refuse to pick a winner when the margin is exactly zero.
+        let projects = vec![
+            proj("p1", "Alpha", "kubernetes helm ingress"),
+            proj("p2", "Bravo", "postgres replication vacuum"),
+        ];
+        let convs = vec![conv(
+            "c1",
+            "Infra question",
+            "kubernetes helm ingress postgres replication vacuum",
+        )];
+        let out = suggest_project_for_conversations_with_options(
+            &convs,
+            &projects,
+            &HashMap::new(),
+            &HashMap::new(),
+            margin_for_strictness("loose"),
+        );
+        assert_eq!(out[0].project_uuid, None);
+        assert_eq!(out[0].reason, "none");
+    }
+
+    #[test]
+    fn strict_margin_drops_borderline_match() {
+        // Chat covers 4 of p1's tokens and 3 of p2's, all equally rare — a
+        // margin of roughly 0.11: assigned under balanced (0.08), rejected
+        // under strict (0.15).
+        let projects = vec![
+            proj("p1", "Alpha", "kubernetes helm ingress traefik"),
+            proj("p2", "Bravo", "postgres replication vacuum"),
+        ];
+        let convs = vec![conv(
+            "c1",
+            "Infra question",
+            "kubernetes helm ingress traefik postgres replication vacuum",
+        )];
+        let balanced = suggest_project_for_conversations_with_options(
+            &convs, &projects, &HashMap::new(), &HashMap::new(),
+            margin_for_strictness("balanced"),
+        );
+        assert_eq!(
+            balanced[0].project_uuid.as_deref(),
+            Some("p1"),
+            "borderline chat should be assigned under the balanced margin"
+        );
+        let strict = suggest_project_for_conversations_with_options(
+            &convs, &projects, &HashMap::new(), &HashMap::new(),
+            margin_for_strictness("strict"),
+        );
+        assert_eq!(
+            strict[0].project_uuid, None,
+            "the same chat must be rejected under the strict margin"
+        );
+    }
+
+    #[test]
+    fn matched_suggestion_carries_up_to_two_alternates() {
+        let projects = vec![
+            proj("p1", "Alpha", "kubernetes helm ingress traefik operators"),
+            proj("p2", "Bravo", "postgres replication vacuum"),
+            proj("p3", "Charlie", "spanish grammar conjugation"),
+        ];
+        let convs = vec![conv(
+            "c1",
+            "Infra question",
+            "kubernetes helm ingress traefik operators postgres spanish",
+        )];
+        let out = suggest_project_for_conversations(&convs, &projects, &HashMap::new());
+        assert_eq!(out[0].project_uuid.as_deref(), Some("p1"));
+        let alts = &out[0].alternates;
+        assert!(!alts.is_empty() && alts.len() <= 2, "expected 1-2 alternates, got {}", alts.len());
+        assert!(alts.iter().all(|a| a.project_uuid != "p1"), "alternates must exclude the primary");
+        assert!(alts.iter().all(|a| a.score > 0.0 && a.score <= 0.85));
+        if alts.len() == 2 {
+            assert!(alts[0].score >= alts[1].score, "alternates must be ranked descending");
+        }
+    }
+
+    /// Env-gated sweep of the strictness presets over a real export, per the
+    /// tune-against-real-data rule. Prints per-preset match counts (record them
+    /// in the commit message when presets change) and asserts monotonicity:
+    /// a stricter margin must never assign more chats than a looser one.
+    #[test]
+    fn sweep_margin_presets_against_sample() {
+        use std::path::PathBuf;
+        let Some(export_path) = std::env::var_os("AETHERIUM_CLAUDE_V2_SAMPLE").map(PathBuf::from)
+        else {
+            eprintln!("skipping sweep_margin_presets_against_sample: set AETHERIUM_CLAUDE_V2_SAMPLE");
+            return;
+        };
+        let export_path = export_path.as_path();
+        assert!(export_path.is_dir());
+
+        use super::super::claude_v2;
+        let convs_by_project = claude_v2::preview_v2_design_chats(export_path).unwrap();
+        let name_map = claude_v2::load_v2_project_name_map(export_path);
+        let (memory_uuids, memories) = claude_v2::parse_v2_memories(export_path, &name_map).unwrap();
+        let projects =
+            claude_v2::preview_v2_projects(export_path, &memory_uuids, &convs_by_project).unwrap();
+        let bytes = std::fs::read(export_path.join("conversations.json")).unwrap();
+        let orphans = super::super::preview_claude_conversations(&bytes).unwrap();
+        let memories_by_project: HashMap<String, String> = memories
+            .folder_memories
+            .iter()
+            .map(|m| (m.project_uuid.clone(), m.memory.clone()))
+            .collect();
+
+        let mut counts = Vec::new();
+        for preset in ["strict", "balanced", "loose"] {
+            let out = suggest_project_for_conversations_with_options(
+                &orphans,
+                &projects,
+                &memories_by_project,
+                &HashMap::new(),
+                margin_for_strictness(preset),
+            );
+            let matched = out.iter().filter(|s| s.project_uuid.is_some()).count();
+            eprintln!("[margin sweep] {preset}: {matched}/{} chats assigned", out.len());
+            counts.push(matched);
+        }
+        assert!(
+            counts[0] <= counts[1] && counts[1] <= counts[2],
+            "match counts must be monotone in looseness: strict {} / balanced {} / loose {}",
+            counts[0], counts[1], counts[2],
+        );
+    }
+
+    #[test]
+    fn none_suggestion_carries_alternates_from_summary_pass() {
+        // Base text is too short to score (1 token), so alternates on the
+        // resulting "none" suggestion can only come from the summary pass.
+        let projects = vec![
+            proj("p1", "Alpha", "kubernetes helm ingress"),
+            proj("p2", "Bravo", "postgres replication vacuum"),
+        ];
+        let mut c = conv("c1", "", "helm");
+        c.summary = "kubernetes helm ingress postgres replication vacuum".to_string();
+        let out = suggest_project_for_conversations(&[c], &projects, &HashMap::new());
+        assert_eq!(out[0].project_uuid, None, "tied summary must not assign");
+        assert_eq!(out[0].reason, "none");
+        assert_eq!(
+            out[0].alternates.len(),
+            2,
+            "a none suggestion should surface the best below-threshold guesses"
+        );
+        let uuids: Vec<&str> = out[0].alternates.iter().map(|a| a.project_uuid.as_str()).collect();
+        assert!(uuids.contains(&"p1") && uuids.contains(&"p2"));
     }
 }

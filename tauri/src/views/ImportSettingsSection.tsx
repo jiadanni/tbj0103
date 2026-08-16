@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ask, message, open } from "@tauri-apps/plugin-dialog";
 import { Check, CheckSquare, ChevronDown, ChevronRight, Eye, FolderInput, RefreshCw, Square, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../lib/api";
+import { api, type ChatSuggestion } from "../lib/api";
 import { conversationGist } from "../lib/conversationGist";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import PromptDialog from "../components/PromptDialog";
@@ -66,12 +66,14 @@ interface ClaudeConvPreview {
   messages?: { role: string; content: string }[];
 }
 
-interface ChatSuggestion {
-  conversation_uuid: string;
-  project_uuid: string | null;
-  score: number;
-  reason: "title" | "keywords" | "topics" | "llm" | "embedding" | "none";
+/** A proposed new workspace grouping unassigned chats, minted from a cluster. */
+interface ProposedGroup {
+  name: string;
+  terms: string[];
+  memberUuids: string[];
 }
+
+type MatchStrictness = "strict" | "balanced" | "loose";
 
 type MergeChoice = "merge-this" | "merge-all" | "rename" | "cancel";
 
@@ -190,6 +192,17 @@ export default function ImportSettingsSection() {
   // Remembered destinations from prior imports (project UUID / "__orphans__").
   const [claudeKnownDests, setClaudeKnownDests] = useState<Record<string, KnownDestInfo>>({});
   const [linkedListOpen, setLinkedListOpen] = useState(false);
+  // Previously imported chats still sitting in the unassigned area — they stay
+  // in the review flow (flagged) and re-match every round.
+  const [claudeLinkedUnassigned, setClaudeLinkedUnassigned] = useState<Record<string, LinkedConvInfo>>({});
+  // Persisted matcher strictness preset (import.match_strictness setting).
+  const [matchStrictness, setMatchStrictness] = useState<MatchStrictness>("balanced");
+  // Proposed new workspaces from clustering, keyed by a stable synthetic
+  // "proposed:<hash>" id that flows through the import plumbing like a project.
+  const [proposedGroups, setProposedGroups] = useState<Record<string, ProposedGroup>>({});
+  const [clusterProposing, setClusterProposing] = useState(false);
+  // Review-table filter: show every review row or only still-unassigned ones.
+  const [rowFilter, setRowFilter] = useState<"all" | "unassigned">("all");
   // Snapshot of scan-time destination pre-fills. When the user leaves a
   // project's picker untouched, import reuses the remembered destination ids
   // instead of creating workspaces/folders.
@@ -676,6 +689,10 @@ export default function ImportSettingsSection() {
     setClaudeLinked({});
     setClaudeKnownDests({});
     setLinkedListOpen(false);
+    setClaudeLinkedUnassigned({});
+    setProposedGroups({});
+    setClusterProposing(false);
+    setRowFilter("all");
     prefilledDestsRef.current = {};
   }
 
@@ -720,13 +737,16 @@ export default function ImportSettingsSection() {
       }
 
       // Chats recognized from a prior import merge automatically — they are
-      // excluded from the review/assignment flow entirely.
+      // excluded from the review/assignment flow entirely. Exception: chats
+      // still sitting in the unassigned area stay reviewable each round.
       const linked = result.linked_conversations ?? {};
       const knownDests = result.known_destinations ?? {};
       const reviewOrphans = result.orphan_conversations.filter((c) => !linked[c.uuid]);
 
       setClaudeLinked(linked);
       setClaudeKnownDests(knownDests);
+      setClaudeLinkedUnassigned(result.linked_unassigned ?? {});
+      setMatchStrictness(result.match_strictness ?? "balanced");
       setClaudeProjects(result.folders);
       setClaudeConvsByProject(result.conversations_by_project);
       setClaudeOrphans(reviewOrphans);
@@ -896,10 +916,9 @@ export default function ImportSettingsSection() {
         }
       }
 
-      // Suggest-only: record suggestions for review — never auto-assign.
-      // Matched chats stay in the "Unassigned conversations" list showing
-      // their suggested project until the user accepts them (per-row
-      // dropdown or the "Accept N suggestions" button).
+      // Suggestions ARE assignments: matched chats pre-select their suggested
+      // project in the review table, and importing routes them there unless
+      // the user changes the row. Review = change what's wrong.
       const newSuggestions = opts?.rerunAll
         ? []
         : claudeSuggestions.filter(
@@ -908,24 +927,119 @@ export default function ImportSettingsSection() {
       for (const s of suggestions) {
         newSuggestions.push({ ...s, reason: s.reason as ChatSuggestion["reason"] });
       }
-      if (opts?.rerunAll) {
-        // Re-run resets assignments; every chat is unassigned again until
-        // its (new) suggestion is accepted.
-        setChatAssignments(Object.fromEntries(claudeOrphans.map((c) => [c.uuid, null as string | null])));
-        setClaudeSelected(new Set(claudeOrphans.map((c) => c.uuid)));
-      }
+      setChatAssignments((prev) => {
+        // Re-run resets everything first; incremental runs keep prior state.
+        const next: Record<string, string | null> = opts?.rerunAll
+          ? Object.fromEntries(claudeOrphans.map((c) => [c.uuid, null as string | null]))
+          : { ...prev };
+        for (const s of suggestions) {
+          if (s.project_uuid) { next[s.conversation_uuid] = s.project_uuid; }
+        }
+        return next;
+      });
+      // Newly assigned chats leave the import-as-unassigned tick set.
+      setClaudeSelected((prev) => {
+        const base = opts?.rerunAll ? new Set(claudeOrphans.map((c) => c.uuid)) : new Set(prev);
+        for (const s of suggestions) {
+          if (s.project_uuid) { base.delete(s.conversation_uuid); }
+        }
+        return base;
+      });
       setClaudeSuggestions(newSuggestions);
       const suggestedCount = suggestions.filter((s) => s.project_uuid).length;
       setMatchSummary(
         suggestedCount === 0
           ? `AI matching finished: no confident project match for the ${targetConvs.length} chat${targetConvs.length === 1 ? "" : "s"} checked.`
-          : `AI matching finished: suggested projects for ${suggestedCount} of ${targetConvs.length} chats. Review the suggestions below, then accept them individually or all at once.`,
+          : `AI matching finished: assigned ${suggestedCount} of ${targetConvs.length} chats. Review below and change anything that's wrong.`,
       );
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "AI matching failed";
       setError(msg);
     } finally {
       setClaudeEmbeddingMatching(false);
+    }
+  }
+
+  /// Stable synthetic key for a proposed group: content-derived (FNV-1a over
+  /// the sorted member UUIDs), NOT the backend's positional cluster-N id, so
+  /// re-running clustering re-mints the same key for the same members and
+  /// remembered destinations survive across runs.
+  function proposedGroupKey(memberUuids: string[]): string {
+    const input = [...memberUuids].sort().join("|");
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < input.length; i++) {
+      hash ^= input.charCodeAt(i);
+      hash = Math.imul(hash, 0x01000193) >>> 0;
+    }
+    return `proposed:${hash.toString(16)}`;
+  }
+
+  /// Cluster the leftover (still-unassigned) chats into proposed new
+  /// workspaces, assign members to the synthetic keys, and seed destinations.
+  async function proposeNewWorkspaces() {
+    const leftovers = claudeOrphans.filter((c) => !chatAssignments[c.uuid]);
+    if (leftovers.length === 0) { return; }
+    setError(null);
+    setMatchWarning(null);
+    setMatchSummary(null);
+    setClusterProposing(true);
+    setShowMatchModelMenu(false);
+    try {
+      const result = await api.chatFile.clusterUnmatchedClaudeChats({
+        conversations: leftovers.map((c) => ({
+          uuid: c.uuid,
+          name: c.name,
+          first_user_message: c.first_user_message ?? "",
+          summary: c.summary ?? "",
+          messages: c.messages,
+        })),
+        unmatchedUuids: leftovers.map((c) => c.uuid),
+        modelOverride: importMatchModel || undefined,
+      });
+
+      if (result.clusters.length === 0) {
+        setMatchSummary("No coherent groups found among the unassigned chats (groups need at least 3 related chats).");
+        return;
+      }
+
+      const groups: Record<string, ProposedGroup> = {};
+      const assignments: Record<string, string> = {};
+      const dests: Record<string, ProjectDestination> = {};
+      for (const cluster of result.clusters) {
+        const key = proposedGroupKey(cluster.conversation_uuids);
+        groups[key] = {
+          name: cluster.label,
+          terms: cluster.terms,
+          memberUuids: cluster.conversation_uuids,
+        };
+        dests[key] = { type: "new-workspace", parentId: null, subWorkspaceId: null, name: cluster.label };
+        for (const uuid of cluster.conversation_uuids) {
+          assignments[uuid] = key;
+        }
+      }
+      setProposedGroups((prev) => ({ ...prev, ...groups }));
+      setProjectDestinations((prev) => ({ ...prev, ...dests }));
+      setChatAssignments((prev) => ({ ...prev, ...assignments }));
+      setClaudeSelected((prev) => {
+        const next = new Set(prev);
+        for (const uuid of Object.keys(assignments)) { next.delete(uuid); }
+        return next;
+      });
+
+      const grouped = Object.keys(assignments).length;
+      setMatchSummary(
+        `Proposed ${result.clusters.length} new workspace${result.clusters.length === 1 ? "" : "s"} covering ${grouped} of ${leftovers.length} unassigned chats (${result.strategy} grouping). Review the assignments below.`,
+      );
+      if (result.strategy === "lexical") {
+        setMatchWarning("Semantic grouping was unavailable (no embedding model reachable) — groups were formed from title keywords only.");
+      } else if (result.names_generated === 0) {
+        setMatchWarning("Group naming was unavailable — proposed workspaces use keyword names; rename them in the destination picker.");
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "Grouping failed";
+      setError(msg);
+    } finally {
+      setClusterProposing(false);
     }
   }
 
@@ -1092,6 +1206,11 @@ export default function ImportSettingsSection() {
         mergeExisting: claudeMergeExisting,
         cloneEdited: claudeMergeExisting && claudeCloneEdited,
         restoreDestinations: claudeRestoreDestinations,
+        projectNameOverrides: Object.fromEntries(
+          Object.entries(proposedGroups)
+            .filter(([key]) => folderMappings[key])
+            .map(([key, group]) => [key, group.name]),
+        ),
       });
 
       const finalFreshWs = await api.workspace.list();
@@ -1129,6 +1248,9 @@ export default function ImportSettingsSection() {
       }
       if (result.moved_back > 0) {
         lines.push(`${result.moved_back} chat${result.moved_back === 1 ? "" : "s"} moved back to their import location.`);
+      }
+      if (result.reassigned > 0) {
+        lines.push(`${result.reassigned} previously imported chat${result.reassigned === 1 ? "" : "s"} moved to their newly assigned project.`);
       }
       if (result.skipped > 0) {
         lines.push(`${result.skipped} duplicate${result.skipped === 1 ? "" : "s"} skipped.`);
@@ -2036,14 +2158,20 @@ export default function ImportSettingsSection() {
                 {(() => {
                   const assignedTotal = Object.values(chatAssignments).filter((p) => !!p).length;
                   const unassignedTotal = claudeOrphans.length - assignedTotal;
-                  const suggestedTotal = claudeSuggestions.filter(
-                    (s) => s.project_uuid && chatAssignments[s.conversation_uuid] !== s.project_uuid,
-                  ).length;
                   const projectsByUuid = new Map(claudeProjects.map((p) => [p.uuid, p] as const));
-                  // The right-hand detail pane already shows assigned chats under their project.
-                  // This panel lists only the *unassigned* remainder so the user can either
-                  // accept a suggestion or pick a project from the dropdown.
-                  const unassignedConvs = claudeOrphans.filter((c) => !chatAssignments[c.uuid]);
+                  // Destination name for an assignment/suggestion key — a real
+                  // Claude project or a proposed new workspace.
+                  const nameForKey = (key: string): string =>
+                    projectsByUuid.get(key)?.name ?? proposedGroups[key]?.name ?? "?";
+                  // The review table shows EVERY orphan (assigned rows keep
+                  // their destination pre-selected) so the user can see what
+                  // was classified; the filter narrows to the leftovers.
+                  const reviewRows = rowFilter === "unassigned"
+                    ? claudeOrphans.filter((c) => !chatAssignments[c.uuid])
+                    : claudeOrphans;
+                  // Render cap: at 1k-10k chats a full list stalls the DOM.
+                  const ROW_CAP = 300;
+                  const visibleRows = reviewRows.slice(0, ROW_CAP);
                   return (
                     <>
                       <div className="flex items-center justify-between">
@@ -2056,7 +2184,7 @@ export default function ImportSettingsSection() {
                           )}
                         </span>
                         <div className="flex gap-2">
-                          {claudeOrphans.length >= 1 && claudeProjects.length >= 1 && unassignedTotal > 0 && (
+                          {claudeOrphans.length >= 1 && (
                             <div ref={matchModelMenuRef} className="relative">
                               {/* Split button: primary action + chevron for dropdown */}
                               <div className="flex items-center rounded border border-[var(--border-color)] overflow-hidden">
@@ -2112,6 +2240,34 @@ export default function ImportSettingsSection() {
                                     </button>
                                   ))}
                                   <div className="my-1 border-t border-[var(--border-color)]" />
+                                  <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Matching</div>
+                                  {([
+                                    { label: "Strict — only clear winners", value: "strict" as const },
+                                    { label: "Balanced (default)", value: "balanced" as const },
+                                    { label: "Loose — assign more, review more", value: "loose" as const },
+                                  ]).map((opt) => (
+                                    <button
+                                      key={opt.value}
+                                      type="button"
+                                      onClick={() => {
+                                        setMatchStrictness(opt.value);
+                                        setShowMatchModelMenu(false);
+                                        void (async () => {
+                                          try {
+                                            await api.settings.updateOne("import.match_strictness", opt.value);
+                                          } catch { /* matcher falls back to balanced */ }
+                                          void runTopicMatch({ rerunAll: true });
+                                        })();
+                                      }}
+                                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--bg-hover)] flex items-center gap-2 ${
+                                        matchStrictness === opt.value ? "text-[var(--accent-color)]" : "text-[var(--text-primary)]"
+                                      }`}
+                                    >
+                                      {matchStrictness === opt.value && <Check size={11} />}
+                                      <span className={matchStrictness === opt.value ? "" : "ml-[15px]"}>{opt.label}</span>
+                                    </button>
+                                  ))}
+                                  <div className="my-1 border-t border-[var(--border-color)]" />
                                   <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Actions</div>
                                   <button
                                     type="button"
@@ -2128,32 +2284,19 @@ export default function ImportSettingsSection() {
                                   >
                                     Classify each chat (slow)
                                   </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void proposeNewWorkspaces()}
+                                    disabled={clusterProposing || unassignedTotal === 0}
+                                    title="Groups the remaining unassigned chats into proposed NEW workspaces. One AI call per chat — expect minutes on large exports."
+                                    className="w-full text-left px-3 py-1.5 text-xs text-[var(--text-primary)] hover:bg-[var(--bg-hover)] ml-0 disabled:opacity-40 disabled:pointer-events-none"
+                                  >
+                                    {clusterProposing ? "Grouping…" : "Propose new workspaces for leftovers"}
+                                  </button>
                                 </div>
                               )}
                             </div>
                           )}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const next: Record<string, string | null> = { ...chatAssignments };
-                              for (const s of claudeSuggestions) {
-                                if (s.project_uuid) { next[s.conversation_uuid] = s.project_uuid; }
-                              }
-                              setChatAssignments(next);
-                              // Drop newly-assigned chats from the unassigned-tick set.
-                              setClaudeSelected((prev) => {
-                                const out = new Set(prev);
-                                for (const s of claudeSuggestions) {
-                                  if (s.project_uuid) {out.delete(s.conversation_uuid);}
-                                }
-                                return out;
-                              });
-                            }}
-                            disabled={suggestedTotal === 0}
-                            className="text-xs text-[var(--accent-color)] hover:underline disabled:opacity-40 disabled:no-underline"
-                          >
-                            Accept {suggestedTotal} suggestion{suggestedTotal === 1 ? "" : "s"}
-                          </button>
                           <button
                             type="button"
                             onClick={() => {
@@ -2197,20 +2340,30 @@ export default function ImportSettingsSection() {
                       <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3">
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] text-[var(--text-muted)]">
-                            These chats had no confident project match. They go to &ldquo;Unassigned Imports&rdquo; unless you assign one here.
+                            Assigned chats import to their pre-selected destination; the rest go to &ldquo;Unassigned Imports&rdquo;. Change any row that&rsquo;s wrong.
                           </span>
-                          <button
-                            type="button"
-                            onClick={() => setOrphansExpanded((p) => !p)}
-                            className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                          >
-                            {orphansExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                            {unassignedConvs.length} conversation{unassignedConvs.length === 1 ? "" : "s"}
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setRowFilter((f) => (f === "all" ? "unassigned" : "all"))}
+                              className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] underline decoration-dotted"
+                              title="Toggle between every reviewable chat and only the still-unassigned ones"
+                            >
+                              {rowFilter === "all" ? "showing: all" : "showing: unassigned only"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setOrphansExpanded((p) => !p)}
+                              className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                            >
+                              {orphansExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                              {reviewRows.length} conversation{reviewRows.length === 1 ? "" : "s"}
+                            </button>
+                          </div>
                         </div>
-                        {orphansExpanded && unassignedConvs.length > 0 && (
+                        {orphansExpanded && reviewRows.length > 0 && (
                           <div className="mt-2 max-h-96 overflow-y-auto rounded-md border border-[var(--border-color)]">
-                            {unassignedConvs.map((conv) => {
+                            {visibleRows.map((conv) => {
                               const assigned = chatAssignments[conv.uuid] ?? null;
                               const ticked = claudeSelected.has(conv.uuid);
                               const suggestion = claudeSuggestions.find((s) => s.conversation_uuid === conv.uuid);
@@ -2250,12 +2403,27 @@ export default function ImportSettingsSection() {
                                       className="truncate text-left text-[11px] text-[var(--text-primary)] hover:underline"
                                       title="Toggle chat preview"
                                     >
+                                      {claudeLinkedUnassigned[conv.uuid] && (
+                                        <span
+                                          className="mr-1 rounded bg-[var(--bg-elevated)] px-1 py-0.5 text-[9px] text-[var(--text-muted)]"
+                                          title="This chat was imported before and still sits in Unassigned Imports — assigning it moves the existing chat."
+                                        >
+                                          imported, still unassigned
+                                        </span>
+                                      )}
                                       {conv.name || "Untitled"}
                                       {snippet && <span className="text-[var(--text-muted)]"> — {snippet}</span>}
                                     </button>
-                                    {suggestedProj && assigned !== suggestion?.project_uuid && (
-                                      <span className="text-[10px] text-[var(--text-muted)]">
-                                        suggested: {suggestedProj.name} ({suggestion?.reason})
+                                    {(suggestedProj || (suggestion?.alternates.length ?? 0) > 0) && (
+                                      <span className="truncate text-[10px] text-[var(--text-muted)]">
+                                        {suggestedProj
+                                          ? `suggested: ${suggestedProj.name} (${suggestion?.reason})`
+                                          : "no confident match"}
+                                        {(suggestion?.alternates ?? []).map((alt) => (
+                                          <span key={alt.project_uuid}>
+                                            {" · also: "}{nameForKey(alt.project_uuid)} {Math.round(alt.score * 100)}%
+                                          </span>
+                                        ))}
                                       </span>
                                     )}
                                   </div>
@@ -2286,9 +2454,18 @@ export default function ImportSettingsSection() {
                                       className="w-full appearance-none cursor-pointer rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] pl-2 pr-7 py-1 text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
                                     >
                                       <option value="">— Unassigned —</option>
-                                      {claudeProjects.map((p) => (
-                                        <option key={p.uuid} value={p.uuid}>{p.name}</option>
-                                      ))}
+                                      <optgroup label="Claude projects">
+                                        {claudeProjects.map((p) => (
+                                          <option key={p.uuid} value={p.uuid}>{p.name}</option>
+                                        ))}
+                                      </optgroup>
+                                      {Object.keys(proposedGroups).length > 0 && (
+                                        <optgroup label="Proposed workspaces">
+                                          {Object.entries(proposedGroups).map(([key, group]) => (
+                                            <option key={key} value={key}>{group.name}</option>
+                                          ))}
+                                        </optgroup>
+                                      )}
                                     </select>
                                     <ChevronDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
                                   </div>
@@ -2327,6 +2504,11 @@ export default function ImportSettingsSection() {
                                 </div>
                               );
                             })}
+                            {reviewRows.length > ROW_CAP && (
+                              <div className="border-t border-[var(--border-color)] px-3 py-1.5 text-[10px] text-[var(--text-muted)]">
+                                Showing {ROW_CAP} of {reviewRows.length} — use the filter or assign chats to narrow the list.
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

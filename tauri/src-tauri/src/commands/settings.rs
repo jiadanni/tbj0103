@@ -987,7 +987,8 @@ fn encode_known_setting(key: &str, value: &serde_json::Value) -> Result<String, 
         | "user_chat_label"
         | "assistant_chat_label"
         | "knowledge.upgrade_mode"
-        | "knowledge.supersede_mode" => value
+        | "knowledge.supersede_mode"
+        | "import.match_strictness" => value
             .as_str()
             .ok_or_else(|| format!("Expected string for setting key '{key}'"))
             .and_then(|s| serde_json::to_string(s).map_err(|e| e.to_string())),

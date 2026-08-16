@@ -1538,6 +1538,24 @@ fn detect_claude_format_inner(folder_path: String) -> Result<serde_json::Value, 
 }
 
 /// Preview a Claude Desktop export folder. Auto-detects v2 vs legacy format.
+/// Read the persisted matcher strictness ("strict" | "balanced" | "loose",
+/// stored JSON-encoded by `update_setting`) and map it to a runner-up margin.
+/// Missing or malformed values fall back to "balanced".
+fn read_match_strictness(conn: &rusqlite::Connection) -> (String, f32) {
+    let raw: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'import.match_strictness'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+    let strictness: String = raw
+        .and_then(|v| serde_json::from_str::<String>(&v).ok())
+        .unwrap_or_else(|| "balanced".to_string());
+    let margin = chat_file_store::claude_v2_match::margin_for_strictness(&strictness);
+    (strictness, margin)
+}
+
 #[tauri::command]
 pub async fn preview_claude_files(
     folder_path: String,
@@ -1559,11 +1577,14 @@ pub async fn preview_claude_files(
 
     // Previously imported chats (by Claude conversation UUID) and remembered
     // destinations — two batched queries. Linked chats bypass the matcher and
-    // the review UI; destinations pre-fill the pickers.
+    // the review UI, EXCEPT those still sitting in the unassigned area, which
+    // re-enter matching every round; destinations pre-fill the pickers.
     let conn = pool.get().map_err(|e| e.to_string())?;
     let all_links = import_links::load_links(&conn, SOURCE_CLAUDE)?;
     let known_destinations = import_links::load_destinations(&conn, SOURCE_CLAUDE)?;
+    let (match_strictness, match_margin) = read_match_strictness(&conn);
     drop(conn);
+    let orphans_dest = known_destinations.get(import_links::ORPHANS_KEY);
 
     let is_v2 = folder.join("projects").is_dir();
 
@@ -1619,11 +1640,18 @@ pub async fn preview_claude_files(
             .map(|m| (m.project_uuid.clone(), m.memory.clone()))
             .collect();
 
-        // Already-imported chats present in this export (orphans + project chats).
+        // Already-imported chats present in this export (orphans + project
+        // chats). Chats still sitting in the unassigned area go into
+        // linked_unassigned instead: they stay matcher-eligible each round.
         let mut linked_conversations = std::collections::HashMap::new();
+        let mut linked_unassigned = std::collections::HashMap::new();
         for conv in &orphan_conversations {
             if let Some(info) = all_links.get(&conv.uuid) {
-                linked_conversations.insert(conv.uuid.clone(), info.clone());
+                if import_links::is_unassigned_location(info, orphans_dest) {
+                    linked_unassigned.insert(conv.uuid.clone(), info.clone());
+                } else {
+                    linked_conversations.insert(conv.uuid.clone(), info.clone());
+                }
             }
         }
         for convs in convs_by_project.values() {
@@ -1634,19 +1662,22 @@ pub async fn preview_claude_files(
             }
         }
 
-        // Suggest a project for each unlinked orphan (keyword matcher; user can
-        // request embedding-based matching separately via match_claude_with_embeddings).
-        // Linked orphans already have a home — the matcher never sees them.
+        // Suggest a project for each matcher-eligible orphan (keyword matcher;
+        // the user can request AI matching separately). Linked orphans already
+        // have a home — the matcher never sees them — except linked-unassigned
+        // ones, which get re-suggested every round.
         let unlinked_orphans: Vec<_> = orphan_conversations
             .iter()
             .filter(|c| !linked_conversations.contains_key(&c.uuid))
             .cloned()
             .collect();
         let suggestions = if include_conversations && !projects.is_empty() {
-            chat_file_store::claude_v2_match::suggest_project_for_conversations(
+            chat_file_store::claude_v2_match::suggest_project_for_conversations_with_options(
                 &unlinked_orphans,
                 &projects,
                 &memories_by_project,
+                &std::collections::HashMap::new(),
+                match_margin,
             )
         } else {
             Vec::new()
@@ -1662,7 +1693,9 @@ pub async fn preview_claude_files(
             "memories_by_project": if include_memories { Some(memories_by_project) } else { None },
             "suggestions": suggestions,
             "linked_conversations": linked_conversations,
+            "linked_unassigned": linked_unassigned,
             "known_destinations": known_destinations,
+            "match_strictness": match_strictness,
             "files_found": {
                 "conversations": folder.join("conversations.json").is_file(),
                 "projects": folder.join("projects").is_dir(),
@@ -1755,25 +1788,37 @@ pub async fn preview_claude_files(
             })
             .unwrap_or_default();
 
-        // Already-imported chats present in this export (orphans + project chats).
+        // Already-imported chats present in this export. Chats still sitting in
+        // the unassigned area go into linked_unassigned instead: they stay
+        // matcher-eligible each round.
         let mut linked_conversations = std::collections::HashMap::new();
+        let mut linked_unassigned = std::collections::HashMap::new();
         for conv in &all_conversations {
             if let Some(info) = all_links.get(&conv.uuid) {
-                linked_conversations.insert(conv.uuid.clone(), info.clone());
+                if conv.project_uuid.is_none()
+                    && import_links::is_unassigned_location(info, orphans_dest)
+                {
+                    linked_unassigned.insert(conv.uuid.clone(), info.clone());
+                } else {
+                    linked_conversations.insert(conv.uuid.clone(), info.clone());
+                }
             }
         }
 
-        // Linked orphans already have a home — the matcher never sees them.
+        // Linked orphans already have a home — the matcher never sees them —
+        // except linked-unassigned ones, which get re-suggested every round.
         let unlinked_orphans: Vec<_> = orphan_conversations
             .iter()
             .filter(|c| !linked_conversations.contains_key(&c.uuid))
             .cloned()
             .collect();
         let suggestions = if include_conversations && !claude_projects.is_empty() {
-            chat_file_store::claude_v2_match::suggest_project_for_conversations(
+            chat_file_store::claude_v2_match::suggest_project_for_conversations_with_options(
                 &unlinked_orphans,
                 &claude_projects,
                 &memories_by_project,
+                &std::collections::HashMap::new(),
+                match_margin,
             )
         } else {
             Vec::new()
@@ -1789,7 +1834,9 @@ pub async fn preview_claude_files(
             "memories_by_project": if include_memories { Some(memories_by_project) } else { None },
             "suggestions": suggestions,
             "linked_conversations": linked_conversations,
+            "linked_unassigned": linked_unassigned,
             "known_destinations": known_destinations,
+            "match_strictness": match_strictness,
             "files_found": {
                 "conversations": folder.join("conversations.json").is_file(),
                 "projects": folder.join("projects.json").is_file(),
@@ -1812,7 +1859,8 @@ pub async fn preview_claude_files(
 ///
 /// Returns `{ clusters, strategy }` where strategy is "embedding" or "lexical".
 #[tauri::command]
-pub async fn cluster_unmatched_claude_chats(
+pub async fn cluster_unmatched_claude_chats<R: Runtime>(
+    app: AppHandle<R>,
     conversations: Vec<serde_json::Value>,
     unmatched_uuids: Vec<String>,
     model_override: Option<String>,
@@ -1851,20 +1899,45 @@ pub async fn cluster_unmatched_claude_chats(
         .collect();
 
     let unmatched: std::collections::HashSet<String> = unmatched_uuids.into_iter().collect();
+    let total_unmatched = conv_previews
+        .iter()
+        .filter(|c| unmatched.contains(&c.uuid))
+        .count();
+
+    emit_cluster_task(
+        &app,
+        "started",
+        &format!("Grouping {total_unmatched} unassigned chats"),
+        None,
+        None,
+        Some(total_unmatched as u32),
+    );
 
     // Resolve the embedding model; absence is not an error — we fall back.
-    let embed_model = if let Some(m) = model_override.filter(|s| !s.is_empty()) {
-        Some(m)
-    } else {
+    // Also resolve a chat model for cluster naming (again optional).
+    let (embed_model, naming_model) = {
         let conn = db_state.0.get().map_err(|e| e.to_string())?;
-        crate::services::model_settings::get_embedding_model(&conn)
+        let embed = if let Some(m) = model_override.filter(|s| !s.is_empty()) {
+            Some(m)
+        } else {
+            crate::services::model_settings::get_embedding_model(&conn)
+        };
+        let naming = crate::services::model_settings::get_configured_background_model(&conn)
+            .or_else(|| crate::services::model_settings::get_configured_chat_model(&conn));
+        (embed, naming)
     };
+
+    let mut strategy = "lexical";
+    let mut embedded = 0usize;
+    let mut failed = 0usize;
+    let mut clusters: Vec<claude_v2_cluster::ChatCluster> = Vec::new();
 
     if let Some(model) = embed_model {
         if let Ok(ollama) = crate::ollama::client::OllamaClient::new(None) {
             let mut embeddings: std::collections::HashMap<String, Vec<f32>> =
                 std::collections::HashMap::new();
             let mut failures = 0usize;
+            let mut done = 0usize;
             for conv in conv_previews.iter().filter(|c| unmatched.contains(&c.uuid)) {
                 let input = claude_v2_cluster::embedding_input(conv);
                 if input.is_empty() {
@@ -1898,31 +1971,124 @@ pub async fn cluster_unmatched_claude_chats(
                         }
                     }
                 }
+                done += 1;
+                // One Ollama call per chat, serial — minutes at scale, so the
+                // status bar must show movement.
+                if done.is_multiple_of(10) {
+                    emit_cluster_task(
+                        &app,
+                        "processing",
+                        &format!("Embedding chats ({done} of {total_unmatched})"),
+                        Some(model.clone()),
+                        Some(done as u32),
+                        Some(total_unmatched as u32),
+                    );
+                }
             }
 
             if !embeddings.is_empty() {
-                let clusters = claude_v2_cluster::cluster_by_embedding(
+                clusters = claude_v2_cluster::cluster_by_embedding(
                     &conv_previews,
                     &unmatched,
                     &embeddings,
                 );
-                return Ok(serde_json::json!({
-                    "clusters": clusters,
-                    "strategy": "embedding",
-                    "embedded": embeddings.len(),
-                    "failed": failures,
-                }));
+                strategy = "embedding";
+                embedded = embeddings.len();
+                failed = failures;
             }
         }
     }
 
-    let clusters = claude_v2_cluster::cluster_unmatched(&conv_previews, &unmatched);
+    if strategy == "lexical" {
+        clusters = claude_v2_cluster::cluster_unmatched(&conv_previews, &unmatched);
+    }
+
+    // Name the proposed groups with one batched LLM call. Degrades, never
+    // fails: any cluster the response doesn't cover keeps a lexical name.
+    let mut names_generated = 0usize;
+    for cluster in clusters.iter_mut() {
+        cluster.label =
+            claude_v2_cluster::workspace_name_from_terms(&cluster.terms, &cluster.label);
+    }
+    if !clusters.is_empty() {
+        if let Some(model) = naming_model {
+            if let Ok(ollama) = crate::ollama::client::OllamaClient::new(None) {
+                emit_cluster_task(
+                    &app,
+                    "processing",
+                    &format!("Naming {} proposed groups", clusters.len()),
+                    Some(model.clone()),
+                    None,
+                    None,
+                );
+                let titles_by_uuid: std::collections::HashMap<String, &str> = conv_previews
+                    .iter()
+                    .map(|c| (c.uuid.clone(), c.name.as_str()))
+                    .collect();
+                let prompt = claude_v2_cluster::naming_prompt(&clusters, &titles_by_uuid);
+                let messages = vec![crate::ollama::client::OllamaMessage {
+                    role: "user".to_string(),
+                    content: prompt,
+                }];
+                if let Ok(reply) = ollama
+                    .send_message_with_options("claude_import_cluster", &model, messages, Some("5m"))
+                    .await
+                {
+                    let names = claude_v2_cluster::parse_cluster_names(&reply, clusters.len());
+                    for (cluster, name) in clusters.iter_mut().zip(names) {
+                        if let Some(name) = name {
+                            cluster.label = name;
+                            names_generated += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    emit_cluster_task(
+        &app,
+        "completed",
+        &format!("Proposed {} groups from {total_unmatched} unassigned chats", clusters.len()),
+        None,
+        None,
+        None,
+    );
+
     Ok(serde_json::json!({
         "clusters": clusters,
-        "strategy": "lexical",
-        "embedded": 0,
-        "failed": 0,
+        "strategy": strategy,
+        "embedded": embedded,
+        "failed": failed,
+        "names_generated": names_generated,
     }))
+}
+
+/// Emit a `background-task` event for the clustering job (same shape as
+/// `emit_match_task`, distinct task type so the status bar can label it).
+fn emit_cluster_task<R: Runtime>(
+    app: &AppHandle<R>,
+    status: &str,
+    message: &str,
+    model: Option<String>,
+    current: Option<u32>,
+    total: Option<u32>,
+) {
+    let _ = app.emit(
+        "background-task",
+        crate::services::background_scheduler::BackgroundTaskEvent {
+            task_type: "claude_import_cluster".to_string(),
+            status: status.to_string(),
+            message: message.to_string(),
+            model,
+            workspace_id: None,
+            current,
+            total,
+            current_task_type: None,
+            workspace_index: None,
+            workspace_total: None,
+        },
+    );
 }
 
 /// Emit a `background-task` event for the import AI-matching job so the
@@ -1976,13 +2142,17 @@ pub async fn match_claude_with_topics<R: Runtime>(
     };
     use chat_file_store::{ClaudeConversationPreview, ClaudeMessagePreview, ClaudeProjectPreview};
 
-    let model = if let Some(m) = model_override.filter(|s| !s.is_empty()) {
-        m
-    } else {
+    let (model, match_margin) = {
         let conn = db_state.0.get().map_err(|e| e.to_string())?;
-        get_configured_background_model(&conn)
-            .or_else(|| get_configured_chat_model(&conn))
-            .ok_or("No AI model configured. Set one in Settings \u{2192} AI Models.")?
+        let (_, margin) = read_match_strictness(&conn);
+        let model = if let Some(m) = model_override.filter(|s| !s.is_empty()) {
+            m
+        } else {
+            get_configured_background_model(&conn)
+                .or_else(|| get_configured_chat_model(&conn))
+                .ok_or("No AI model configured. Set one in Settings \u{2192} AI Models.")?
+        };
+        (model, margin)
     };
 
     let ollama = crate::ollama::client::OllamaClient::new(None)?;
@@ -2065,11 +2235,12 @@ pub async fn match_claude_with_topics<R: Runtime>(
     // Deterministic re-match with the enriched vocabulary. Projects the model
     // failed on are simply absent from `topics` and score on base vocabulary.
     let suggestions =
-        chat_file_store::claude_v2_match::suggest_project_for_conversations_with_topics(
+        chat_file_store::claude_v2_match::suggest_project_for_conversations_with_options(
             &conv_previews,
             &proj_previews,
             &memories_by_project,
             &outcome.topics,
+            match_margin,
         );
 
     if outcome.batches_failed > 0 && outcome.batches_failed == outcome.batches_total {
@@ -2132,13 +2303,17 @@ pub async fn match_claude_with_llm<R: Runtime>(
     use crate::services::model_settings::{get_configured_background_model, get_configured_chat_model};
     use chat_file_store::{ClaudeConversationPreview, ClaudeProjectPreview};
 
-    let model = if let Some(m) = model_override.filter(|s| !s.is_empty()) {
-        m
-    } else {
+    let (model, match_margin) = {
         let conn = db_state.0.get().map_err(|e| e.to_string())?;
-        get_configured_background_model(&conn)
-            .or_else(|| get_configured_chat_model(&conn))
-            .ok_or("No AI model configured. Set one in Settings \u{2192} AI Models.")?
+        let (_, margin) = read_match_strictness(&conn);
+        let model = if let Some(m) = model_override.filter(|s| !s.is_empty()) {
+            m
+        } else {
+            get_configured_background_model(&conn)
+                .or_else(|| get_configured_chat_model(&conn))
+                .ok_or("No AI model configured. Set one in Settings \u{2192} AI Models.")?
+        };
+        (model, margin)
     };
 
     let ollama = crate::ollama::client::OllamaClient::new(None)?;
@@ -2192,6 +2367,7 @@ pub async fn match_claude_with_llm<R: Runtime>(
         &memories_by_project,
         &ollama,
         &model,
+        match_margin,
         |done, total| {
             emit_match_task(
                 &app,
@@ -2277,6 +2453,10 @@ pub async fn import_claude_files(
     // When true, previously imported chats that were moved in-app are moved
     // back to their resolved import destination. Default: app state wins.
     restore_destinations: Option<bool>,
+    // Display names for destinations whose key isn't a real Claude project —
+    // e.g. proposed-group synthetic keys — so import_destinations rows stay
+    // meaningful on re-import.
+    project_name_overrides: Option<std::collections::HashMap<String, String>>,
     chats_dir_state: State<'_, ChatsDirState>,
     crypto: State<'_, ChatCryptoState>,
     db_state: State<'_, DbState>,
@@ -2314,6 +2494,7 @@ pub async fn import_claude_files(
     let mut cloned = 0usize;
     let mut linked = 0usize;
     let mut moved_back = 0usize;
+    let mut reassigned = 0usize;
 
     let overrides = chat_project_overrides.unwrap_or_default();
 
@@ -2410,6 +2591,9 @@ pub async fn import_claude_files(
     //   1. embedded project_uuid → folder_mappings
     //   2. chat_project_overrides[chat.id] → folder_mappings
     //   3. orphans_destination (fallback)
+    // For previously imported (linked) chats, app state wins by default —
+    // EXCEPT when this run carries an explicit per-chat override, which
+    // expresses user intent and moves the existing session to that destination.
     let mut insert_chat =
         |data: &chat_file_store::ChatFileData, project_uuid: Option<&str>| -> Result<(), String> {
             let dest = if let Some(uuid) = project_uuid {
@@ -2426,7 +2610,25 @@ pub async fn import_claude_files(
             // wherever the chat now lives in-app.
             if let Some(link) = links.get(&data.id) {
                 linked += 1;
-                if restore_destinations {
+                let explicit_override =
+                    project_uuid.is_none() && overrides.contains_key(&data.id);
+                if explicit_override {
+                    // The user assigned this chat in this run (e.g. a leftover
+                    // from "Unassigned Imports" finally routed to a project) —
+                    // move the existing session, regardless of restore mode.
+                    if let Some(dest) = dest {
+                        if link.workspace_id != dest.workspace_id
+                            || link.folder_id != dest.folder_id
+                        {
+                            tx.execute(
+                                "UPDATE chat_sessions SET workspace_id = ?1, folder_id = ?2, updated_at = ?3 WHERE id = ?4",
+                                rusqlite::params![dest.workspace_id, dest.folder_id, now, link.session_id],
+                            )
+                            .map_err(|e| e.to_string())?;
+                            reassigned += 1;
+                        }
+                    }
+                } else if restore_destinations {
                     if let Some(dest) = dest {
                         if link.workspace_id != dest.workspace_id
                             || link.folder_id != dest.folder_id
@@ -2641,8 +2843,13 @@ pub async fn import_claude_files(
             }
             map
         };
+        let name_overrides = project_name_overrides.unwrap_or_default();
         for (project_uuid, dest) in &folder_mappings {
-            let name = project_names.get(project_uuid).map(String::as_str).unwrap_or("");
+            let name = name_overrides
+                .get(project_uuid)
+                .or_else(|| project_names.get(project_uuid))
+                .map(String::as_str)
+                .unwrap_or("");
             import_links::upsert_destination(
                 &tx, SOURCE_CLAUDE, project_uuid, name,
                 &dest.workspace_id, &dest.folder_id, &now,
@@ -2671,6 +2878,7 @@ pub async fn import_claude_files(
         "cloned": cloned,
         "linked": linked,
         "moved_back": moved_back,
+        "reassigned": reassigned,
         "memories_imported": memories_imported,
         "memories_updated": memories_updated,
         "memories_skipped": memories_skipped,

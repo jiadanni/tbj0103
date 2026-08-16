@@ -1141,6 +1141,27 @@ export interface DashboardSummary {
 }
 
 // ----- Workspaces -----
+/** A project suggestion for one imported Claude conversation. */
+export interface ChatSuggestion {
+  conversation_uuid: string;
+  project_uuid: string | null;
+  score: number;
+  reason: "title" | "keywords" | "topics" | "llm" | "none";
+  /** Up to two runner-up candidates from the coverage ranking. For "none" suggestions these are the best below-threshold guesses. */
+  alternates: { project_uuid: string; score: number }[];
+}
+
+/** A previously imported chat with its current in-app location. */
+export interface LinkedImportInfo {
+  session_id: string;
+  source_conversation_uuid: string;
+  title: string;
+  workspace_id: string;
+  workspace_name: string;
+  folder_id: string;
+  folder_name: string;
+}
+
 export const api = {
   topicSignature: {
     get: (workspaceId: string) => invoke<TopicSignature>("get_topic_signature", { workspaceId }),
@@ -1449,17 +1470,11 @@ export const api = {
           folder_memories: { project_uuid: string; folder_name: string; memory: string }[];
         } | null;
         memories_by_project?: Record<string, string> | null;
-        suggestions: { conversation_uuid: string; project_uuid: string | null; score: number; reason: "title" | "keywords" | "none" }[];
+        suggestions: ChatSuggestion[];
         /** Chats already imported in a prior run (by Claude conversation UUID), with their current in-app location. They bypass the matcher and merge automatically on import. */
-        linked_conversations: Record<string, {
-          session_id: string;
-          source_conversation_uuid: string;
-          title: string;
-          workspace_id: string;
-          workspace_name: string;
-          folder_id: string;
-          folder_name: string;
-        }>;
+        linked_conversations: Record<string, LinkedImportInfo>;
+        /** Previously imported chats still sitting in the unassigned area — they stay matcher-eligible and appear in the review UI each round. */
+        linked_unassigned: Record<string, LinkedImportInfo>;
         /** Remembered import destinations keyed by Claude project UUID ("__orphans__" for unassigned chats). */
         known_destinations: Record<string, {
           source_project_uuid: string;
@@ -1469,6 +1484,8 @@ export const api = {
           folder_id: string;
           folder_name: string;
         }>;
+        /** Persisted matcher strictness preset (import.match_strictness setting). */
+        match_strictness: "strict" | "balanced" | "loose";
         files_found: { conversations: boolean; projects: boolean; memories: boolean };
       }>("preview_claude_files", {
         folderPath: args.folderPath,
@@ -1483,7 +1500,7 @@ export const api = {
       modelOverride?: string;
     }) =>
       invoke<{
-        suggestions: { conversation_uuid: string; project_uuid: string | null; score: number; reason: string }[];
+        suggestions: ChatSuggestion[];
         batches_total: number;
         /** LLM batches that finished before an error (or all on success). */
         batches_completed: number;
@@ -1514,7 +1531,7 @@ export const api = {
       modelOverride?: string;
     }) =>
       invoke<{
-        suggestions: { conversation_uuid: string; project_uuid: string | null; score: number; reason: string }[];
+        suggestions: ChatSuggestion[];
         topics_by_project: Record<string, string[]>;
         projects_with_topics: number;
         projects_total: number;
@@ -1529,6 +1546,33 @@ export const api = {
         memoriesByProject: args.memoriesByProject,
         modelOverride: args.modelOverride ?? null,
       }),
+    /// Propose new-workspace groups for chats that matched no project.
+    /// Embedding clustering (one Ollama call per chat — minutes at scale, with
+    /// background-task progress events), falling back to lexical title
+    /// clustering; each group is named by one batched LLM call when possible.
+    clusterUnmatchedClaudeChats: (args: {
+      conversations: {
+        uuid: string;
+        name: string;
+        first_user_message: string;
+        summary?: string;
+        messages?: { role: string; content: string }[];
+      }[];
+      unmatchedUuids: string[];
+      modelOverride?: string;
+    }) =>
+      invoke<{
+        clusters: { id: string; label: string; terms: string[]; conversation_uuids: string[] }[];
+        strategy: "embedding" | "lexical";
+        embedded: number;
+        failed: number;
+        /** How many clusters received an LLM-generated name (rest use lexical names). */
+        names_generated: number;
+      }>("cluster_unmatched_claude_chats", {
+        conversations: args.conversations,
+        unmatchedUuids: args.unmatchedUuids,
+        modelOverride: args.modelOverride ?? null,
+      }),
     importClaudeFiles: (args: {
       folderPath: string;
       folderMappings: Record<string, { workspaceId: string; folderId: string }>;
@@ -1541,6 +1585,8 @@ export const api = {
       cloneEdited?: boolean;
       /** Move previously imported chats back to their resolved import destination. Default: app state wins (merge where the chat now lives). */
       restoreDestinations?: boolean;
+      /** Display names for destination keys that aren't real Claude projects (proposed-group synthetic keys). */
+      projectNameOverrides?: Record<string, string>;
     }) =>
       invoke<{
         imported: number;
@@ -1552,6 +1598,8 @@ export const api = {
         linked: number;
         /** Linked chats moved back to their import destination (restoreDestinations only). */
         moved_back: number;
+        /** Linked chats moved to a NEW destination because the user explicitly assigned them this run. */
+        reassigned: number;
         memories_imported: number;
         /** Previously imported memories whose content changed and was updated in place. */
         memories_updated: number;
@@ -1570,6 +1618,7 @@ export const api = {
         mergeExisting: args.mergeExisting ?? null,
         cloneEdited: args.cloneEdited ?? null,
         restoreDestinations: args.restoreDestinations ?? null,
+        projectNameOverrides: args.projectNameOverrides ?? null,
       }),
   },
 

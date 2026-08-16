@@ -529,6 +529,99 @@ fn is_title_filler(w: &str) -> bool {
     )
 }
 
+// ── LLM naming ───────────────────────────────────────────────────────────────
+//
+// A cluster label is a comma-joined term list ("docker, compose, registry") —
+// good as a "why these are together" explanation, unusable as a workspace name.
+// One batched LLM call names every cluster; parsing is defensive (sub-4B models
+// produce prose), and any cluster the response doesn't cover keeps a lexical
+// name via `workspace_name_from_terms`. Naming must degrade, never fail.
+
+/// Build the single naming prompt covering every cluster: shared terms plus up
+/// to three member titles per group.
+pub fn naming_prompt(
+    clusters: &[ChatCluster],
+    titles_by_uuid: &HashMap<String, &str>,
+) -> String {
+    let mut prompt = String::from(
+        "Name each group of related chat conversations as a short workspace name.\n\
+         Reply with ONLY one line per group in this exact format:\n\
+         <group_number>: <2-4 word workspace name>\n\
+         No explanations, no extra text.\n\n",
+    );
+    for (i, cluster) in clusters.iter().enumerate() {
+        let titles: Vec<&str> = cluster
+            .conversation_uuids
+            .iter()
+            .filter_map(|u| titles_by_uuid.get(u).copied())
+            .filter(|t| !t.trim().is_empty())
+            .take(3)
+            .collect();
+        prompt.push_str(&format!(
+            "{}. shared terms: {} | example chats: {}\n",
+            i + 1,
+            cluster.terms.join(", "),
+            titles.join("; "),
+        ));
+    }
+    prompt
+}
+
+/// Parse the naming response into per-cluster names. Index `i` holds the name
+/// for `clusters[i]`, or `None` when the response didn't cover it (garbage
+/// lines, out-of-range numbers, empty names). Duplicated numbers keep the
+/// first occurrence.
+pub fn parse_cluster_names(response: &str, n: usize) -> Vec<Option<String>> {
+    let mut names: Vec<Option<String>> = vec![None; n];
+    for line in response.lines() {
+        let line = line
+            .trim()
+            .trim_start_matches(['-', '*', '`', '>'])
+            .trim();
+        // Leading group number…
+        let digits: String = line.chars().take_while(char::is_ascii_digit).collect();
+        if digits.is_empty() {
+            continue;
+        }
+        let Ok(num) = digits.parse::<usize>() else { continue };
+        if num == 0 || num > n {
+            continue;
+        }
+        // …followed by a separator, then the name.
+        let rest = line[digits.len()..].trim_start();
+        let rest = rest.trim_start_matches([':', '.', ')', '-']).trim();
+        let name: String = rest
+            .trim_matches(['"', '\'', '`', '*'])
+            .chars()
+            .take(40)
+            .collect();
+        let name = name.trim().to_string();
+        if name.is_empty() || names[num - 1].is_some() {
+            continue;
+        }
+        names[num - 1] = Some(name);
+    }
+    names
+}
+
+/// Lexical workspace name for a cluster the LLM didn't (or couldn't) name:
+/// title-cased top-two shared terms, falling back to the raw label.
+pub fn workspace_name_from_terms(terms: &[String], label: &str) -> String {
+    let title_case = |t: &str| -> String {
+        let mut chars = t.chars();
+        match chars.next() {
+            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+            None => String::new(),
+        }
+    };
+    let picked: Vec<String> = terms.iter().take(2).map(|t| title_case(t)).collect();
+    if picked.is_empty() {
+        label.chars().take(40).collect()
+    } else {
+        picked.join(" & ")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -761,5 +854,72 @@ mod tests {
             "expected shared vocabulary in label terms, got {:?}",
             out[0].terms
         );
+    }
+
+    fn cluster(id: &str, terms: &[&str], uuids: &[&str]) -> ChatCluster {
+        ChatCluster {
+            id: id.to_string(),
+            label: terms.join(", "),
+            terms: terms.iter().map(|t| t.to_string()).collect(),
+            conversation_uuids: uuids.iter().map(|u| u.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn naming_prompt_numbers_every_cluster() {
+        let clusters = vec![
+            cluster("cluster-0", &["docker", "compose"], &["a", "b", "c"]),
+            cluster("cluster-1", &["spanish", "grammar"], &["d", "e", "f"]),
+        ];
+        let titles: HashMap<String, &str> = [
+            ("a".to_string(), "Docker networking"),
+            ("d".to_string(), "Spanish verb drills"),
+        ]
+        .into_iter()
+        .collect();
+        let prompt = naming_prompt(&clusters, &titles);
+        assert!(prompt.contains("1. shared terms: docker, compose"));
+        assert!(prompt.contains("2. shared terms: spanish, grammar"));
+        assert!(prompt.contains("Docker networking"));
+        assert!(prompt.contains("Spanish verb drills"));
+    }
+
+    #[test]
+    fn parse_cluster_names_well_formed() {
+        let names = parse_cluster_names("1: Docker & Containers\n2: Spanish Learning", 2);
+        assert_eq!(names[0].as_deref(), Some("Docker & Containers"));
+        assert_eq!(names[1].as_deref(), Some("Spanish Learning"));
+        // Alternative separators and markdown decoration still parse.
+        let names = parse_cluster_names("- 1. \"Home Cooking\"\n* 2) Career Planning", 2);
+        assert_eq!(names[0].as_deref(), Some("Home Cooking"));
+        assert_eq!(names[1].as_deref(), Some("Career Planning"));
+    }
+
+    #[test]
+    fn parse_cluster_names_garbage_falls_back_to_none() {
+        // Prose, out-of-range numbers, empty names → None, never a panic.
+        let names = parse_cluster_names(
+            "Sure! Here are the names:\n0: nope\n3: OutOfRange\n2:\nnot a line",
+            2,
+        );
+        assert_eq!(names, vec![None, None]);
+        assert_eq!(parse_cluster_names("", 2), vec![None, None]);
+    }
+
+    #[test]
+    fn parse_cluster_names_ignores_extra_prose_and_duplicates() {
+        let names = parse_cluster_names(
+            "Here you go:\n1: Docker Work\nAs requested.\n1: Duplicate Ignored\n2: Cooking",
+            2,
+        );
+        assert_eq!(names[0].as_deref(), Some("Docker Work"));
+        assert_eq!(names[1].as_deref(), Some("Cooking"));
+    }
+
+    #[test]
+    fn workspace_name_from_terms_title_cases_top_two() {
+        let terms = vec!["docker".to_string(), "compose".to_string(), "extra".to_string()];
+        assert_eq!(workspace_name_from_terms(&terms, "ignored"), "Docker & Compose");
+        assert_eq!(workspace_name_from_terms(&[], "raw label text"), "raw label text");
     }
 }
