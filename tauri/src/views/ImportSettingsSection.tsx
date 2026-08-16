@@ -695,7 +695,8 @@ export default function ImportSettingsSection() {
     setClaudeLinkedUnassigned({});
     setProposedGroups({});
     setClusterProposing(false);
-    setRowFilter("all");
+    setRowFilter("unassigned");
+    setRowSearch("");
     prefilledDestsRef.current = {};
   }
 
@@ -1046,11 +1047,26 @@ export default function ImportSettingsSection() {
     }
   }
 
+  /** Review rows visible under the current rowFilter + rowSearch (no render cap). */
+  function filteredReviewRows(): ClaudeConvPreview[] {
+    const searchQuery = rowSearch.trim().toLowerCase();
+    const matchesSearch = (c: ClaudeConvPreview) =>
+      !searchQuery ||
+      c.name.toLowerCase().includes(searchQuery) ||
+      (c.first_user_message ?? "").toLowerCase().includes(searchQuery) ||
+      (c.summary ?? "").toLowerCase().includes(searchQuery);
+    return (rowFilter === "unassigned"
+      ? claudeOrphans.filter((c) => !chatAssignments[c.uuid])
+      : claudeOrphans
+    ).filter(matchesSearch);
+  }
+
   /**
-   * Write the review state (projects + orphan conversations + current
+   * Write the review state (projects + currently visible conversations +
    * assignments/suggestions) to a JSON file the user can hand to an external
-   * AI (chat or CLI tool) for analysis. Export-only for now — there is no
-   * re-import of the AI's answers yet.
+   * AI (chat or CLI tool) for analysis. Exports exactly what the review table
+   * shows under the active filter and search. Export-only for now — there is
+   * no re-import of the AI's answers yet.
    */
   async function exportReviewForAi() {
     const payload = {
@@ -1073,7 +1089,7 @@ export default function ImportSettingsSection() {
         name: g.name,
         terms: g.terms,
       })),
-      conversations: claudeOrphans.map((c) => {
+      conversations: filteredReviewRows().map((c) => {
         const suggestion = claudeSuggestions.find((s) => s.conversation_uuid === c.uuid);
         return {
           uuid: c.uuid,
@@ -2240,16 +2256,7 @@ export default function ImportSettingsSection() {
                   // The review table shows EVERY orphan (assigned rows keep
                   // their destination pre-selected) so the user can see what
                   // was classified; the filter narrows to the leftovers.
-                  const searchQuery = rowSearch.trim().toLowerCase();
-                  const matchesSearch = (c: ClaudeConvPreview) =>
-                    !searchQuery ||
-                    c.name.toLowerCase().includes(searchQuery) ||
-                    (c.first_user_message ?? "").toLowerCase().includes(searchQuery) ||
-                    (c.summary ?? "").toLowerCase().includes(searchQuery);
-                  const reviewRows = (rowFilter === "unassigned"
-                    ? claudeOrphans.filter((c) => !chatAssignments[c.uuid])
-                    : claudeOrphans
-                  ).filter(matchesSearch);
+                  const reviewRows = filteredReviewRows();
                   // Render cap: at 1k-10k chats a full list stalls the DOM.
                   const ROW_CAP = 300;
                   const visibleRows = reviewRows.slice(0, ROW_CAP);
@@ -2381,7 +2388,7 @@ export default function ImportSettingsSection() {
                           <button
                             type="button"
                             onClick={() => void exportReviewForAi()}
-                            title="Export projects and these conversations (with transcripts, assignments, and the app's suggestions) as JSON, to hand to an external AI for analysis."
+                            title="Export projects and the conversations currently shown (respects the filter and search; includes transcripts, assignments, and the app's suggestions) as JSON, to hand to an external AI for analysis."
                             className="inline-flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
                           >
                             <Download size={11} />

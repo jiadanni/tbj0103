@@ -619,7 +619,10 @@ describe("ImportSettingsSection", () => {
     renderImportSettings();
     fireEvent.click(screen.getAllByText("Select")[2]);
 
-    // Both orphans stay visible (the suggested one is assigned, not hidden).
+    // The filter defaults to unassigned-only, so only the unassigned orphan counts…
+    await screen.findByText(/1 conversation$/);
+    // …and switching to "all" keeps the suggested one visible (assigned, not hidden).
+    fireEvent.click(screen.getByText(/showing: unassigned only/));
     fireEvent.click(await screen.findByText(/2 conversations$/));
     // The chat may also render in the project detail pane; the review row's
     // title is a <button> with a sibling destination dropdown.
@@ -652,7 +655,8 @@ describe("ImportSettingsSection", () => {
 
     renderImportSettings();
     fireEvent.click(screen.getAllByText("Select")[2]);
-    await screen.findByText(/2 conversations$/);
+    // Default filter is unassigned-only; the suggested orphan is already assigned.
+    await screen.findByText(/1 conversation$/);
 
     fireEvent.click(screen.getByLabelText("AI matching options"));
     fireEvent.click(await screen.findByText(/Strict — only clear winners/));
