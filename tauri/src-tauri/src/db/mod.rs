@@ -92,6 +92,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v76_learning_cards_generated_by_model",
     "v77_blocked_topics",
     "v78_learning_cards_kind",
+    "v79_import_source_links",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -2347,6 +2348,55 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         }
         conn.execute(
             "INSERT INTO _migrations(name) VALUES('v78_learning_cards_kind')",
+            [],
+        )?;
+    }
+
+    // v79: import source identity — link imported chats/memories/destinations
+    // back to their source-export identifiers so re-imports merge instead of
+    // duplicating.
+    let applied_v79: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v79_import_source_links'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v79 == 0 {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS import_source_links (
+                id TEXT PRIMARY KEY NOT NULL,
+                source TEXT NOT NULL,
+                source_conversation_uuid TEXT NOT NULL,
+                chat_session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(source, source_conversation_uuid)
+            );
+            CREATE INDEX IF NOT EXISTS idx_import_source_links_session ON import_source_links(chat_session_id);
+            CREATE TABLE IF NOT EXISTS import_destinations (
+                id TEXT PRIMARY KEY NOT NULL,
+                source TEXT NOT NULL,
+                source_project_uuid TEXT NOT NULL,
+                source_project_name TEXT NOT NULL DEFAULT '',
+                workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                folder_id TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(source, source_project_uuid)
+            );
+            CREATE TABLE IF NOT EXISTS import_memory_links (
+                id TEXT PRIMARY KEY NOT NULL,
+                source TEXT NOT NULL,
+                source_project_uuid TEXT NOT NULL,
+                memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+                content_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(source, source_project_uuid)
+            );",
+        )?;
+        conn.execute(
+            "INSERT INTO _migrations(name) VALUES('v79_import_source_links')",
             [],
         )?;
     }

@@ -31,6 +31,27 @@ interface ClaudeProjectPreview {
   prompt_template?: string;
 }
 
+/** A chat already imported in a prior run, with its current in-app location. */
+interface LinkedConvInfo {
+  session_id: string;
+  source_conversation_uuid: string;
+  title: string;
+  workspace_id: string;
+  workspace_name: string;
+  folder_id: string;
+  folder_name: string;
+}
+
+/** A remembered import destination for a Claude project ("__orphans__" for unassigned chats). */
+interface KnownDestInfo {
+  source_project_uuid: string;
+  source_project_name: string;
+  workspace_id: string;
+  workspace_name: string;
+  folder_id: string;
+  folder_name: string;
+}
+
 interface ClaudeConvPreview {
   uuid: string;
   name: string;
@@ -160,6 +181,18 @@ export default function ImportSettingsSection() {
   const [claudeIncludeMemories, setClaudeIncludeMemories] = useState(true);
   const [claudeMergeExisting, setClaudeMergeExisting] = useState(false);
   const [claudeCloneEdited, setClaudeCloneEdited] = useState(false);
+  // Move previously imported chats back to their remembered import destination.
+  // Default off: app state wins — linked chats merge wherever they now live.
+  const [claudeRestoreDestinations, setClaudeRestoreDestinations] = useState(false);
+  // Chats recognized from a prior import (Claude conversation UUID → location).
+  const [claudeLinked, setClaudeLinked] = useState<Record<string, LinkedConvInfo>>({});
+  // Remembered destinations from prior imports (project UUID / "__orphans__").
+  const [claudeKnownDests, setClaudeKnownDests] = useState<Record<string, KnownDestInfo>>({});
+  const [linkedListOpen, setLinkedListOpen] = useState(false);
+  // Snapshot of scan-time destination pre-fills. When the user leaves a
+  // project's picker untouched, import reuses the remembered destination ids
+  // instead of creating workspaces/folders.
+  const prefilledDestsRef = useRef<Record<string, ProjectDestination>>({});
   const [claudeFolderPath, setClaudeFolderPath] = useState<string | null>(null);
   const [claudeDetectedFormat, setClaudeDetectedFormat] = useState<"legacy" | "v2" | null>(null);
   const [claudeFilesFound, setClaudeFilesFound] = useState<{ conversations: boolean; projects: boolean; memories: boolean } | null>(null);
@@ -639,6 +672,10 @@ export default function ImportSettingsSection() {
     setChatAssignments({});
     setFocusedProjectUuid(null);
     setClaudeEmbeddingMatching(false);
+    setClaudeLinked({});
+    setClaudeKnownDests({});
+    setLinkedListOpen(false);
+    prefilledDestsRef.current = {};
   }
 
   async function pickClaudeFolder() {
@@ -681,9 +718,17 @@ export default function ImportSettingsSection() {
         throw new Error("No importable conversations found in the selected folder.");
       }
 
+      // Chats recognized from a prior import merge automatically — they are
+      // excluded from the review/assignment flow entirely.
+      const linked = result.linked_conversations ?? {};
+      const knownDests = result.known_destinations ?? {};
+      const reviewOrphans = result.orphan_conversations.filter((c) => !linked[c.uuid]);
+
+      setClaudeLinked(linked);
+      setClaudeKnownDests(knownDests);
       setClaudeProjects(result.folders);
       setClaudeConvsByProject(result.conversations_by_project);
-      setClaudeOrphans(result.orphan_conversations);
+      setClaudeOrphans(reviewOrphans);
       setClaudeSuggestions(result.suggestions ?? []);
       setClaudeMemoriesByProject(result.memories_by_project ?? {});
 
@@ -694,7 +739,7 @@ export default function ImportSettingsSection() {
       for (const s of result.suggestions ?? []) {
         suggestionByChat.set(s.conversation_uuid, s.project_uuid);
       }
-      for (const c of result.orphan_conversations) {
+      for (const c of reviewOrphans) {
         initialAssignments[c.uuid] = suggestionByChat.get(c.uuid) ?? null;
       }
       setChatAssignments(initialAssignments);
@@ -714,15 +759,24 @@ export default function ImportSettingsSection() {
         if (proj.conversation_count > 0 || suggestedProjects.has(proj.uuid)) {
           selectedFolders.add(proj.uuid);
         }
-        dests[proj.uuid] = { type: "new-workspace", parentId: null, subWorkspaceId: null, name: proj.name };
+        // Pre-fill from the remembered destination when one exists; import
+        // reuses its ids directly as long as the picker stays untouched.
+        const known = knownDests[proj.uuid];
+        dests[proj.uuid] = {
+          type: "new-workspace",
+          parentId: null,
+          subWorkspaceId: null,
+          name: known && !known.folder_id ? known.workspace_name : proj.name,
+        };
         memEnabled[proj.uuid] = proj.has_memory;
         instrEnabled[proj.uuid] = proj.has_prompt;
       }
+      prefilledDestsRef.current = { ...dests };
 
       setClaudeSelectedProjects(selectedFolders);
       // Default orphan "selected for import" = chats that ended up Unassigned (no suggestion).
       setClaudeSelected(new Set(
-        result.orphan_conversations
+        reviewOrphans
           .filter((c) => !suggestionByChat.get(c.uuid))
           .map((c) => c.uuid),
       ));
@@ -919,8 +973,17 @@ export default function ImportSettingsSection() {
         const instrEnabled = projectInstructionsEnabled[projUuid] && proj?.has_prompt;
         const promptTemplate = instrEnabled ? (proj?.prompt_template ?? "") : "";
 
+        // Remembered destination from a prior import: as long as the user left
+        // this project's picker untouched, reuse the existing workspace/folder
+        // ids instead of creating anything.
+        const known = claudeKnownDests[projUuid];
+        const prefilled = prefilledDestsRef.current[projUuid];
+        const destUntouched = !!prefilled && JSON.stringify(dest) === JSON.stringify(prefilled);
+
         let target: { workspace_id: string; folder_id: string };
-        if (dest.type === "new-workspace") {
+        if (known && destUntouched) {
+          target = { workspace_id: known.workspace_id, folder_id: known.folder_id };
+        } else if (dest.type === "new-workspace") {
           const resolvedName = await resolveWorkspaceNameConflict(dest.name.trim(), workspaces, promptForName, bulkConflictContext);
           if (!resolvedName) {
             setImportingClaude(false);
@@ -935,7 +998,13 @@ export default function ImportSettingsSection() {
           target = { workspace_id: ws.id, folder_id: "" };
         } else if (dest.type === "new-sub-workspace") {
           if (!dest.parentId) { throw new Error(`Missing parent for project "${dest.name}"`); }
-          const ws = await api.workspace.createChild(dest.parentId, dest.name.trim());
+          // Reuse an existing child workspace with the same name instead of
+          // re-creating it on every re-import.
+          const existingChild = workspaces.find(
+            (w) => w.parent_workspace_id === dest.parentId
+              && w.name.trim().toLowerCase() === dest.name.trim().toLowerCase(),
+          );
+          const ws = existingChild ?? await api.workspace.createChild(dest.parentId, dest.name.trim());
           if (promptTemplate) {
             await api.workspace.update(ws.id, ws.name, ws.description, promptTemplate);
           }
@@ -943,7 +1012,12 @@ export default function ImportSettingsSection() {
           target = { workspace_id: ws.id, folder_id: "" };
         } else {
           if (!dest.subWorkspaceId) { throw new Error(`Missing sub-workspace for project "${dest.name}"`); }
-          const folder = await api.folder.create(dest.subWorkspaceId, dest.name.trim(), {
+          // Reuse an existing folder with the same name instead of re-creating.
+          const existingFolders = await api.folder.list(dest.subWorkspaceId);
+          const existingFolder = existingFolders.find(
+            (f) => f.name.trim().toLowerCase() === dest.name.trim().toLowerCase(),
+          );
+          const folder = existingFolder ?? await api.folder.create(dest.subWorkspaceId, dest.name.trim(), {
             ...(promptTemplate ? { custom_instructions: promptTemplate } : {}),
           });
           target = { workspace_id: dest.subWorkspaceId, folder_id: folder.id };
@@ -966,11 +1040,12 @@ export default function ImportSettingsSection() {
       }
 
       // Conversations to send to the backend = explicitly-unassigned chats the
-      // user ticked + assigned chats. (If a chat is assigned but the project
-      // wasn't selected for import, it falls into Unassigned via the tick state.)
+      // user ticked + assigned chats + previously imported chats (recognized by
+      // Claude UUID; the backend merges those in place automatically).
       const conversationIdsToImport = new Set<string>([
         ...assignedConversationIds,
         ...claudeSelected,
+        ...Object.keys(claudeLinked),
       ]);
 
       // Orphan workspace — only created if any unassigned chats remain.
@@ -978,7 +1053,12 @@ export default function ImportSettingsSection() {
         (id) => !chatProjectOverrides[id],
       ).length;
       let orphansDestination: { workspace_id: string; folder_id: string } | null = null;
-      if (unassignedCount > 0) {
+      const knownOrphans = claudeKnownDests["__orphans__"];
+      if (unassignedCount > 0 && knownOrphans) {
+        // Reuse the destination unassigned chats went to last time instead of
+        // minting a new dated folder per import run.
+        orphansDestination = { workspace_id: knownOrphans.workspace_id, folder_id: knownOrphans.folder_id };
+      } else if (unassignedCount > 0) {
         const existing = workspaces.find((w) => w.name === "Unassigned Imports" && !w.parent_workspace_id);
         const ws = existing ?? await api.workspace.create("Unassigned Imports");
         const stamp = new Date().toISOString().slice(0, 10);
@@ -1010,6 +1090,7 @@ export default function ImportSettingsSection() {
         chatProjectOverrides: Object.keys(chatProjectOverrides).length > 0 ? chatProjectOverrides : undefined,
         mergeExisting: claudeMergeExisting,
         cloneEdited: claudeMergeExisting && claudeCloneEdited,
+        restoreDestinations: claudeRestoreDestinations,
       });
 
       const finalFreshWs = await api.workspace.list();
@@ -1042,11 +1123,23 @@ export default function ImportSettingsSection() {
       if (result.cloned > 0) {
         lines.push(`${result.cloned} edited chat${result.cloned === 1 ? "" : "s"} cloned as new copies.`);
       }
+      if (result.linked > 0) {
+        lines.push(`${result.linked} previously imported chat${result.linked === 1 ? "" : "s"} updated in place.`);
+      }
+      if (result.moved_back > 0) {
+        lines.push(`${result.moved_back} chat${result.moved_back === 1 ? "" : "s"} moved back to their import location.`);
+      }
       if (result.skipped > 0) {
         lines.push(`${result.skipped} duplicate${result.skipped === 1 ? "" : "s"} skipped.`);
       }
       if (result.memories_imported > 0) {
         lines.push(`${result.memories_imported} memor${result.memories_imported === 1 ? "y" : "ies"} imported.`);
+      }
+      if (result.memories_updated > 0) {
+        lines.push(`${result.memories_updated} memor${result.memories_updated === 1 ? "y" : "ies"} updated with newer content.`);
+      }
+      if (result.memories_skipped > 0) {
+        lines.push(`${result.memories_skipped} unchanged memor${result.memories_skipped === 1 ? "y" : "ies"} skipped.`);
       }
       if (result.errors > 0) {
         lines.push(`${result.errors} item${result.errors === 1 ? "" : "s"} had errors.`);
@@ -1905,6 +1998,37 @@ export default function ImportSettingsSection() {
               </div>
             )}
 
+            {/* ── Previously imported chats (merge automatically) ── */}
+            {Object.keys(claudeLinked).length > 0 && (
+              <div className="mt-4 rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2">
+                <button
+                  type="button"
+                  onClick={() => setLinkedListOpen((v) => !v)}
+                  className="flex w-full items-center justify-between text-xs text-[var(--text-primary)]"
+                >
+                  <span>
+                    {Object.keys(claudeLinked).length} chat{Object.keys(claudeLinked).length === 1 ? " was" : "s were"} imported before and will merge automatically.
+                    {Object.keys(claudeKnownDests).length > 0 && (
+                      <span className="ml-1 text-[var(--text-muted)]">Remembered destinations will be reused.</span>
+                    )}
+                  </span>
+                  <ChevronDown size={12} className={`shrink-0 transition-transform ${linkedListOpen ? "rotate-180" : ""}`} />
+                </button>
+                {linkedListOpen && (
+                  <ul className="mt-2 max-h-48 overflow-y-auto flex flex-col gap-0.5">
+                    {Object.values(claudeLinked).map((info) => (
+                      <li key={info.source_conversation_uuid} className="truncate text-[11px] text-[var(--text-secondary)]">
+                        {info.title}
+                        <span className="text-[var(--text-muted)]">
+                          {" — "}{info.workspace_name}{info.folder_name ? ` / ${info.folder_name}` : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
             {/* ── Conversation assignment table ─────────────────── */}
             {claudeOrphans.length > 0 && (
               <div className="mt-4 flex flex-col gap-2">
@@ -2205,7 +2329,7 @@ export default function ImportSettingsSection() {
             )}
 
             {/* ── Action row ───────────────────────────────────── */}
-            {(claudeProjects.length > 0 || claudeOrphans.length > 0) && (
+            {(claudeProjects.length > 0 || claudeOrphans.length > 0 || Object.keys(claudeLinked).length > 0) && (
               <div className="mt-4 flex flex-col gap-2">
                 <div className="flex flex-col gap-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2">
                   <label className="flex items-center gap-2 text-[11px] text-[var(--text-secondary)]">
@@ -2231,6 +2355,19 @@ export default function ImportSettingsSection() {
                       For chats edited locally, import the source as a new copy (preserves your edits).
                     </span>
                   </label>
+                  {Object.keys(claudeLinked).length > 0 && (
+                    <label className="flex items-center gap-2 text-[11px] text-[var(--text-secondary)]">
+                      <input
+                        type="checkbox"
+                        checked={claudeRestoreDestinations}
+                        onChange={(e) => setClaudeRestoreDestinations(e.target.checked)}
+                        className="accent-[var(--accent-color)]"
+                      />
+                      <span>
+                        Move previously imported chats back to their original import location (default: leave them where they are now).
+                      </span>
+                    </label>
+                  )}
                 </div>
                 <div className="flex items-center justify-end gap-2">
                 <button
@@ -2253,6 +2390,7 @@ export default function ImportSettingsSection() {
                       claudeSelectedFolders.size === 0
                       && claudeSelected.size === 0
                       && Object.values(chatAssignments).every((p) => !p)
+                      && Object.keys(claudeLinked).length === 0
                     )
                     || (() => {
                       const projectsToCheck = new Set<string>(claudeSelectedFolders);

@@ -1450,6 +1450,25 @@ export const api = {
         } | null;
         memories_by_project?: Record<string, string> | null;
         suggestions: { conversation_uuid: string; project_uuid: string | null; score: number; reason: "title" | "keywords" | "none" }[];
+        /** Chats already imported in a prior run (by Claude conversation UUID), with their current in-app location. They bypass the matcher and merge automatically on import. */
+        linked_conversations: Record<string, {
+          session_id: string;
+          source_conversation_uuid: string;
+          title: string;
+          workspace_id: string;
+          workspace_name: string;
+          folder_id: string;
+          folder_name: string;
+        }>;
+        /** Remembered import destinations keyed by Claude project UUID ("__orphans__" for unassigned chats). */
+        known_destinations: Record<string, {
+          source_project_uuid: string;
+          source_project_name: string;
+          workspace_id: string;
+          workspace_name: string;
+          folder_id: string;
+          folder_name: string;
+        }>;
         files_found: { conversations: boolean; projects: boolean; memories: boolean };
       }>("preview_claude_files", {
         folderPath: args.folderPath,
@@ -1520,6 +1539,8 @@ export const api = {
       chatProjectOverrides?: Record<string, string>;
       mergeExisting?: boolean;
       cloneEdited?: boolean;
+      /** Move previously imported chats back to their resolved import destination. Default: app state wins (merge where the chat now lives). */
+      restoreDestinations?: boolean;
     }) =>
       invoke<{
         imported: number;
@@ -1527,7 +1548,15 @@ export const api = {
         appended_sessions: number;
         appended_messages: number;
         cloned: number;
+        /** Previously imported chats recognized by their Claude UUID and merged in place. */
+        linked: number;
+        /** Linked chats moved back to their import destination (restoreDestinations only). */
+        moved_back: number;
         memories_imported: number;
+        /** Previously imported memories whose content changed and was updated in place. */
+        memories_updated: number;
+        /** Previously imported memories with unchanged content. */
+        memories_skipped: number;
         errors: number;
         error_messages: string[];
       }>("import_claude_files", {
@@ -1540,6 +1569,7 @@ export const api = {
         chatProjectOverrides: args.chatProjectOverrides ?? null,
         mergeExisting: args.mergeExisting ?? null,
         cloneEdited: args.cloneEdited ?? null,
+        restoreDestinations: args.restoreDestinations ?? null,
       }),
   },
 

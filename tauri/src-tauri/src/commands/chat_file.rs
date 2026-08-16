@@ -1544,15 +1544,26 @@ pub async fn preview_claude_files(
     include_conversations: bool,
     include_projects: bool,
     include_memories: bool,
+    db_state: State<'_, DbState>,
 ) -> Result<serde_json::Value, String> {
+    let pool = db_state.0.clone();
     tokio::task::spawn_blocking(move || {
 
     use chat_file_store::claude_v2;
+    use chat_file_store::import_links::{self, SOURCE_CLAUDE};
 
     let folder = validate_user_path(&folder_path, true)?;
     if !folder.is_dir() {
         return Err("Selected path is not a folder.".to_string());
     }
+
+    // Previously imported chats (by Claude conversation UUID) and remembered
+    // destinations — two batched queries. Linked chats bypass the matcher and
+    // the review UI; destinations pre-fill the pickers.
+    let conn = pool.get().map_err(|e| e.to_string())?;
+    let all_links = import_links::load_links(&conn, SOURCE_CLAUDE)?;
+    let known_destinations = import_links::load_destinations(&conn, SOURCE_CLAUDE)?;
+    drop(conn);
 
     let is_v2 = folder.join("projects").is_dir();
 
@@ -1608,11 +1619,32 @@ pub async fn preview_claude_files(
             .map(|m| (m.project_uuid.clone(), m.memory.clone()))
             .collect();
 
-        // Suggest a project for each orphan (keyword matcher; user can request
-        // embedding-based matching separately via match_claude_with_embeddings).
+        // Already-imported chats present in this export (orphans + project chats).
+        let mut linked_conversations = std::collections::HashMap::new();
+        for conv in &orphan_conversations {
+            if let Some(info) = all_links.get(&conv.uuid) {
+                linked_conversations.insert(conv.uuid.clone(), info.clone());
+            }
+        }
+        for convs in convs_by_project.values() {
+            for conv in convs {
+                if let Some(info) = all_links.get(&conv.uuid) {
+                    linked_conversations.insert(conv.uuid.clone(), info.clone());
+                }
+            }
+        }
+
+        // Suggest a project for each unlinked orphan (keyword matcher; user can
+        // request embedding-based matching separately via match_claude_with_embeddings).
+        // Linked orphans already have a home — the matcher never sees them.
+        let unlinked_orphans: Vec<_> = orphan_conversations
+            .iter()
+            .filter(|c| !linked_conversations.contains_key(&c.uuid))
+            .cloned()
+            .collect();
         let suggestions = if include_conversations && !projects.is_empty() {
             chat_file_store::claude_v2_match::suggest_project_for_conversations(
-                &orphan_conversations,
+                &unlinked_orphans,
                 &projects,
                 &memories_by_project,
             )
@@ -1629,6 +1661,8 @@ pub async fn preview_claude_files(
             "memories": if include_memories { Some(memories) } else { None },
             "memories_by_project": if include_memories { Some(memories_by_project) } else { None },
             "suggestions": suggestions,
+            "linked_conversations": linked_conversations,
+            "known_destinations": known_destinations,
             "files_found": {
                 "conversations": folder.join("conversations.json").is_file(),
                 "projects": folder.join("projects").is_dir(),
@@ -1721,9 +1755,23 @@ pub async fn preview_claude_files(
             })
             .unwrap_or_default();
 
+        // Already-imported chats present in this export (orphans + project chats).
+        let mut linked_conversations = std::collections::HashMap::new();
+        for conv in &all_conversations {
+            if let Some(info) = all_links.get(&conv.uuid) {
+                linked_conversations.insert(conv.uuid.clone(), info.clone());
+            }
+        }
+
+        // Linked orphans already have a home — the matcher never sees them.
+        let unlinked_orphans: Vec<_> = orphan_conversations
+            .iter()
+            .filter(|c| !linked_conversations.contains_key(&c.uuid))
+            .cloned()
+            .collect();
         let suggestions = if include_conversations && !claude_projects.is_empty() {
             chat_file_store::claude_v2_match::suggest_project_for_conversations(
-                &orphan_conversations,
+                &unlinked_orphans,
                 &claude_projects,
                 &memories_by_project,
             )
@@ -1740,6 +1788,8 @@ pub async fn preview_claude_files(
             "memories": memories,
             "memories_by_project": if include_memories { Some(memories_by_project) } else { None },
             "suggestions": suggestions,
+            "linked_conversations": linked_conversations,
+            "known_destinations": known_destinations,
             "files_found": {
                 "conversations": folder.join("conversations.json").is_file(),
                 "projects": folder.join("projects.json").is_file(),
@@ -2191,7 +2241,11 @@ pub async fn match_claude_with_llm<R: Runtime>(
 /// this is the case for projects imported as a new (sub-)workspace.
 #[derive(serde::Deserialize)]
 pub struct ClaudeImportDestination {
+    // The frontend sends camelCase nested keys; Tauri only converts top-level
+    // argument names, so accept both spellings.
+    #[serde(alias = "workspaceId")]
     workspace_id: String,
+    #[serde(alias = "folderId")]
     folder_id: String,
 }
 
@@ -2220,6 +2274,9 @@ pub async fn import_claude_files(
     // Re-import behavior — see `import_lmstudio_folder` for the semantics.
     merge_existing: Option<bool>,
     clone_edited: Option<bool>,
+    // When true, previously imported chats that were moved in-app are moved
+    // back to their resolved import destination. Default: app state wins.
+    restore_destinations: Option<bool>,
     chats_dir_state: State<'_, ChatsDirState>,
     crypto: State<'_, ChatCryptoState>,
     db_state: State<'_, DbState>,
@@ -2230,11 +2287,13 @@ pub async fn import_claude_files(
     let pool = db_state.0.clone();
     tokio::task::spawn_blocking(move || {
     use chat_file_store::claude_v2;
+    use chat_file_store::import_links::{self, SOURCE_CLAUDE};
 
     let merge_existing = merge_existing.unwrap_or(false);
     let clone_edited = clone_edited.unwrap_or(false);
+    let restore_destinations = restore_destinations.unwrap_or(false);
 
-    let conn = pool.get().map_err(|e| e.to_string())?;
+    let mut conn = pool.get().map_err(|e| e.to_string())?;
     let folder = validate_user_path(&folder_path, true)?;
     if !folder.is_dir() {
         return Err("Selected path is not a folder.".to_string());
@@ -2243,14 +2302,109 @@ pub async fn import_claude_files(
     let is_v2 = folder.join("projects").is_dir();
     let now = chrono::Utc::now().to_rfc3339();
 
+    // Everything DB-side happens in one transaction; committed before file writes.
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let links = import_links::load_links(&tx, SOURCE_CLAUDE)?;
+
     let mut session_ids = Vec::new();
     let mut errors = Vec::new();
     let mut skipped = 0usize;
     let mut appended_sessions = 0usize;
     let mut appended_messages = 0usize;
     let mut cloned = 0usize;
+    let mut linked = 0usize;
+    let mut moved_back = 0usize;
 
     let overrides = chat_project_overrides.unwrap_or_default();
+
+    // Parse every chat to import first so the dedup fallback below can resolve
+    // candidates with one batched query instead of one query per chat.
+    let mut all_chats: Vec<(chat_file_store::ChatFileData, Option<String>)> = Vec::new();
+    if is_v2 {
+        // Project chats from design_chats/
+        let proj_ids: Vec<String> =
+            selected_project_ids.unwrap_or_else(|| folder_mappings.keys().cloned().collect());
+        let design_chats = claude_v2::parse_v2_design_chats_filtered(&folder, &[])?;
+        for (data, project_uuid) in design_chats {
+            if let Some(uuid) = project_uuid.as_deref() {
+                if !proj_ids.contains(&uuid.to_string()) {
+                    continue;
+                }
+            }
+            all_chats.push((data, project_uuid));
+        }
+
+        // Orphan conversations from conversations.json. Parsed even without an
+        // orphans destination when overrides or existing links can route/merge them.
+        let conv_path = folder.join("conversations.json");
+        if conv_path.is_file()
+            && (orphans_destination.is_some() || !overrides.is_empty() || !links.is_empty())
+        {
+            let bytes = std::fs::read(&conv_path)
+                .map_err(|e| format!("Failed to read conversations.json: {e}"))?;
+            let orphans = chat_file_store::parse_claude_conversations_filtered(
+                &bytes,
+                selected_conversation_ids.as_deref().unwrap_or(&[]),
+            )?;
+            for (data, _) in orphans {
+                all_chats.push((data, None));
+            }
+        }
+    } else {
+        // Legacy format: conversations.json with optional project_uuid on each
+        let conv_path = folder.join("conversations.json");
+        if conv_path.is_file() {
+            let bytes = std::fs::read(&conv_path)
+                .map_err(|e| format!("Failed to read conversations.json: {e}"))?;
+            let convs = chat_file_store::parse_claude_conversations_filtered(
+                &bytes,
+                selected_conversation_ids.as_deref().unwrap_or(&[]),
+            )?;
+            all_chats.extend(convs);
+        }
+    }
+
+    // Batched dedup-candidate lookup for chats without a link: one query over
+    // all distinct created_at values (millisecond-precise, so candidate sets
+    // stay tiny) instead of a per-chat query. (title, created_at) →
+    // [(session_id, workspace_id, folder_id)].
+    type DedupCandidates =
+        std::collections::HashMap<(String, String), Vec<(String, String, String)>>;
+    let mut candidates: DedupCandidates = std::collections::HashMap::new();
+    {
+        let unlinked_times: Vec<&str> = {
+            let mut set = std::collections::BTreeSet::new();
+            for (data, _) in &all_chats {
+                if !links.contains_key(&data.id) {
+                    set.insert(data.created_at.as_str());
+                }
+            }
+            set.into_iter().collect()
+        };
+        for chunk in unlinked_times.chunks(500) {
+            let placeholders = vec!["?"; chunk.len()].join(", ");
+            let sql = format!(
+                "SELECT id, workspace_id, folder_id, title, created_at FROM chat_sessions
+                 WHERE is_imported = 1 AND is_deleted = 0 AND created_at IN ({placeholders})"
+            );
+            let mut stmt = tx.prepare(&sql).map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(rusqlite::params_from_iter(chunk.iter()), |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                    ))
+                })
+                .map_err(|e| e.to_string())?;
+            for row in rows {
+                let (sid, ws, fid, title, created) = row.map_err(|e| e.to_string())?;
+                candidates.entry((title, created)).or_default().push((sid, ws, fid));
+            }
+        }
+    }
 
     // Helper: insert one conversation. Routing precedence:
     //   1. embedded project_uuid → folder_mappings
@@ -2265,29 +2419,90 @@ pub async fn import_claude_files(
             } else {
                 orphans_destination.as_ref()
             };
+
+            // Previously imported chat, recognized by its Claude conversation
+            // UUID. Merges regardless of destination or the merge_existing flag
+            // (a link means "this IS the same chat"); by default it merges
+            // wherever the chat now lives in-app.
+            if let Some(link) = links.get(&data.id) {
+                linked += 1;
+                if restore_destinations {
+                    if let Some(dest) = dest {
+                        if link.workspace_id != dest.workspace_id
+                            || link.folder_id != dest.folder_id
+                        {
+                            tx.execute(
+                                "UPDATE chat_sessions SET workspace_id = ?1, folder_id = ?2, updated_at = ?3 WHERE id = ?4",
+                                rusqlite::params![dest.workspace_id, dest.folder_id, now, link.session_id],
+                            )
+                            .map_err(|e| e.to_string())?;
+                            moved_back += 1;
+                        }
+                    }
+                }
+                match chat_file_store::reconcile_chat_data(&tx, data, &link.session_id) {
+                    Ok(chat_file_store::ReconcileOutcome::Identical) => return Ok(()),
+                    Ok(chat_file_store::ReconcileOutcome::Appended { new }) => {
+                        appended_messages += new;
+                        appended_sessions += 1;
+                        session_ids.push(link.session_id.clone());
+                        return Ok(());
+                    }
+                    Ok(chat_file_store::ReconcileOutcome::Edited) => {
+                        if !clone_edited {
+                            skipped += 1;
+                            return Ok(());
+                        }
+                        cloned += 1;
+                        // Import as a fresh session below; the clone becomes the
+                        // linked session so future re-imports merge into it. It
+                        // lands at the resolved destination, or where the
+                        // original currently lives when none was resolved.
+                        let (ws, fid) = match dest {
+                            Some(d) => (d.workspace_id.clone(), d.folder_id.clone()),
+                            None => (link.workspace_id.clone(), link.folder_id.clone()),
+                        };
+                        match chat_file_store::import_chat_data(&tx, data, &ws, &fid) {
+                            Ok(sid) => {
+                                import_links::upsert_link(&tx, SOURCE_CLAUDE, &data.id, &sid, &now)?;
+                                session_ids.push(sid);
+                            }
+                            Err(e) => errors.push(format!("{}: {e}", data.title)),
+                        }
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        errors.push(format!("{}: reconcile failed: {e}", data.title));
+                        return Ok(());
+                    }
+                }
+            }
+
             let Some(dest) = dest else {
                 return Ok(()); // no destination → skip
             };
             let workspace_id = dest.workspace_id.clone();
             let folder_id = dest.folder_id.clone();
 
-            // Dedup by (workspace, folder, title, created_at) on imported sessions.
-            // (The historical `WHERE id = data.id` check was a no-op because
-            // `import_chat_data` always generates a fresh chat_sessions.id.)
-            let existing_session_id: Option<String> = conn
-                .query_row(
-                    "SELECT id FROM chat_sessions WHERE workspace_id = ?1 AND folder_id = ?2 AND title = ?3 AND created_at = ?4 AND is_imported = 1 LIMIT 1",
-                    rusqlite::params![workspace_id, folder_id, data.title, data.created_at],
-                    |row| row.get::<_, String>(0),
-                )
-                .ok();
+            // No link yet — fall back to the historical (title, created_at)
+            // dedup against imported sessions: first scoped to the resolved
+            // destination, then globally when exactly one candidate matches
+            // (clones share title+created_at, so ambiguity means "no match").
+            // Any hit backfills the link for future imports.
+            let existing_session_id: Option<String> = candidates
+                .get(&(data.title.clone(), data.created_at.clone()))
+                .and_then(|cands| {
+                    import_links::pick_dedup_candidate(cands, &workspace_id, &folder_id)
+                })
+                .map(str::to_string);
 
             if let Some(existing) = existing_session_id {
+                import_links::upsert_link(&tx, SOURCE_CLAUDE, &data.id, &existing, &now)?;
                 if !merge_existing {
                     skipped += 1;
                     return Ok(());
                 }
-                match chat_file_store::reconcile_chat_data(&conn, data, &existing) {
+                match chat_file_store::reconcile_chat_data(&tx, data, &existing) {
                     Ok(chat_file_store::ReconcileOutcome::Identical) => {
                         skipped += 1;
                         return Ok(());
@@ -2313,69 +2528,69 @@ pub async fn import_claude_files(
                 }
             }
 
-            match chat_file_store::import_chat_data(&conn, data, &workspace_id, &folder_id) {
-                Ok(sid) => session_ids.push(sid),
+            match chat_file_store::import_chat_data(&tx, data, &workspace_id, &folder_id) {
+                Ok(sid) => {
+                    import_links::upsert_link(&tx, SOURCE_CLAUDE, &data.id, &sid, &now)?;
+                    session_ids.push(sid);
+                }
                 Err(e) => errors.push(format!("{}: {e}", data.title)),
             }
             Ok(())
         };
 
-    if is_v2 {
-        // Import project chats from design_chats/
-        let proj_ids: Vec<String> =
-            selected_project_ids.unwrap_or_else(|| folder_mappings.keys().cloned().collect());
-        // All design_chats for selected projects
-        let design_chats = claude_v2::parse_v2_design_chats_filtered(&folder, &[])?;
-        for (data, project_uuid) in &design_chats {
-            if let Some(uuid) = project_uuid.as_deref() {
-                if !proj_ids.contains(&uuid.to_string()) {
-                    continue;
-                }
-            }
-            insert_chat(data, project_uuid.as_deref())?;
-        }
-
-        // Import orphan conversations from conversations.json
-        let conv_path = folder.join("conversations.json");
-        if conv_path.is_file() && orphans_destination.is_some() {
-            let bytes = std::fs::read(&conv_path)
-                .map_err(|e| format!("Failed to read conversations.json: {e}"))?;
-            let orphans = chat_file_store::parse_claude_conversations_filtered(
-                &bytes,
-                selected_conversation_ids.as_deref().unwrap_or(&[]),
-            )?;
-            for (data, _) in &orphans {
-                insert_chat(data, None)?;
-            }
-        }
-    } else {
-        // Legacy format: conversations.json with optional project_uuid on each
-        let conv_path = folder.join("conversations.json");
-        if conv_path.is_file() {
-            let bytes = std::fs::read(&conv_path)
-                .map_err(|e| format!("Failed to read conversations.json: {e}"))?;
-            let convs = chat_file_store::parse_claude_conversations_filtered(
-                &bytes,
-                selected_conversation_ids.as_deref().unwrap_or(&[]),
-            )?;
-            for (data, project_uuid) in &convs {
-                insert_chat(data, project_uuid.as_deref())?;
-            }
-        }
+    for (data, project_uuid) in &all_chats {
+        insert_chat(data, project_uuid.as_deref())?;
     }
 
-    let pass = passphrase;
-    for id in &session_ids {
-        let _ = chat_file_store::write_session_file(&conn, &chats_dir, id, pass.as_deref());
-    }
-
-    // Import per-project memories
+    // Import per-project memories, deduplicated against prior imports via
+    // import_memory_links: unchanged content is skipped, changed content
+    // updates the previously imported memory in place.
     let mut memories_imported = 0usize;
+    let mut memories_updated = 0usize;
+    let mut memories_skipped = 0usize;
     if !project_memory_targets.is_empty() {
         let mem_path = folder.join("memories.json");
         if mem_path.is_file() {
             let mem_bytes = std::fs::read(&mem_path)
                 .map_err(|e| format!("Failed to read memories.json: {e}"))?;
+            let mem_links = import_links::load_memory_links(&tx, SOURCE_CLAUDE)?;
+
+            let mut import_memory = |project_uuid: &str,
+                                     memory: &str,
+                                     dest: &ClaudeImportDestination|
+             -> Result<(), String> {
+                let hash = import_links::memory_content_hash(memory);
+                match mem_links.get(project_uuid) {
+                    Some((_, prior_hash)) if *prior_hash == hash => {
+                        memories_skipped += 1;
+                    }
+                    Some((mem_id, _)) => {
+                        tx.execute(
+                            "UPDATE memories SET content = ?1, updated_at = ?2 WHERE id = ?3",
+                            rusqlite::params![memory, now, mem_id],
+                        )
+                        .map_err(|e| e.to_string())?;
+                        import_links::upsert_memory_link(
+                            &tx, SOURCE_CLAUDE, project_uuid, mem_id, &hash, &now,
+                        )?;
+                        memories_updated += 1;
+                    }
+                    None => {
+                        let mem_id = uuid::Uuid::new_v4().to_string();
+                        tx.execute(
+                            "INSERT INTO memories (id, workspace_id, folder_id, content, memory_type, scope, is_pinned, is_active, created_at, updated_at)
+                             VALUES (?1, ?2, ?3, ?4, 'context', 'workspace', 0, 1, ?5, ?5)",
+                            rusqlite::params![mem_id, dest.workspace_id, dest.folder_id, memory, now],
+                        )
+                        .map_err(|e| e.to_string())?;
+                        import_links::upsert_memory_link(
+                            &tx, SOURCE_CLAUDE, project_uuid, &mem_id, &hash, &now,
+                        )?;
+                        memories_imported += 1;
+                    }
+                }
+                Ok(())
+            };
 
             // Determine which memory key to use based on format
             if is_v2 {
@@ -2383,13 +2598,7 @@ pub async fn import_claude_files(
                 let (_, preview) = claude_v2::parse_v2_memories(&folder, &name_map)?;
                 for pm in &preview.folder_memories {
                     if let Some(dest) = project_memory_targets.get(&pm.project_uuid) {
-                        let mem_id = uuid::Uuid::new_v4().to_string();
-                        conn.execute(
-                            "INSERT INTO memories (id, workspace_id, folder_id, content, memory_type, scope, is_pinned, is_active, created_at, updated_at)
-                             VALUES (?1, ?2, ?3, ?4, 'context', 'workspace', 0, 1, ?5, ?5)",
-                            rusqlite::params![mem_id, dest.workspace_id, dest.folder_id, pm.memory, now],
-                        ).map_err(|e| e.to_string())?;
-                        memories_imported += 1;
+                        import_memory(&pm.project_uuid, &pm.memory, dest)?;
                     }
                 }
             } else {
@@ -2403,18 +2612,55 @@ pub async fn import_claude_files(
                 {
                     for pm in &preview.folder_memories {
                         if let Some(dest) = project_memory_targets.get(&pm.project_uuid) {
-                            let mem_id = uuid::Uuid::new_v4().to_string();
-                            conn.execute(
-                                "INSERT INTO memories (id, workspace_id, folder_id, content, memory_type, scope, is_pinned, is_active, created_at, updated_at)
-                                 VALUES (?1, ?2, ?3, ?4, 'context', 'workspace', 0, 1, ?5, ?5)",
-                                rusqlite::params![mem_id, dest.workspace_id, dest.folder_id, pm.memory, now],
-                            ).map_err(|e| e.to_string())?;
-                            memories_imported += 1;
+                            import_memory(&pm.project_uuid, &pm.memory, dest)?;
                         }
                     }
                 }
             }
         }
+    }
+
+    // Remember every destination used in this run so later imports reuse it:
+    // per-project mappings plus the orphans destination under ORPHANS_KEY.
+    {
+        let project_names: std::collections::HashMap<String, String> = if is_v2 {
+            claude_v2::load_v2_project_name_map(&folder)
+        } else {
+            let mut map = std::collections::HashMap::new();
+            if let Ok(bytes) = std::fs::read(folder.join("projects.json")) {
+                if let Ok(vals) = serde_json::from_slice::<Vec<serde_json::Value>>(&bytes) {
+                    for v in vals {
+                        if let (Some(uuid), Some(name)) = (
+                            v.get("uuid").and_then(|x| x.as_str()),
+                            v.get("name").and_then(|x| x.as_str()),
+                        ) {
+                            map.insert(uuid.to_string(), name.to_string());
+                        }
+                    }
+                }
+            }
+            map
+        };
+        for (project_uuid, dest) in &folder_mappings {
+            let name = project_names.get(project_uuid).map(String::as_str).unwrap_or("");
+            import_links::upsert_destination(
+                &tx, SOURCE_CLAUDE, project_uuid, name,
+                &dest.workspace_id, &dest.folder_id, &now,
+            )?;
+        }
+        if let Some(dest) = orphans_destination.as_ref() {
+            import_links::upsert_destination(
+                &tx, SOURCE_CLAUDE, import_links::ORPHANS_KEY, "",
+                &dest.workspace_id, &dest.folder_id, &now,
+            )?;
+        }
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+
+    let pass = passphrase;
+    for id in &session_ids {
+        let _ = chat_file_store::write_session_file(&conn, &chats_dir, id, pass.as_deref());
     }
 
     Ok(serde_json::json!({
@@ -2423,7 +2669,11 @@ pub async fn import_claude_files(
         "appended_sessions": appended_sessions,
         "appended_messages": appended_messages,
         "cloned": cloned,
+        "linked": linked,
+        "moved_back": moved_back,
         "memories_imported": memories_imported,
+        "memories_updated": memories_updated,
+        "memories_skipped": memories_skipped,
         "errors": errors.len(),
         "error_messages": errors.iter().take(10).cloned().collect::<Vec<_>>(),
     }))

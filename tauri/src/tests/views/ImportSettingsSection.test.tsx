@@ -61,9 +61,13 @@ vi.mock("@/lib/api", () => ({
           icon: "folder",
         },
       ])),
+      create: vi.fn(() => Promise.resolve({ id: "workspace-new", name: "Created", description: "" })),
+      createChild: vi.fn(() => Promise.resolve({ id: "workspace-child", name: "Created Child", description: "" })),
+      update: vi.fn(() => Promise.resolve(undefined)),
     },
     folder: {
       list: vi.fn(() => Promise.resolve([])),
+      create: vi.fn(() => Promise.resolve({ id: "folder-new", workspace_id: "workspace-1", name: "Created" })),
     },
     chat: {
       listSessions: vi.fn(() => Promise.resolve([
@@ -222,7 +226,23 @@ vi.mock("@/lib/api", () => ({
         memories: null,
         memories_by_project: {},
         suggestions: [],
+        linked_conversations: {},
+        known_destinations: {},
         files_found: { conversations: true, projects: true, memories: false },
+      })),
+      importClaudeFiles: vi.fn(() => Promise.resolve({
+        imported: 0,
+        skipped: 0,
+        appended_sessions: 0,
+        appended_messages: 0,
+        cloned: 0,
+        linked: 1,
+        moved_back: 0,
+        memories_imported: 0,
+        memories_updated: 0,
+        memories_skipped: 0,
+        errors: 0,
+        error_messages: [],
       })),
     },
   },
@@ -369,5 +389,154 @@ describe("ImportSettingsSection", () => {
     await waitFor(() => {
       expect(screen.queryByText("Lifetimes describe how long references are valid.")).not.toBeInTheDocument();
     });
+  });
+
+  function claudePreviewWithLinks() {
+    return {
+      format: "v2" as const,
+      folders: [
+        {
+          uuid: "proj-1",
+          name: "Rust Learning",
+          description: "",
+          has_prompt: false,
+          doc_count: 0,
+          conversation_count: 1,
+          has_memory: false,
+          prompt_template: "",
+        },
+      ],
+      conversations_by_project: {},
+      orphan_conversations: [
+        {
+          uuid: "orphan-new",
+          name: "Fresh chat",
+          message_count: 2,
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+          project_uuid: null,
+          first_user_message: "New question",
+          summary: "",
+          messages: [],
+        },
+        {
+          uuid: "orphan-linked",
+          name: "Already imported chat",
+          message_count: 4,
+          created_at: "2024-01-02T00:00:00Z",
+          updated_at: "2024-01-02T00:00:00Z",
+          project_uuid: null,
+          first_user_message: "Old question",
+          summary: "",
+          messages: [],
+        },
+      ],
+      orphan_count: 2,
+      memories: null,
+      memories_by_project: {},
+      suggestions: [],
+      linked_conversations: {
+        "orphan-linked": {
+          session_id: "session-linked",
+          source_conversation_uuid: "orphan-linked",
+          title: "Already imported chat",
+          workspace_id: "workspace-1",
+          workspace_name: "LM Imports",
+          folder_id: "",
+          folder_name: "",
+        },
+      },
+      known_destinations: {
+        "proj-1": {
+          source_project_uuid: "proj-1",
+          source_project_name: "Rust Learning",
+          workspace_id: "ws-remembered",
+          workspace_name: "Rust Learning",
+          folder_id: "",
+          folder_name: "",
+        },
+        "__orphans__": {
+          source_project_uuid: "__orphans__",
+          source_project_name: "",
+          workspace_id: "ws-unassigned",
+          workspace_name: "Unassigned Imports",
+          folder_id: "folder-unassigned",
+          folder_name: "Claude Import 2024-01-01",
+        },
+      },
+      files_found: { conversations: true, projects: true, memories: false },
+    };
+  }
+
+  it("excludes previously imported chats from review and merges them automatically on import", async () => {
+    vi.mocked(openDialog).mockResolvedValue("/imports/claude");
+    vi.mocked(api.chatFile.previewClaudeFiles).mockResolvedValueOnce(claudePreviewWithLinks());
+
+    renderImportSettings();
+    fireEvent.click(screen.getAllByText("Select")[2]);
+
+    // Linked summary row renders; the linked chat is not in the review list.
+    expect(await screen.findByText(/1 chat was imported before and will merge automatically/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/1 conversation$/)); // expand unassigned panel
+    expect(screen.getByText(/Fresh chat/)).toBeInTheDocument();
+    // The linked chat only appears inside the collapsed linked list, not the review table.
+    expect(screen.queryByText(/Old question/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Import" }));
+
+    await waitFor(() => {
+      expect(api.chatFile.importClaudeFiles).toHaveBeenCalledTimes(1);
+    });
+    const args = vi.mocked(api.chatFile.importClaudeFiles).mock.calls[0][0];
+    // Linked chats ride along so the backend can merge them in place.
+    expect(args.selectedConversationIds).toContain("orphan-linked");
+    expect(args.restoreDestinations).toBe(false);
+
+    await waitFor(() => {
+      expect(showMessage).toHaveBeenCalledWith(
+        expect.stringContaining("1 previously imported chat updated in place."),
+        expect.objectContaining({ title: "Claude import complete" }),
+      );
+    });
+  });
+
+  it("sends restoreDestinations when the move-back option is checked", async () => {
+    vi.mocked(openDialog).mockResolvedValue("/imports/claude");
+    vi.mocked(api.chatFile.previewClaudeFiles).mockResolvedValueOnce(claudePreviewWithLinks());
+
+    renderImportSettings();
+    fireEvent.click(screen.getAllByText("Select")[2]);
+    await screen.findByText(/1 chat was imported before and will merge automatically/);
+
+    fireEvent.click(screen.getByLabelText(/Move previously imported chats back/));
+    fireEvent.click(screen.getByRole("button", { name: "Import" }));
+
+    await waitFor(() => {
+      expect(api.chatFile.importClaudeFiles).toHaveBeenCalledTimes(1);
+    });
+    expect(vi.mocked(api.chatFile.importClaudeFiles).mock.calls[0][0].restoreDestinations).toBe(true);
+  });
+
+  it("reuses remembered destinations instead of creating workspaces or folders", async () => {
+    vi.mocked(openDialog).mockResolvedValue("/imports/claude");
+    vi.mocked(api.chatFile.previewClaudeFiles).mockResolvedValueOnce(claudePreviewWithLinks());
+
+    renderImportSettings();
+    fireEvent.click(screen.getAllByText("Select")[2]);
+    await screen.findByText(/1 chat was imported before and will merge automatically/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Import" }));
+
+    await waitFor(() => {
+      expect(api.chatFile.importClaudeFiles).toHaveBeenCalledTimes(1);
+    });
+    const args = vi.mocked(api.chatFile.importClaudeFiles).mock.calls[0][0];
+    // proj-1 routes to its remembered workspace; the unassigned orphan reuses
+    // the remembered orphans destination instead of a fresh dated folder.
+    expect(args.folderMappings["proj-1"]).toEqual({ workspaceId: "ws-remembered", folderId: "" });
+    expect(args.orphansDestination).toEqual({ workspaceId: "ws-unassigned", folderId: "folder-unassigned" });
+    expect(api.workspace.create).not.toHaveBeenCalled();
+    expect(api.workspace.createChild).not.toHaveBeenCalled();
+    expect(api.folder.create).not.toHaveBeenCalled();
   });
 });
