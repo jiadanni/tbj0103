@@ -1594,21 +1594,23 @@ pub async fn preview_claude_files(
         let project_name_map = claude_v2::load_v2_project_name_map(&folder);
 
         // 2. Preview design_chats grouped by project UUID
-        let convs_by_project = if include_conversations || include_projects {
+        let (convs_by_project, skipped_empty_design) = if include_conversations || include_projects
+        {
             claude_v2::preview_v2_design_chats(&folder)?
         } else {
-            std::collections::HashMap::new()
+            (std::collections::HashMap::new(), 0)
         };
 
         // 3. Orphan conversations from conversations.json
-        let orphan_conversations =
+        let (orphan_conversations, skipped_empty_orphans) =
             if include_conversations && folder.join("conversations.json").is_file() {
                 let bytes = std::fs::read(folder.join("conversations.json"))
                     .map_err(|e| format!("Failed to read conversations.json: {e}"))?;
                 chat_file_store::preview_claude_conversations(&bytes)?
             } else {
-                Vec::new()
+                (Vec::new(), 0)
             };
+        let skipped_empty = skipped_empty_design + skipped_empty_orphans;
 
         // 4. Memories
         let (memory_uuids, memories) = if include_memories {
@@ -1689,6 +1691,7 @@ pub async fn preview_claude_files(
             "conversations_by_project": convs_by_project,
             "orphan_conversations": orphan_conversations,
             "orphan_count": orphan_count,
+            "skipped_empty": skipped_empty,
             "memories": if include_memories { Some(memories) } else { None },
             "memories_by_project": if include_memories { Some(memories_by_project) } else { None },
             "suggestions": suggestions,
@@ -1730,7 +1733,7 @@ pub async fn preview_claude_files(
             None
         };
 
-        let all_conversations = conv_bytes
+        let (all_conversations, skipped_empty) = conv_bytes
             .as_deref()
             .map(chat_file_store::preview_claude_conversations)
             .transpose()?
@@ -1830,6 +1833,7 @@ pub async fn preview_claude_files(
             "conversations_by_project": convs_by_project,
             "orphan_conversations": orphan_conversations,
             "orphan_count": orphan_count,
+            "skipped_empty": skipped_empty,
             "memories": memories,
             "memories_by_project": if include_memories { Some(memories_by_project) } else { None },
             "suggestions": suggestions,

@@ -1945,16 +1945,30 @@ pub struct ClaudeProjectMemoryPreview {
     pub memory: String,
 }
 
-/// Parse `conversations.json` and return lightweight previews (no message content).
+/// True when a conversation has at least one importable message: a human or
+/// assistant message with non-empty extracted content. Claude exports contain
+/// husks (deleted / content-stripped chats) whose messages all have empty
+/// `text` and `content` — the import path drops them, so the preview must too.
+fn claude_conversation_has_content(c: &ClaudeConversation) -> bool {
+    c.chat_messages.iter().any(|m| {
+        matches!(m.sender.as_str(), "human" | "assistant")
+            && !extract_claude_message_content(m).is_empty()
+    })
+}
+
+/// Parse `conversations.json` and return lightweight previews (no message
+/// content) plus the number of conversations skipped for having no importable
+/// content anywhere (empty or contentless in the export itself).
 pub fn preview_claude_conversations(
     bytes: &[u8],
-) -> Result<Vec<ClaudeConversationPreview>, String> {
+) -> Result<(Vec<ClaudeConversationPreview>, usize), String> {
     let conversations: Vec<ClaudeConversation> =
         serde_json::from_slice(bytes).map_err(|e| format!("Invalid Claude Desktop JSON: {e}"))?;
 
-    Ok(conversations
+    let total = conversations.len();
+    let previews: Vec<ClaudeConversationPreview> = conversations
         .into_iter()
-        .filter(|c| !c.chat_messages.is_empty())
+        .filter(claude_conversation_has_content)
         .map(|c| {
             let msg_count = c.chat_messages.len();
             let first_user_message = c
@@ -1992,7 +2006,9 @@ pub fn preview_claude_conversations(
                 messages,
             }
         })
-        .collect())
+        .collect();
+    let skipped_empty = total - previews.len();
+    Ok((previews, skipped_empty))
 }
 
 fn truncate_chars(s: &str, max_chars: usize) -> String {
@@ -2124,6 +2140,39 @@ mod tests {
         .unwrap();
         let (data, _) = claude_conversation_to_chat_data(&conv).unwrap();
         assert_eq!(data.title, "Translate to English");
+    }
+
+    #[test]
+    fn claude_preview_skips_contentless_husks_and_counts_them() {
+        // Claude exports contain husks of deleted/stripped chats: messages
+        // exist but every text/content/attachment field is empty. The import
+        // path drops them, so the preview must too — otherwise they show as
+        // unidentifiable "Untitled" rows that can never actually import.
+        let bytes = r#"[
+            {
+                "uuid": "husk",
+                "name": "",
+                "created_at": "2026-05-20T00:00:00Z",
+                "updated_at": "2026-05-20T00:01:00Z",
+                "chat_messages": [
+                    { "uuid": "m1", "text": "", "content": [], "sender": "human", "created_at": "2026-05-20T00:00:00Z" },
+                    { "uuid": "m2", "text": "", "content": [], "sender": "assistant", "created_at": "2026-05-20T00:00:30Z" }
+                ]
+            },
+            {
+                "uuid": "real",
+                "name": "CSS Layout Help",
+                "created_at": "2026-05-20T00:00:00Z",
+                "updated_at": "2026-05-20T00:01:00Z",
+                "chat_messages": [
+                    { "uuid": "m3", "text": "How do I center a div?", "sender": "human", "created_at": "2026-05-20T00:00:00Z" }
+                ]
+            }
+        ]"#;
+        let (previews, skipped_empty) = preview_claude_conversations(bytes.as_bytes()).unwrap();
+        assert_eq!(previews.len(), 1);
+        assert_eq!(previews[0].uuid, "real");
+        assert_eq!(skipped_empty, 1);
     }
 
     #[test]
@@ -2388,7 +2437,7 @@ mod tests {
         );
 
         // 1. preview_v2_design_chats
-        let convs_by_project = claude_v2::preview_v2_design_chats(export_path).unwrap();
+        let (convs_by_project, _) = claude_v2::preview_v2_design_chats(export_path).unwrap();
         // The only design chat in this sample has 0 messages, so it is skipped.
         assert!(
             convs_by_project.is_empty(),
@@ -2425,7 +2474,7 @@ mod tests {
         let conv_path = export_path.join("conversations.json");
         if conv_path.is_file() {
             let bytes = std::fs::read(conv_path).unwrap();
-            let orphans = preview_claude_conversations(&bytes).unwrap();
+            let (orphans, _) = preview_claude_conversations(&bytes).unwrap();
             assert!(
                 !orphans.is_empty(),
                 "orphan conversations should not be empty"

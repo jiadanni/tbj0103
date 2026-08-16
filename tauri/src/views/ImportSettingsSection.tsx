@@ -216,6 +216,9 @@ export default function ImportSettingsSection() {
   const [claudeProjects, setClaudeProjects] = useState<ClaudeProjectPreview[]>([]);
   const [claudeConvsByProject, setClaudeConvsByProject] = useState<Record<string, ClaudeConvPreview[]>>({});
   const [claudeOrphans, setClaudeOrphans] = useState<ClaudeConvPreview[]>([]);
+  // Conversations the export contains no content for (deleted/stripped husks) —
+  // dropped from the preview, surfaced as a count so totals stay explainable.
+  const [claudeSkippedEmpty, setClaudeSkippedEmpty] = useState(0);
   const [claudeSelected, setClaudeSelected] = useState<Set<string>>(new Set()); // orphan conv UUIDs
   const [claudeSelectedFolders, setClaudeSelectedProjects] = useState<Set<string>>(new Set()); // project UUIDs
   const [projectDestinations, setProjectDestinations] = useState<Record<string, ProjectDestination>>({});
@@ -676,6 +679,7 @@ export default function ImportSettingsSection() {
     setClaudeProjects([]);
     setClaudeConvsByProject({});
     setClaudeOrphans([]);
+    setClaudeSkippedEmpty(0);
     setClaudeSelected(new Set());
     setClaudeSelectedProjects(new Set());
     setProjectDestinations({});
@@ -754,6 +758,7 @@ export default function ImportSettingsSection() {
       setClaudeProjects(result.folders);
       setClaudeConvsByProject(result.conversations_by_project);
       setClaudeOrphans(reviewOrphans);
+      setClaudeSkippedEmpty(result.skipped_empty ?? 0);
       setClaudeSuggestions(result.suggestions ?? []);
       setClaudeMemoriesByProject(result.memories_by_project ?? {});
 
@@ -2282,6 +2287,14 @@ export default function ImportSettingsSection() {
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-medium text-[var(--text-primary)]">
                           Unassigned conversations ({unassignedTotal} of {claudeOrphans.length} · {assignedTotal} already routed to projects)
+                          {claudeSkippedEmpty > 0 && (
+                            <span
+                              className="ml-2 font-normal text-[var(--text-muted)]"
+                              title="Claude's export contains these conversations but no content for them (no name, summary, or message text) — likely deleted or stripped chats. They cannot be identified or imported."
+                            >
+                              · {claudeSkippedEmpty} empty conversation{claudeSkippedEmpty === 1 ? "" : "s"} skipped
+                            </span>
+                          )}
                           {topicCoverage && (
                             <span className="ml-2 font-normal text-[var(--text-muted)]">
                               topics generated for {topicCoverage.enriched}/{topicCoverage.total} projects

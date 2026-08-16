@@ -1845,13 +1845,13 @@ mod tests {
         assert!(export_path.is_dir());
 
         use super::super::claude_v2;
-        let convs_by_project = claude_v2::preview_v2_design_chats(export_path).unwrap();
+        let (convs_by_project, _) = claude_v2::preview_v2_design_chats(export_path).unwrap();
         let name_map = claude_v2::load_v2_project_name_map(export_path);
         let (memory_uuids, memories) = claude_v2::parse_v2_memories(export_path, &name_map).unwrap();
         let projects =
             claude_v2::preview_v2_projects(export_path, &memory_uuids, &convs_by_project).unwrap();
         let bytes = std::fs::read(export_path.join("conversations.json")).unwrap();
-        let orphans = super::super::preview_claude_conversations(&bytes).unwrap();
+        let (orphans, _) = super::super::preview_claude_conversations(&bytes).unwrap();
         let memories_by_project: HashMap<String, String> = memories
             .folder_memories
             .iter()

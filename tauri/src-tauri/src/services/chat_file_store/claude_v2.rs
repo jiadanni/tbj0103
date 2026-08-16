@@ -198,19 +198,22 @@ pub fn preview_v2_projects(
     Ok(previews)
 }
 
-/// Read all `design_chats/<uuid>.json` files and group previews by project UUID.
+/// Read all `design_chats/<uuid>.json` files and group previews by project
+/// UUID. Also returns the number of chats skipped for having no importable
+/// content (empty, or all messages contentless in the export itself).
 pub fn preview_v2_design_chats(
     folder_path: &Path,
-) -> Result<HashMap<String, Vec<ClaudeConversationPreview>>, String> {
+) -> Result<(HashMap<String, Vec<ClaudeConversationPreview>>, usize), String> {
     let chats_dir = folder_path.join("design_chats");
     if !chats_dir.exists() {
-        return Ok(HashMap::new());
+        return Ok((HashMap::new(), 0));
     }
 
     let entries = std::fs::read_dir(&chats_dir)
         .map_err(|e| format!("Cannot read design_chats/ directory: {e}"))?;
 
     let mut by_project: HashMap<String, Vec<ClaudeConversationPreview>> = HashMap::new();
+    let mut skipped_empty = 0usize;
 
     for entry in entries.flatten() {
         let path = entry.path();
@@ -222,7 +225,14 @@ pub fn preview_v2_design_chats(
         let chat: V2DesignChat = serde_json::from_slice(&bytes)
             .map_err(|e| format!("Invalid design_chat JSON {}: {e}", path.display()))?;
 
-        if chat.messages.is_empty() {
+        // Same rule as the import path (v2_message_to_chat): keep only chats
+        // with at least one human/assistant message with real content.
+        let has_content = chat.messages.iter().any(|m| {
+            matches!(m.sender.as_str(), "human" | "assistant")
+                && !extract_claude_message_content_v2(m).is_empty()
+        });
+        if !has_content {
+            skipped_empty += 1;
             continue;
         }
 
@@ -275,7 +285,7 @@ pub fn preview_v2_design_chats(
             .push(preview);
     }
 
-    Ok(by_project)
+    Ok((by_project, skipped_empty))
 }
 
 /// Parse memories.json for the v2 format (uses `project_memories` key).

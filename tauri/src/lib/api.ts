@@ -1465,6 +1465,8 @@ export const api = {
         conversations_by_project: Record<string, { uuid: string; name: string; message_count: number; created_at: string; updated_at: string; project_uuid: string | null; first_user_message?: string; summary?: string; messages?: { role: string; content: string }[] }[]>;
         orphan_conversations: { uuid: string; name: string; message_count: number; created_at: string; updated_at: string; project_uuid: string | null; first_user_message?: string; summary?: string; messages?: { role: string; content: string }[] }[];
         orphan_count: number;
+        /** Conversations dropped from the preview because the export contains no content for them (deleted/stripped husks). */
+        skipped_empty: number;
         memories: {
           conversations_memory: string;
           folder_memories: { project_uuid: string; folder_name: string; memory: string }[];
