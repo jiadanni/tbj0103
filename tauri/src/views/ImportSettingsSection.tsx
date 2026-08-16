@@ -1069,10 +1069,18 @@ export default function ImportSettingsSection() {
    * no re-import of the AI's answers yet.
    */
   async function exportReviewForAi() {
+    const exportedAt = new Date();
+    const scope = rowFilter === "unassigned" ? "unassigned-only" : "all";
+    const searchQuery = rowSearch.trim();
     const payload = {
       format: "aetherium-claude-import-review",
       version: 1,
-      exported_at: new Date().toISOString(),
+      exported_at: exportedAt.toISOString(),
+      // What the review table was showing when exported: the active filter,
+      // any search narrowing, and how many reviewable conversations exist in total.
+      scope,
+      search_query: searchQuery || null,
+      total_reviewable_conversations: claudeOrphans.length,
       instructions:
         "Each conversation needs a destination. Set assigned_project_uuid to the uuid of the best-fitting project " +
         "(from `projects`) or proposed workspace (from `proposed_workspaces`), or leave it null when nothing fits. " +
@@ -1108,15 +1116,24 @@ export default function ImportSettingsSection() {
         };
       }),
     };
-    const date = new Date().toISOString().slice(0, 10);
+    // Local date + time in the filename (2026-08-16-1534) so repeat exports
+    // on the same day don't collide, plus the scope so files are self-describing.
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const stamp = `${exportedAt.getFullYear()}-${pad(exportedAt.getMonth() + 1)}-${pad(exportedAt.getDate())}-${pad(exportedAt.getHours())}${pad(exportedAt.getMinutes())}`;
     const dest = await save({
-      defaultPath: `claude-import-review-${date}.json`,
+      defaultPath: `claude-import-review-${scope}-${stamp}.json`,
       filters: [{ name: "JSON", extensions: ["json"] }],
     });
     if (!dest) { return; }
     try {
       await writeTextFile(dest, JSON.stringify(payload, null, 2));
-      await message(`Exported ${payload.conversations.length} conversations and ${payload.projects.length} projects.`, { title: "Export complete" });
+      const scopeLabel = scope === "unassigned-only"
+        ? `${payload.conversations.length} of ${claudeOrphans.length} conversations (unassigned only${searchQuery ? ", filtered by search" : ""})`
+        : `${payload.conversations.length} of ${claudeOrphans.length} conversations${searchQuery ? " (filtered by search)" : ""}`;
+      await message(
+        `Exported ${scopeLabel}.\n${payload.projects.length} projects are included as matching context.`,
+        { title: "Export complete" },
+      );
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "Export failed";
       setError(msg);
