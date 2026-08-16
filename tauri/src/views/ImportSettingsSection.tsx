@@ -896,12 +896,31 @@ export default function ImportSettingsSection() {
       const targetConvs = opts?.rerunAll
         ? claudeOrphans
         : claudeOrphans.filter((c) => !chatAssignments[c.uuid]);
-      const projectArgs = claudeProjects.map((p) => ({
-        uuid: p.uuid,
-        name: p.name,
-        prompt_template: p.prompt_template ?? "",
-        description: p.description,
-      }));
+      // Projects the export gave no text for (no description, prompt, or
+      // memory) would reach topic distillation as just a name. Recap them
+      // from their own conversations' titles and gists so the matcher has
+      // vocabulary to work with.
+      let recappedProjects = 0;
+      const projectArgs = claudeProjects.map((p) => {
+        const hasText =
+          (p.description ?? "").trim() ||
+          (p.prompt_template ?? "").trim() ||
+          (claudeMemoriesByProject[p.uuid] ?? "").trim();
+        let description = p.description;
+        if (!hasText) {
+          const recap = projectRecap(p.uuid);
+          if (recap) {
+            description = recap;
+            recappedProjects += 1;
+          }
+        }
+        return {
+          uuid: p.uuid,
+          name: p.name,
+          prompt_template: p.prompt_template ?? "",
+          description,
+        };
+      });
 
       let suggestions: ChatSuggestion[];
       if (strategy === "topics") {
@@ -982,10 +1001,13 @@ export default function ImportSettingsSection() {
       });
       setClaudeSuggestions(newSuggestions);
       const suggestedCount = suggestions.filter((s) => s.project_uuid).length;
+      const recapNote = recappedProjects > 0
+        ? ` ${recappedProjects} project${recappedProjects === 1 ? "" : "s"} without a description ${recappedProjects === 1 ? "was" : "were"} recapped from ${recappedProjects === 1 ? "its" : "their"} own chats first.`
+        : "";
       setMatchSummary(
         suggestedCount === 0
-          ? `AI matching finished: no confident project match for the ${targetConvs.length} chat${targetConvs.length === 1 ? "" : "s"} checked.`
-          : `AI matching finished: assigned ${suggestedCount} of ${targetConvs.length} chats. Review below and change anything that's wrong.`,
+          ? `AI matching finished: no confident project match for the ${targetConvs.length} chat${targetConvs.length === 1 ? "" : "s"} checked.${recapNote}`
+          : `AI matching finished: assigned ${suggestedCount} of ${targetConvs.length} chats. Review below and change anything that's wrong.${recapNote}`,
       );
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "AI matching failed";
@@ -1184,6 +1206,25 @@ export default function ImportSettingsSection() {
       const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "Export failed";
       setError(msg);
     }
+  }
+
+  /**
+   * Recap a project from its own conversations' titles and openers. Used as a
+   * stand-in description for projects the export gave no text for, so topic
+   * distillation and matching aren't left with just the project name.
+   */
+  function projectRecap(uuid: string): string {
+    const convs = claudeConvsByProject[uuid] ?? [];
+    const parts = convs
+      .slice(0, 40)
+      .map((c) => {
+        const title = isGenericConversationName(c.name) ? "" : c.name;
+        const gist = conversationGist(c, 100);
+        return title && gist ? `${title} — ${gist}` : title || gist;
+      })
+      .filter(Boolean);
+    if (parts.length === 0) { return ""; }
+    return `Conversations in this project: ${parts.join("; ")}`.slice(0, 4000);
   }
 
   /** Best candidate (project uuid + score) for a conversation from the latest matcher run. */
