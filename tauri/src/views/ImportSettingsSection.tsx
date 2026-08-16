@@ -6,6 +6,7 @@ import { ask, message, open } from "@tauri-apps/plugin-dialog";
 import { Check, CheckSquare, ChevronDown, ChevronRight, Eye, FolderInput, RefreshCw, Square, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
+import { conversationGist } from "../lib/conversationGist";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import PromptDialog from "../components/PromptDialog";
 import { Tooltip } from "../components/Tooltip";
@@ -2217,7 +2218,7 @@ export default function ImportSettingsSection() {
                               const previewOpen = previewConvUuid === conv.uuid;
                               // Empty-named chats (Claude never auto-titled them) get a
                               // snippet from the summary / opener so the row is identifiable.
-                              const snippet = !conv.name ? (conv.summary || conv.first_user_message || "").slice(0, 120) : "";
+                              const snippet = !conv.name ? conversationGist(conv, 120) : "";
                               return (
                                 <div key={conv.uuid} className="border-b border-[var(--border-color)] last:border-b-0">
                                 <div className="flex items-center gap-2 px-3 py-1.5 hover:bg-[var(--bg-hover)]">
@@ -2293,11 +2294,17 @@ export default function ImportSettingsSection() {
                                   </div>
                                   <span className="shrink-0 text-[10px] text-[var(--text-muted)]">{conv.message_count} msg{conv.message_count === 1 ? "" : "s"}</span>
                                 </div>
-                                {previewOpen && (
+                                {previewOpen && (() => {
+                                  const gist = conversationGist(conv);
+                                  const gistIsAuto = !conv.summary?.trim() && !!gist;
+                                  return (
                                   <div className="border-t border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2">
-                                    {conv.summary && (
+                                    {gist && (
                                       <p className="mb-2 whitespace-pre-wrap text-[11px] italic text-[var(--text-secondary)]">
-                                        {conv.summary}
+                                        {gistIsAuto && (
+                                          <span className="mr-1 rounded bg-[var(--bg-elevated)] px-1 py-0.5 text-[9px] not-italic text-[var(--text-muted)]">auto</span>
+                                        )}
+                                        {gist}
                                       </p>
                                     )}
                                     {conv.messages && conv.messages.length > 0 ? (
@@ -2311,11 +2318,12 @@ export default function ImportSettingsSection() {
                                       </div>
                                     ) : conv.first_user_message ? (
                                       <p className="whitespace-pre-wrap text-[11px] text-[var(--text-secondary)]">{conv.first_user_message}</p>
-                                    ) : !conv.summary ? (
+                                    ) : !gist ? (
                                       <p className="text-[11px] text-[var(--text-muted)]">No preview available for this chat.</p>
                                     ) : null}
                                   </div>
-                                )}
+                                  );
+                                })()}
                                 </div>
                               );
                             })}
