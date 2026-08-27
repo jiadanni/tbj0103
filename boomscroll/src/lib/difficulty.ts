@@ -160,6 +160,31 @@ export const DIFFICULTY_PRESETS: Record<string, DifficultyPreset> = {
 
 export const DEFAULT_PRESET_ID = "software_engineering";
 
+/** Narrow an arbitrary string to a preset id this build actually knows. */
+function validPreset(id: string | undefined): string | undefined {
+  return id && DIFFICULTY_PRESETS[id] ? id : undefined;
+}
+
+/**
+ * Which preset's vocabulary a card should be labelled with.
+ *
+ * Most specific wins: a preset the deck states for this card's workspace
+ * describes the material's own domain, so it beats the user's selection —
+ * which acts as a fallback for decks that declare nothing (econ, swe) rather
+ * than an override. A deck spanning Music Theory and Roman Empire therefore
+ * labels each card from its own workspace instead of one global domain.
+ */
+export function resolvePresetId(
+  card: { difficultyPreset?: string },
+  userPresetId?: string,
+): string {
+  return (
+    validPreset(card.difficultyPreset) ??
+    validPreset(userPresetId) ??
+    DEFAULT_PRESET_ID
+  );
+}
+
 export function getDifficultyColor(score: DifficultyScore): {
   bg: string;
   border: string;
