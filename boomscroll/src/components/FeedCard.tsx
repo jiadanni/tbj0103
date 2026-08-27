@@ -1,5 +1,5 @@
 import type { DeckCard } from "../lib/deck";
-import { formatDifficultyLabel, getDifficultyColor } from "../lib/difficulty";
+import { formatDifficultyLabel, getDifficultyColor, resolvePresetId } from "../lib/difficulty";
 
 export type FeedMode = "study" | "test";
 
@@ -27,7 +27,11 @@ export default function FeedCard({ card, mode, revealed, activePresetId, onBanis
   const showBack = isStudy || revealed;
 
   const diffInfo = card.difficulty
-    ? formatDifficultyLabel(card.difficulty, activePresetId ?? card.difficultyPreset, card.difficultyLabel)
+    ? formatDifficultyLabel(
+        card.difficulty,
+        resolvePresetId(card, activePresetId),
+        card.difficultyLabel,
+      )
     : null;
   const diffColors = diffInfo ? getDifficultyColor(diffInfo.score) : null;
 

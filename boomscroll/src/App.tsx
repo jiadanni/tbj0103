@@ -19,6 +19,7 @@ import {
   DIFFICULTY_PRESETS,
   DEFAULT_PRESET_ID,
   getDifficultyColor,
+  resolvePresetId,
 } from "./lib/difficulty";
 import type { DifficultyScore } from "./lib/difficulty";
 
@@ -479,8 +480,39 @@ export default function App() {
       return true;
     }).length;
     const allSelected = deck.workspaces.length > 0 && deck.workspaces.every((ws) => enabledIds.has(ws.id));
-    const allDiffsSelected = enabledDifficulties.size === 5;
-    const preset = DIFFICULTY_PRESETS[activePresetId] ?? DIFFICULTY_PRESETS[DEFAULT_PRESET_ID];
+
+    // How many cards each level actually holds, for the workspaces currently
+    // enabled. Levels a deck has no content for are shown as empty rather than
+    // offered as a choice that silently yields nothing.
+    const countsByLevel = new Map<DifficultyScore, number>();
+    for (const card of deck.cards) {
+      if (!enabledIds.has(card.workspaceId)) {continue;}
+      if (quarantined[card.id]) {continue;}
+      if (card.difficulty === undefined) {continue;}
+      countsByLevel.set(card.difficulty, (countsByLevel.get(card.difficulty) ?? 0) + 1);
+    }
+    const availableLevels = ([1, 2, 3, 4, 5] as DifficultyScore[]).filter(
+      (level) => (countsByLevel.get(level) ?? 0) > 0,
+    );
+    const allDiffsSelected =
+      availableLevels.length > 0 && availableLevels.every((l) => enabledDifficulties.has(l));
+
+    // The user's pick is a fallback for decks that declare no preset; a deck
+    // that states one per workspace wins. When the enabled workspaces agree on
+    // a preset, label the level buttons with it.
+    const enabledPresets = new Set(
+      deck.workspaces
+        .filter((ws) => enabledIds.has(ws.id))
+        .map((ws) => resolvePresetId({ difficultyPreset: ws.preset }, activePresetId)),
+    );
+    const buttonPresetId =
+      enabledPresets.size === 1 ? [...enabledPresets][0] : activePresetId;
+    const preset = DIFFICULTY_PRESETS[buttonPresetId] ?? DIFFICULTY_PRESETS[DEFAULT_PRESET_ID];
+    const presetsDiverge = enabledPresets.size > 1;
+    // A deck that states its own preset everywhere makes the selector inert.
+    const selectorIsFallback = !deck.workspaces
+      .filter((ws) => enabledIds.has(ws.id))
+      .every((ws) => ws.preset && DIFFICULTY_PRESETS[ws.preset]);
 
     return (
       <main className="safe-screen flex h-full flex-col items-center justify-center gap-4 px-6 py-4">
@@ -503,7 +535,7 @@ export default function App() {
         <div className="w-full max-w-sm shrink-0 space-y-2 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-3.5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
-              Domain Preset
+              {selectorIsFallback ? "Default Preset" : "Domain Preset"}
             </span>
             <select
               value={activePresetId}
@@ -522,33 +554,52 @@ export default function App() {
             </select>
           </div>
 
+          {!selectorIsFallback && (
+            <p className="text-[11px] leading-snug text-zinc-500">
+              This deck sets its own level names per workspace, so they're used
+              instead of this.
+            </p>
+          )}
+          {selectorIsFallback && presetsDiverge && (
+            <p className="text-[11px] leading-snug text-zinc-500">
+              Workspaces use different level names — the buttons below show this
+              default.
+            </p>
+          )}
+
           <div className="pt-2">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
-                Difficulty Range (1–5)
+                Difficulty Range
               </span>
               <button
                 onClick={() =>
                   setEnabledDifficulties(
                     allDiffsSelected
-                      ? new Set<DifficultyScore>([1])
-                      : new Set<DifficultyScore>([1, 2, 3, 4, 5]),
+                      ? new Set<DifficultyScore>(availableLevels.slice(0, 1))
+                      : new Set<DifficultyScore>(availableLevels),
                   )
                 }
-                className="text-[11px] text-purple-400 hover:text-purple-300"
+                disabled={availableLevels.length === 0}
+                className="text-[11px] text-purple-400 hover:text-purple-300 disabled:opacity-40"
               >
-                {allDiffsSelected ? "Solo Level 1" : "All Levels"}
+                {allDiffsSelected
+                  ? `Solo Level ${availableLevels[0] ?? 1}`
+                  : "All Levels"}
               </button>
             </div>
 
             <div className="grid grid-cols-5 gap-1.5">
               {([1, 2, 3, 4, 5] as DifficultyScore[]).map((level) => {
-                const isSelected = enabledDifficulties.has(level);
+                const count = countsByLevel.get(level) ?? 0;
+                const isEmpty = count === 0;
+                const isSelected = !isEmpty && enabledDifficulties.has(level);
                 const color = getDifficultyColor(level);
                 const label = preset.labels[level];
                 return (
                   <button
                     key={level}
+                    disabled={isEmpty}
                     onClick={() =>
                       setEnabledDifficulties((prev) => {
                         const nextSet = new Set(prev);
@@ -561,15 +612,20 @@ export default function App() {
                       })
                     }
                     className={`flex flex-col items-center justify-center rounded-xl border p-1.5 transition-all ${
-                      isSelected
-                        ? `${color.bg} ${color.border} ${color.text} shadow-sm font-semibold`
-                        : "border-zinc-800 bg-zinc-950/40 text-zinc-500 opacity-60"
+                      isEmpty
+                        ? "border-zinc-900 bg-zinc-950/20 text-zinc-700 cursor-not-allowed"
+                        : isSelected
+                          ? `${color.bg} ${color.border} ${color.text} shadow-sm font-semibold`
+                          : "border-zinc-800 bg-zinc-950/40 text-zinc-500 opacity-60"
                     }`}
-                    title={label}
+                    title={isEmpty ? `${label} — no cards in this deck` : `${label} — ${count} cards`}
                   >
                     <span className="text-xs font-bold">L{level}</span>
                     <span className="text-[9px] truncate max-w-full leading-tight mt-0.5">
                       {label.split(" ")[0]}
+                    </span>
+                    <span className="text-[9px] leading-tight tabular-nums opacity-70">
+                      {isEmpty ? "—" : count}
                     </span>
                   </button>
                 );
