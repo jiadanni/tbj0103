@@ -5,7 +5,9 @@
  * Preferences → Backup). Two format versions exist:
  *   v1: { format, version: 1, workspace: {id, name}, cards: [...] }
  *   v2: { format, version: 2, workspaces: [{id, name, card_count}], cards: [...] }
- * v2 cards carry a workspace_id; every parsed card resolves a workspaceName
+ *   v3: v2 plus per-workspace `preset` and per-card `difficulty`,
+ *       `difficulty_preset`, `difficulty_label`.
+ * v2+ cards carry a workspace_id; every parsed card resolves a workspaceName
  * so the feed can always show where a card came from.
  */
 
@@ -147,6 +149,16 @@ export function parseDeck(raw: string): Deck {
   return { title, workspaces, cards };
 }
 
+/**
+ * Stable identity for a loaded deck, used to scope per-deck preferences
+ * (e.g. quarantined cards) in localStorage. Derived from the workspace ids so
+ * it survives re-exports of the same deck, and so a different deck can never
+ * inherit another deck's state.
+ */
+export function deckKey(deck: Deck): string {
+  return deck.workspaces.map((ws) => ws.id).sort().join("|");
+}
+
 /** Fisher–Yates shuffle; returns a new array. */
 export function shuffle<T>(items: T[]): T[] {
   const result = [...items];
@@ -184,7 +196,11 @@ export function mergeDecks(existing: Deck, incoming: Deck): Deck {
       workspaceMap.set(ws.id, { ...ws });
     } else {
       const prev = workspaceMap.get(ws.id)!;
-      workspaceMap.set(ws.id, { ...prev, name: ws.name || prev.name });
+      workspaceMap.set(ws.id, {
+        ...prev,
+        name: ws.name || prev.name,
+        preset: ws.preset ?? prev.preset,
+      });
     }
   }
 
@@ -235,13 +251,14 @@ export function exportDeckToRaw(deck: Deck): string {
   return JSON.stringify(
     {
       format: DECK_FORMAT,
-      version: 2,
+      version: 3,
       exported_at: new Date().toISOString(),
       card_count: deck.cards.length,
       workspaces: deck.workspaces.map((ws) => ({
         id: ws.id,
         name: ws.name,
         card_count: ws.cardCount,
+        preset: ws.preset,
       })),
       cards: deck.cards.map((c) => ({
         id: c.id,
@@ -250,6 +267,9 @@ export function exportDeckToRaw(deck: Deck): string {
         back: c.back,
         topic: c.topic,
         workspace_id: c.workspaceId,
+        difficulty: c.difficulty,
+        difficulty_preset: c.difficultyPreset,
+        difficulty_label: c.difficultyLabel,
       })),
     },
     null,
