@@ -5,6 +5,7 @@ import { readTextFile } from "@tauri-apps/plugin-fs";
 import FeedCard from "./components/FeedCard";
 import type { FeedMode } from "./components/FeedCard";
 import {
+  deckKey,
   exportDeckToRaw,
   mergeDecks,
   parseDeck,
@@ -12,6 +13,8 @@ import {
   shuffle,
 } from "./lib/deck";
 import type { Deck, DeckCard } from "./lib/deck";
+import { loadQuarantine, saveQuarantine } from "./lib/quarantine";
+import type { QuarantineMap } from "./lib/quarantine";
 import {
   DIFFICULTY_PRESETS,
   DEFAULT_PRESET_ID,
@@ -30,6 +33,8 @@ export default function App() {
     new Set<DifficultyScore>([1, 2, 3, 4, 5]),
   );
   const [activePresetId, setActivePresetId] = useState<string>(DEFAULT_PRESET_ID);
+  const [quarantined, setQuarantined] = useState<QuarantineMap>({});
+  const [showBanished, setShowBanished] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
   const [order, setOrder] = useState<DeckCard[]>([]);
   const [index, setIndex] = useState(0);
@@ -100,9 +105,13 @@ export default function App() {
     ids: Set<string>,
     diffs: Set<DifficultyScore> = enabledDifficulties,
     activeMode: FeedMode = mode,
+    // Passed explicitly on the load path, where the state update hasn't landed
+    // yet — same hazard the `diffs` parameter exists for.
+    banished: QuarantineMap = quarantined,
   ) {
     const wsCards = sourceDeck.cards.filter((card) => {
       if (!ids.has(card.workspaceId)) {return false;}
+      if (banished[card.id]) {return false;}
       if (card.difficulty !== undefined && !diffs.has(card.difficulty)) {
         return false;
       }
@@ -113,6 +122,7 @@ export default function App() {
     setIndex(0);
     setRevealed(showAnswerImmediately);
     setShowFilter(false);
+    setShowBanished(false);
     nextOrderRef.current = null;
     localStorage.setItem("boomscroll_enabled_ids", JSON.stringify(Array.from(ids)));
   }
@@ -142,8 +152,10 @@ export default function App() {
       }
 
       const allIds = initialEnabledIds ?? new Set(parsed.workspaces.map((ws) => ws.id));
+      const banished = loadQuarantine(deckKey(parsed));
       setDeck(parsed);
       setEnabledIds(allIds);
+      setQuarantined(banished);
       setError(null);
       localStorage.setItem("boomscroll_active_deck", raw);
       localStorage.setItem("boomscroll_enabled_ids", JSON.stringify(Array.from(allIds)));
@@ -151,7 +163,7 @@ export default function App() {
         setShowFilter(true);
         setOrder([]);
       } else {
-        startFeed(parsed, allIds);
+        startFeed(parsed, allIds, enabledDifficulties, mode, banished);
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Couldn't read that deck.");
@@ -167,12 +179,22 @@ export default function App() {
       ...pendingDeck.deck.workspaces.map((ws) => ws.id),
     ]);
 
+    // The merged deck spans a different set of workspaces, so it has a
+    // different deckKey — carry the banished cards over to it, merging in
+    // anything already banished in the incoming deck.
+    const mergedBanished: QuarantineMap = {
+      ...loadQuarantine(deckKey(pendingDeck.deck)),
+      ...quarantined,
+    };
+    saveQuarantine(deckKey(merged), mergedBanished);
+
     setDeck(merged);
     setEnabledIds(newEnabledIds);
+    setQuarantined(mergedBanished);
     localStorage.setItem("boomscroll_active_deck", rawExport);
     localStorage.setItem("boomscroll_enabled_ids", JSON.stringify(Array.from(newEnabledIds)));
     setPendingDeck(null);
-    startFeed(merged, newEnabledIds);
+    startFeed(merged, newEnabledIds, enabledDifficulties, mode, mergedBanished);
   }
 
   function handleConfirmReplace() {
@@ -230,10 +252,57 @@ export default function App() {
   function closeDeck() {
     setDeck(null);
     setOrder([]);
+    // In-memory only — the persisted per-deck record stays, so reopening this
+    // deck restores what was banished in it.
+    setQuarantined({});
+    setShowBanished(false);
     setShowFilter(false);
     nextOrderRef.current = null;
     localStorage.removeItem("boomscroll_active_deck");
     localStorage.removeItem("boomscroll_enabled_ids");
+  }
+
+  /**
+   * Pull the current card out of the feed. The card stays in the deck and in
+   * the banished list — this is reversible, not a delete.
+   */
+  function banishCurrent() {
+    if (!current || !deck) {return;}
+    const banishedId = current.id;
+    const nextBanished: QuarantineMap = {
+      ...quarantined,
+      [banishedId]: { at: new Date().toISOString() },
+    };
+    setQuarantined(nextBanished);
+    saveQuarantine(deckKey(deck), nextBanished);
+
+    // Drop it from the running order and leave `index` where it is, so the
+    // following card slides into this slot. Advancing the index here would
+    // skip a card.
+    const nextOrder = order.filter((c) => c.id !== banishedId);
+    // The pre-shuffled next round may contain the banished card.
+    nextOrderRef.current = null;
+    setOrder(nextOrder);
+    if (nextOrder.length === 0) {
+      setIndex(0);
+      setShowFilter(true);
+    } else if (index >= nextOrder.length) {
+      setIndex(0);
+    }
+    setRevealed(showAnswerImmediately);
+    setDrag(0);
+    setUseTransition(false);
+  }
+
+  function restoreCards(ids: string[]) {
+    if (!deck || ids.length === 0) {return;}
+    const nextBanished = { ...quarantined };
+    for (const id of ids) {
+      delete nextBanished[id];
+    }
+    setQuarantined(nextBanished);
+    saveQuarantine(deckKey(deck), nextBanished);
+    startFeed(deck, enabledIds, enabledDifficulties, mode, nextBanished);
   }
 
   function advance() {
@@ -333,10 +402,77 @@ export default function App() {
     );
   }
 
+  const banishedCount = Object.keys(quarantined).length;
+
+  // Banished-cards review screen
+  if (showBanished) {
+    // Most recently banished first — the order you want when undoing a misfire.
+    const banishedCards = deck.cards
+      .filter((card) => quarantined[card.id])
+      .sort((a, b) => quarantined[b.id].at.localeCompare(quarantined[a.id].at));
+
+    return (
+      <main className="safe-screen flex h-full flex-col items-center gap-4 px-6 py-4">
+        <div className="w-full max-w-sm shrink-0 flex items-center justify-between">
+          <h1 className="text-xl font-bold tracking-tight">Banished</h1>
+          <button
+            onClick={() => setShowBanished(false)}
+            className="text-xs text-zinc-400 hover:text-zinc-200"
+          >
+            Done
+          </button>
+        </div>
+
+        <p className="w-full max-w-sm shrink-0 text-xs text-zinc-500">
+          These cards are held out of the feed. Restoring one puts it back in
+          rotation.
+        </p>
+
+        {banishedCards.length === 0 ? (
+          <p className="my-auto text-sm text-zinc-500">Nothing banished.</p>
+        ) : (
+          <ul className="w-full max-w-sm min-h-0 flex-1 space-y-2 overflow-y-auto touch-pan-y pr-1">
+            {banishedCards.map((card) => (
+              <li
+                key={card.id}
+                className="flex items-start justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3"
+              >
+                <span className="min-w-0 flex-1 text-left">
+                  <span className="block text-sm text-zinc-200 line-clamp-2">{card.front}</span>
+                  <span className="mt-1 block text-[11px] uppercase tracking-wider text-zinc-500">
+                    {card.workspaceName}
+                  </span>
+                </span>
+                <button
+                  onClick={() => restoreCards([card.id])}
+                  className="shrink-0 rounded-full border border-zinc-800 px-3 py-1 text-[11px] font-medium text-zinc-300 hover:bg-zinc-900/50 hover:text-zinc-100 active:opacity-80 transition-colors"
+                >
+                  Restore
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {banishedCards.length > 0 && (
+          <div className="flex shrink-0 w-full max-w-sm pt-2">
+            <button
+              onClick={() => restoreCards(banishedCards.map((c) => c.id))}
+              className="w-full rounded-full border border-zinc-800 px-6 py-3 text-sm font-semibold text-zinc-300 hover:bg-zinc-900/50 hover:text-zinc-100 active:opacity-80 transition-colors"
+            >
+              Restore all
+            </button>
+          </div>
+        )}
+      </main>
+    );
+  }
+
   // Workspace filter screen
   if (showFilter || !current) {
     const enabledCards = deck.cards.filter((card) => {
       if (!enabledIds.has(card.workspaceId)) {return false;}
+      if (quarantined[card.id]) {return false;}
       if (card.difficulty !== undefined && !enabledDifficulties.has(card.difficulty)) {
         return false;
       }
@@ -496,6 +632,14 @@ export default function App() {
             <button onClick={() => void openDeck()} className="text-xs text-zinc-400 hover:text-zinc-200">
               + Add deck
             </button>
+            {banishedCount > 0 && (
+              <button
+                onClick={() => setShowBanished(true)}
+                className="text-xs text-zinc-400 hover:text-zinc-200"
+              >
+                Banished ({banishedCount})
+              </button>
+            )}
             <button onClick={closeDeck} className="text-xs text-zinc-500 hover:text-zinc-300">
               Close deck
             </button>
@@ -601,7 +745,13 @@ export default function App() {
         }}
         className="absolute inset-0 z-0 select-none touch-none"
       >
-        <FeedCard card={current} mode={mode} revealed={revealed} activePresetId={activePresetId} />
+        <FeedCard
+          card={current}
+          mode={mode}
+          revealed={revealed}
+          activePresetId={activePresetId}
+          onBanish={banishCurrent}
+        />
       </div>
 
       {/* Hidden file input for browser dev mode fallback */}

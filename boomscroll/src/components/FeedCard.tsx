@@ -8,6 +8,11 @@ interface FeedCardProps {
   mode: FeedMode;
   revealed: boolean;
   activePresetId?: string;
+  /**
+   * Banish this card from the feed. Omitted for the background preview card,
+   * which must not offer a live control.
+   */
+  onBanish?: () => void;
 }
 
 /**
@@ -17,7 +22,7 @@ interface FeedCardProps {
  *   decided by the caller (the "Show answer immediately" preference) and
  *   passed in as `revealed`.
  */
-export default function FeedCard({ card, mode, revealed, activePresetId }: FeedCardProps) {
+export default function FeedCard({ card, mode, revealed, activePresetId, onBanish }: FeedCardProps) {
   const isStudy = mode === "study";
   const showBack = isStudy || revealed;
 
@@ -83,8 +88,39 @@ export default function FeedCard({ card, mode, revealed, activePresetId }: FeedC
         )}
       </div>
 
-      <div className="shrink-0 text-[10px] text-zinc-600 uppercase tracking-widest pt-4">
-        Swipe up for next card
+      <div className="flex shrink-0 flex-col items-center gap-3 pt-4">
+        {onBanish && (
+          <button
+            type="button"
+            aria-label="Banish this card"
+            title="Hold this card out of the feed"
+            // The card root captures pointers for the swipe gesture and toggles
+            // the answer on tap. Stopping the event at pointer-down keeps both
+            // from firing when this is pressed.
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onBanish();
+            }}
+            className="flex min-h-[44px] items-center gap-1.5 rounded-full border border-zinc-800/80 bg-zinc-900/60 px-4 text-xs font-medium text-zinc-500 backdrop-blur-md transition-colors hover:border-zinc-700 hover:text-zinc-300 active:opacity-70"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              className="h-3.5 w-3.5"
+              aria-hidden="true"
+            >
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+            Banish
+          </button>
+        )}
+        <div className="text-[10px] text-zinc-600 uppercase tracking-widest">
+          Swipe up for next card
+        </div>
       </div>
     </div>
   );
