@@ -169,7 +169,7 @@ pub fn initialize_database_with_key(
     });
 
     let pool = r2d2::Pool::builder()
-        .max_size(10)
+        .max_size(25)
         .build(manager)
         .map_err(|e| {
             rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some(e.to_string()))
