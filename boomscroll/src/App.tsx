@@ -482,8 +482,8 @@ export default function App() {
     const allSelected = deck.workspaces.length > 0 && deck.workspaces.every((ws) => enabledIds.has(ws.id));
 
     // How many cards each level actually holds, for the workspaces currently
-    // enabled. Levels a deck has no content for are shown as empty rather than
-    // offered as a choice that silently yields nothing.
+    // enabled. Only levels with content are offered as a choice — no deck ships
+    // a full 1-5 spread, and a fixed grid made two buttons yield an empty feed.
     const countsByLevel = new Map<DifficultyScore, number>();
     for (const card of deck.cards) {
       if (!enabledIds.has(card.workspaceId)) {continue;}
@@ -572,65 +572,76 @@ export default function App() {
               <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
                 Difficulty Range
               </span>
-              <button
-                onClick={() =>
-                  setEnabledDifficulties(
-                    allDiffsSelected
-                      ? new Set<DifficultyScore>(availableLevels.slice(0, 1))
-                      : new Set<DifficultyScore>(availableLevels),
-                  )
-                }
-                disabled={availableLevels.length === 0}
-                className="text-[11px] text-purple-400 hover:text-purple-300 disabled:opacity-40"
-              >
-                {allDiffsSelected
-                  ? `Solo Level ${availableLevels[0] ?? 1}`
-                  : "All Levels"}
-              </button>
+              {availableLevels.length > 1 && (
+                <button
+                  onClick={() =>
+                    setEnabledDifficulties(
+                      allDiffsSelected
+                        ? new Set<DifficultyScore>(availableLevels.slice(0, 1))
+                        : new Set<DifficultyScore>(availableLevels),
+                    )
+                  }
+                  className="text-[11px] text-purple-400 hover:text-purple-300"
+                >
+                  {allDiffsSelected
+                    ? `Solo Level ${availableLevels[0]}`
+                    : "All Levels"}
+                </button>
+              )}
             </div>
 
-            <div className="grid grid-cols-5 gap-1.5">
-              {([1, 2, 3, 4, 5] as DifficultyScore[]).map((level) => {
-                const count = countsByLevel.get(level) ?? 0;
-                const isEmpty = count === 0;
-                const isSelected = !isEmpty && enabledDifficulties.has(level);
-                const color = getDifficultyColor(level);
-                const label = preset.labels[level];
-                return (
-                  <button
-                    key={level}
-                    disabled={isEmpty}
-                    onClick={() =>
-                      setEnabledDifficulties((prev) => {
-                        const nextSet = new Set(prev);
-                        if (nextSet.has(level)) {
-                          if (nextSet.size > 1) {nextSet.delete(level);}
-                        } else {
-                          nextSet.add(level);
-                        }
-                        return nextSet;
-                      })
-                    }
-                    className={`flex flex-col items-center justify-center rounded-xl border p-1.5 transition-all ${
-                      isEmpty
-                        ? "border-zinc-900 bg-zinc-950/20 text-zinc-700 cursor-not-allowed"
-                        : isSelected
+            {availableLevels.length === 0 ? (
+              <p className="rounded-xl border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-[11px] leading-relaxed text-zinc-500">
+                The selected workspaces have no levelled cards, so every card is
+                shown.
+              </p>
+            ) : (
+              // Only levels this deck actually has content for. A fixed 1–5 grid
+              // offered choices that silently yielded an empty feed.
+              <div
+                className="grid gap-1.5"
+                style={{
+                  gridTemplateColumns: `repeat(${availableLevels.length}, minmax(0, 1fr))`,
+                }}
+              >
+                {availableLevels.map((level) => {
+                  const count = countsByLevel.get(level) ?? 0;
+                  const isSelected = enabledDifficulties.has(level);
+                  const color = getDifficultyColor(level);
+                  const label = preset.labels[level];
+                  return (
+                    <button
+                      key={level}
+                      onClick={() =>
+                        setEnabledDifficulties((prev) => {
+                          const nextSet = new Set(prev);
+                          if (nextSet.has(level)) {
+                            if (nextSet.size > 1) {nextSet.delete(level);}
+                          } else {
+                            nextSet.add(level);
+                          }
+                          return nextSet;
+                        })
+                      }
+                      className={`flex flex-col items-center justify-center rounded-xl border p-1.5 transition-all ${
+                        isSelected
                           ? `${color.bg} ${color.border} ${color.text} shadow-sm font-semibold`
                           : "border-zinc-800 bg-zinc-950/40 text-zinc-500 opacity-60"
-                    }`}
-                    title={isEmpty ? `${label} — no cards in this deck` : `${label} — ${count} cards`}
-                  >
-                    <span className="text-xs font-bold">L{level}</span>
-                    <span className="text-[9px] truncate max-w-full leading-tight mt-0.5">
-                      {label.split(" ")[0]}
-                    </span>
-                    <span className="text-[9px] leading-tight tabular-nums opacity-70">
-                      {isEmpty ? "—" : count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+                      }`}
+                      title={`${label} — ${count} cards`}
+                    >
+                      <span className="text-xs font-bold">L{level}</span>
+                      <span className="text-[9px] truncate max-w-full leading-tight mt-0.5">
+                        {label.split(" ")[0]}
+                      </span>
+                      <span className="text-[9px] leading-tight tabular-nums opacity-70">
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
