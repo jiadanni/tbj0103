@@ -30,8 +30,13 @@ const apiMocks = vi.hoisted(() => ({
   upsertGlossaryTerm: vi.fn(),
   deleteGlossaryTerm: vi.fn(),
   refreshGlossary: vi.fn(),
-  listRoadmapSnapshots: vi.fn(() => Promise.resolve([])),
+  listRoadmapSnapshots: vi.fn((): Promise<unknown[]> => Promise.resolve([])),
   restoreRoadmapSnapshot: vi.fn(() => Promise.resolve()),
+  captureRoadmapSnapshot: vi.fn(
+    (): Promise<{ created: boolean; reason_skipped: string | null; snapshot_id: string | null }> =>
+      Promise.resolve({ created: true, reason_skipped: null, snapshot_id: "snap-1" })
+  ),
+  getPromptBankStatus: vi.fn(() => Promise.resolve(null)),
 }));
 
 vi.mock("@/lib/api", () => ({
@@ -43,6 +48,7 @@ vi.mock("@/lib/api", () => ({
       delete: apiMocks.deleteWorkspace,
       setParent: apiMocks.setWorkspaceParent,
       list: apiMocks.listWorkspaces,
+      getPromptBankStatus: apiMocks.getPromptBankStatus,
     },
     dashboard: {
       getSummary: apiMocks.getSummary,
@@ -65,6 +71,7 @@ vi.mock("@/lib/api", () => ({
     graph: {
       listRoadmapSnapshots: apiMocks.listRoadmapSnapshots,
       restoreRoadmapSnapshot: apiMocks.restoreRoadmapSnapshot,
+      captureRoadmapSnapshot: apiMocks.captureRoadmapSnapshot,
     },
     workspaceGlossary: {
       list: apiMocks.listGlossaryTerms,
@@ -166,6 +173,11 @@ describe("WorkspaceSettingsView", () => {
     apiMocks.getTopicSignature.mockResolvedValue(null);
     apiMocks.listGlossaryTerms.mockResolvedValue([]);
     apiMocks.listRoadmapSnapshots.mockResolvedValue([]);
+    apiMocks.captureRoadmapSnapshot.mockResolvedValue({
+      created: true,
+      reason_skipped: null,
+      snapshot_id: "snap-1",
+    });
   });
 
   it("renders parent and child workspaces and shows parent context for a selected child", async () => {
@@ -423,5 +435,96 @@ describe("WorkspaceSettingsView", () => {
     await waitFor(() => {
       expect(apiMocks.createChildWorkspace).toHaveBeenCalledWith("root-1", "New Child", undefined);
     });
+  });
+
+  function makeSnapshot(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "snap-1",
+      workspace_id: "root-1",
+      source_job_id: null,
+      source_model: null,
+      concept_count: 4,
+      link_count: 2,
+      created_at: "2026-08-01T10:00:00Z",
+      reason: "scheduled",
+      ...overrides,
+    };
+  }
+
+  it("renders a human label for the snapshot reason", async () => {
+    useWorkspaceStore.setState({
+      workspaces: [makeWorkspace({ id: "root-1", name: "Parent Workspace" })],
+      activeWorkspaceId: "root-1",
+    });
+    apiMocks.listRoadmapSnapshots.mockResolvedValue([makeSnapshot({ reason: "scheduled" })]);
+
+    render(
+      <MemoryRouter>
+        <WorkspaceSettingsView />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText("Scheduled")).toBeInTheDocument();
+  });
+
+  it("falls back to the raw reason for an unknown value", async () => {
+    useWorkspaceStore.setState({
+      workspaces: [makeWorkspace({ id: "root-1", name: "Parent Workspace" })],
+      activeWorkspaceId: "root-1",
+    });
+    apiMocks.listRoadmapSnapshots.mockResolvedValue([makeSnapshot({ reason: "future_thing" })]);
+
+    render(
+      <MemoryRouter>
+        <WorkspaceSettingsView />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText("future_thing")).toBeInTheDocument();
+  });
+
+  it("captures a snapshot on demand and refreshes the list", async () => {
+    useWorkspaceStore.setState({
+      workspaces: [makeWorkspace({ id: "root-1", name: "Parent Workspace" })],
+      activeWorkspaceId: "root-1",
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkspaceSettingsView />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /snapshot now/i }));
+
+    await waitFor(() => {
+      expect(apiMocks.captureRoadmapSnapshot).toHaveBeenCalledWith("root-1");
+    });
+    // The list reloads so the new snapshot appears without a manual refresh.
+    await waitFor(() => {
+      expect(apiMocks.listRoadmapSnapshots.mock.calls.length).toBeGreaterThan(1);
+    });
+  });
+
+  it("reports an unchanged graph as a normal outcome, not a failure", async () => {
+    useWorkspaceStore.setState({
+      workspaces: [makeWorkspace({ id: "root-1", name: "Parent Workspace" })],
+      activeWorkspaceId: "root-1",
+    });
+    apiMocks.captureRoadmapSnapshot.mockResolvedValue({
+      created: false,
+      reason_skipped: "unchanged",
+      snapshot_id: null,
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkspaceSettingsView />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /snapshot now/i }));
+
+    expect(await screen.findByText("No changes")).toBeInTheDocument();
   });
 });

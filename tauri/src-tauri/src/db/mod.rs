@@ -93,6 +93,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v77_blocked_topics",
     "v78_learning_cards_kind",
     "v79_import_source_links",
+    "v80_roadmap_snapshot_reason",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -2397,6 +2398,62 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
         conn.execute(
             "INSERT INTO _migrations(name) VALUES('v79_import_source_links')",
+            [],
+        )?;
+    }
+
+    // v80: snapshot provenance — record WHY a roadmap snapshot was captured
+    // ('analysis' | 'scheduled' | 'manual' | 'drift') and a content hash of the
+    // payload so repeat captures of an unchanged graph can be skipped instead of
+    // writing an identical row every cycle.
+    //
+    // `reason` deliberately has no CHECK constraint: ALTER TABLE ADD COLUMN
+    // cannot add one without a full table rebuild, so a fresh DB (schema.sql)
+    // and a migrated DB would end up with divergent DDL — the exact drift class
+    // v75 exists to repair. The value is validated in Rust instead.
+    let applied_v80: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v80_roadmap_snapshot_reason'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v80 == 0 {
+        let (has_reason, has_hash) = {
+            let mut pragma = conn.prepare("PRAGMA table_info(roadmap_snapshots);")?;
+            let columns = pragma.query_map([], |r| r.get::<_, String>(1))?;
+            let mut reason = false;
+            let mut hash = false;
+            for col in columns {
+                match col?.as_str() {
+                    "reason" => reason = true,
+                    "payload_hash" => hash = true,
+                    _ => {}
+                }
+            }
+            (reason, hash)
+        };
+        if !has_reason {
+            conn.execute_batch(
+                "ALTER TABLE roadmap_snapshots ADD COLUMN reason TEXT NOT NULL DEFAULT 'analysis';",
+            )?;
+        }
+        if !has_hash {
+            conn.execute_batch(
+                "ALTER TABLE roadmap_snapshots ADD COLUMN payload_hash TEXT NOT NULL DEFAULT '';",
+            )?;
+        }
+        // Existing databases already ran schema.sql's seed at creation time and
+        // will not re-run it, so the new defaults have to be written here too.
+        conn.execute_batch(
+            "INSERT OR IGNORE INTO settings (key, value) VALUES
+                ('roadmap_snapshot_auto_enabled', 'true'),
+                ('roadmap_snapshot_interval_hours', '24'),
+                ('roadmap_snapshot_retention_days', '60'),
+                ('roadmap_snapshot_max_per_workspace', '40'),
+                ('roadmap_snapshot_drift_threshold', '0.15');",
+        )?;
+        conn.execute(
+            "INSERT INTO _migrations(name) VALUES('v80_roadmap_snapshot_reason')",
             [],
         )?;
     }

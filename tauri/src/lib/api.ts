@@ -262,6 +262,15 @@ export interface RoadmapSnapshot {
   concept_count: number;
   link_count: number;
   created_at: string;
+  /** Why the snapshot was taken: analysis | scheduled | manual | drift. */
+  reason: string;
+}
+
+/** Result of an on-demand snapshot; `created: false` is a normal outcome. */
+export interface CaptureSnapshotResult {
+  created: boolean;
+  reason_skipped: string | null;
+  snapshot_id: string | null;
 }
 
 export interface KnowledgeSettings {
@@ -1696,6 +1705,8 @@ export const api = {
       invoke<RoadmapSnapshot[]>("list_roadmap_snapshots", { workspaceId }),
     restoreRoadmapSnapshot: (snapshotId: string) =>
       invoke<void>("restore_roadmap_snapshot", { snapshotId }),
+    captureRoadmapSnapshot: (workspaceId: string) =>
+      invoke<CaptureSnapshotResult>("capture_roadmap_snapshot", { workspaceId }),
     resetKnowledgeState: (req: {
       scope: KnowledgeResetScope;
       workspaceId?: string;

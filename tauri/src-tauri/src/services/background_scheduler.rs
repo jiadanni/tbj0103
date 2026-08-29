@@ -173,6 +173,10 @@ const FLASHCARD_TICK_INTERVAL: u32 = 6;
 // Cleanup checks hourly; the real gate is the 24h (configurable) watermark.
 const FLASHCARD_CLEANUP_TICK_INTERVAL: u32 = 12;
 const MEMORY_CLEANUP_TICK_INTERVAL: u32 = 12;
+/// Knowledge-map snapshots. The sweep itself is cheap (counts + one hash per
+/// changed workspace), so it evaluates hourly and lets the per-workspace
+/// interval/drift SQL decide the real cadence.
+const SNAPSHOT_TICK_INTERVAL: u32 = 12;
 
 pub const SCHEDULED_JOB_KEYS: &[&str] = &[
     "memory_extraction",
@@ -197,6 +201,7 @@ fn job_label(task_type: &str) -> &'static str {
         "hover_definition_scan" => "Hover Definitions",
         "concept_hierarchy" => "Topic Hierarchy",
         "workspace_prompt_bank" => "Starter Prompts / Topic Signatures",
+        "roadmap_snapshot" => "Knowledge Map Snapshots",
         "workspace_analysis" => "Workspace Analysis",
         "manual_data_processing" => "Background Processing",
         "git_sync" => "Git Sync",
@@ -1848,6 +1853,7 @@ pub fn start_scheduler(app: AppHandle) {
         let mut flashcard_tick: u32 = 0;
         let mut flashcard_cleanup_tick: u32 = 0;
         let mut memory_cleanup_tick: u32 = 0;
+        let mut snapshot_tick: u32 = 0;
         set_next_tick_at_from_now();
 
         loop {
@@ -1861,6 +1867,7 @@ pub fn start_scheduler(app: AppHandle) {
             flashcard_tick += 1;
             flashcard_cleanup_tick += 1;
             memory_cleanup_tick += 1;
+            snapshot_tick += 1;
 
             if is_paused() {
                 crate::logging::log_buffered(
@@ -2542,6 +2549,42 @@ pub fn start_scheduler(app: AppHandle) {
                         } else {
                             "Git sync failed"
                         },
+                        None,
+                    );
+                }
+            }
+
+            // 4. Knowledge-map snapshots. Deliberately outside the AI gate above:
+            // this does no LLM work, so it must neither wait on the single job
+            // permit nor stop running when background inference is disabled —
+            // the user still wants their history either way.
+            if snapshot_tick.is_multiple_of(SNAPSHOT_TICK_INTERVAL) {
+                let pool = db.0.clone();
+                let captured = tokio::task::spawn_blocking(move || -> Vec<(String, &'static str)> {
+                    let Ok(conn) = pool.get() else {
+                        return Vec::new();
+                    };
+                    let enabled = crate::commands::settings::get_setting(
+                        &conn,
+                        "roadmap_snapshot_auto_enabled",
+                    )
+                    .map(|v| v.trim_matches('"') == "true")
+                    .unwrap_or(true);
+                    if !enabled {
+                        return Vec::new();
+                    }
+                    crate::services::knowledge_graph_service::run_scheduled_snapshot_sweep(&conn)
+                })
+                .await
+                .unwrap_or_default();
+
+                // Only surface a task event when something was actually written.
+                if !captured.is_empty() {
+                    emit_task(
+                        &app,
+                        "roadmap_snapshot",
+                        "completed",
+                        &format!("Saved {} knowledge-map snapshot(s)", captured.len()),
                         None,
                     );
                 }

@@ -246,7 +246,9 @@ CREATE TABLE IF NOT EXISTS roadmap_snapshots (
     concept_count INTEGER NOT NULL DEFAULT 0,
     link_count INTEGER NOT NULL DEFAULT 0,
     payload TEXT NOT NULL CHECK (json_valid(payload)),
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    reason TEXT NOT NULL DEFAULT 'analysis',
+    payload_hash TEXT NOT NULL DEFAULT ''
 );
 
 -- Per-run history for background inference jobs. Powers the Inference Jobs
@@ -674,7 +676,12 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('ram_headroom_percent', '10'),
     ('knowledge.upgrade_mode', '"auto"'),
     ('knowledge.supersede_mode', '"auto"'),
-    ('knowledge.confidence_threshold', '0.05');
+    ('knowledge.confidence_threshold', '0.05'),
+    ('roadmap_snapshot_auto_enabled', 'true'),
+    ('roadmap_snapshot_interval_hours', '24'),
+    ('roadmap_snapshot_retention_days', '60'),
+    ('roadmap_snapshot_max_per_workspace', '40'),
+    ('roadmap_snapshot_drift_threshold', '0.15');
 
 
 -- Conversation summaries
