@@ -8,7 +8,7 @@ import {
   Plus, Trash2, Pencil, Check, X, LayoutGrid,
   MessageSquare, FileText, Globe, Brain, CreditCard,
   Database, Sparkles, Save, Loader2, ChevronRight, ChevronDown, ArrowUpDown, BookOpen, FolderPlus, RotateCcw,
-  Folder, Code, Palette, HeartPulse, Music, Plug, User, Terminal, GitBranch, ShieldCheck, Container, Rocket, WandSparkles
+  Folder, Code, Palette, HeartPulse, Music, Plug, User, Terminal, GitBranch, ShieldCheck, Container, Rocket, WandSparkles, History
 } from "lucide-react";
 import { api } from "../lib/api";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -63,6 +63,15 @@ interface KnowledgeResetDialogState {
   running: boolean;
   error: string | null;
 }
+
+/** Human labels for `RoadmapSnapshot.reason`. Unknown values fall back to the
+ *  raw string so a future backend reason renders gracefully instead of blank. */
+const SNAPSHOT_REASON_LABELS: Record<string, string> = {
+  analysis: "After analysis",
+  scheduled: "Scheduled",
+  manual: "Manual",
+  drift: "Auto (changed)",
+};
 
 interface SnapshotRestoreDialogState {
   snapshot: RoadmapSnapshot;
@@ -187,6 +196,7 @@ export default function WorkspaceSettingsView() {
   const [roadmapSnapshots, setRoadmapSnapshots] = useState<RoadmapSnapshot[]>([]);
   const [isLoadingRoadmapSnapshots, setIsLoadingRoadmapSnapshots] = useState(false);
   const [restoreSnapshotDialog, setRestoreSnapshotDialog] = useState<SnapshotRestoreDialogState | null>(null);
+  const [isCapturingSnapshot, setIsCapturingSnapshot] = useState(false);
   const [resetDialog, setResetDialog] = useState<KnowledgeResetDialogState | null>(null);
   const [successDialog, setSuccessDialog] = useState<{ title: string; description: string } | null>(null);
 
@@ -402,6 +412,32 @@ export default function WorkspaceSettingsView() {
     setTopicSignaturesByWorkspace(prev => ({ ...prev, [selectedId]: topicSig }));
     setPromptBankStatus(promptStatus);
     setRoadmapSnapshots(snapshots);
+  }
+
+  async function captureSnapshotNow() {
+    if (!selectedId || isCapturingSnapshot) {
+      return;
+    }
+    setIsCapturingSnapshot(true);
+    try {
+      const result = await api.graph.captureRoadmapSnapshot(selectedId);
+      await reloadSelectedDerivedState();
+      // A skip is a normal outcome, not a failure — report it as such.
+      setSuccessDialog(
+        result.created
+          ? { title: "Snapshot saved", description: "Saved a restore point for this workspace's knowledge map." }
+          : result.reason_skipped === "empty"
+            ? { title: "Nothing to snapshot", description: "This workspace has no concepts yet." }
+            : { title: "No changes", description: "The knowledge map is unchanged since the last snapshot." }
+      );
+    } catch (err) {
+      setSuccessDialog({
+        title: "Snapshot failed",
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setIsCapturingSnapshot(false);
+    }
   }
 
   async function confirmSnapshotRestore() {
@@ -1390,11 +1426,22 @@ export default function WorkspaceSettingsView() {
                           Analysis snapshots
                         </div>
                         <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
-                          Each completed `Analyze Workspace` run saves a roadmap snapshot automatically. Cleanup stays on by default and removes snapshots older than 60 days.
+                          Snapshots are saved automatically after an analysis or dedup run, on a daily schedule, and whenever the map changes significantly — plus any time you take one yourself. Identical snapshots are skipped, and old ones are cleaned up over time.
                         </p>
                       </div>
-                      <div className="text-xs text-[var(--text-muted)]">
-                        {roadmapSnapshots.length} snapshot{roadmapSnapshots.length === 1 ? "" : "s"}
+                      <div className="flex items-center gap-3">
+                        <div className="text-xs text-[var(--text-muted)]">
+                          {roadmapSnapshots.length} snapshot{roadmapSnapshots.length === 1 ? "" : "s"}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={isCapturingSnapshot || !selectedId}
+                          onClick={() => void captureSnapshotNow()}
+                          className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-color)] px-3 py-2 text-xs font-semibold text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--accent-color)] disabled:opacity-50"
+                        >
+                          {isCapturingSnapshot ? <Loader2 size={12} className="animate-spin" /> : <History size={12} />}
+                          Snapshot Now
+                        </button>
                       </div>
                     </div>
 
@@ -1405,7 +1452,7 @@ export default function WorkspaceSettingsView() {
                       </div>
                     ) : roadmapSnapshots.length === 0 ? (
                       <div className="rounded-xl border border-dashed border-[var(--border-color)] px-3 py-4 text-xs text-[var(--text-secondary)]">
-                        No roadmap snapshots yet. Run `Analyze Workspace` to create the first restore point.
+                        No roadmap snapshots yet. Run `Analyze Workspace` or click `Snapshot Now` to create the first restore point.
                       </div>
                     ) : (
                       <div className="space-y-2">
@@ -1415,8 +1462,13 @@ export default function WorkspaceSettingsView() {
                             className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-3"
                           >
                             <div className="min-w-0">
-                              <div className="text-sm font-medium text-[var(--text-primary)]">
-                                {formatDateTime(snapshot.created_at)}
+                              <div className="flex items-center gap-2">
+                                <div className="text-sm font-medium text-[var(--text-primary)]">
+                                  {formatDateTime(snapshot.created_at)}
+                                </div>
+                                <span className="rounded-full border border-[var(--border-color)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">
+                                  {SNAPSHOT_REASON_LABELS[snapshot.reason] ?? snapshot.reason}
+                                </span>
                               </div>
                               <div className="mt-1 text-xs text-[var(--text-secondary)]">
                                 {snapshot.concept_count} concepts · {snapshot.link_count} links{snapshot.source_model ? ` · ${snapshot.source_model}` : ""}

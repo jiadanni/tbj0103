@@ -471,7 +471,7 @@ pub fn list_roadmap_snapshots(
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut stmt = conn
         .prepare(
-            "SELECT id, workspace_id, source_job_id, source_model, concept_count, link_count, created_at
+            "SELECT id, workspace_id, source_job_id, source_model, concept_count, link_count, created_at, reason
              FROM roadmap_snapshots
              WHERE workspace_id = ?1
              ORDER BY created_at DESC, id DESC",
@@ -487,6 +487,7 @@ pub fn list_roadmap_snapshots(
                 concept_count: row.get(4)?,
                 link_count: row.get(5)?,
                 created_at: row.get(6)?,
+                reason: row.get(7)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -495,12 +496,64 @@ pub fn list_roadmap_snapshots(
     Ok(items)
 }
 
+/// Result of an on-demand snapshot request. `created == false` is a normal
+/// outcome (nothing to snapshot, or nothing changed), not an error.
+#[derive(Debug, Serialize)]
+pub struct CaptureSnapshotResult {
+    pub created: bool,
+    pub reason_skipped: Option<String>,
+    pub snapshot_id: Option<String>,
+}
+
+#[tauri::command]
+pub async fn capture_roadmap_snapshot(
+    auth: State<'_, AuthState>,
+    state: State<'_, DbState>,
+    workspace_id: String,
+) -> Result<CaptureSnapshotResult, String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
+    let pool = state.0.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let outcome = knowledge_graph_service::capture_workspace_snapshot(
+            &conn,
+            &workspace_id,
+            knowledge_graph_service::SnapshotReason::Manual,
+            None,
+            None,
+        )?;
+        Ok(match outcome {
+            knowledge_graph_service::SnapshotOutcome::Created(id) => CaptureSnapshotResult {
+                created: true,
+                reason_skipped: None,
+                snapshot_id: Some(id),
+            },
+            knowledge_graph_service::SnapshotOutcome::SkippedEmpty => CaptureSnapshotResult {
+                created: false,
+                reason_skipped: Some("empty".to_string()),
+                snapshot_id: None,
+            },
+            knowledge_graph_service::SnapshotOutcome::SkippedUnchanged => CaptureSnapshotResult {
+                created: false,
+                reason_skipped: Some("unchanged".to_string()),
+                snapshot_id: None,
+            },
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub fn restore_roadmap_snapshot<R: Runtime>(
     app: AppHandle<R>,
+    auth: State<AuthState>,
     state: State<DbState>,
     snapshot_id: String,
 ) -> Result<(), String> {
+    // Replaces the workspace's entire graph — gate it like every other
+    // destructive command so strict auth mode actually covers it.
+    require_auth_for_destructive_ops(&auth, &state)?;
     let mut conn = state.0.get().map_err(|e| e.to_string())?;
     let (workspace_id, payload_json): (String, String) = conn
         .query_row(
@@ -513,102 +566,9 @@ pub fn restore_roadmap_snapshot<R: Runtime>(
         serde_json::from_str(&payload_json).map_err(|e| e.to_string())?;
 
     let tx = conn.transaction().map_err(|e| e.to_string())?;
-    tx.execute(
-        "DELETE FROM concept_change_proposals WHERE workspace_id = ?1",
-        rusqlite::params![workspace_id],
-    )
-    .map_err(|e| e.to_string())?;
-    tx.execute(
-        "DELETE FROM graph_statistics WHERE workspace_id = ?1",
-        rusqlite::params![workspace_id],
-    )
-    .map_err(|e| e.to_string())?;
-    tx.execute(
-        "DELETE FROM concept_nodes WHERE workspace_id = ?1",
-        rusqlite::params![workspace_id],
-    )
-    .map_err(|e| e.to_string())?;
-
-    for node in &payload.nodes {
-        let type_str = node.concept_type.to_string();
-        let level_str = node.hierarchy_level.to_string();
-        let tags_json = serde_json::to_string(&node.tags).unwrap_or_default();
-        let aliases_json = serde_json::to_string(&node.aliases).unwrap_or_default();
-        let refs_json = serde_json::to_string(&node.references).unwrap_or_default();
-        tx.execute(
-            "INSERT INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at, hierarchy_level)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
-            rusqlite::params![
-                &node.id,
-                &node.workspace_id,
-                &node.name,
-                &node.concept_description,
-                type_str,
-                tags_json,
-                aliases_json,
-                refs_json,
-                node.x_position,
-                node.y_position,
-                node.review_count,
-                &node.created_at,
-                &node.updated_at,
-                level_str,
-            ],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-
-    for link in &payload.links {
-        tx.execute(
-            "INSERT INTO concept_links (id, source_id, target_id, link_type, strength, context, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            rusqlite::params![
-                &link.id,
-                &link.source_id,
-                &link.target_id,
-                link.link_type.to_string(),
-                link.strength,
-                &link.context,
-                &link.created_at,
-            ],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-
-    for mention in &payload.mentions {
-        tx.execute(
-            "INSERT INTO concept_mentions (id, concept_id, source_type, source_id, context, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            rusqlite::params![
-                &mention.id,
-                &mention.concept_id,
-                &mention.source_type,
-                &mention.source_id,
-                &mention.context,
-                &mention.created_at,
-            ],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-
-    if let Some(stats) = &payload.graph_statistics {
-        tx.execute(
-            "INSERT INTO graph_statistics (id, workspace_id, total_concepts, total_links, avg_degree, density, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            rusqlite::params![
-                &stats.id,
-                stats.workspace_id.clone(),
-                stats.total_concepts,
-                stats.total_links,
-                stats.avg_degree,
-                stats.density,
-                &stats.updated_at,
-            ],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-
+    knowledge_graph_service::restore_snapshot_inner(&tx, &workspace_id, &payload)?;
     tx.commit().map_err(|e| e.to_string())?;
+
     let _ = app.emit(
         "knowledge-state-reset",
         &serde_json::json!({

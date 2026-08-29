@@ -2037,13 +2037,24 @@ pub async fn analyze_workspace_chunked_impl(
             "UPDATE analyze_jobs SET status = ?1, completed_at = ?2 WHERE id = ?3",
             rusqlite::params![status, final_now, job_id],
         );
-        if status == "completed" {
-            snapshot_workspace_roadmap(
+        // 'partial' counts too: a partially-completed run still mutated the
+        // graph, which is exactly a state worth being able to roll back from.
+        // Failing to snapshot must not fail the analysis itself — the analysis
+        // succeeded; losing its restore point is a warning, not an error.
+        if status == "completed" || status == "partial" {
+            if let Err(err) = snapshot_workspace_roadmap(
                 &conn,
                 &req.workspace_id,
                 Some(&job_id),
                 Some(req.model.as_str()),
-            )?;
+            ) {
+                crate::logging::log_buffered(
+                    "warn",
+                    "knowledge",
+                    &format!("[SNAPSHOT] post-analysis capture failed: {err}"),
+                    "{}",
+                );
+            }
         }
     }
 

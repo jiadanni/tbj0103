@@ -99,6 +99,26 @@ pub async fn dedup_workspace_concepts(
 
     let job_id = format!("dedup-{}", uuid::Uuid::new_v4());
 
+    // Snapshot BEFORE the passes run. Dedup merges and supersedes concepts
+    // destructively and had no restore point at all, so a bad merge was
+    // unrecoverable. Capture failure must not block the dedup itself.
+    {
+        let pool = pool.clone();
+        let workspace_id = req.workspace_id.clone();
+        let model = req.model.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            let conn = pool.get().map_err(|e| e.to_string())?;
+            crate::services::knowledge_graph_service::capture_workspace_snapshot(
+                &conn,
+                &workspace_id,
+                crate::services::knowledge_graph_service::SnapshotReason::Analysis,
+                None,
+                Some(model.as_str()),
+            )
+        })
+        .await;
+    }
+
     let (mc, pc1) = run_semantic_dedup_pass(
         &pool,
         &req.workspace_id,

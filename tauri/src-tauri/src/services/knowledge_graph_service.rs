@@ -15,6 +15,7 @@ use crate::services::concept_extractor;
 use crate::services::concept_hierarchy::normalize_concept_name;
 use crate::services::workspace_hierarchy::descendant_workspace_ids;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 pub(crate) fn row_to_concept(row: &rusqlite::Row) -> rusqlite::Result<ConceptNode> {
     let type_str: String = row.get(4)?;
@@ -70,15 +71,191 @@ pub(crate) fn row_to_mention(row: &rusqlite::Row) -> rusqlite::Result<ConceptMen
     })
 }
 
+/// Maps a `concept_nodes` row (full column set, provenance included) for
+/// snapshot capture. Kept separate from [`row_to_concept`], which reads by
+/// positional index and is shared with the learning-path and command layers.
+fn row_to_snapshot_node(row: &rusqlite::Row) -> rusqlite::Result<SnapshotConceptNode> {
+    let tags_json: String = row.get(5)?;
+    let aliases_json: String = row.get(6)?;
+    let refs_json: String = row.get(7)?;
+    let edited_json: String = row.get(16)?;
+    Ok(SnapshotConceptNode {
+        id: row.get(0)?,
+        workspace_id: row.get(1)?,
+        name: row.get(2)?,
+        concept_description: row.get(3)?,
+        concept_type: row.get(4)?,
+        tags: serde_json::from_str(&tags_json).unwrap_or_default(),
+        aliases: serde_json::from_str(&aliases_json).unwrap_or_default(),
+        references: serde_json::from_str(&refs_json).unwrap_or_default(),
+        x_position: row.get(8)?,
+        y_position: row.get(9)?,
+        review_count: row.get(10)?,
+        created_at: row.get(11)?,
+        updated_at: row.get(12)?,
+        hierarchy_level: row
+            .get::<_, Option<String>>(13)?
+            .unwrap_or_else(|| "concept".to_string()),
+        source_model: row.get(14)?,
+        confidence: row.get(15)?,
+        user_edited_fields: serde_json::from_str(&edited_json).unwrap_or_default(),
+        superseded_by: row.get(17)?,
+        superseded_at: row.get(18)?,
+        supersede_reason: row.get(19)?,
+        last_modified_by_job: row.get(20)?,
+        parent_checked_at: row.get(21)?,
+    })
+}
+
+/// Maps a `concept_links` row (full column set) for snapshot capture.
+fn row_to_snapshot_link(row: &rusqlite::Row) -> rusqlite::Result<SnapshotConceptLink> {
+    let edited_json: String = row.get(9)?;
+    Ok(SnapshotConceptLink {
+        id: row.get(0)?,
+        source_id: row.get(1)?,
+        target_id: row.get(2)?,
+        link_type: row.get(3)?,
+        strength: row.get(4)?,
+        context: row.get(5)?,
+        created_at: row.get(6)?,
+        source_model: row.get(7)?,
+        confidence: row.get(8)?,
+        user_edited_fields: serde_json::from_str(&edited_json).unwrap_or_default(),
+        last_modified_by_job: row.get(10)?,
+    })
+}
+
+/// Snapshot-local mirror of a `concept_nodes` row.
+///
+/// Deliberately NOT the shared `ConceptNode` model: that struct is the
+/// frontend contract and omits the provenance columns (`source_model`,
+/// `confidence`, `user_edited_fields`, the supersede chain,
+/// `last_modified_by_job`). Snapshotting through it silently reset every one of
+/// those to its column default on restore — resetting confidences to 0.5 and
+/// erasing the user-edited markers that protect manual edits from the next AI
+/// pass. Widening `ConceptNode` instead would push provenance into the IPC
+/// payload for no frontend benefit, so the snapshot keeps its own row type.
+///
+/// Every field added here carries `#[serde(default)]` so payloads written
+/// before v80 still deserialize (with the same lossy behaviour they have
+/// today, which is no worse than the status quo).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct SnapshotConceptNode {
+    // Fields present in pre-v80 payloads.
+    pub(crate) id: String,
+    pub(crate) workspace_id: String,
+    pub(crate) name: String,
+    pub(crate) concept_description: String,
+    pub(crate) concept_type: String,
+    pub(crate) tags: Vec<String>,
+    pub(crate) aliases: Vec<String>,
+    pub(crate) references: Vec<String>,
+    pub(crate) x_position: f64,
+    pub(crate) y_position: f64,
+    pub(crate) review_count: i64,
+    pub(crate) hierarchy_level: String,
+    pub(crate) created_at: String,
+    pub(crate) updated_at: String,
+    // Added in v80.
+    #[serde(default)]
+    pub(crate) source_model: Option<String>,
+    #[serde(default = "default_confidence")]
+    pub(crate) confidence: f64,
+    #[serde(default)]
+    pub(crate) user_edited_fields: Vec<String>,
+    #[serde(default)]
+    pub(crate) superseded_by: Option<String>,
+    #[serde(default)]
+    pub(crate) superseded_at: Option<String>,
+    #[serde(default)]
+    pub(crate) supersede_reason: Option<String>,
+    #[serde(default)]
+    pub(crate) last_modified_by_job: Option<String>,
+    #[serde(default)]
+    pub(crate) parent_checked_at: Option<String>,
+}
+
+/// The `concept_nodes.confidence` / `concept_links.confidence` column default.
+///
+/// Must not be plain `#[serde(default)]`: that yields `0.0` for `f64`, which
+/// would silently downgrade every restored legacy concept rather than leaving
+/// it at the neutral 0.5 the schema specifies.
+fn default_confidence() -> f64 {
+    0.5
+}
+
+/// Snapshot-local mirror of a `concept_links` row. See [`SnapshotConceptNode`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct SnapshotConceptLink {
+    pub(crate) id: String,
+    pub(crate) source_id: String,
+    pub(crate) target_id: String,
+    pub(crate) link_type: String,
+    pub(crate) strength: f64,
+    pub(crate) context: String,
+    pub(crate) created_at: String,
+    #[serde(default)]
+    pub(crate) source_model: Option<String>,
+    #[serde(default = "default_confidence")]
+    pub(crate) confidence: f64,
+    #[serde(default)]
+    pub(crate) user_edited_fields: Vec<String>,
+    #[serde(default)]
+    pub(crate) last_modified_by_job: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct RoadmapSnapshotPayload {
-    pub(crate) nodes: Vec<ConceptNode>,
-    pub(crate) links: Vec<ConceptLink>,
+    pub(crate) nodes: Vec<SnapshotConceptNode>,
+    pub(crate) links: Vec<SnapshotConceptLink>,
     pub(crate) mentions: Vec<ConceptMention>,
     pub(crate) graph_statistics: Option<GraphStatistics>,
 }
 
-const SNAPSHOT_RETENTION_DAYS: i64 = 60;
+/// The subset of a payload that defines "has the graph actually changed".
+///
+/// `graph_statistics.updated_at` is excluded on purpose: `compute_graph_stats`
+/// stamps it with `Utc::now()`, so including it would make the content hash
+/// differ on every capture and defeat skip-if-unchanged entirely.
+#[derive(Serialize)]
+struct SnapshotHashView<'a> {
+    nodes: &'a [SnapshotConceptNode],
+    links: &'a [SnapshotConceptLink],
+    mentions: &'a [ConceptMention],
+}
+
+/// Why a snapshot was captured. Validated here rather than by a SQL CHECK —
+/// see the v80 migration comment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SnapshotReason {
+    Analysis,
+    Scheduled,
+    Manual,
+    Drift,
+}
+
+impl SnapshotReason {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Analysis => "analysis",
+            Self::Scheduled => "scheduled",
+            Self::Manual => "manual",
+            Self::Drift => "drift",
+        }
+    }
+}
+
+/// Outcome of a capture attempt, so callers can tell "wrote a snapshot" from
+/// "deliberately did nothing" and report accordingly.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SnapshotOutcome {
+    Created(String),
+    SkippedEmpty,
+    SkippedUnchanged,
+}
+
+const DEFAULT_SNAPSHOT_RETENTION_DAYS: i64 = 60;
+const DEFAULT_SNAPSHOT_MAX_PER_WORKSPACE: i64 = 40;
 
 pub fn compute_graph_stats(
     conn: &rusqlite::Connection,
@@ -148,24 +325,29 @@ fn load_snapshot_payload(
     conn: &rusqlite::Connection,
     workspace_id: &str,
 ) -> Result<RoadmapSnapshotPayload, String> {
+    // Deterministic ordering is load-bearing: it is what makes the payload hash
+    // stable across captures of an identical graph.
     let mut node_stmt = conn
         .prepare(
             "SELECT id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json,
-                    x_position, y_position, review_count, created_at, updated_at, hierarchy_level
+                    x_position, y_position, review_count, created_at, updated_at, hierarchy_level,
+                    source_model, confidence, user_edited_fields, superseded_by, superseded_at,
+                    supersede_reason, last_modified_by_job, parent_checked_at
              FROM concept_nodes
              WHERE workspace_id = ?1
              ORDER BY created_at ASC, id ASC",
         )
         .map_err(|e| e.to_string())?;
     let nodes = node_stmt
-        .query_map(rusqlite::params![workspace_id], row_to_concept)
+        .query_map(rusqlite::params![workspace_id], row_to_snapshot_node)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
 
     let mut link_stmt = conn
         .prepare(
-            "SELECT cl.id, cl.source_id, cl.target_id, cl.link_type, cl.strength, cl.context, cl.created_at
+            "SELECT cl.id, cl.source_id, cl.target_id, cl.link_type, cl.strength, cl.context, cl.created_at,
+                    cl.source_model, cl.confidence, cl.user_edited_fields, cl.last_modified_by_job
              FROM concept_links cl
              JOIN concept_nodes cn ON cn.id = cl.source_id
              WHERE cn.workspace_id = ?1
@@ -173,7 +355,7 @@ fn load_snapshot_payload(
         )
         .map_err(|e| e.to_string())?;
     let links = link_stmt
-        .query_map(rusqlite::params![workspace_id], row_to_link)
+        .query_map(rusqlite::params![workspace_id], row_to_snapshot_link)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -201,21 +383,80 @@ fn load_snapshot_payload(
     })
 }
 
-pub(crate) fn snapshot_workspace_roadmap(
+/// Reads an integer setting, tolerating the codebase's inconsistent quoting of
+/// `settings.value` (bare numbers vs JSON-quoted strings).
+fn int_setting(conn: &rusqlite::Connection, key: &str, fallback: i64) -> i64 {
+    crate::commands::settings::get_setting(conn, key)
+        .and_then(|v| v.trim_matches('"').parse::<i64>().ok())
+        .unwrap_or(fallback)
+}
+
+/// Captures a point-in-time snapshot of a workspace's knowledge map.
+///
+/// Skips writing when there is nothing worth keeping — an empty graph, or a
+/// graph whose content hash matches the newest existing snapshot. Those two
+/// guards are what keep a daily cadence from accreting identical rows forever;
+/// the age and count prunes bound what remains.
+pub(crate) fn capture_workspace_snapshot(
     conn: &rusqlite::Connection,
     workspace_id: &str,
+    reason: SnapshotReason,
     source_job_id: Option<&str>,
     source_model: Option<&str>,
-) -> Result<(), String> {
+) -> Result<SnapshotOutcome, String> {
+    // Cheapest guard first: never snapshot a workspace with no concepts. This
+    // alone eliminates the dominant bloat case (every workspace never analyzed).
+    let node_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM concept_nodes WHERE workspace_id = ?1",
+            rusqlite::params![workspace_id],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    if node_count == 0 {
+        return Ok(SnapshotOutcome::SkippedEmpty);
+    }
+
     let payload = load_snapshot_payload(conn, workspace_id)?;
-    let snapshot_id = uuid::Uuid::new_v4().to_string();
+
+    // Hash the graph content only (see SnapshotHashView) so a stats timestamp
+    // refresh does not read as a change.
+    let hash_view = SnapshotHashView {
+        nodes: &payload.nodes,
+        links: &payload.links,
+        mentions: &payload.mentions,
+    };
+    let hash_json = serde_json::to_string(&hash_view).map_err(|e| e.to_string())?;
+    let payload_hash = format!("{:x}", Sha256::digest(hash_json.as_bytes()));
+
+    // Skip-if-unchanged. A manual capture is held to the same rule: an explicit
+    // click on an unchanged graph gets a clear "no changes" message, which beats
+    // a duplicate row.
+    let previous_hash: Option<String> = conn
+        .query_row(
+            "SELECT payload_hash FROM roadmap_snapshots
+             WHERE workspace_id = ?1
+             ORDER BY created_at DESC, id DESC
+             LIMIT 1",
+            rusqlite::params![workspace_id],
+            |r| r.get(0),
+        )
+        .ok();
+    if let Some(prev) = previous_hash {
+        if !prev.is_empty() && prev == payload_hash {
+            return Ok(SnapshotOutcome::SkippedUnchanged);
+        }
+    }
+
     let payload_json = serde_json::to_string(&payload).map_err(|e| e.to_string())?;
+    let snapshot_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
     conn.execute(
         "INSERT INTO roadmap_snapshots (
-            id, workspace_id, source_job_id, source_model, concept_count, link_count, payload, created_at
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            id, workspace_id, source_job_id, source_model, concept_count, link_count,
+            payload, created_at, reason, payload_hash
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         rusqlite::params![
             snapshot_id,
             workspace_id,
@@ -225,18 +466,362 @@ pub(crate) fn snapshot_workspace_roadmap(
             payload.links.len() as i64,
             payload_json,
             now,
+            reason.as_str(),
+            payload_hash,
         ],
     )
     .map_err(|e| e.to_string())?;
 
-    conn.execute(
-        "DELETE FROM roadmap_snapshots
-         WHERE workspace_id = ?1
-           AND julianday(created_at) < julianday('now', ?2)",
-        rusqlite::params![workspace_id, format!("-{} days", SNAPSHOT_RETENTION_DAYS)],
+    // Age prune before count prune: reversed, the cap could retain rows the age
+    // policy drops anyway, costing an extra write.
+    let retention_days = int_setting(
+        conn,
+        "roadmap_snapshot_retention_days",
+        DEFAULT_SNAPSHOT_RETENTION_DAYS,
+    );
+    if retention_days > 0 {
+        conn.execute(
+            "DELETE FROM roadmap_snapshots
+             WHERE workspace_id = ?1
+               AND julianday(created_at) < julianday('now', ?2)",
+            rusqlite::params![workspace_id, format!("-{retention_days} days")],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    // A configured 0 (or negative) means "unlimited", never "delete everything".
+    let max_per_workspace = int_setting(
+        conn,
+        "roadmap_snapshot_max_per_workspace",
+        DEFAULT_SNAPSHOT_MAX_PER_WORKSPACE,
+    );
+    if max_per_workspace > 0 {
+        conn.execute(
+            "DELETE FROM roadmap_snapshots
+             WHERE workspace_id = ?1
+               AND id NOT IN (
+                 SELECT id FROM roadmap_snapshots
+                 WHERE workspace_id = ?1
+                 ORDER BY created_at DESC, id DESC
+                 LIMIT ?2
+               )",
+            rusqlite::params![workspace_id, max_per_workspace],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    Ok(SnapshotOutcome::Created(snapshot_id))
+}
+
+/// Back-compat entry point for the post-analysis capture site.
+pub(crate) fn snapshot_workspace_roadmap(
+    conn: &rusqlite::Connection,
+    workspace_id: &str,
+    source_job_id: Option<&str>,
+    source_model: Option<&str>,
+) -> Result<(), String> {
+    capture_workspace_snapshot(
+        conn,
+        workspace_id,
+        SnapshotReason::Analysis,
+        source_job_id,
+        source_model,
+    )
+    .map(|_| ())
+}
+
+/// Replaces a workspace's graph state with the contents of a snapshot payload.
+///
+/// Lives here rather than inline in the command so tests exercise the real
+/// restore path. The previous arrangement — command-only, with the test
+/// re-implementing the same SQL — is why the provenance loss went unnoticed.
+pub(crate) fn restore_snapshot_inner(
+    tx: &rusqlite::Transaction,
+    workspace_id: &str,
+    payload: &RoadmapSnapshotPayload,
+) -> Result<(), String> {
+    tx.execute(
+        "DELETE FROM concept_change_proposals WHERE workspace_id = ?1",
+        rusqlite::params![workspace_id],
     )
     .map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM graph_statistics WHERE workspace_id = ?1",
+        rusqlite::params![workspace_id],
+    )
+    .map_err(|e| e.to_string())?;
+    // Cascades to concept_links and concept_mentions.
+    tx.execute(
+        "DELETE FROM concept_nodes WHERE workspace_id = ?1",
+        rusqlite::params![workspace_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    // Pass 1: insert every node with a NULL supersede chain. `superseded_by` is
+    // a self-FK and foreign keys are enforced on pooled connections, so a node
+    // superseded by a later-created one would otherwise reference a row that
+    // does not exist yet.
+    for node in &payload.nodes {
+        let type_str = node
+            .concept_type
+            .parse::<crate::models::knowledge_graph::ConceptType>()
+            .map(|t| t.to_string())
+            .unwrap_or_else(|_| "custom".to_string());
+        let level_str = node
+            .hierarchy_level
+            .parse::<HierarchyLevel>()
+            .unwrap_or_default()
+            .to_string();
+        // `unwrap_or_else(.. "[]")`, not `unwrap_or_default()`: the latter
+        // yields "" on failure, which violates the json_valid CHECK.
+        let tags_json = serde_json::to_string(&node.tags).unwrap_or_else(|_| "[]".to_string());
+        let aliases_json =
+            serde_json::to_string(&node.aliases).unwrap_or_else(|_| "[]".to_string());
+        let refs_json = serde_json::to_string(&node.references).unwrap_or_else(|_| "[]".to_string());
+        let edited_json =
+            serde_json::to_string(&node.user_edited_fields).unwrap_or_else(|_| "[]".to_string());
+        tx.execute(
+            "INSERT INTO concept_nodes (
+                id, workspace_id, name, concept_description, concept_type, tags, aliases,
+                references_json, x_position, y_position, review_count, created_at, updated_at,
+                hierarchy_level, source_model, confidence, user_edited_fields,
+                last_modified_by_job, parent_checked_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+            rusqlite::params![
+                &node.id,
+                &node.workspace_id,
+                &node.name,
+                &node.concept_description,
+                type_str,
+                tags_json,
+                aliases_json,
+                refs_json,
+                node.x_position,
+                node.y_position,
+                node.review_count,
+                &node.created_at,
+                &node.updated_at,
+                level_str,
+                &node.source_model,
+                node.confidence,
+                edited_json,
+                &node.last_modified_by_job,
+                &node.parent_checked_at,
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    // Pass 2: now that every id exists, reattach the supersede chain.
+    for node in &payload.nodes {
+        if node.superseded_by.is_some() {
+            tx.execute(
+                "UPDATE concept_nodes
+                 SET superseded_by = ?1, superseded_at = ?2, supersede_reason = ?3
+                 WHERE id = ?4",
+                rusqlite::params![
+                    &node.superseded_by,
+                    &node.superseded_at,
+                    &node.supersede_reason,
+                    &node.id,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+    }
+
+    for link in &payload.links {
+        let type_str = link
+            .link_type
+            .parse::<crate::models::knowledge_graph::LinkType>()
+            .map(|t| t.to_string())
+            .unwrap_or_else(|_| "related".to_string());
+        let edited_json =
+            serde_json::to_string(&link.user_edited_fields).unwrap_or_else(|_| "[]".to_string());
+        tx.execute(
+            "INSERT INTO concept_links (
+                id, source_id, target_id, link_type, strength, context, created_at,
+                source_model, confidence, user_edited_fields, last_modified_by_job
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            rusqlite::params![
+                &link.id,
+                &link.source_id,
+                &link.target_id,
+                type_str,
+                link.strength,
+                &link.context,
+                &link.created_at,
+                &link.source_model,
+                link.confidence,
+                edited_json,
+                &link.last_modified_by_job,
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    for mention in &payload.mentions {
+        tx.execute(
+            "INSERT INTO concept_mentions (id, concept_id, source_type, source_id, context, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                &mention.id,
+                &mention.concept_id,
+                &mention.source_type,
+                &mention.source_id,
+                &mention.context,
+                &mention.created_at,
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    if let Some(stats) = &payload.graph_statistics {
+        tx.execute(
+            "INSERT INTO graph_statistics (id, workspace_id, total_concepts, total_links, avg_degree, density, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![
+                &stats.id,
+                stats.workspace_id.clone(),
+                stats.total_concepts,
+                stats.total_links,
+                stats.avg_degree,
+                stats.density,
+                &stats.updated_at,
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
     Ok(())
+}
+
+/// How far the graph has moved since a snapshot, as a fraction of that
+/// snapshot's total size. Combined node+link total, so this reads net change
+/// rather than churn; the content hash in [`capture_workspace_snapshot`] is the
+/// backstop that decides whether anything actually differs.
+fn drift_ratio(cur_nodes: i64, cur_links: i64, prev_nodes: i64, prev_links: i64) -> f64 {
+    let prev_total = (prev_nodes + prev_links) as f64;
+    if prev_total <= 0.0 {
+        // No meaningful baseline — the interval trigger owns this case.
+        return 0.0;
+    }
+    let cur_total = (cur_nodes + cur_links) as f64;
+    (cur_total - prev_total).abs() / prev_total
+}
+
+/// One pass over every workspace, capturing snapshots that are due either by
+/// elapsed time or by how much the graph has moved. Returns the workspaces
+/// actually captured, with the reason.
+pub(crate) fn run_scheduled_snapshot_sweep(
+    conn: &rusqlite::Connection,
+) -> Vec<(String, &'static str)> {
+    let interval_hours = int_setting(conn, "roadmap_snapshot_interval_hours", 24) as f64;
+    let drift_threshold = crate::commands::settings::get_setting(conn, "roadmap_snapshot_drift_threshold")
+        .and_then(|v| v.trim_matches('"').parse::<f64>().ok())
+        .filter(|t| *t > 0.0)
+        .unwrap_or(0.15)
+        .clamp(0.01, 10.0);
+
+    // One scan for every workspace: live counts, plus the newest snapshot's
+    // counts and age. Aggregates are pre-grouped so this stays a single query
+    // rather than a per-workspace loop.
+    //
+    // Age is computed in SQL on purpose: `created_at` is RFC3339 when written by
+    // the capture path but 'YYYY-MM-DD HH:MM:SS' when written by the column
+    // default, and julianday() tolerates both where a Rust RFC3339 parse would
+    // fail on the latter.
+    let mut stmt = match conn.prepare(
+        "SELECT w.id,
+                COALESCE(c.node_count, 0),
+                COALESCE(l.link_count, 0),
+                COALESCE(s.concept_count, 0),
+                COALESCE(s.link_count, 0),
+                CASE WHEN s.created_at IS NULL THEN 1
+                     WHEN julianday('now') - julianday(s.created_at) >= (?1 / 24.0) THEN 1
+                     ELSE 0 END
+         FROM workspaces w
+         LEFT JOIN (
+             SELECT workspace_id, COUNT(*) AS node_count
+             FROM concept_nodes GROUP BY workspace_id
+         ) c ON c.workspace_id = w.id
+         LEFT JOIN (
+             SELECT cn.workspace_id, COUNT(*) AS link_count
+             FROM concept_links cl
+             JOIN concept_nodes cn ON cn.id = cl.source_id
+             GROUP BY cn.workspace_id
+         ) l ON l.workspace_id = w.id
+         LEFT JOIN roadmap_snapshots s ON s.id = (
+             SELECT id FROM roadmap_snapshots
+             WHERE workspace_id = w.id
+             ORDER BY created_at DESC, id DESC
+             LIMIT 1
+         )
+         WHERE COALESCE(c.node_count, 0) > 0
+         ORDER BY w.id ASC",
+    ) {
+        Ok(stmt) => stmt,
+        Err(err) => {
+            crate::logging::log_buffered(
+                "warn",
+                "scheduler",
+                &format!("[SNAPSHOT] sweep query failed: {err}"),
+                "{}",
+            );
+            return Vec::new();
+        }
+    };
+
+    let candidates: Vec<(String, i64, i64, i64, i64, bool)> = match stmt.query_map(
+        rusqlite::params![interval_hours],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, i64>(4)?,
+                row.get::<_, i64>(5)? == 1,
+            ))
+        },
+    ) {
+        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        Err(err) => {
+            crate::logging::log_buffered(
+                "warn",
+                "scheduler",
+                &format!("[SNAPSHOT] sweep read failed: {err}"),
+                "{}",
+            );
+            return Vec::new();
+        }
+    };
+    drop(stmt);
+
+    let mut captured = Vec::new();
+    for (workspace_id, nodes, links, prev_nodes, prev_links, due_by_interval) in candidates {
+        let drifted = drift_ratio(nodes, links, prev_nodes, prev_links) >= drift_threshold;
+        if !due_by_interval && !drifted {
+            continue;
+        }
+        let reason = if drifted {
+            SnapshotReason::Drift
+        } else {
+            SnapshotReason::Scheduled
+        };
+        // One failing workspace must not abort the sweep for the rest.
+        match capture_workspace_snapshot(conn, &workspace_id, reason, None, None) {
+            Ok(SnapshotOutcome::Created(_)) => captured.push((workspace_id, reason.as_str())),
+            Ok(_) => {}
+            Err(err) => crate::logging::log_buffered(
+                "warn",
+                "scheduler",
+                &format!("[SNAPSHOT] capture failed for {workspace_id}: {err}"),
+                "{}",
+            ),
+        }
+    }
+    captured
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -1449,6 +2034,345 @@ mod knowledge_reset_tests {
             3
         );
         assert_eq!(count(&conn, "SELECT COUNT(*) FROM learning_cards WHERE workspace_id = 'ws-1' AND source_type = 'manual' AND source_id IS NULL AND topic_id IS NULL"), 3);
+    }
+
+    #[test]
+    fn snapshot_skips_workspace_with_no_concepts() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        ensure_reset_test_tables(&conn);
+        insert_workspace(&conn, "ws-empty", None);
+
+        let outcome =
+            capture_workspace_snapshot(&conn, "ws-empty", SnapshotReason::Scheduled, None, None)
+                .unwrap();
+
+        assert_eq!(outcome, SnapshotOutcome::SkippedEmpty);
+        assert_eq!(
+            count(&conn, "SELECT COUNT(*) FROM roadmap_snapshots"),
+            0
+        );
+    }
+
+    #[test]
+    fn snapshot_skips_when_payload_unchanged() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        ensure_reset_test_tables(&conn);
+        insert_workspace(&conn, "ws-1", None);
+        insert_reset_fixture(&conn, "ws-1", "one");
+        conn.execute("DELETE FROM roadmap_snapshots", []).unwrap();
+
+        let first =
+            capture_workspace_snapshot(&conn, "ws-1", SnapshotReason::Scheduled, None, None)
+                .unwrap();
+        let second =
+            capture_workspace_snapshot(&conn, "ws-1", SnapshotReason::Scheduled, None, None)
+                .unwrap();
+
+        assert!(matches!(first, SnapshotOutcome::Created(_)));
+        assert_eq!(second, SnapshotOutcome::SkippedUnchanged);
+        assert_eq!(
+            count(&conn, "SELECT COUNT(*) FROM roadmap_snapshots WHERE workspace_id = 'ws-1'"),
+            1
+        );
+    }
+
+    #[test]
+    fn snapshot_writes_again_after_graph_change() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        ensure_reset_test_tables(&conn);
+        insert_workspace(&conn, "ws-1", None);
+        insert_reset_fixture(&conn, "ws-1", "one");
+        conn.execute("DELETE FROM roadmap_snapshots", []).unwrap();
+
+        capture_workspace_snapshot(&conn, "ws-1", SnapshotReason::Scheduled, None, None).unwrap();
+        conn.execute(
+            "INSERT INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, created_at, updated_at, hierarchy_level)
+             VALUES ('extra-node', 'ws-1', 'Extra', '', 'topic', '[]', '[]', '[]', datetime('now'), datetime('now'), 'concept')",
+            [],
+        )
+        .unwrap();
+        capture_workspace_snapshot(&conn, "ws-1", SnapshotReason::Scheduled, None, None).unwrap();
+
+        assert_eq!(
+            count(&conn, "SELECT COUNT(*) FROM roadmap_snapshots WHERE workspace_id = 'ws-1'"),
+            2
+        );
+        assert_eq!(
+            count(
+                &conn,
+                "SELECT COUNT(DISTINCT payload_hash) FROM roadmap_snapshots WHERE workspace_id = 'ws-1'"
+            ),
+            2
+        );
+    }
+
+    #[test]
+    fn snapshot_records_reason() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        ensure_reset_test_tables(&conn);
+        insert_workspace(&conn, "ws-1", None);
+        insert_reset_fixture(&conn, "ws-1", "one");
+        conn.execute("DELETE FROM roadmap_snapshots", []).unwrap();
+
+        capture_workspace_snapshot(&conn, "ws-1", SnapshotReason::Manual, None, None).unwrap();
+
+        let reason: String = conn
+            .query_row(
+                "SELECT reason FROM roadmap_snapshots WHERE workspace_id = 'ws-1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(reason, "manual");
+    }
+
+    #[test]
+    fn snapshot_count_cap_prunes_oldest() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        ensure_reset_test_tables(&conn);
+        insert_workspace(&conn, "ws-1", None);
+        insert_reset_fixture(&conn, "ws-1", "one");
+        conn.execute("DELETE FROM roadmap_snapshots", []).unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('roadmap_snapshot_max_per_workspace', '3')",
+            [],
+        )
+        .unwrap();
+
+        // Mutate between captures so the hash differs each time.
+        for i in 0..5 {
+            conn.execute(
+                "INSERT INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, created_at, updated_at, hierarchy_level)
+                 VALUES (?1, 'ws-1', ?2, '', 'topic', '[]', '[]', '[]', datetime('now'), datetime('now'), 'concept')",
+                rusqlite::params![format!("cap-node-{i}"), format!("Cap {i}")],
+            )
+            .unwrap();
+            capture_workspace_snapshot(&conn, "ws-1", SnapshotReason::Scheduled, None, None)
+                .unwrap();
+        }
+
+        assert_eq!(
+            count(&conn, "SELECT COUNT(*) FROM roadmap_snapshots WHERE workspace_id = 'ws-1'"),
+            3
+        );
+    }
+
+    #[test]
+    fn snapshot_age_prune_removes_old_rows() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        ensure_reset_test_tables(&conn);
+        insert_workspace(&conn, "ws-1", None);
+        insert_reset_fixture(&conn, "ws-1", "one");
+        conn.execute("DELETE FROM roadmap_snapshots", []).unwrap();
+        conn.execute(
+            "INSERT INTO roadmap_snapshots (id, workspace_id, source_job_id, source_model, concept_count, link_count, payload, created_at, reason, payload_hash)
+             VALUES ('ancient', 'ws-1', NULL, NULL, 0, 0, '{}', datetime('now','-90 days'), 'analysis', 'oldhash')",
+            [],
+        )
+        .unwrap();
+
+        capture_workspace_snapshot(&conn, "ws-1", SnapshotReason::Scheduled, None, None).unwrap();
+
+        assert_eq!(
+            count(&conn, "SELECT COUNT(*) FROM roadmap_snapshots WHERE id = 'ancient'"),
+            0
+        );
+    }
+
+    /// Regression guard for the provenance-loss bug: restoring used to reset
+    /// confidence / source_model / user_edited_fields to column defaults.
+    #[test]
+    fn snapshot_preserves_provenance_through_restore() {
+        let pool = setup_test_db();
+        let mut conn = pool.get().unwrap();
+        ensure_reset_test_tables(&conn);
+        insert_workspace(&conn, "ws-1", None);
+        insert_reset_fixture(&conn, "ws-1", "one");
+        conn.execute("DELETE FROM roadmap_snapshots", []).unwrap();
+
+        conn.execute(
+            "UPDATE concept_nodes
+             SET source_model = 'm1', confidence = 0.93,
+                 user_edited_fields = '[\"name\"]', last_modified_by_job = 'job-x'
+             WHERE id = 'concept-one'",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE concept_links
+             SET source_model = 'm2', confidence = 0.71, last_modified_by_job = 'job-y'
+             WHERE id = 'link-one'",
+            [],
+        )
+        .unwrap();
+
+        capture_workspace_snapshot(&conn, "ws-1", SnapshotReason::Manual, None, None).unwrap();
+        let payload_json: String = conn
+            .query_row(
+                "SELECT payload FROM roadmap_snapshots WHERE workspace_id = 'ws-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let payload: RoadmapSnapshotPayload = serde_json::from_str(&payload_json).unwrap();
+
+        conn.execute("DELETE FROM concept_nodes WHERE workspace_id = 'ws-1'", [])
+            .unwrap();
+
+        let tx = conn.transaction().unwrap();
+        restore_snapshot_inner(&tx, "ws-1", &payload).unwrap();
+        tx.commit().unwrap();
+
+        let (model, confidence, edited, job): (Option<String>, f64, String, Option<String>) = conn
+            .query_row(
+                "SELECT source_model, confidence, user_edited_fields, last_modified_by_job
+                 FROM concept_nodes WHERE id = 'concept-one'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(model.as_deref(), Some("m1"));
+        assert!((confidence - 0.93).abs() < f64::EPSILON);
+        assert_eq!(edited, "[\"name\"]");
+        assert_eq!(job.as_deref(), Some("job-x"));
+
+        let (link_model, link_conf): (Option<String>, f64) = conn
+            .query_row(
+                "SELECT source_model, confidence FROM concept_links WHERE id = 'link-one'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(link_model.as_deref(), Some("m2"));
+        assert!((link_conf - 0.71).abs() < f64::EPSILON);
+    }
+
+    /// `superseded_by` is a self-FK; a node superseded by a later-created one
+    /// must not be inserted before its target exists.
+    #[test]
+    fn snapshot_restore_reattaches_superseded_by() {
+        let pool = setup_test_db();
+        let mut conn = pool.get().unwrap();
+        ensure_reset_test_tables(&conn);
+        insert_workspace(&conn, "ws-1", None);
+        insert_reset_fixture(&conn, "ws-1", "one");
+        conn.execute("DELETE FROM roadmap_snapshots", []).unwrap();
+
+        // concept-one is older than concept-2-one, so it sorts first and its
+        // supersede target is not yet inserted during pass 1.
+        conn.execute(
+            "UPDATE concept_nodes
+             SET superseded_by = 'concept-2-one', superseded_at = datetime('now'),
+                 supersede_reason = 'merged'
+             WHERE id = 'concept-one'",
+            [],
+        )
+        .unwrap();
+
+        capture_workspace_snapshot(&conn, "ws-1", SnapshotReason::Manual, None, None).unwrap();
+        let payload_json: String = conn
+            .query_row(
+                "SELECT payload FROM roadmap_snapshots WHERE workspace_id = 'ws-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let payload: RoadmapSnapshotPayload = serde_json::from_str(&payload_json).unwrap();
+
+        conn.execute("DELETE FROM concept_nodes WHERE workspace_id = 'ws-1'", [])
+            .unwrap();
+        let tx = conn.transaction().unwrap();
+        restore_snapshot_inner(&tx, "ws-1", &payload).unwrap();
+        tx.commit().unwrap();
+
+        let superseded_by: Option<String> = conn
+            .query_row(
+                "SELECT superseded_by FROM concept_nodes WHERE id = 'concept-one'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(superseded_by.as_deref(), Some("concept-2-one"));
+    }
+
+    /// Payloads written before v80 have no provenance fields; they must still
+    /// deserialize, and `confidence` must land on the schema default of 0.5
+    /// rather than f64's 0.0.
+    #[test]
+    fn legacy_payload_without_provenance_still_restores() {
+        let pool = setup_test_db();
+        let mut conn = pool.get().unwrap();
+        ensure_reset_test_tables(&conn);
+        insert_workspace(&conn, "ws-1", None);
+
+        let legacy = r#"{
+            "nodes": [{
+                "id": "legacy-node", "workspace_id": "ws-1", "name": "Legacy",
+                "concept_description": "", "concept_type": "topic",
+                "tags": [], "aliases": [], "references": [],
+                "x_position": 0.0, "y_position": 0.0, "review_count": 0,
+                "hierarchy_level": "concept",
+                "created_at": "2024-01-01T00:00:00Z", "updated_at": "2024-01-01T00:00:00Z"
+            }],
+            "links": [], "mentions": [], "graph_statistics": null
+        }"#;
+
+        let payload: RoadmapSnapshotPayload = serde_json::from_str(legacy).unwrap();
+        assert_eq!(payload.nodes.len(), 1);
+        assert!(payload.nodes[0].source_model.is_none());
+        assert!(payload.nodes[0].user_edited_fields.is_empty());
+        assert!((payload.nodes[0].confidence - 0.5).abs() < f64::EPSILON);
+
+        let tx = conn.transaction().unwrap();
+        restore_snapshot_inner(&tx, "ws-1", &payload).unwrap();
+        tx.commit().unwrap();
+
+        let (confidence, edited): (f64, String) = conn
+            .query_row(
+                "SELECT confidence, user_edited_fields FROM concept_nodes WHERE id = 'legacy-node'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert!((confidence - 0.5).abs() < f64::EPSILON);
+        // Must be valid JSON, not "" — the column has a json_valid CHECK.
+        assert_eq!(edited, "[]");
+    }
+
+    #[test]
+    fn drift_ratio_handles_empty_baseline() {
+        // No baseline: the interval trigger owns this case, so report no drift.
+        assert!((drift_ratio(5, 3, 0, 0) - 0.0).abs() < f64::EPSILON);
+        assert!((drift_ratio(115, 0, 100, 0) - 0.15).abs() < 1e-9);
+        // Shrinkage counts the same as growth.
+        assert!((drift_ratio(85, 0, 100, 0) - 0.15).abs() < 1e-9);
+    }
+
+    #[test]
+    fn scheduled_sweep_skips_empty_and_captures_due_workspaces() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        ensure_reset_test_tables(&conn);
+        insert_workspace(&conn, "ws-full", None);
+        insert_workspace(&conn, "ws-empty", None);
+        insert_reset_fixture(&conn, "ws-full", "one");
+        conn.execute("DELETE FROM roadmap_snapshots", []).unwrap();
+
+        let captured = run_scheduled_snapshot_sweep(&conn);
+
+        assert_eq!(captured.len(), 1);
+        assert_eq!(captured[0].0, "ws-full");
+        assert_eq!(captured[0].1, "scheduled");
+        assert_eq!(
+            count(&conn, "SELECT COUNT(*) FROM roadmap_snapshots WHERE workspace_id = 'ws-empty'"),
+            0
+        );
     }
 
     #[test]

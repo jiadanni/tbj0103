@@ -165,6 +165,9 @@ pub struct RoadmapSnapshot {
     pub concept_count: i64,
     pub link_count: i64,
     pub created_at: String,
+    /// Why this snapshot was taken: analysis | scheduled | manual | drift.
+    /// Mirrored by the `RoadmapSnapshot` interface in `src/lib/api.ts`.
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
