@@ -40,6 +40,8 @@ export function ChatPreferencesPanel({
   const setShowGenInfoModel = useSettingsStore((state) => state.setShowGenInfoModel);
   const scrollToTopOnSend = useSettingsStore((state) => state.scrollToTopOnSend);
   const setScrollToTopOnSend = useSettingsStore((state) => state.setScrollToTopOnSend);
+  const regenerateCreatesBranch = useSettingsStore((state) => state.regenerateCreatesBranch);
+  const setRegenerateCreatesBranch = useSettingsStore((state) => state.setRegenerateCreatesBranch);
   const chatMessageStyle = useSettingsStore((state) => state.chatMessageStyle);
   const setChatMessageStyle = useSettingsStore((state) => state.setChatMessageStyle);
   const expandChatToWindowWidth = useSettingsStore((state) => state.expandChatToWindowWidth);
@@ -212,6 +214,14 @@ export function ChatPreferencesPanel({
             <div>
               <p className="text-sm text-[var(--text-secondary)]">Scroll Message to Top</p>
               <p className="text-xs text-[var(--text-muted)] mt-0.5">After sending, scroll so your message appears at the top of the view</p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3 py-0.5">
+            <Toggle on={regenerateCreatesBranch} onToggle={() => setRegenerateCreatesBranch(!regenerateCreatesBranch)} />
+            <div>
+              <p className="text-sm text-[var(--text-secondary)]">Branch on Regenerate</p>
+              <p className="text-xs text-[var(--text-muted)] mt-0.5">Regenerating a message mid-conversation forks it into a new chat instead of deleting everything after it</p>
             </div>
           </div>
         </div>

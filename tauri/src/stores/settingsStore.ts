@@ -83,6 +83,7 @@ interface AppSettings {
   showGenInfoSpeed: boolean;
   showGenInfoModel: boolean;
   scrollToTopOnSend: boolean;
+  regenerateCreatesBranch: boolean;
   chatMessageStyle: ChatMessageStyle;
   expandChatToWindowWidth: boolean;
   codeBlockContainerStyle: CodeBlockContainerStyle;
@@ -151,6 +152,7 @@ interface SettingsStore extends AppSettings {
   setShowGenInfoSpeed: (v: boolean) => void;
   setShowGenInfoModel: (v: boolean) => void;
   setScrollToTopOnSend: (v: boolean) => void;
+  setRegenerateCreatesBranch: (v: boolean) => void;
   setChatMessageStyle: (v: ChatMessageStyle) => void;
   setExpandChatToWindowWidth: (v: boolean) => void;
   setCodeBlockContainerStyle: (v: CodeBlockContainerStyle) => void;
@@ -220,6 +222,7 @@ export const useSettingsStore = create<SettingsStore>()(
       showGenInfoSpeed: true,
       showGenInfoModel: true,
       scrollToTopOnSend: false,
+      regenerateCreatesBranch: true,
       chatMessageStyle: "bubble",
       expandChatToWindowWidth: false,
       codeBlockContainerStyle: "rounded",
@@ -294,6 +297,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setShowGenInfoSpeed: (showGenInfoSpeed) => set({ showGenInfoSpeed }),
       setShowGenInfoModel: (showGenInfoModel) => set({ showGenInfoModel }),
       setScrollToTopOnSend: (scrollToTopOnSend) => set({ scrollToTopOnSend }),
+      setRegenerateCreatesBranch: (regenerateCreatesBranch) => set({ regenerateCreatesBranch }),
       setChatMessageStyle: (chatMessageStyle) => set({ chatMessageStyle }),
       setExpandChatToWindowWidth: (expandChatToWindowWidth) => set({ expandChatToWindowWidth }),
       setCodeBlockContainerStyle: (codeBlockContainerStyle) => set({ codeBlockContainerStyle: normalizeCodeBlockContainerStyle(codeBlockContainerStyle) }),

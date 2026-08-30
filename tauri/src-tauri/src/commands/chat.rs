@@ -412,3 +412,18 @@ pub fn count_sessions_per_child_workspace(
     let conn = state.0.get().map_err(|e| e.to_string())?;
     chat_service::count_sessions_per_child_workspace(&conn, &parent_workspace_id)
 }
+
+/// Forks a session at `message_id` into a new session containing every message
+/// before that point. Purely additive — the source session is left untouched,
+/// so this does not go through the destructive-ops auth gate.
+#[tauri::command]
+pub fn branch_chat_session(
+    state: State<DbState>,
+    workspace_id: String,
+    session_id: String,
+    message_id: String,
+    title: Option<String>,
+) -> Result<ChatSession, String> {
+    let mut conn = state.0.get().map_err(|e| e.to_string())?;
+    chat_service::branch_session(&mut conn, &workspace_id, &session_id, &message_id, title)
+}
