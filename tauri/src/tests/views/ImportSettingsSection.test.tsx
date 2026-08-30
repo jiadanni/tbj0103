@@ -199,6 +199,7 @@ vi.mock("@/lib/api", () => ({
         has_split_parts: false,
       })),
       // A v2 export carries no account memories, so the panel renders nothing.
+      previewClaudeProjectsFast: vi.fn(() => Promise.resolve({ available: false, folders: [] })),
       previewClaudeAccountMemories: vi.fn(() => Promise.resolve({ total: 0, memories: [] })),
       importClaudeAccountMemories: vi.fn(() =>
         Promise.resolve({ imported: 0, updated: 0, skipped: 0 }),
@@ -567,9 +568,9 @@ describe("ImportSettingsSection", () => {
 
     expect(api.chatFile.previewClaudeFiles).toHaveBeenCalledTimes(1);
 
-    // Untick "Memories" — must not trigger another scan. (Conversations is
-    // covered by the section-visibility test; this one is about the rescan.)
-    fireEvent.click(screen.getByLabelText(/^Memories/));
+    // Untick a section — must not trigger another scan. (Section visibility is
+    // covered by its own test; this one is about the rescan.)
+    fireEvent.click(screen.getByLabelText("Include Projects"));
     await waitFor(() => {
       expect(api.chatFile.previewClaudeFiles).toHaveBeenCalledTimes(1);
     });
@@ -588,6 +589,49 @@ describe("ImportSettingsSection", () => {
     expect(args.selectedConversationIds).toContain("orphan-linked");
   });
 
+  it("paints projects from the fast path before the full scan resolves", async () => {
+    // conversations.json parsing dominates the scan (~1.1s vs ~10ms for
+    // projects), so projects are fetched separately and painted first.
+    vi.mocked(openDialog).mockResolvedValue("/imports/claude");
+
+    let releaseScan: (v: unknown) => void = () => {};
+    const scanGate = new Promise((resolve) => { releaseScan = resolve; });
+    vi.mocked(api.chatFile.previewClaudeFiles).mockImplementationOnce(
+      () => scanGate.then(() => claudePreviewWithLinks()) as ReturnType<typeof api.chatFile.previewClaudeFiles>,
+    );
+    vi.mocked(api.chatFile.previewClaudeProjectsFast).mockResolvedValueOnce({
+      available: true,
+      folders: [
+        {
+          uuid: "proj-fast",
+          name: "Fast Project",
+          description: "",
+          has_prompt: false,
+          doc_count: 0,
+          conversation_count: 0,
+          has_memory: false,
+          prompt_template: "",
+        },
+      ],
+    });
+
+    renderImportSettings();
+    fireEvent.click(screen.getAllByText("Select")[2]);
+
+    // Projects are on screen while the full scan is still pending.
+    await screen.findByText("Fast Project");
+    expect(screen.getByTestId("import-header-projects")).toBeInTheDocument();
+
+    // Conversations still shows its loading frame, not an empty section.
+    expect(screen.getByTestId("import-skeleton-conversations")).toBeInTheDocument();
+
+    // The full scan then replaces the seeded projects.
+    releaseScan(null);
+    await waitFor(() => {
+      expect(screen.queryByText("Fast Project")).not.toBeInTheDocument();
+    });
+  });
+
   it("hides each section when its include toggle is unticked", async () => {
     // Regression: the toggles gated what was imported but not what was shown,
     // so unticking Projects or Conversations left their sections on screen and
@@ -602,7 +646,7 @@ describe("ImportSettingsSection", () => {
     // Projects section visible, then replaced by a labelled skeleton.
     expect(screen.getByTestId("import-header-projects")).toBeInTheDocument();
     expect(screen.queryByTestId("import-skeleton-projects")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText(/^Projects/));
+    fireEvent.click(screen.getByLabelText("Include Projects"));
     await waitFor(() => {
       expect(screen.queryByTestId("import-header-projects")).not.toBeInTheDocument();
     });
@@ -613,7 +657,7 @@ describe("ImportSettingsSection", () => {
     // Conversations section visible, then skeletonised — along with the linked
     // summary, which describes conversations too.
     expect(screen.getByTestId("import-header-conversations")).toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText(/^Conversations/));
+    fireEvent.click(screen.getByLabelText("Include Conversations"));
     await waitFor(() => {
       expect(screen.queryByTestId("import-header-conversations")).not.toBeInTheDocument();
     });
