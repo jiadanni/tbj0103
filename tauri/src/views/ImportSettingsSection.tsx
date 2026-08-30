@@ -2085,7 +2085,10 @@ export default function ImportSettingsSection() {
               </div>
               <div className="grid grid-cols-3 gap-2">
                 {([
-                  { key: "conversations", label: "Conversations", enabled: claudeIncludeConversations, set: setClaudeIncludeConversations, available: claudeFilesFound.conversations, count: claudeOrphans.length, unit: "chats" },
+                  // Counts describe the EXPORT, not the current review state,
+                  // so they stay put as chats get routed to projects. Orphan
+                  // counts belong in the section header, which tracks progress.
+                  { key: "conversations", label: "Conversations", enabled: claudeIncludeConversations, set: setClaudeIncludeConversations, available: claudeFilesFound.conversations, count: claudeOrphans.length + Object.keys(claudeLinked).length, unit: "chats" },
                   { key: "projects", label: "Projects", enabled: claudeIncludeProjects, set: setClaudeIncludeProjects, available: claudeFilesFound.projects, count: claudeProjects.length, unit: "projects" },
                   { key: "memories", label: "Memories", enabled: claudeIncludeMemories, set: setClaudeIncludeMemories, available: claudeFilesFound.memories, count: null, unit: "" },
                 ] as const).map((item) => (
@@ -2115,7 +2118,7 @@ export default function ImportSettingsSection() {
                           ? "none in export"
                           : item.count !== null
                             ? `${item.count} ${item.unit}`
-                            : "profile & projects"}
+                            : "account + project"}
                       </span>
                     </span>
                   </label>
@@ -2140,6 +2143,10 @@ export default function ImportSettingsSection() {
             )}
 
             {/* ── Per-project rows ─────────────────────────────── */}
+            {claudeIncludeProjects && claudeScanning && claudeProjects.length === 0 && (
+              <ImportSectionSkeleton label="Projects" loading rows={4} />
+            )}
+
             {!claudeIncludeProjects && claudeProjects.length > 0 && (
               <ImportSectionSkeleton
                 label="Projects"
@@ -2150,7 +2157,7 @@ export default function ImportSettingsSection() {
             )}
 
             {claudeIncludeProjects && claudeProjects.length > 0 && (
-              <div className={`flex flex-col gap-2 ${projectsSectionOpen ? "flex-1 min-h-[400px]" : ""}`}>
+              <div className={`flex flex-col gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3 ${projectsSectionOpen ? "flex-1 min-h-[400px]" : ""}`}>
                 <ImportSectionHeader
                   label="Projects"
                   detail={`${claudeSelectedFolders.size} of ${claudeProjects.length} selected`}
@@ -2589,6 +2596,10 @@ export default function ImportSettingsSection() {
             )}
 
             {/* ── Conversation assignment table ─────────────────── */}
+            {claudeIncludeConversations && claudeScanning && claudeOrphans.length === 0 && (
+              <ImportSectionSkeleton label="Conversations" loading rows={5} />
+            )}
+
             {!claudeIncludeConversations && claudeOrphans.length > 0 && (
               <ImportSectionSkeleton
                 label="Conversations"
@@ -2599,7 +2610,7 @@ export default function ImportSettingsSection() {
             )}
 
             {claudeIncludeConversations && claudeOrphans.length > 0 && (
-              <div className="mt-4 flex flex-col gap-2">
+              <div className="mt-4 flex flex-col gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3">
                 {(() => {
                   const assignedTotal = Object.values(chatAssignments).filter((p) => !!p).length;
                   const unassignedTotal = claudeOrphans.length - assignedTotal;

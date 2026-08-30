@@ -1617,6 +1617,9 @@ pub async fn preview_claude_files(
     let orphans_dest = known_destinations.get(import_links::ORPHANS_KEY);
 
     let is_v2 = folder.join("projects").is_dir();
+    // Stage timings, logged once per scan. The conversations parse dominates
+    // on large exports; measure before optimising it.
+    let scan_started = std::time::Instant::now();
 
     if is_v2 {
         // ── v2 format ────────────────────────────────────────────────────────
@@ -1632,6 +1635,7 @@ pub async fn preview_claude_files(
         };
 
         // 3. Orphan conversations from conversations.json
+        let convs_started = std::time::Instant::now();
         let (orphan_conversations, skipped_empty_orphans) =
             if include_conversations && folder.join("conversations.json").is_file() {
                 let bytes = std::fs::read(folder.join("conversations.json"))
@@ -1641,6 +1645,7 @@ pub async fn preview_claude_files(
                 (Vec::new(), 0)
             };
         let skipped_empty = skipped_empty_design + skipped_empty_orphans;
+        let convs_ms = convs_started.elapsed().as_millis();
 
         // 4. Memories
         //
@@ -1732,6 +1737,15 @@ pub async fn preview_claude_files(
         } else {
             Vec::new()
         };
+
+        eprintln!(
+            "[import] claude scan: {} conversations parsed in {}ms, {} projects, \
+             total {}ms",
+            orphan_count,
+            convs_ms,
+            projects.len(),
+            scan_started.elapsed().as_millis()
+        );
 
         Ok(serde_json::json!({
             // v3 parses through the v2 path — the trees are identical apart
