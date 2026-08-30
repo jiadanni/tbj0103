@@ -2111,7 +2111,7 @@ export default function ImportSettingsSection() {
             )}
 
             {/* ── Per-project rows ─────────────────────────────── */}
-            {claudeProjects.length > 0 && (
+            {claudeIncludeProjects && claudeProjects.length > 0 && (
               <div className={`flex flex-col gap-2 ${projectsSectionOpen ? "flex-1 min-h-[400px]" : ""}`}>
                 <div className="flex items-center justify-between">
                   <button
@@ -2525,7 +2525,7 @@ export default function ImportSettingsSection() {
             )}
 
             {/* ── Previously imported chats (merge automatically) ── */}
-            {Object.keys(claudeLinked).length > 0 && (
+            {claudeIncludeConversations && Object.keys(claudeLinked).length > 0 && (
               <div className="mt-4 rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2">
                 <button
                   type="button"
@@ -2556,7 +2556,7 @@ export default function ImportSettingsSection() {
             )}
 
             {/* ── Conversation assignment table ─────────────────── */}
-            {claudeOrphans.length > 0 && (
+            {claudeIncludeConversations && claudeOrphans.length > 0 && (
               <div className="mt-4 flex flex-col gap-2">
                 {(() => {
                   const assignedTotal = Object.values(chatAssignments).filter((p) => !!p).length;
