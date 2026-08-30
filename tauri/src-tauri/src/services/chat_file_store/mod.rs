@@ -2416,8 +2416,9 @@ mod tests {
     /// AETHERIUM_CLAUDE_V2_SAMPLE=/path/to/Samples/claude/2026-06-04 cargo test
     /// ```
     ///
-    /// The assertions below (18 projects, non-empty memories) describe that
-    /// specific export, so pointing this at a different export will fail.
+    /// Assertions are floors rather than exact counts, so any sufficiently
+    /// complete export works. Both memories layouts are accepted: v2
+    /// `memories.json` and v3 `memories/<uuid>.json`.
     #[test]
     fn test_parsing_actual_v2_sample_export() {
         use std::path::PathBuf;
@@ -2460,7 +2461,14 @@ mod tests {
         let projects =
             claude_v2::preview_v2_projects(export_path, &memory_uuids, &convs_by_project).unwrap();
         assert!(!projects.is_empty(), "projects should not be empty");
-        assert_eq!(projects.len(), 18, "should have 18 projects");
+        // Count is deliberately a floor, not an equality: the assertion tracks
+        // the export *format*, and pinning it to one snapshot made the test fail
+        // on every newer export for a reason that was never a format break.
+        assert!(
+            projects.len() >= 18,
+            "expected at least 18 projects, got {}",
+            projects.len()
+        );
 
         // 5. parse_v2_design_chats_filtered
         let design_chats_filtered =

@@ -1515,25 +1515,55 @@ fn detect_claude_format_inner(folder_path: String) -> Result<serde_json::Value, 
     let has_projects_json = folder.join("projects.json").is_file();
     let has_conversations = folder.join("conversations.json").is_file();
 
-    let format = if has_projects_dir {
+    // Probe the memories layout rather than inferring it from the format: a
+    // hand-extracted export can pair v3 memories with an otherwise v2-looking
+    // tree, and reading the wrong path loses memories silently.
+    let memories_source = chat_file_store::claude_v2::find_memories_source(&folder);
+    let has_memories_dir = matches!(
+        memories_source,
+        Some(chat_file_store::claude_v2::MemoriesSource::Directory(_))
+    );
+
+    // v3 (2026-08-30) is v2's tree with memories/<uuid>.json in place of
+    // memories.json. Everything else about the two is byte-identical.
+    let format = if has_projects_dir && has_memories_dir {
+        "v3"
+    } else if has_projects_dir {
         "v2"
     } else if has_projects_json || has_conversations {
         "legacy"
     } else {
         return Err(
             "Selected folder is not a recognised Claude Desktop export. \
-             Looking for conversations.json and either projects.json or a projects/ directory."
+             Looking for conversations.json and either projects.json or a projects/ directory. \
+             If you have a set of export .zip files, unpack them into a single folder first."
                 .to_string(),
         );
     };
+
+    // A split export (conversations-001.zip and friends) merged by hand can
+    // silently drop parts — one conversations.json overwrites the other. Flag
+    // any leftover part-numbered file so the user can be warned.
+    let has_split_parts = std::fs::read_dir(&folder)
+        .map(|entries| {
+            entries.flatten().any(|e| {
+                e.file_name()
+                    .to_str()
+                    .and_then(|n| n.rsplit_once('-'))
+                    .and_then(|(_, tail)| tail.split('.').next())
+                    .is_some_and(|part| part.len() == 3 && part.chars().all(|c| c.is_ascii_digit()) && part != "000")
+            })
+        })
+        .unwrap_or(false);
 
     Ok(serde_json::json!({
         "format": format,
         "files_found": {
             "conversations": has_conversations,
             "projects": has_projects_json || has_projects_dir,
-            "memories": folder.join("memories.json").is_file(),
-        }
+            "memories": memories_source.is_some(),
+        },
+        "has_split_parts": has_split_parts,
     }))
 }
 
@@ -1695,7 +1725,12 @@ pub async fn preview_claude_files(
         };
 
         Ok(serde_json::json!({
-            "format": "v2",
+            // v3 parses through the v2 path — the trees are identical apart
+            // from the memories layout, which parse_v2_memories probes for.
+            "format": if matches!(
+                claude_v2::find_memories_source(&folder),
+                Some(claude_v2::MemoriesSource::Directory(_))
+            ) { "v3" } else { "v2" },
             "folders": projects,
             "conversations_by_project": convs_by_project,
             "orphan_conversations": orphan_conversations,

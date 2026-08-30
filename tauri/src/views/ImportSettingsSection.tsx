@@ -211,7 +211,7 @@ export default function ImportSettingsSection() {
   // instead of creating workspaces/folders.
   const prefilledDestsRef = useRef<Record<string, ProjectDestination>>({});
   const [claudeFolderPath, setClaudeFolderPath] = useState<string | null>(null);
-  const [claudeDetectedFormat, setClaudeDetectedFormat] = useState<"legacy" | "v2" | null>(null);
+  const [claudeDetectedFormat, setClaudeDetectedFormat] = useState<"legacy" | "v2" | "v3" | null>(null);
   const [claudeFilesFound, setClaudeFilesFound] = useState<{ conversations: boolean; projects: boolean; memories: boolean } | null>(null);
   const [claudeProjects, setClaudeProjects] = useState<ClaudeProjectPreview[]>([]);
   const [claudeConvsByProject, setClaudeConvsByProject] = useState<Record<string, ClaudeConvPreview[]>>({});
@@ -2061,7 +2061,11 @@ export default function ImportSettingsSection() {
                 <div className="flex items-center gap-2">
                   {claudeScanning && <RefreshCw size={12} className="animate-spin text-[var(--text-muted)]" />}
                   <span className="text-[11px] font-medium text-[var(--accent-color)]">
-                    {claudeDetectedFormat === "v2" ? "v2 (2026+)" : "legacy"}
+                    {claudeDetectedFormat === "v3"
+                      ? "v3 (Aug 2026+)"
+                      : claudeDetectedFormat === "v2"
+                        ? "v2 (2026+)"
+                        : "legacy"}
                   </span>
                 </div>
               </div>
