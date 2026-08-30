@@ -569,7 +569,7 @@ describe("ImportSettingsSection", () => {
 
     // Untick "Memories" — must not trigger another scan. (Conversations is
     // covered by the section-visibility test; this one is about the rescan.)
-    fireEvent.click(screen.getByLabelText("Memories"));
+    fireEvent.click(screen.getByLabelText(/^Memories/));
     await waitFor(() => {
       expect(api.chatFile.previewClaudeFiles).toHaveBeenCalledTimes(1);
     });
@@ -599,27 +599,33 @@ describe("ImportSettingsSection", () => {
     fireEvent.click(screen.getAllByText("Select")[2]);
     await screen.findByText(/1 chat was imported before and will merge automatically/);
 
-    // Projects section visible, then hidden.
+    // Projects section visible, then replaced by a labelled skeleton.
     expect(screen.getByText(/^Projects \(/)).toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText("Projects"));
+    expect(screen.queryByTestId("import-skeleton-projects")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText(/^Projects/));
     await waitFor(() => {
       expect(screen.queryByText(/^Projects \(/)).not.toBeInTheDocument();
     });
+    // The skeleton keeps the toggle's target visible instead of the section
+    // vanishing, which made the checkbox look inert.
+    expect(screen.getByTestId("import-skeleton-projects")).toBeInTheDocument();
 
-    // Conversations section visible, then hidden — along with the linked
+    // Conversations section visible, then skeletonised — along with the linked
     // summary, which describes conversations too.
     expect(screen.getByText(/Unassigned conversations/)).toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText("Conversations"));
+    fireEvent.click(screen.getByLabelText(/^Conversations/));
     await waitFor(() => {
       expect(screen.queryByText(/Unassigned conversations/)).not.toBeInTheDocument();
     });
+    expect(screen.getByTestId("import-skeleton-conversations")).toBeInTheDocument();
     expect(
       screen.queryByText(/1 chat was imported before and will merge automatically/),
     ).not.toBeInTheDocument();
 
-    // Re-ticking brings a section back without a rescan.
-    fireEvent.click(screen.getByLabelText("Projects"));
+    // The skeleton's own "Include" button restores the section, no rescan.
+    fireEvent.click(within(screen.getByTestId("import-skeleton-projects")).getByRole("button", { name: /include/i }));
     await screen.findByText(/^Projects \(/);
+    expect(screen.queryByTestId("import-skeleton-projects")).not.toBeInTheDocument();
     expect(api.chatFile.previewClaudeFiles).toHaveBeenCalledTimes(1);
   });
 
