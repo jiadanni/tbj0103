@@ -1383,11 +1383,31 @@ mod tests {
     /// A project's diagnostic score: (project name, coverage, top contributions).
     type ProjScore = (String, f32, Vec<TokenContrib>);
 
+    /// Diagnostic: explain *why* the matcher scored particular chats as it did,
+    /// printing the top token contributions per candidate project.
+    ///
+    /// Prints only — it asserts nothing, because there is no correct answer to
+    /// assert against; it exists to be read while tuning weights and thresholds.
+    /// No-ops unless `AETHERIUM_CLAUDE_V2_SAMPLE` points at an export.
+    ///
+    /// Choose what to explain with `AETHERIUM_DIAG_CHATS`, a `;`-separated list
+    /// of conversation titles. With none set it explains the lowest-scoring
+    /// matched chats, which are the ones worth looking at when tuning:
+    ///
+    /// ```text
+    /// AETHERIUM_CLAUDE_V2_SAMPLE=/path/to/export \
+    /// AETHERIUM_DIAG_CHATS='Some Chat Title;Another One' \
+    ///   cargo test diag_token_contributions -- --nocapture
+    /// ```
     #[test]
     fn diag_token_contributions() {
         let Some(export_path) =
             std::env::var_os("AETHERIUM_CLAUDE_V2_SAMPLE").map(std::path::PathBuf::from)
         else {
+            eprintln!(
+                "skipping diag_token_contributions: set AETHERIUM_CLAUDE_V2_SAMPLE \
+                 (and optionally AETHERIUM_DIAG_CHATS)"
+            );
             return;
         };
         use super::super::claude_v2;
@@ -1410,13 +1430,45 @@ mod tests {
         let idf = build_idf(&vocabs);
         let boostable = boostable_topic_tokens(&vocabs);
 
-        for t in [
-            "UI Element Naming Improvements",
-            "Claude Code Time Limit",
-            "Git .vscode Tracking Issue",
-            "Knowledge Graph Fundamentals",
-        ] {
-            let Some(conv) = orphans.iter().find(|c| c.name == t) else {
+        // Explicit titles when asked for; otherwise the weakest matches, which
+        // are where tuning decisions actually get made.
+        let requested: Vec<String> = std::env::var("AETHERIUM_DIAG_CHATS")
+            .ok()
+            .map(|raw| {
+                raw.split(';')
+                    .map(str::trim)
+                    .filter(|t| !t.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let titles: Vec<String> = if requested.is_empty() {
+            let suggestions = suggest_project_for_conversations(&orphans, &projects, &memories_by_project);
+            let mut scored: Vec<(f32, String)> = suggestions
+                .iter()
+                .filter(|s| s.project_uuid.is_some())
+                .map(|s| (s.score, s.conversation_uuid.clone()))
+                .collect();
+            scored.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+            let weakest: Vec<String> = scored
+                .into_iter()
+                .take(DIAG_DEFAULT_CHATS)
+                .filter_map(|(_, uuid)| {
+                    orphans.iter().find(|c| c.uuid == uuid).map(|c| c.name.clone())
+                })
+                .collect();
+            println!(
+                "AETHERIUM_DIAG_CHATS unset — explaining the {} weakest matches",
+                weakest.len()
+            );
+            weakest
+        } else {
+            requested
+        };
+
+        for t in &titles {
+            let Some(conv) = orphans.iter().find(|c| &c.name == t) else {
                 println!("NOT FOUND: {t}");
                 continue;
             };
@@ -1460,6 +1512,9 @@ mod tests {
 
     /// Text-less projects (no description/prompt/memory) get a recap built
     /// from their own conversations; projects with real text stay unchanged.
+    /// How many chats the diagnostic explains when none are named.
+    const DIAG_DEFAULT_CHATS: usize = 8;
+
     #[test]
     fn recap_textless_projects_digests_own_conversations() {
         let textless = proj("p1", "Kitchen", "");
