@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Brain, RefreshCw, Check } from "lucide-react";
+import { RefreshCw, Check } from "lucide-react";
+import { ImportSectionHeader } from "./ImportSectionHeader";
 import { api } from "../lib/api";
 
 type AccountMemory = {
@@ -147,23 +148,20 @@ export function ClaudeAccountMemoriesPanel({ folderPath, disabled, onImported }:
 
   return (
     <div className="shrink-0 flex flex-col gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
-          <Brain size={13} className="text-[var(--accent-color)]" />
-          <span className="text-xs font-medium text-[var(--text-primary)]">Account memories</span>
-          <span className="text-[11px] text-[var(--text-muted)]">
-            {memories.length} {memories.length === 1 ? "entry" : "entries"}
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={toggleAll}
-          disabled={busy}
-          className="text-[11px] text-[var(--accent-color)] hover:underline disabled:opacity-50"
-        >
-          {selected.size === memories.length ? "Select none" : "Select all"}
-        </button>
-      </div>
+      <ImportSectionHeader
+        label="Memories"
+        detail={`${memories.length} ${memories.length === 1 ? "entry" : "entries"} · account level`}
+        actions={
+          <button
+            type="button"
+            onClick={toggleAll}
+            disabled={busy}
+            className="text-[11px] text-[var(--accent-color)] hover:underline disabled:opacity-50"
+          >
+            {selected.size === memories.length ? "Select none" : "Select all"}
+          </button>
+        }
+      />
 
       <p className="text-[11px] text-[var(--text-muted)]">
         Profile, preferences and topics Claude remembered about you. Imported globally, not tied to a workspace.

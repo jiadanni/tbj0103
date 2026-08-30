@@ -600,11 +600,11 @@ describe("ImportSettingsSection", () => {
     await screen.findByText(/1 chat was imported before and will merge automatically/);
 
     // Projects section visible, then replaced by a labelled skeleton.
-    expect(screen.getByText(/^Projects \(/)).toBeInTheDocument();
+    expect(screen.getByTestId("import-header-projects")).toBeInTheDocument();
     expect(screen.queryByTestId("import-skeleton-projects")).not.toBeInTheDocument();
     fireEvent.click(screen.getByLabelText(/^Projects/));
     await waitFor(() => {
-      expect(screen.queryByText(/^Projects \(/)).not.toBeInTheDocument();
+      expect(screen.queryByTestId("import-header-projects")).not.toBeInTheDocument();
     });
     // The skeleton keeps the toggle's target visible instead of the section
     // vanishing, which made the checkbox look inert.
@@ -612,10 +612,10 @@ describe("ImportSettingsSection", () => {
 
     // Conversations section visible, then skeletonised — along with the linked
     // summary, which describes conversations too.
-    expect(screen.getByText(/Unassigned conversations/)).toBeInTheDocument();
+    expect(screen.getByTestId("import-header-conversations")).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText(/^Conversations/));
     await waitFor(() => {
-      expect(screen.queryByText(/Unassigned conversations/)).not.toBeInTheDocument();
+      expect(screen.queryByTestId("import-header-conversations")).not.toBeInTheDocument();
     });
     expect(screen.getByTestId("import-skeleton-conversations")).toBeInTheDocument();
     expect(
@@ -624,7 +624,7 @@ describe("ImportSettingsSection", () => {
 
     // The skeleton's own "Include" button restores the section, no rescan.
     fireEvent.click(within(screen.getByTestId("import-skeleton-projects")).getByRole("button", { name: /include/i }));
-    await screen.findByText(/^Projects \(/);
+    await screen.findByTestId("import-header-projects");
     expect(screen.queryByTestId("import-skeleton-projects")).not.toBeInTheDocument();
     expect(api.chatFile.previewClaudeFiles).toHaveBeenCalledTimes(1);
   });
