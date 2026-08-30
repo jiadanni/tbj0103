@@ -12,6 +12,7 @@ import { useWorkspaceStore } from "../stores/workspaceStore";
 import PromptDialog from "../components/PromptDialog";
 import { Tooltip } from "../components/Tooltip";
 import ImportConversationPreview, { type ImportConversation } from "../components/ImportConversationPreview";
+import { ClaudeAccountMemoriesPanel } from "../components/ClaudeAccountMemoriesPanel";
 
 type ProjectDestType = "new-workspace" | "new-sub-workspace" | "folder-in-sub";
 
@@ -2090,6 +2091,11 @@ export default function ImportSettingsSection() {
                 ))}
               </div>
             </div>
+
+            <ClaudeAccountMemoriesPanel
+              folderPath={claudeFolderPath}
+              disabled={claudeScanning || importingClaude}
+            />
 
             {/* ── Per-project rows ─────────────────────────────── */}
             {claudeProjects.length > 0 && (

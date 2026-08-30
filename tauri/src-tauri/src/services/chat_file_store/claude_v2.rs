@@ -572,3 +572,48 @@ mod tests {
         assert!(parse_v2_memories(dir.path(), &HashMap::new()).is_err());
     }
 }
+
+/// Read the export's account-level memory files (v3 `memory_files`).
+///
+/// Separate from [`parse_v2_memories`], which returns project memory: these
+/// belong to no project and land in the `memories` table at global scope.
+/// v2 exports have no such data, so this returns an empty vec for them.
+pub fn parse_v2_account_memories(
+    folder_path: &Path,
+) -> Result<Vec<super::account_memory::ImportedMemory>, String> {
+    let Some(account) = read_v2_memory_account(folder_path)? else {
+        return Ok(Vec::new());
+    };
+    let files: Vec<(String, String, Option<String>)> = account
+        .memory_files
+        .into_iter()
+        .map(|f| (f.path, f.content, f.updated_at))
+        .collect();
+    Ok(super::account_memory::parse_claude_account_memories(&files))
+}
+
+#[cfg(test)]
+mod account_memory_sample_tests {
+    /// Fixture check against a real v3 export; skipped when the env var is unset.
+    #[test]
+    fn parses_account_memories_from_sample() {
+        let Some(path) = std::env::var_os("AETHERIUM_CLAUDE_V2_SAMPLE").map(std::path::PathBuf::from)
+        else {
+            eprintln!("skipping: set AETHERIUM_CLAUDE_V2_SAMPLE");
+            return;
+        };
+        let mems = super::parse_v2_account_memories(&path).unwrap();
+        eprintln!("account memories parsed: {}", mems.len());
+        for m in mems.iter().take(4) {
+            eprintln!("  [{}] {} / {} — {}", m.kind.as_db_value(), m.category, m.label, m.content);
+        }
+        assert!(!mems.is_empty(), "sample should yield account memories");
+        assert!(mems.iter().all(|m| !m.content.trim().is_empty()));
+        // Keys must be unique or re-import matching would collapse rows.
+        let mut keys: Vec<&str> = mems.iter().map(|m| m.key.as_str()).collect();
+        keys.sort_unstable();
+        let before = keys.len();
+        keys.dedup();
+        assert_eq!(before, keys.len(), "keys must be unique");
+    }
+}

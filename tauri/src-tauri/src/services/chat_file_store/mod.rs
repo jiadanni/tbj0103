@@ -21,6 +21,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+pub mod account_memory;
 pub mod claude_v2;
 pub mod claude_v2_cluster;
 pub mod claude_v2_match;
