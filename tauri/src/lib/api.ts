@@ -1450,6 +1450,24 @@ export const api = {
         workspaceName,
         selectedIds: selectedIds ?? null,
       }),
+    previewClaudeAccountMemories: (folderPath: string) =>
+      invoke<{
+        total: number;
+        memories: {
+          key: string;
+          category: string;
+          label: string;
+          content: string;
+          kind: "fact" | "preference";
+          updated_at: string | null;
+          status: "new" | "updated" | "unchanged";
+        }[];
+      }>("preview_claude_account_memories", { folderPath }),
+    importClaudeAccountMemories: (folderPath: string, selectedKeys?: string[]) =>
+      invoke<{ imported: number; updated: number; skipped: number }>(
+        "import_claude_account_memories",
+        { folderPath, selectedKeys: selectedKeys ?? null },
+      ),
     detectClaudeFormat: (folderPath: string) =>
       invoke<{
         format: "legacy" | "v2" | "v3";

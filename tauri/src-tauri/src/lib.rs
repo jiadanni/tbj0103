@@ -584,6 +584,8 @@ pub fn run() {
             commands::chat_file::import_chatgpt_folder,
             commands::chat_file::import_claude_files,
             commands::chat_file::preview_claude_files,
+            commands::chat_file::preview_claude_account_memories,
+            commands::chat_file::import_claude_account_memories,
             commands::chat_file::match_claude_with_llm,
             commands::chat_file::match_claude_with_topics,
             commands::chat_file::generate_claude_project_descriptions,

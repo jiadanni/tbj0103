@@ -196,7 +196,13 @@ vi.mock("@/lib/api", () => ({
       detectClaudeFormat: vi.fn(() => Promise.resolve({
         format: "v2",
         files_found: { conversations: true, projects: true, memories: false },
+        has_split_parts: false,
       })),
+      // A v2 export carries no account memories, so the panel renders nothing.
+      previewClaudeAccountMemories: vi.fn(() => Promise.resolve({ total: 0, memories: [] })),
+      importClaudeAccountMemories: vi.fn(() =>
+        Promise.resolve({ imported: 0, updated: 0, skipped: 0 }),
+      ),
       previewClaudeFiles: vi.fn(() => Promise.resolve({
         format: "v2",
         folders: [

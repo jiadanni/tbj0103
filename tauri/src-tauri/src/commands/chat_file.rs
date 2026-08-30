@@ -2948,7 +2948,7 @@ pub async fn import_claude_files(
                         let mem_id = uuid::Uuid::new_v4().to_string();
                         tx.execute(
                             "INSERT INTO memories (id, workspace_id, folder_id, content, memory_type, scope, is_pinned, is_active, created_at, updated_at)
-                             VALUES (?1, ?2, ?3, ?4, 'context', 'workspace', 0, 1, ?5, ?5)",
+                             VALUES (?1, ?2, ?3, ?4, 'fact', 'workspace', 0, 1, ?5, ?5)",
                             rusqlite::params![mem_id, dest.workspace_id, dest.folder_id, memory, now],
                         )
                         .map_err(|e| e.to_string())?;
@@ -3139,4 +3139,149 @@ mod tests {
             .replace('"', "\\\"");
         assert_eq!(escaped_uri, "file:///path/with\\\"quote\\\\backslash");
     }
+}
+
+/// Preview the account-level memories in a Claude export (v3 `memory_files`).
+///
+/// Account memories describe the user rather than a project, so they import at
+/// global scope and need no project mapping. Each entry reports whether it is
+/// already imported, so the UI can distinguish new from updated.
+#[tauri::command]
+pub async fn preview_claude_account_memories(
+    db_state: State<'_, DbState>,
+    folder_path: String,
+) -> Result<serde_json::Value, String> {
+    let pool = db_state.0.clone();
+    tokio::task::spawn_blocking(move || {
+        use chat_file_store::account_memory::account_link_key;
+        use chat_file_store::import_links::{self, SOURCE_CLAUDE};
+
+        let folder = validate_user_path(&folder_path, true)?;
+        if !folder.is_dir() {
+            return Err("Selected path is not a folder.".to_string());
+        }
+
+        let memories = chat_file_store::claude_v2::parse_v2_account_memories(&folder)?;
+
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let links = import_links::load_memory_links(&conn, SOURCE_CLAUDE)?;
+        drop(conn);
+
+        let entries: Vec<serde_json::Value> = memories
+            .iter()
+            .map(|m| {
+                let hash = import_links::memory_content_hash(&m.content);
+                // Three states drive the UI: new, changed upstream, unchanged.
+                let status = match links.get(&account_link_key(&m.key)) {
+                    Some((_, prior)) if *prior == hash => "unchanged",
+                    Some(_) => "updated",
+                    None => "new",
+                };
+                serde_json::json!({
+                    "key": m.key,
+                    "category": m.category,
+                    "label": m.label,
+                    "content": m.content,
+                    "kind": m.kind.as_db_value(),
+                    "updated_at": m.updated_at,
+                    "status": status,
+                })
+            })
+            .collect();
+
+        Ok(serde_json::json!({
+            "total": entries.len(),
+            "memories": entries,
+        }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Import selected account-level memories from a Claude export.
+///
+/// `selected_keys` are [`ImportedMemory::key`] values from the preview; passing
+/// none imports every entry. Re-importing is idempotent: an unchanged entry is
+/// skipped, a changed one updates the row it created rather than adding a
+/// duplicate.
+#[tauri::command]
+pub async fn import_claude_account_memories(
+    auth: State<'_, AuthState>,
+    db_state: State<'_, DbState>,
+    folder_path: String,
+    selected_keys: Option<Vec<String>>,
+) -> Result<serde_json::Value, String> {
+    require_auth_for_destructive_ops(&auth, &db_state)?;
+    let pool = db_state.0.clone();
+    tokio::task::spawn_blocking(move || {
+        use chat_file_store::account_memory::account_link_key;
+        use chat_file_store::import_links::{self, SOURCE_CLAUDE};
+
+        let folder = validate_user_path(&folder_path, true)?;
+        if !folder.is_dir() {
+            return Err("Selected path is not a folder.".to_string());
+        }
+
+        let memories = chat_file_store::claude_v2::parse_v2_account_memories(&folder)?;
+        let selected: Option<std::collections::HashSet<String>> =
+            selected_keys.map(|v| v.into_iter().collect());
+
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        let links = import_links::load_memory_links(&tx, SOURCE_CLAUDE)?;
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let (mut imported, mut updated, mut skipped) = (0usize, 0usize, 0usize);
+
+        for m in &memories {
+            if selected.as_ref().is_some_and(|s| !s.contains(&m.key)) {
+                continue;
+            }
+            let link_key = account_link_key(&m.key);
+            let hash = import_links::memory_content_hash(&m.content);
+
+            match links.get(&link_key) {
+                Some((_, prior)) if *prior == hash => skipped += 1,
+                Some((mem_id, _)) => {
+                    tx.execute(
+                        "UPDATE memories SET content = ?1, memory_type = ?2, updated_at = ?3
+                         WHERE id = ?4",
+                        rusqlite::params![m.content, m.kind.as_db_value(), now, mem_id],
+                    )
+                    .map_err(|e| e.to_string())?;
+                    import_links::upsert_memory_link(
+                        &tx, SOURCE_CLAUDE, &link_key, mem_id, &hash, &now,
+                    )?;
+                    updated += 1;
+                }
+                None => {
+                    let mem_id = uuid::Uuid::new_v4().to_string();
+                    // workspace_id NULL + scope 'global': account memory is not
+                    // bound to any one workspace.
+                    tx.execute(
+                        "INSERT INTO memories
+                             (id, workspace_id, folder_id, content, memory_type, scope,
+                              is_pinned, is_active, created_at, updated_at)
+                         VALUES (?1, NULL, '', ?2, ?3, 'global', 0, 1, ?4, ?4)",
+                        rusqlite::params![mem_id, m.content, m.kind.as_db_value(), now],
+                    )
+                    .map_err(|e| e.to_string())?;
+                    import_links::upsert_memory_link(
+                        &tx, SOURCE_CLAUDE, &link_key, &mem_id, &hash, &now,
+                    )?;
+                    imported += 1;
+                }
+            }
+        }
+
+        tx.commit().map_err(|e| e.to_string())?;
+
+        Ok(serde_json::json!({
+            "imported": imported,
+            "updated": updated,
+            "skipped": skipped,
+        }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
