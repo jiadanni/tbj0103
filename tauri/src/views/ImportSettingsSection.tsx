@@ -13,6 +13,7 @@ import PromptDialog from "../components/PromptDialog";
 import { Tooltip } from "../components/Tooltip";
 import ImportConversationPreview, { type ImportConversation } from "../components/ImportConversationPreview";
 import { ClaudeAccountMemoriesPanel } from "../components/ClaudeAccountMemoriesPanel";
+import { ImportSectionSkeleton } from "../components/ImportSectionSkeleton";
 
 type ProjectDestType = "new-workspace" | "new-sub-workspace" | "folder-in-sub";
 
@@ -2081,13 +2082,22 @@ export default function ImportSettingsSection() {
                   </span>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-4">
+              <div className="grid grid-cols-3 gap-2">
                 {([
-                  { key: "conversations", label: "Conversations", enabled: claudeIncludeConversations, set: setClaudeIncludeConversations, available: claudeFilesFound.conversations },
-                  { key: "projects", label: "Projects", enabled: claudeIncludeProjects, set: setClaudeIncludeProjects, available: claudeFilesFound.projects },
-                  { key: "memories", label: "Memories", enabled: claudeIncludeMemories, set: setClaudeIncludeMemories, available: claudeFilesFound.memories },
+                  { key: "conversations", label: "Conversations", enabled: claudeIncludeConversations, set: setClaudeIncludeConversations, available: claudeFilesFound.conversations, count: claudeOrphans.length, unit: "chats" },
+                  { key: "projects", label: "Projects", enabled: claudeIncludeProjects, set: setClaudeIncludeProjects, available: claudeFilesFound.projects, count: claudeProjects.length, unit: "projects" },
+                  { key: "memories", label: "Memories", enabled: claudeIncludeMemories, set: setClaudeIncludeMemories, available: claudeFilesFound.memories, count: null, unit: "" },
                 ] as const).map((item) => (
-                  <label key={item.key} className="flex items-center gap-1.5 cursor-pointer">
+                  <label
+                    key={item.key}
+                    className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 transition-colors ${
+                      !item.available
+                        ? "cursor-not-allowed border-[var(--border-color)] opacity-50"
+                        : item.enabled
+                          ? "cursor-pointer border-[var(--accent-color)] bg-[var(--accent-color)]/10"
+                          : "cursor-pointer border-[var(--border-color)] hover:border-[var(--text-muted)]"
+                    }`}
+                  >
                     <input
                       type="checkbox"
                       checked={item.enabled && item.available}
@@ -2095,22 +2105,49 @@ export default function ImportSettingsSection() {
                       onChange={(e) => item.set(e.target.checked)}
                       className="rounded"
                     />
-                    <span className={`text-xs ${item.available ? "text-[var(--text-primary)]" : "text-[var(--text-muted)] line-through"}`}>
-                      {item.label}
+                    <span className="flex flex-col min-w-0">
+                      <span className={`text-xs font-medium ${item.available ? "text-[var(--text-primary)]" : "text-[var(--text-muted)] line-through"}`}>
+                        {item.label}
+                      </span>
+                      <span className="text-[10px] text-[var(--text-muted)]">
+                        {!item.available
+                          ? "none in export"
+                          : item.count !== null
+                            ? `${item.count} ${item.unit}`
+                            : "profile & projects"}
+                      </span>
                     </span>
                   </label>
                 ))}
               </div>
             </div>
 
-            {claudeIncludeMemories && claudeFilesFound.memories && (
-              <ClaudeAccountMemoriesPanel
-                folderPath={claudeFolderPath}
-                disabled={claudeScanning || importingClaude}
-              />
+            {claudeFilesFound.memories && (
+              claudeIncludeMemories ? (
+                <ClaudeAccountMemoriesPanel
+                  folderPath={claudeFolderPath}
+                  disabled={claudeScanning || importingClaude}
+                />
+              ) : (
+                <ImportSectionSkeleton
+                  label="Memories"
+                  summary="Profile, preferences and project memory"
+                  onEnable={() => setClaudeIncludeMemories(true)}
+                  rows={3}
+                />
+              )
             )}
 
             {/* ── Per-project rows ─────────────────────────────── */}
+            {!claudeIncludeProjects && claudeProjects.length > 0 && (
+              <ImportSectionSkeleton
+                label="Projects"
+                summary={`${claudeProjects.length} projects`}
+                onEnable={() => setClaudeIncludeProjects(true)}
+                rows={4}
+              />
+            )}
+
             {claudeIncludeProjects && claudeProjects.length > 0 && (
               <div className={`flex flex-col gap-2 ${projectsSectionOpen ? "flex-1 min-h-[400px]" : ""}`}>
                 <div className="flex items-center justify-between">
@@ -2556,6 +2593,15 @@ export default function ImportSettingsSection() {
             )}
 
             {/* ── Conversation assignment table ─────────────────── */}
+            {!claudeIncludeConversations && claudeOrphans.length > 0 && (
+              <ImportSectionSkeleton
+                label="Conversations"
+                summary={`${claudeOrphans.length} conversations`}
+                onEnable={() => setClaudeIncludeConversations(true)}
+                rows={5}
+              />
+            )}
+
             {claudeIncludeConversations && claudeOrphans.length > 0 && (
               <div className="mt-4 flex flex-col gap-2">
                 {(() => {
