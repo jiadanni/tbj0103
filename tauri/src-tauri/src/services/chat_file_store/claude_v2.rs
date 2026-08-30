@@ -712,3 +712,23 @@ mod timing_probe {
         eprintln!("parse convs ({}): {}ms", orphans.len(), t.elapsed().as_millis());
     }
 }
+
+#[cfg(test)]
+mod fast_path_probe {
+    /// The fast projects path must avoid conversations.json entirely.
+    #[test]
+    fn projects_only_is_fast() {
+        let Some(path) = std::env::var_os("AETHERIUM_CLAUDE_V2_SAMPLE").map(std::path::PathBuf::from)
+        else {
+            return;
+        };
+        let t = std::time::Instant::now();
+        let names = super::load_v2_project_name_map(&path);
+        let (uuids, _) = super::parse_v2_memories(&path, &names).unwrap();
+        let (by_proj, _) = super::preview_v2_design_chats(&path).unwrap();
+        let projects = super::preview_v2_projects(&path, &uuids, &by_proj).unwrap();
+        let ms = t.elapsed().as_millis();
+        eprintln!("fast projects path: {} projects in {}ms", projects.len(), ms);
+        assert!(!projects.is_empty());
+    }
+}

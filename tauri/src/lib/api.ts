@@ -1450,6 +1450,21 @@ export const api = {
         workspaceName,
         selectedIds: selectedIds ?? null,
       }),
+    previewClaudeProjectsFast: (folderPath: string) =>
+      invoke<{
+        available: boolean;
+        folders: {
+          uuid: string;
+          name: string;
+          description: string;
+          has_prompt: boolean;
+          doc_count: number;
+          conversation_count: number;
+          has_memory: boolean;
+          prompt_template: string;
+        }[];
+        elapsed_ms?: number;
+      }>("preview_claude_projects_fast", { folderPath }),
     previewClaudeAccountMemories: (folderPath: string) =>
       invoke<{
         total: number;

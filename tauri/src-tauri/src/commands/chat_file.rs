@@ -3308,3 +3308,44 @@ pub async fn import_claude_account_memories(
     .await
     .map_err(|e| e.to_string())?
 }
+
+/// Fast projects-only preview of a Claude export.
+///
+/// `preview_claude_files` parses conversations.json, which dominates its cost —
+/// on a 1151-conversation export that is ~1.1s against ~10ms for everything
+/// else. Projects do not depend on it, so this command returns them
+/// immediately and lets the UI paint while the full scan runs.
+///
+/// Deliberately read-only and DB-free: no import links, no matcher, no
+/// suggestions. The full scan remains the source of truth and overwrites what
+/// this returns.
+#[tauri::command]
+pub async fn preview_claude_projects_fast(folder_path: String) -> Result<serde_json::Value, String> {
+    tokio::task::spawn_blocking(move || {
+        use chat_file_store::claude_v2;
+
+        let folder = validate_user_path(&folder_path, true)?;
+        if !folder.is_dir() {
+            return Err("Selected path is not a folder.".to_string());
+        }
+        // v2/v3 only — the legacy layout keeps projects inside projects.json,
+        // which this fast path does not read.
+        if !folder.join("projects").is_dir() {
+            return Ok(serde_json::json!({ "available": false, "folders": [] }));
+        }
+
+        let started = std::time::Instant::now();
+        let name_map = claude_v2::load_v2_project_name_map(&folder);
+        let (memory_uuids, _) = claude_v2::parse_v2_memories(&folder, &name_map)?;
+        let (convs_by_project, _) = claude_v2::preview_v2_design_chats(&folder)?;
+        let projects = claude_v2::preview_v2_projects(&folder, &memory_uuids, &convs_by_project)?;
+
+        Ok(serde_json::json!({
+            "available": true,
+            "folders": projects,
+            "elapsed_ms": started.elapsed().as_millis() as u64,
+        }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}

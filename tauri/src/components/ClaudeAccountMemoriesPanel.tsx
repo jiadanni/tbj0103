@@ -18,6 +18,9 @@ type Props = {
   folderPath: string | null;
   /** Blocks interaction while the parent runs its own import. */
   disabled?: boolean;
+  /** Include state, owned by the parent and surfaced in this section's header. */
+  included?: boolean;
+  onToggleIncluded?: (next: boolean) => void;
   /** Fired after a successful import so the parent can refresh counts. */
   onImported?: (result: { imported: number; updated: number; skipped: number }) => void;
 };
@@ -37,7 +40,7 @@ const STATUS_LABEL: Record<AccountMemory["status"], string> = {
  * entries are skipped and changed ones update in place, which is why entries
  * already imported are deselected by default.
  */
-export function ClaudeAccountMemoriesPanel({ folderPath, disabled, onImported }: Props) {
+export function ClaudeAccountMemoriesPanel({ folderPath, disabled, onImported, included, onToggleIncluded }: Props) {
   const [memories, setMemories] = useState<AccountMemory[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
@@ -151,6 +154,9 @@ export function ClaudeAccountMemoriesPanel({ folderPath, disabled, onImported }:
       <ImportSectionHeader
         label="Memories"
         detail={`Account · ${memories.length} ${memories.length === 1 ? "entry" : "entries"}`}
+        included={included}
+        onToggleIncluded={onToggleIncluded}
+        busy={busy}
         actions={
           <button
             type="button"

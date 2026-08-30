@@ -865,9 +865,24 @@ export default function ImportSettingsSection() {
   // Re-running it on a toggle silently destroyed all of that mid-review, so the
   // toggles now only filter what is imported, which needs no rescan.
   useEffect(() => {
-    if (claudeFolderPath) {
-      void scanClaudeFiles();
-    }
+    if (!claudeFolderPath) { return; }
+    // Projects cost ~10ms to parse; conversations.json costs ~1.1s and they
+    // do not depend on it. Paint projects first, then run the full scan,
+    // which overwrites this with the matcher-aware result.
+    let cancelled = false;
+    void (async () => {
+      try {
+        const fast = await api.chatFile.previewClaudeProjectsFast(claudeFolderPath);
+        // Only seed if the full scan has not already landed.
+        if (!cancelled && fast.available && fast.folders.length > 0) {
+          setClaudeProjects((prev) => (prev.length > 0 ? prev : fast.folders));
+        }
+      } catch {
+        // Non-fatal: the full scan below is the source of truth.
+      }
+    })();
+    void scanClaudeFiles();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [claudeFolderPath]);
 
@@ -2083,47 +2098,6 @@ export default function ImportSettingsSection() {
                   </span>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                {([
-                  // Counts describe the EXPORT, not the current review state,
-                  // so they stay put as chats get routed to projects. Orphan
-                  // counts belong in the section header, which tracks progress.
-                  { key: "conversations", label: "Conversations", enabled: claudeIncludeConversations, set: setClaudeIncludeConversations, available: claudeFilesFound.conversations, count: claudeOrphans.length + Object.keys(claudeLinked).length, unit: "chats" },
-                  { key: "projects", label: "Projects", enabled: claudeIncludeProjects, set: setClaudeIncludeProjects, available: claudeFilesFound.projects, count: claudeProjects.length, unit: "projects" },
-                  { key: "memories", label: "Memories", enabled: claudeIncludeMemories, set: setClaudeIncludeMemories, available: claudeFilesFound.memories, count: null, unit: "" },
-                ] as const).map((item) => (
-                  <label
-                    key={item.key}
-                    className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 transition-colors ${
-                      !item.available
-                        ? "cursor-not-allowed border-[var(--border-color)] opacity-50"
-                        : item.enabled
-                          ? "cursor-pointer border-[var(--accent-color)] bg-[var(--accent-color)]/10"
-                          : "cursor-pointer border-[var(--border-color)] hover:border-[var(--text-muted)]"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={item.enabled && item.available}
-                      disabled={!item.available || claudeScanning || importingClaude}
-                      onChange={(e) => item.set(e.target.checked)}
-                      className="rounded"
-                    />
-                    <span className="flex flex-col min-w-0">
-                      <span className={`text-xs font-medium ${item.available ? "text-[var(--text-primary)]" : "text-[var(--text-muted)] line-through"}`}>
-                        {item.label}
-                      </span>
-                      <span className="text-[10px] text-[var(--text-muted)]">
-                        {!item.available
-                          ? "none in export"
-                          : item.count !== null
-                            ? `${item.count} ${item.unit}`
-                            : "account + project"}
-                      </span>
-                    </span>
-                  </label>
-                ))}
-              </div>
             </div>
 
             {claudeFilesFound.memories && (
@@ -2131,6 +2105,8 @@ export default function ImportSettingsSection() {
                 <ClaudeAccountMemoriesPanel
                   folderPath={claudeFolderPath}
                   disabled={claudeScanning || importingClaude}
+                  included={claudeIncludeMemories}
+                  onToggleIncluded={setClaudeIncludeMemories}
                 />
               ) : (
                 <ImportSectionSkeleton
@@ -2161,6 +2137,10 @@ export default function ImportSettingsSection() {
                 <ImportSectionHeader
                   label="Projects"
                   detail={`${claudeSelectedFolders.size} of ${claudeProjects.length} selected`}
+                  included={claudeIncludeProjects}
+                  onToggleIncluded={setClaudeIncludeProjects}
+                  unavailable={!claudeFilesFound.projects}
+                  busy={claudeScanning || importingClaude}
                   open={projectsSectionOpen}
                   onToggleOpen={() => setProjectsSectionOpen((v) => !v)}
                   actions={projectsSectionOpen ? (
@@ -2630,6 +2610,10 @@ export default function ImportSettingsSection() {
                     <>
                       <ImportSectionHeader
                         label="Conversations"
+                        included={claudeIncludeConversations}
+                        onToggleIncluded={setClaudeIncludeConversations}
+                        unavailable={!claudeFilesFound.conversations}
+                        busy={claudeScanning || importingClaude}
                         detail={
                           <>
                             {unassignedTotal} unassigned of {claudeOrphans.length} · {assignedTotal} routed to projects

@@ -32,10 +32,20 @@ export function ImportSectionSkeleton({ label, summary, onEnable, rows = 3, load
       className="shrink-0 flex flex-col gap-2 rounded-lg border border-dashed border-[var(--border-color)] bg-[var(--bg-primary)]/40 p-3"
     >
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0">
-          {/* Muted twin of ImportSectionHeader's accent bar: same shape, so a
-              skeleton reads as the same section, just switched off. */}
-          <span className="h-3.5 w-[3px] shrink-0 rounded-full bg-[var(--border-color)]" aria-hidden="true" />
+        <div className="flex items-center gap-2 min-w-0">
+          {onEnable && !loading ? (
+            // The same control the live header carries, in the same position,
+            // so re-enabling happens where the section already is.
+            <input
+              type="checkbox"
+              checked={false}
+              onChange={() => onEnable()}
+              aria-label={`Include ${label}`}
+              className="shrink-0 rounded"
+            />
+          ) : (
+            <span className="h-3.5 w-[3px] shrink-0 rounded-full bg-[var(--border-color)]" aria-hidden="true" />
+          )}
           <span className="text-[13px] font-semibold text-[var(--text-muted)]">{label}</span>
           <span className="text-[11px] text-[var(--text-muted)] truncate">
             {loading ? "· reading export…" : `· ${summary} not being imported`}
