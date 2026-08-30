@@ -857,13 +857,17 @@ export default function ImportSettingsSection() {
     }
   }, [claudeFolderPath, claudeIncludeConversations, claudeIncludeProjects, claudeIncludeMemories]);
 
-  // Auto-scan whenever a folder is picked or the include toggles change.
-  // Replaces the old manual "Select" / "Scan" button in the picker card.
+  // Auto-scan when a folder is picked. Deliberately NOT keyed on the include
+  // toggles: scanClaudeFiles calls resetClaudePreview, which clears project
+  // destinations, chat assignments, the match threshold and slider history.
+  // Re-running it on a toggle silently destroyed all of that mid-review, so the
+  // toggles now only filter what is imported, which needs no rescan.
   useEffect(() => {
     if (claudeFolderPath) {
       void scanClaudeFiles();
     }
-  }, [claudeFolderPath, claudeIncludeConversations, claudeIncludeProjects, claudeIncludeMemories, scanClaudeFiles]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claudeFolderPath]);
 
   // Close the model-picker dropdown on outside click.
   useEffect(() => {
@@ -1503,11 +1507,16 @@ export default function ImportSettingsSection() {
       // Conversations to send to the backend = explicitly-unassigned chats the
       // user ticked + assigned chats + previously imported chats (recognized by
       // Claude UUID; the backend merges those in place automatically).
-      const conversationIdsToImport = new Set<string>([
-        ...assignedConversationIds,
-        ...claudeSelected,
-        ...Object.keys(claudeLinked),
-      ]);
+      // The include toggles gate what actually gets imported. They no longer
+      // trigger a rescan (that wiped destinations and assignments), so they are
+      // applied here instead.
+      const conversationIdsToImport = claudeIncludeConversations
+        ? new Set<string>([
+            ...assignedConversationIds,
+            ...claudeSelected,
+            ...Object.keys(claudeLinked),
+          ])
+        : new Set<string>();
 
       // Orphan workspace — only created if any unassigned chats remain.
       const unassignedCount = [...claudeSelected].filter(
@@ -1535,8 +1544,10 @@ export default function ImportSettingsSection() {
         mappedFolderMappings[uuid] = { workspaceId: target.workspace_id, folderId: target.folder_id };
       }
       const mappedProjectMemoryTargets: Record<string, { workspaceId: string; folderId: string }> = {};
-      for (const [uuid, target] of Object.entries(projectMemoryTargets)) {
-        mappedProjectMemoryTargets[uuid] = { workspaceId: target.workspace_id, folderId: target.folder_id };
+      if (claudeIncludeMemories) {
+        for (const [uuid, target] of Object.entries(projectMemoryTargets)) {
+          mappedProjectMemoryTargets[uuid] = { workspaceId: target.workspace_id, folderId: target.folder_id };
+        }
       }
 
       const result = await api.chatFile.importClaudeFiles({
@@ -1547,7 +1558,7 @@ export default function ImportSettingsSection() {
           ? { workspaceId: orphansDestination.workspace_id, folderId: orphansDestination.folder_id }
           : null,
         selectedConversationIds: conversationIdsToImport.size > 0 ? [...conversationIdsToImport] : undefined,
-        selectedProjectIds: [...claudeSelectedFolders],
+        selectedProjectIds: claudeIncludeProjects ? [...claudeSelectedFolders] : [],
         chatProjectOverrides: Object.keys(chatProjectOverrides).length > 0 ? chatProjectOverrides : undefined,
         mergeExisting: claudeMergeExisting,
         cloneEdited: claudeMergeExisting && claudeCloneEdited,
@@ -2092,10 +2103,12 @@ export default function ImportSettingsSection() {
               </div>
             </div>
 
-            <ClaudeAccountMemoriesPanel
-              folderPath={claudeFolderPath}
-              disabled={claudeScanning || importingClaude}
-            />
+            {claudeIncludeMemories && claudeFilesFound.memories && (
+              <ClaudeAccountMemoriesPanel
+                folderPath={claudeFolderPath}
+                disabled={claudeScanning || importingClaude}
+              />
+            )}
 
             {/* ── Per-project rows ─────────────────────────────── */}
             {claudeProjects.length > 0 && (
