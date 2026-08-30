@@ -1,22 +1,35 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useBackgroundJobsStore } from "../../stores/backgroundJobs";
-import { api, type ActiveJob } from "../../lib/api";
+import { api, type ActiveJob, type PauseStatus } from "../../lib/api";
 
 vi.mock("../../lib/api", () => ({
   api: {
     system: {
       listActiveBackgroundJobs: vi.fn(),
     },
+    // hydrate() also reads the scheduler pause status; without this the whole
+    // hydrate call throws and is swallowed by its catch, leaving the store empty.
+    backgroundJobs: {
+      getPauseStatus: vi.fn(),
+    },
   },
 }));
+
+const NOT_PAUSED: PauseStatus = {
+  is_paused: false,
+  paused_until: null,
+  paused_indefinitely: false,
+};
 
 describe("backgroundJobsStore", () => {
   beforeEach(() => {
     useBackgroundJobsStore.setState({
       jobs: new Map(),
       hydrated: false,
+      pauseStatus: null,
     });
     vi.clearAllMocks();
+    vi.mocked(api.backgroundJobs.getPauseStatus).mockResolvedValue(NOT_PAUSED);
   });
 
   it("hydrates active jobs and replaces the map", async () => {
