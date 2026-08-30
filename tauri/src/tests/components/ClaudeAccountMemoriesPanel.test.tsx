@@ -94,6 +94,36 @@ describe("ClaudeAccountMemoriesPanel", () => {
     await screen.findByText(/1 imported, 0 updated, 0 unchanged/);
   });
 
+  it("shows the live count again after the selection changes post-import", async () => {
+    // Regression: the import summary replaced the "N selected" count and never
+    // cleared, so unchecking an entry after importing gave no feedback at all.
+    previewClaudeAccountMemories.mockResolvedValue({
+      total: 2,
+      memories: [
+        memory("topics/fitness.md#0", "Strong interest in fitness", "new"),
+        memory("profile.md#0", "Based in a coastal city", "new", "Profile"),
+      ],
+    });
+    importClaudeAccountMemories.mockResolvedValue({ imported: 2, updated: 0, skipped: 0 });
+
+    render(<ClaudeAccountMemoriesPanel folderPath="/export" />);
+    await screen.findByText("Strong interest in fitness");
+
+    previewClaudeAccountMemories.mockResolvedValue({
+      total: 2,
+      memories: [
+        memory("topics/fitness.md#0", "Strong interest in fitness", "unchanged"),
+        memory("profile.md#0", "Based in a coastal city", "unchanged", "Profile"),
+      ],
+    });
+    fireEvent.click(screen.getByRole("button", { name: /import memories/i }));
+    await screen.findByText(/2 imported, 0 updated, 0 unchanged/);
+
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+    expect(screen.queryByText(/2 imported/)).not.toBeInTheDocument();
+  });
+
   it("surfaces a preview failure instead of rendering an empty list", async () => {
     previewClaudeAccountMemories.mockRejectedValue(new Error("bad folder"));
     render(<ClaudeAccountMemoriesPanel folderPath="/export" />);

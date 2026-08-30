@@ -86,6 +86,9 @@ export function ClaudeAccountMemoriesPanel({ folderPath, disabled, onImported }:
   }, [memories]);
 
   const toggle = useCallback((key: string) => {
+    // Any change to the selection makes the last import's summary stale, so
+    // drop it and show the live count again.
+    setResult(null);
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(key)) { next.delete(key); } else { next.add(key); }
@@ -94,6 +97,7 @@ export function ClaudeAccountMemoriesPanel({ folderPath, disabled, onImported }:
   }, []);
 
   const toggleAll = useCallback(() => {
+    setResult(null);
     setSelected((prev) => (prev.size === memories.length ? new Set() : new Set(memories.map((m) => m.key))));
   }, [memories]);
 
