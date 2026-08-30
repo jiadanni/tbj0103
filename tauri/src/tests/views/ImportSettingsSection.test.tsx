@@ -553,6 +553,40 @@ describe("ImportSettingsSection", () => {
     });
   });
 
+  it("does not rescan or lose review state when an include toggle changes", async () => {
+    // Regression: the auto-scan effect was keyed on the include toggles, and
+    // scanClaudeFiles calls resetClaudePreview — which clears project
+    // destinations, chat assignments, the match threshold and slider history.
+    // Unticking a box mid-review silently destroyed all of it.
+    vi.mocked(openDialog).mockResolvedValue("/imports/claude");
+    vi.mocked(api.chatFile.previewClaudeFiles).mockResolvedValueOnce(claudePreviewWithLinks());
+
+    renderImportSettings();
+    fireEvent.click(screen.getAllByText("Select")[2]);
+    await screen.findByText(/1 chat was imported before and will merge automatically/);
+
+    expect(api.chatFile.previewClaudeFiles).toHaveBeenCalledTimes(1);
+
+    // Untick "Conversations" — must not trigger another scan.
+    fireEvent.click(screen.getByLabelText("Conversations"));
+    await waitFor(() => {
+      expect(api.chatFile.previewClaudeFiles).toHaveBeenCalledTimes(1);
+    });
+
+    // Review state survives: the linked summary is still on screen.
+    expect(
+      screen.getByText(/1 chat was imported before and will merge automatically/),
+    ).toBeInTheDocument();
+
+    // And the toggle still gates what is imported.
+    fireEvent.click(screen.getByRole("button", { name: "Import" }));
+    await waitFor(() => {
+      expect(api.chatFile.importClaudeFiles).toHaveBeenCalledTimes(1);
+    });
+    const args = vi.mocked(api.chatFile.importClaudeFiles).mock.calls[0][0];
+    expect(args.selectedConversationIds).toBeUndefined();
+  });
+
   it("sends restoreDestinations when the move-back option is checked", async () => {
     vi.mocked(openDialog).mockResolvedValue("/imports/claude");
     vi.mocked(api.chatFile.previewClaudeFiles).mockResolvedValueOnce(claudePreviewWithLinks());
