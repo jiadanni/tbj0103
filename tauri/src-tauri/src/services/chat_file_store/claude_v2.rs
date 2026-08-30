@@ -617,3 +617,62 @@ mod account_memory_sample_tests {
         assert_eq!(before, keys.len(), "keys must be unique");
     }
 }
+
+#[cfg(test)]
+mod has_memory_tests {
+    use std::collections::HashMap;
+
+    /// `has_memory` must describe the export, not the user's include choice.
+    ///
+    /// Regression: preview_claude_files only parsed memories when the Memories
+    /// toggle was on, so every project reported has_memory = false with it off
+    /// and the UI claimed "(none in export)" for projects that plainly had it.
+    #[test]
+    fn memory_uuids_are_independent_of_include_flag() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("projects")).unwrap();
+        std::fs::write(
+            dir.path().join("projects").join("p1.json"),
+            r#"{"uuid":"p1","name":"Beach stage","docs":[]}"#,
+        )
+        .unwrap();
+        std::fs::create_dir(dir.path().join("memories")).unwrap();
+        std::fs::write(
+            dir.path().join("memories").join("acct.json"),
+            r#"{"conversations_memory":"","project_memories":{"p1":"real memory text"}}"#,
+        )
+        .unwrap();
+
+        let names = super::load_v2_project_name_map(dir.path());
+        let (uuids, _) = super::parse_v2_memories(dir.path(), &names).unwrap();
+        assert!(uuids.contains("p1"), "project memory must be detected");
+
+        let projects = super::preview_v2_projects(dir.path(), &uuids, &HashMap::new()).unwrap();
+        assert_eq!(projects.len(), 1);
+        assert!(
+            projects[0].has_memory,
+            "has_memory must be true whenever the export carries memory"
+        );
+    }
+}
+
+#[cfg(test)]
+mod has_memory_sample_tests {
+    #[test]
+    fn sample_projects_report_memory() {
+        let Some(path) = std::env::var_os("AETHERIUM_CLAUDE_V2_SAMPLE").map(std::path::PathBuf::from)
+        else {
+            return;
+        };
+        let names = super::load_v2_project_name_map(&path);
+        let (uuids, _) = super::parse_v2_memories(&path, &names).unwrap();
+        let projects =
+            super::preview_v2_projects(&path, &uuids, &std::collections::HashMap::new()).unwrap();
+        let with = projects.iter().filter(|p| p.has_memory).count();
+        eprintln!("projects: {}, with memory: {}", projects.len(), with);
+        for p in projects.iter().filter(|p| p.has_memory).take(3) {
+            eprintln!("  has_memory: {}", p.name);
+        }
+        assert!(with > 0, "sample export should have projects with memory");
+    }
+}

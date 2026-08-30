@@ -1643,16 +1643,25 @@ pub async fn preview_claude_files(
         let skipped_empty = skipped_empty_design + skipped_empty_orphans;
 
         // 4. Memories
-        let (memory_uuids, memories) = if include_memories {
-            claude_v2::parse_v2_memories(&folder, &project_name_map)?
-        } else {
-            (
-                std::collections::HashSet::new(),
-                chat_file_store::ClaudeMemoryPreview {
-                    conversations_memory: String::new(),
-                    folder_memories: Vec::new(),
-                },
-            )
+        //
+        // Always resolve which projects *have* memory, even when the user has
+        // not asked to import it: `has_memory` describes the export, and the
+        // UI renders "(none in export)" from it. Gating it on include_memories
+        // made every project claim to have no memory whenever the toggle was
+        // off. Only the memory *content* is withheld.
+        let (memory_uuids, memories) = {
+            let (uuids, preview) = claude_v2::parse_v2_memories(&folder, &project_name_map)?;
+            if include_memories {
+                (uuids, preview)
+            } else {
+                (
+                    uuids,
+                    chat_file_store::ClaudeMemoryPreview {
+                        conversations_memory: String::new(),
+                        folder_memories: Vec::new(),
+                    },
+                )
+            }
         };
 
         // 5. Projects with conversation_count + has_memory populated
@@ -1771,11 +1780,11 @@ pub async fn preview_claude_files(
         } else {
             None
         };
-        let mem_bytes = if include_memories {
-            read_file("memories.json")?
-        } else {
-            None
-        };
+        // Always read memories so `has_memory` can describe the export
+        // truthfully; the include flag controls what is *returned* below, not
+        // whether we know the memory exists. See the v2 branch for the same
+        // reasoning.
+        let mem_bytes = read_file("memories.json")?;
 
         let (all_conversations, skipped_empty) = conv_bytes
             .as_deref()
@@ -1885,7 +1894,7 @@ pub async fn preview_claude_files(
             "orphan_conversations": orphan_conversations,
             "orphan_count": orphan_count,
             "skipped_empty": skipped_empty,
-            "memories": memories,
+            "memories": if include_memories { memories } else { None },
             "memories_by_project": if include_memories { Some(memories_by_project) } else { None },
             "suggestions": suggestions,
             "linked_conversations": linked_conversations,
