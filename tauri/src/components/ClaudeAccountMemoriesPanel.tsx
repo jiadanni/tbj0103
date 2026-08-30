@@ -150,7 +150,7 @@ export function ClaudeAccountMemoriesPanel({ folderPath, disabled, onImported }:
     <div className="shrink-0 flex flex-col gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3">
       <ImportSectionHeader
         label="Memories"
-        detail={`${memories.length} ${memories.length === 1 ? "entry" : "entries"} · account level`}
+        detail={`Account · ${memories.length} ${memories.length === 1 ? "entry" : "entries"}`}
         actions={
           <button
             type="button"

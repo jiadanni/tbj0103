@@ -676,3 +676,39 @@ mod has_memory_sample_tests {
         assert!(with > 0, "sample export should have projects with memory");
     }
 }
+
+#[cfg(test)]
+mod timing_probe {
+    /// Measure each preview stage so the "split the preview" decision is made
+    /// against numbers rather than impressions. Prints only; no assertions.
+    #[test]
+    fn stage_timings() {
+        let Some(path) = std::env::var_os("AETHERIUM_CLAUDE_V2_SAMPLE").map(std::path::PathBuf::from)
+        else {
+            return;
+        };
+        let t = std::time::Instant::now();
+        let names = super::load_v2_project_name_map(&path);
+        eprintln!("project name map: {}ms", t.elapsed().as_millis());
+
+        let t = std::time::Instant::now();
+        let (uuids, _) = super::parse_v2_memories(&path, &names).unwrap();
+        eprintln!("memories:         {}ms", t.elapsed().as_millis());
+
+        let t = std::time::Instant::now();
+        let (by_proj, _) = super::preview_v2_design_chats(&path).unwrap();
+        eprintln!("design chats:     {}ms", t.elapsed().as_millis());
+
+        let t = std::time::Instant::now();
+        let projects = super::preview_v2_projects(&path, &uuids, &by_proj).unwrap();
+        eprintln!("projects ({}):    {}ms", projects.len(), t.elapsed().as_millis());
+
+        let t = std::time::Instant::now();
+        let bytes = std::fs::read(path.join("conversations.json")).unwrap();
+        eprintln!("read convs file:  {}ms ({} MB)", t.elapsed().as_millis(), bytes.len() / 1_048_576);
+
+        let t = std::time::Instant::now();
+        let (orphans, _) = super::super::preview_claude_conversations(&bytes).unwrap();
+        eprintln!("parse convs ({}): {}ms", orphans.len(), t.elapsed().as_millis());
+    }
+}
