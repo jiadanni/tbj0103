@@ -941,6 +941,138 @@ pub fn count_sessions_per_child_workspace(
         .map_err(|e| e.to_string())
 }
 
+/// Creates a new session that forks `session_id` at `message_id`.
+///
+/// The new session receives a copy of every message strictly *before*
+/// `message_id` (ordered by `created_at`), leaving the original session and its
+/// full message history untouched. `parent_session_id` / `branch_message_id` on
+/// the new session record where the fork came from.
+///
+/// `title` overrides the derived branch title when supplied.
+pub fn branch_session(
+    conn: &mut Connection,
+    workspace_id: &str,
+    session_id: &str,
+    message_id: &str,
+    title: Option<String>,
+) -> Result<ChatSession, String> {
+    let source = get_session(conn, workspace_id, session_id)?
+        .ok_or_else(|| format!("Chat session {session_id} not found"))?;
+
+    let branch_point: String = conn
+        .query_row(
+            "SELECT created_at FROM messages WHERE id = ?1 AND session_id = ?2",
+            rusqlite::params![message_id, session_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let branch_title = title.unwrap_or_else(|| {
+        let base = source.title.trim();
+        let base = if base.is_empty() { "New Chat" } else { base };
+        let truncated: String = base.chars().take(80).collect();
+        format!("{truncated} (branch)")
+    });
+
+    let mut session = ChatSession::new(source.workspace_id.clone(), source.folder_id.clone());
+    session.title = branch_title;
+    session.model_name = source.model_name.clone();
+    session.system_prompt = source.system_prompt.clone();
+    session.is_incognito = source.is_incognito;
+    session.exclude_from_analytics = source.exclude_from_analytics;
+    session.parent_session_id = Some(source.id.clone());
+    session.branch_message_id = Some(message_id.to_string());
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    tx.execute(
+        "INSERT INTO chat_sessions (
+            id, workspace_id, folder_id, title, model_name, system_prompt,
+            is_pinned, is_incognito, exclude_from_analytics, is_deleted, deleted_at,
+            last_accessed_at, last_processed_message_count, message_count, is_imported,
+            parent_session_id, branch_message_id, is_unread, created_at, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+        rusqlite::params![
+            session.id,
+            session.workspace_id,
+            session.folder_id,
+            session.title,
+            session.model_name,
+            session.system_prompt,
+            session.is_pinned as i32,
+            session.is_incognito as i32,
+            session.exclude_from_analytics as i32,
+            session.is_deleted as i32,
+            session.deleted_at,
+            session.last_accessed_at,
+            session.last_processed_message_count,
+            0_i64,
+            session.is_imported as i32,
+            session.parent_session_id,
+            session.branch_message_id,
+            session.is_unread as i32,
+            session.created_at,
+            session.updated_at,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    // Copy the prefix. New message IDs, preserved ordering via created_at.
+    let copied = {
+        let mut stmt = tx
+            .prepare(
+                "SELECT id, session_id, role, content, model_name, tokens_used, duration_ms, variant_group_id, created_at
+                 FROM messages
+                 WHERE session_id = ?1 AND created_at < ?2
+                 ORDER BY created_at ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![session_id, branch_point], row_to_message)
+            .map_err(|e| e.to_string())?;
+        let prefix = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+
+        let mut insert = tx
+            .prepare(
+                "INSERT INTO messages (id, session_id, role, content, model_name, tokens_used, duration_ms, variant_group_id, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            )
+            .map_err(|e| e.to_string())?;
+        for msg in &prefix {
+            insert
+                .execute(rusqlite::params![
+                    uuid::Uuid::new_v4().to_string(),
+                    session.id,
+                    msg.role.to_string(),
+                    msg.content,
+                    msg.model_name,
+                    msg.tokens_used,
+                    msg.duration_ms,
+                    msg.variant_group_id,
+                    msg.created_at,
+                ])
+                .map_err(|e| e.to_string())?;
+        }
+        prefix.len() as i64
+    };
+
+    tx.commit().map_err(|e| e.to_string())?;
+
+    // message_count is maintained by DB triggers on insert; re-read so the
+    // returned record matches what the triggers computed.
+    session.message_count = conn
+        .query_row(
+            "SELECT message_count FROM chat_sessions WHERE id = ?1",
+            rusqlite::params![session.id],
+            |row| row.get(0),
+        )
+        .unwrap_or(copied);
+
+    Ok(session)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

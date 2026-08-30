@@ -295,6 +295,7 @@ export default function ChatView() {
   const showGenInfoDuration = useSettingsStore((s) => s.showGenInfoDuration);
   const showGenInfoSpeed = useSettingsStore((s) => s.showGenInfoSpeed);
   const scrollToTopOnSend = useSettingsStore((s) => s.scrollToTopOnSend);
+  const regenerateCreatesBranch = useSettingsStore((s) => s.regenerateCreatesBranch);
   const chatMessageStyle = useSettingsStore((s) => s.chatMessageStyle);
   const expandChatToWindowWidth = useSettingsStore((s) => s.expandChatToWindowWidth);
   const codeBlockContainerStyle = useSettingsStore((s) => s.codeBlockContainerStyle);
@@ -2630,10 +2631,78 @@ export default function ChatView() {
     }
   }
 
+  /// Forks the current chat at `msgId` into a new session holding every message
+  /// before it, switches to that session, and streams the regenerated reply
+  /// there. The original chat keeps its full history untouched.
+  async function redoMessageAsBranch(msgId: string, modelId: string, trimmedMessages: Message[]) {
+    if (!activeChatId || !effectiveWorkspaceId) { return; }
+    const sourceChatId = activeChatId;
+
+    let branched: ChatSession;
+    try {
+      branched = await api.chat.branchSession(effectiveWorkspaceId, sourceChatId, msgId);
+    } catch (err) {
+      console.error("Failed to branch chat", err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      appendStreamChunk(sourceChatId, `\n\n⚠️ Could not branch this chat: ${errMsg}`);
+      finalizeStream(sourceChatId, modelId);
+      return;
+    }
+
+    const sid = branched.id;
+    // Seed the new pane's message list from the prefix we already have so the
+    // branch renders instantly; the persisted copies load on next fetch.
+    setMessages(sid, trimmedMessages);
+    activateSession(branched);
+    invalidateFollowUps();
+
+    setIsStreaming(true);
+    setStreamingSession(sid);
+    try {
+      clearStreamListener();
+      const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs, loadDurationMs) => {
+        if (done) {
+          const assembled = useChatStore.getState().streamingContent;
+          finalizeStream(sid, modelId, tokensUsed, durationMs, loadDurationMs);
+          setIsStreaming(false);
+          clearStreamListener();
+          api.chat.addMessage(effectiveWorkspaceId, sid, "assistant", assembled, modelId, tokensUsed, durationMs)
+            .then((persisted) => {
+              updateMessage(sid, persisted);
+              void refreshSessionMetadataAfterAssistant(sid, modelId);
+              triggerFollowUps(sid);
+            })
+            .catch(() => { });
+          if (tokensUsed && tokensUsed > 0) {
+            api.aiModel.recordTokenUsage(modelId, "ollama", tokensUsed).catch(() => { });
+          }
+        } else {
+          appendStreamChunk(sid, chunk);
+        }
+      });
+      streamUnlistenRef.current = unlisten;
+      await api.ollama.sendMessage(sid, modelId, trimmedMessages.map((m) => ({ role: m.role, content: m.content })), true, ollamaUrl || undefined);
+    } catch (err) {
+      clearStreamListener();
+      setIsStreaming(false);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      appendStreamChunk(sid, `\n\n⚠️ Error: ${errMsg}`);
+      finalizeStream(sid, modelId);
+    }
+  }
+
   async function redoMessage(msgId: string, modelId: string) {
     if (!activeChatId || isStreaming || !effectiveWorkspaceId) { return; }
     const idx = activeMessages.findIndex((m) => m.id === msgId);
     if (idx < 0) { return; }
+
+    // Branching mode: fork instead of destroying the trailing messages. Only
+    // meaningful when there is something after the redo point to preserve —
+    // regenerating the last message has nothing to lose, so it stays in place.
+    if (regenerateCreatesBranch && idx < activeMessages.length - 1) {
+      await redoMessageAsBranch(msgId, modelId, activeMessages.slice(0, idx));
+      return;
+    }
 
     const hasSubsequentUserMessages = activeMessages.slice(idx + 1).some((m) => m.role === "user");
     if (idx < activeMessages.length - 1) {

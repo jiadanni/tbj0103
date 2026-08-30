@@ -1266,6 +1266,8 @@ export const api = {
   chat: {
     createSession: (workspaceId: string, folderId?: string | null, opts?: { title?: string; modelName?: string; systemPrompt?: string; is_incognito?: boolean; exclude_from_analytics?: boolean }) =>
       invoke<ChatSession>("create_chat_session", { req: { workspace_id: workspaceId, folder_id: folderId ?? '', title: opts?.title, model_name: opts?.modelName, system_prompt: opts?.systemPrompt, is_incognito: opts?.is_incognito, exclude_from_analytics: opts?.exclude_from_analytics } }),
+    branchSession: (workspaceId: string, sessionId: string, messageId: string, title?: string) =>
+      invoke<ChatSession>("branch_chat_session", { workspaceId, sessionId, messageId, title: title ?? null }),
     listSessions: (workspaceId: string, folderId?: string | null, opts?: { limit?: number; offset?: number; includeDescendants?: boolean }) =>
       timed("chat.listSessions", () =>
         invoke<ChatSession[]>("list_chat_sessions", { workspaceId, folderId: folderId ?? '', limit: opts?.limit, offset: opts?.offset, includeDescendants: opts?.includeDescendants }),

@@ -142,6 +142,7 @@ vi.mock("@/lib/api", () => ({
       moveSessions: vi.fn(() => Promise.resolve(undefined)),
       batchMoveSessions: vi.fn(() => Promise.resolve({ moved: 0, missing_session_ids: [], folder_mapping: {} })),
       createSession: vi.fn(),
+      branchSession: vi.fn(),
       addMessage: vi.fn(),
       touchSessionAccessed: vi.fn(() => Promise.resolve(undefined)),
       updateSession: vi.fn(() => Promise.resolve(undefined)),
@@ -864,6 +865,117 @@ describe("ChatView", () => {
         "",
         undefined,
       );
+    });
+  });
+
+  describe("regenerating a mid-conversation message", () => {
+    const branchableMessages: Message[] = [
+      { id: "user-1", session_id: "session-1", role: "user", content: "First prompt", created_at: "2024-01-01T00:00:00Z" },
+      { id: "assistant-1", session_id: "session-1", role: "assistant", content: "First answer", model_name: "test-model", created_at: "2024-01-01T00:00:01Z" },
+      { id: "user-2", session_id: "session-1", role: "user", content: "Second prompt", created_at: "2024-01-01T00:00:02Z" },
+      { id: "assistant-2", session_id: "session-1", role: "assistant", content: "Second answer", model_name: "test-model", created_at: "2024-01-01T00:00:03Z" },
+    ];
+
+    async function clickRedoOn(messageId: string) {
+      await waitFor(() => {
+        expect(screen.getAllByTestId("icon-rotate-ccw").length).toBeGreaterThan(0);
+      });
+      const redoButton = screen
+        .getAllByTestId("icon-rotate-ccw")
+        .find((icon) => icon.closest(`[data-msg-id='${messageId}']`))
+        ?.closest("button");
+      expect(redoButton).toBeTruthy();
+      fireEvent.click(redoButton as HTMLButtonElement);
+    }
+
+    beforeEach(() => {
+      mockActiveChatId = "session-1";
+      useChatStore.setState({
+        activeChatId: "session-1",
+        messages: { "session-1": branchableMessages },
+      });
+      (api.chat.addMessage as ReturnType<typeof vi.fn>).mockImplementation(
+        async (_workspaceId: string, sessionId: string, role: "user" | "assistant", content: string, modelName?: string) => ({
+          id: `${role}-regenerated`,
+          session_id: sessionId,
+          role,
+          content,
+          model_name: modelName,
+          created_at: "",
+        }),
+      );
+      (api.listenStream as ReturnType<typeof vi.fn>).mockImplementation(async (_sessionId: string, onChunk: (...args: unknown[]) => void) => {
+        onChunk("Regenerated answer", false);
+        onChunk("", true, 12, 500, 50);
+        return () => {};
+      });
+      (api.ollama.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    });
+
+    it("branches into a new session and leaves the original history intact", async () => {
+      useSettingsStore.setState({ regenerateCreatesBranch: true });
+      (api.chat.branchSession as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: "session-branch",
+        title: "Test Session (branch)",
+        folder_id: "",
+        workspace_id: "ws-1",
+        model_name: "test-model",
+        system_prompt: "",
+        created_at: "",
+        updated_at: "",
+        is_pinned: false,
+        parent_session_id: "session-1",
+        branch_message_id: "assistant-1",
+      });
+
+      await renderChatView();
+      await clickRedoOn("assistant-1");
+
+      await waitFor(() => {
+        expect(api.chat.branchSession).toHaveBeenCalledWith("ws-1", "session-1", "assistant-1");
+      });
+
+      // The regenerated reply is persisted onto the branch, not the original.
+      await waitFor(() => {
+        expect(api.chat.addMessage).toHaveBeenCalledWith(
+          "ws-1",
+          "session-branch",
+          "assistant",
+          "Regenerated answer",
+          "test-model",
+          12,
+          500,
+        );
+      });
+
+      // Original session keeps every message it started with.
+      expect(useChatStore.getState().messages["session-1"]).toHaveLength(4);
+      // The branch only carries the prefix before the regenerated message.
+      const branchMessages = useChatStore.getState().messages["session-branch"] ?? [];
+      expect(branchMessages.map((m) => m.id)).toContain("user-1");
+      expect(branchMessages.map((m) => m.content)).not.toContain("Second prompt");
+    });
+
+    it("truncates in place when branching is disabled", async () => {
+      useSettingsStore.setState({ regenerateCreatesBranch: false });
+
+      await renderChatView();
+      // assistant-2 is the last message, so no confirm dialog is involved and
+      // the destructive path regenerates within the original session.
+      await clickRedoOn("assistant-2");
+
+      await waitFor(() => {
+        expect(api.chat.addMessage).toHaveBeenCalledWith(
+          "ws-1",
+          "session-1",
+          "assistant",
+          "Regenerated answer",
+          "test-model",
+          12,
+          500,
+        );
+      });
+      expect(api.chat.branchSession).not.toHaveBeenCalled();
     });
   });
 
