@@ -14,6 +14,7 @@ import { Tooltip } from "../components/Tooltip";
 import ImportConversationPreview, { type ImportConversation } from "../components/ImportConversationPreview";
 import { ClaudeAccountMemoriesPanel } from "../components/ClaudeAccountMemoriesPanel";
 import { ImportSectionSkeleton } from "../components/ImportSectionSkeleton";
+import { ImportSectionHeader } from "../components/ImportSectionHeader";
 
 type ProjectDestType = "new-workspace" | "new-sub-workspace" | "folder-in-sub";
 
@@ -2150,23 +2151,18 @@ export default function ImportSettingsSection() {
 
             {claudeIncludeProjects && claudeProjects.length > 0 && (
               <div className={`flex flex-col gap-2 ${projectsSectionOpen ? "flex-1 min-h-[400px]" : ""}`}>
-                <div className="flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => setProjectsSectionOpen((v) => !v)}
-                    className="flex items-center gap-1 text-xs font-medium text-[var(--text-primary)]"
-                    aria-expanded={projectsSectionOpen}
-                  >
-                    {projectsSectionOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                    Projects ({claudeSelectedFolders.size}/{claudeProjects.length})
-                  </button>
-                  {projectsSectionOpen && (
-                    <div className="flex gap-2">
+                <ImportSectionHeader
+                  label="Projects"
+                  detail={`${claudeSelectedFolders.size} of ${claudeProjects.length} selected`}
+                  open={projectsSectionOpen}
+                  onToggleOpen={() => setProjectsSectionOpen((v) => !v)}
+                  actions={projectsSectionOpen ? (
+                    <>
                       <button onClick={() => setClaudeSelectedProjects(new Set(claudeProjects.map((p) => p.uuid)))} className="text-xs text-[var(--accent-color)] hover:underline">All</button>
                       <button onClick={() => setClaudeSelectedProjects(new Set())} className="text-xs text-[var(--text-muted)] hover:underline">None</button>
-                    </div>
-                  )}
-                </div>
+                    </>
+                  ) : undefined}
+                />
 
                 {projectsSectionOpen && (<>
                 {/* Bulk action */}
@@ -2621,23 +2617,28 @@ export default function ImportSettingsSection() {
                   const visibleRows = reviewRows.slice(0, ROW_CAP);
                   return (
                     <>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-[var(--text-primary)]">
-                          Unassigned conversations ({unassignedTotal} of {claudeOrphans.length} · {assignedTotal} already routed to projects)
-                          {claudeSkippedEmpty > 0 && (
-                            <span
-                              className="ml-2 font-normal text-[var(--text-muted)]"
-                              title="Claude's export contains these conversations but no content for them (no name, summary, or message text) — likely deleted or stripped chats. They cannot be identified or imported."
-                            >
-                              · {claudeSkippedEmpty} empty conversation{claudeSkippedEmpty === 1 ? "" : "s"} skipped
-                            </span>
-                          )}
-                          {topicCoverage && (
-                            <span className="ml-2 font-normal text-[var(--text-muted)]">
-                              topics generated for {topicCoverage.enriched}/{topicCoverage.total} projects
-                            </span>
-                          )}
-                        </span>
+                      <ImportSectionHeader
+                        label="Conversations"
+                        detail={
+                          <>
+                            {unassignedTotal} unassigned of {claudeOrphans.length} · {assignedTotal} routed to projects
+                            {claudeSkippedEmpty > 0 && (
+                              <span
+                                className="ml-2"
+                                title="Claude's export contains these conversations but no content for them (no name, summary, or message text) — likely deleted or stripped chats. They cannot be identified or imported."
+                              >
+                                · {claudeSkippedEmpty} empty skipped
+                              </span>
+                            )}
+                            {topicCoverage && (
+                              <span className="ml-2">
+                                · topics for {topicCoverage.enriched}/{topicCoverage.total} projects
+                              </span>
+                            )}
+                          </>
+                        }
+                      />
+                      <div className="flex items-center justify-end">
                         <div className="flex gap-2">
                           {claudeOrphans.length >= 1 && (
                             <div ref={matchModelMenuRef} className="relative">

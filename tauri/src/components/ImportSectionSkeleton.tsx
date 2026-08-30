@@ -28,7 +28,10 @@ export function ImportSectionSkeleton({ label, summary, onEnable, rows = 3 }: Pr
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 min-w-0">
-          <span className="text-xs font-medium text-[var(--text-muted)]">{label}</span>
+          {/* Muted twin of ImportSectionHeader's accent bar: same shape, so a
+              skeleton reads as the same section, just switched off. */}
+          <span className="h-3.5 w-[3px] shrink-0 rounded-full bg-[var(--border-color)]" aria-hidden="true" />
+          <span className="text-[13px] font-semibold text-[var(--text-muted)]">{label}</span>
           <span className="text-[11px] text-[var(--text-muted)] truncate">· {summary} not being imported</span>
         </div>
         <button
@@ -42,7 +45,7 @@ export function ImportSectionSkeleton({ label, summary, onEnable, rows = 3 }: Pr
       </div>
 
       {/* Inert bars standing in for the hidden rows. */}
-      <div className="flex flex-col gap-1.5" aria-hidden="true">
+      <div className="flex flex-col gap-1.5" aria-hidden="true" data-testid="skeleton-rows">
         {Array.from({ length: rows }).map((_, i) => (
           <div key={i} className="flex items-center gap-2">
             <div className="h-3 w-3 shrink-0 rounded-sm bg-[var(--border-color)]/60" />

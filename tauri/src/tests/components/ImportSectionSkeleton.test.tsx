@@ -22,12 +22,11 @@ describe("ImportSectionSkeleton", () => {
   });
 
   it("draws the requested number of placeholder rows", () => {
-    const { container } = render(
-      <ImportSectionSkeleton label="Memories" summary="x" onEnable={() => {}} rows={5} />,
-    );
+    render(<ImportSectionSkeleton label="Memories" summary="x" onEnable={() => {}} rows={5} />);
+    const bars = screen.getByTestId("skeleton-rows");
+    expect(bars.children).toHaveLength(5);
     // Placeholder bars are decorative, so they are hidden from assistive tech.
-    const bars = container.querySelector('[aria-hidden="true"]');
-    expect(bars?.children).toHaveLength(5);
+    expect(bars).toHaveAttribute("aria-hidden", "true");
   });
 
   it("is addressable by a stable test id derived from the label", () => {
