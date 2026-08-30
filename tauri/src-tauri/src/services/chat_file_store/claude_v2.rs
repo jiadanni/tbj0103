@@ -101,6 +101,21 @@ struct V2MemoryAccount {
     /// v2 uses `project_memories` (dict uuid → text) instead of legacy `folder_memories`
     #[serde(default)]
     pub project_memories: HashMap<String, String>,
+    /// v3 only: Claude's markdown memory directory (`/profile.md`, `/topics/*.md`, …).
+    /// Absent in v2 exports.
+    #[serde(default)]
+    pub memory_files: Vec<V2MemoryFile>,
+}
+
+/// A single markdown memory file from a v3 export's `memory_files` array.
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+pub struct V2MemoryFile {
+    pub path: String,
+    #[serde(default)]
+    pub content: String,
+    #[serde(default)]
+    pub updated_at: Option<String>,
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -288,14 +303,90 @@ pub fn preview_v2_design_chats(
     Ok((by_project, skipped_empty))
 }
 
-/// Parse memories.json for the v2 format (uses `project_memories` key).
+/// Where an export keeps its memories.
+///
+/// v2 shipped a top-level `memories.json` holding a one-element array; v3 (the
+/// 2026-08-30 export) ships `memories/<account-uuid>.json` holding a bare object.
+/// Both decode into the same [`V2MemoryAccount`].
+pub enum MemoriesSource {
+    /// v2: `memories.json`, a JSON array of accounts.
+    LegacyFile(std::path::PathBuf),
+    /// v3: `memories/<uuid>.json`, one bare account object per file.
+    Directory(Vec<std::path::PathBuf>),
+}
+
+/// Locate an export's memories, whichever layout it uses.
+///
+/// Returns `None` only when neither layout is present — which callers must treat
+/// as "this export has no memories", distinct from "we looked in the wrong place".
+pub fn find_memories_source(folder_path: &Path) -> Option<MemoriesSource> {
+    let dir = folder_path.join("memories");
+    if dir.is_dir() {
+        let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
+            .ok()?
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.is_file() && p.extension().is_some_and(|x| x == "json"))
+            .collect();
+        if !files.is_empty() {
+            // Stable order so a multi-account export parses deterministically.
+            files.sort();
+            return Some(MemoriesSource::Directory(files));
+        }
+    }
+
+    let legacy = folder_path.join("memories.json");
+    if legacy.is_file() {
+        return Some(MemoriesSource::LegacyFile(legacy));
+    }
+
+    None
+}
+
+/// Read and decode the export's memory account, handling both the v2 array file
+/// and the v3 per-account directory.
+fn read_v2_memory_account(folder_path: &Path) -> Result<Option<V2MemoryAccount>, String> {
+    match find_memories_source(folder_path) {
+        None => Ok(None),
+
+        Some(MemoriesSource::LegacyFile(path)) => {
+            let bytes =
+                std::fs::read(&path).map_err(|e| format!("Cannot read memories.json: {e}"))?;
+            let accounts: Vec<V2MemoryAccount> =
+                serde_json::from_slice(&bytes).map_err(|e| format!("Invalid memories.json: {e}"))?;
+            Ok(accounts.into_iter().next())
+        }
+
+        Some(MemoriesSource::Directory(files)) => {
+            // Take the first file that decodes. A malformed file is reported
+            // rather than silently skipped — losing memories quietly is the
+            // exact failure this function exists to prevent.
+            let mut first_err = None;
+            for path in &files {
+                let bytes = std::fs::read(path)
+                    .map_err(|e| format!("Cannot read {}: {e}", path.display()))?;
+                match serde_json::from_slice::<V2MemoryAccount>(&bytes) {
+                    Ok(account) => return Ok(Some(account)),
+                    Err(e) => {
+                        first_err.get_or_insert(format!("Invalid {}: {e}", path.display()));
+                    }
+                }
+            }
+            match first_err {
+                Some(e) => Err(e),
+                None => Ok(None),
+            }
+        }
+    }
+}
+
+/// Parse an export's memories (uses the `project_memories` key).
 /// Returns the set of project UUIDs that have non-empty memory, plus a full ClaudeMemoryPreview.
 pub fn parse_v2_memories(
     folder_path: &Path,
     project_name_map: &HashMap<String, String>,
 ) -> Result<(std::collections::HashSet<String>, ClaudeMemoryPreview), String> {
-    let mem_path = folder_path.join("memories.json");
-    if !mem_path.exists() {
+    let Some(account) = read_v2_memory_account(folder_path)? else {
         return Ok((
             std::collections::HashSet::new(),
             ClaudeMemoryPreview {
@@ -303,16 +394,7 @@ pub fn parse_v2_memories(
                 folder_memories: Vec::new(),
             },
         ));
-    }
-
-    let bytes = std::fs::read(&mem_path).map_err(|e| format!("Cannot read memories.json: {e}"))?;
-    let accounts: Vec<V2MemoryAccount> =
-        serde_json::from_slice(&bytes).map_err(|e| format!("Invalid memories.json: {e}"))?;
-
-    let account = accounts.into_iter().next().unwrap_or(V2MemoryAccount {
-        conversations_memory: String::new(),
-        project_memories: HashMap::new(),
-    });
+    };
 
     let mut memory_uuids = std::collections::HashSet::new();
     let mut folder_memories = Vec::new();
@@ -399,4 +481,94 @@ pub fn load_v2_project_name_map(folder_path: &Path) -> HashMap<String, String> {
         }
     }
     map
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    /// v3 (2026-08-30): memories/<uuid>.json holding a bare object.
+    #[test]
+    fn parses_v3_memories_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("memories")).unwrap();
+        std::fs::write(
+            dir.path().join("memories").join("acct-uuid.json"),
+            r#"{
+                "conversations_memory": "top level memory",
+                "project_memories": {"p1": "memory for p1", "p2": "   "},
+                "memory_files": [{"path": "/profile.md", "content": "hi", "updated_at": "2026-08-24T19:55:22Z"}],
+                "account_uuid": "acct-uuid"
+            }"#,
+        )
+        .unwrap();
+
+        let mut names = HashMap::new();
+        names.insert("p1".to_string(), "Project One".to_string());
+
+        let (uuids, preview) = parse_v2_memories(dir.path(), &names).unwrap();
+
+        assert_eq!(preview.conversations_memory, "top level memory");
+        // p2 is whitespace-only and must be skipped.
+        assert_eq!(uuids.len(), 1);
+        assert!(uuids.contains("p1"));
+        assert_eq!(preview.folder_memories.len(), 1);
+        assert_eq!(preview.folder_memories[0].folder_name, "Project One");
+    }
+
+    /// v2: a top-level memories.json holding a one-element array.
+    #[test]
+    fn parses_v2_memories_file() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("memories.json"),
+            r#"[{"conversations_memory": "legacy mem", "project_memories": {"p1": "m"}}]"#,
+        )
+        .unwrap();
+
+        let (uuids, preview) = parse_v2_memories(dir.path(), &HashMap::new()).unwrap();
+        assert_eq!(preview.conversations_memory, "legacy mem");
+        assert!(uuids.contains("p1"));
+    }
+
+    /// The v3 directory must win when both layouts somehow coexist.
+    #[test]
+    fn prefers_v3_directory_over_legacy_file() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("memories")).unwrap();
+        std::fs::write(
+            dir.path().join("memories").join("a.json"),
+            r#"{"conversations_memory": "from dir", "project_memories": {}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("memories.json"),
+            r#"[{"conversations_memory": "from file", "project_memories": {}}]"#,
+        )
+        .unwrap();
+
+        let (_, preview) = parse_v2_memories(dir.path(), &HashMap::new()).unwrap();
+        assert_eq!(preview.conversations_memory, "from dir");
+    }
+
+    /// No memories at all is a legitimate empty result, not an error.
+    #[test]
+    fn absent_memories_yields_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(find_memories_source(dir.path()).is_none());
+        let (uuids, preview) = parse_v2_memories(dir.path(), &HashMap::new()).unwrap();
+        assert!(uuids.is_empty());
+        assert!(preview.folder_memories.is_empty());
+    }
+
+    /// A corrupt memories file must fail loudly rather than silently importing
+    /// zero memories — the exact regression this module guards against.
+    #[test]
+    fn malformed_v3_memories_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("memories")).unwrap();
+        std::fs::write(dir.path().join("memories").join("a.json"), "{not json").unwrap();
+        assert!(parse_v2_memories(dir.path(), &HashMap::new()).is_err());
+    }
 }

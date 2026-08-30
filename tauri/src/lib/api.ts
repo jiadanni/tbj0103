@@ -1452,8 +1452,9 @@ export const api = {
       }),
     detectClaudeFormat: (folderPath: string) =>
       invoke<{
-        format: "legacy" | "v2";
+        format: "legacy" | "v2" | "v3";
         files_found: { conversations: boolean; projects: boolean; memories: boolean };
+        has_split_parts: boolean;
       }>("detect_claude_format", { folderPath }),
     previewClaudeFiles: (args: {
       folderPath: string;
@@ -1462,7 +1463,7 @@ export const api = {
       includeMemories: boolean;
     }) =>
       invoke<{
-        format: "legacy" | "v2";
+        format: "legacy" | "v2" | "v3";
         folders: {
           uuid: string;
           name: string;
