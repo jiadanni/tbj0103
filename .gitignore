@@ -92,6 +92,7 @@ tauri/src-tauri/gen/
 # Local conversation exports / imports
 conversations-mac/
 *.conversation.json
+claude-import-review-*.json
 
 # Override global gitignore for source ollama module
 !**/src/ollama/
