@@ -1378,6 +1378,11 @@ mod tests {
         }
     }
 
+    /// One token's contribution to a project's coverage: (token, weighted IDF).
+    type TokenContrib = (String, f32);
+    /// A project's diagnostic score: (project name, coverage, top contributions).
+    type ProjScore = (String, f32, Vec<TokenContrib>);
+
     #[test]
     fn diag_token_contributions() {
         let Some(export_path) =
@@ -1422,9 +1427,9 @@ mod tests {
                 .map(|tk| idf.get(tk).copied().unwrap_or(UNKNOWN_TOKEN_IDF))
                 .sum();
             println!("\n=== {t} ({} tokens, total mass {total:.2})", tokens.len());
-            let mut proj_scores: Vec<(String, f32, Vec<(String, f32)>)> = Vec::new();
+            let mut proj_scores: Vec<ProjScore> = Vec::new();
             for v in &vocabs {
-                let mut contribs: Vec<(String, f32)> = Vec::new();
+                let mut contribs: Vec<TokenContrib> = Vec::new();
                 let mut mass = 0.0f32;
                 for tk in &tokens {
                     let w = v.weight_for(tk, &boostable);
