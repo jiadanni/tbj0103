@@ -567,8 +567,9 @@ describe("ImportSettingsSection", () => {
 
     expect(api.chatFile.previewClaudeFiles).toHaveBeenCalledTimes(1);
 
-    // Untick "Conversations" — must not trigger another scan.
-    fireEvent.click(screen.getByLabelText("Conversations"));
+    // Untick "Memories" — must not trigger another scan. (Conversations is
+    // covered by the section-visibility test; this one is about the rescan.)
+    fireEvent.click(screen.getByLabelText("Memories"));
     await waitFor(() => {
       expect(api.chatFile.previewClaudeFiles).toHaveBeenCalledTimes(1);
     });
@@ -584,7 +585,42 @@ describe("ImportSettingsSection", () => {
       expect(api.chatFile.importClaudeFiles).toHaveBeenCalledTimes(1);
     });
     const args = vi.mocked(api.chatFile.importClaudeFiles).mock.calls[0][0];
-    expect(args.selectedConversationIds).toBeUndefined();
+    expect(args.selectedConversationIds).toContain("orphan-linked");
+  });
+
+  it("hides each section when its include toggle is unticked", async () => {
+    // Regression: the toggles gated what was imported but not what was shown,
+    // so unticking Projects or Conversations left their sections on screen and
+    // fully selected — the box looked like it did nothing.
+    vi.mocked(openDialog).mockResolvedValue("/imports/claude");
+    vi.mocked(api.chatFile.previewClaudeFiles).mockResolvedValueOnce(claudePreviewWithLinks());
+
+    renderImportSettings();
+    fireEvent.click(screen.getAllByText("Select")[2]);
+    await screen.findByText(/1 chat was imported before and will merge automatically/);
+
+    // Projects section visible, then hidden.
+    expect(screen.getByText(/^Projects \(/)).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Projects"));
+    await waitFor(() => {
+      expect(screen.queryByText(/^Projects \(/)).not.toBeInTheDocument();
+    });
+
+    // Conversations section visible, then hidden — along with the linked
+    // summary, which describes conversations too.
+    expect(screen.getByText(/Unassigned conversations/)).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Conversations"));
+    await waitFor(() => {
+      expect(screen.queryByText(/Unassigned conversations/)).not.toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText(/1 chat was imported before and will merge automatically/),
+    ).not.toBeInTheDocument();
+
+    // Re-ticking brings a section back without a rescan.
+    fireEvent.click(screen.getByLabelText("Projects"));
+    await screen.findByText(/^Projects \(/);
+    expect(api.chatFile.previewClaudeFiles).toHaveBeenCalledTimes(1);
   });
 
   it("sends restoreDestinations when the move-back option is checked", async () => {
