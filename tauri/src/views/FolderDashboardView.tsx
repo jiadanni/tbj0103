@@ -352,7 +352,9 @@ export default function FolderDashboardView() {
           }
         />
 
-        <div className="mt-3 grid items-stretch gap-3 xl:grid-cols-[minmax(16rem,1fr)_minmax(16rem,1fr)_minmax(20rem,1.3fr)]">
+        {/* items-start (not stretch) so a card with one goal stays short instead
+            of matching Continue Learning's height in dead space. */}
+        <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(16rem,1fr)_minmax(16rem,1fr)_minmax(20rem,1.3fr)] xl:items-start">
           <GoalsCard
             workspaceId={activeWorkspaceId}
             includeDescendants={includeDescendants}
@@ -415,7 +417,15 @@ export default function FolderDashboardView() {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto bg-[var(--bg-primary)]">
+      {/* The two branches have opposite height needs: warm-up is a tall document
+          that scrolls, while the roadmap must hand its height down so the canvas
+          can fill it (and keep its floating dock on screen). overflow-y-auto
+          rather than -hidden so a short window scrolls instead of clipping. */}
+      <div
+        className={`flex-1 min-h-0 overflow-y-auto bg-[var(--bg-primary)] ${
+          showWorkspaceWarmupState ? "" : "flex flex-col"
+        }`}
+      >
         {showWorkspaceWarmupState ? (
           <div className="px-4 py-4 sm:px-6">
             <section className="rounded-[28px] border border-[var(--border-color)] bg-[linear-gradient(145deg,rgba(var(--accent-color-rgb),0.10),rgba(255,255,255,0)_45%),var(--bg-elevated)] p-5 sm:p-6">
@@ -476,9 +486,9 @@ export default function FolderDashboardView() {
             </section>
           </div>
         ) : (
-          <div ref={roadmapSectionRef}>
-            <Suspense fallback={<div className="p-4 text-sm text-[var(--text-muted)]">Loading…</div>}>
-              <RoadmapPane hideSidebar />
+          <div ref={roadmapSectionRef} className="flex min-h-0 flex-1 flex-col">
+            <Suspense fallback={<div className="flex-1 p-4 text-sm text-[var(--text-muted)]">Loading…</div>}>
+              <RoadmapPane hideSidebar fillHeight />
             </Suspense>
           </div>
         )}
@@ -559,7 +569,7 @@ function GoalsCard({
         </button>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-1">
+      <div className="flex-1 min-h-0 max-h-[220px] overflow-y-auto px-3 py-2 space-y-1">
         {showCreate && (
           <div className="mb-2 rounded-lg border border-[var(--accent-color)]/40 bg-[var(--bg-elevated)] p-2">
             <input

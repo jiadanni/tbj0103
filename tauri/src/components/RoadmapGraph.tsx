@@ -327,8 +327,11 @@ function RoadmapGraphInner(
     const h = layout.bbox.maxY - layout.bbox.minY;
     if (w === 0 || h === 0) { return null; }
 
+    // fitScale takes the *min* of both axes so the whole map stays visible; a
+    // wide-but-short canvas is therefore bound by height, not width. The upper
+    // clamp only bites on sparse maps, where filling the canvas is what we want.
     const fitScale = Math.min(dims.width / w, dims.height / h);
-    const scale = Math.min(Math.max(fitScale, 0.6), 1.5);
+    const scale = Math.min(Math.max(fitScale, 0.6), 2.2);
     const tx = dims.width / 2 - ((layout.bbox.minX + layout.bbox.maxX) / 2) * scale;
     // Center vertically when the map fits; otherwise pin the top edge in view.
     const contentHeight = h * scale;

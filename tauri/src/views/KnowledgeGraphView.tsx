@@ -90,7 +90,9 @@ function Section({
   children,
   collapsed,
   onToggle,
+  className,
 }: {
+  className?: string;
   /** Omit to render a chrome-less section — used where a page-level heading
    *  already names the content and a second title would just repeat it. */
   title?: string;
@@ -101,7 +103,7 @@ function Section({
 }) {
   const hasHeading = Boolean(title || eyebrow);
   return (
-    <section className="surface-card rounded-2xl px-5 py-4">
+    <section className={`surface-card rounded-2xl px-5 py-4 ${className ?? ""}`}>
       <div
         className={`flex items-start justify-between ${
           collapsed || !hasHeading ? "" : "mb-3"
@@ -209,8 +211,20 @@ function makeDemoCards(concept: ConceptNode, workspaceId: string): LearningCard[
 
 export default function KnowledgeGraphView({
   hideSidebar = false,
+  fillHeight = false,
   selectedConceptId: externalSelectedConceptId = null,
-}: { hideSidebar?: boolean; selectedConceptId?: string | null } = {}) {
+}: {
+  hideSidebar?: boolean;
+  /**
+   * Own the available height instead of scrolling: the roadmap canvas expands to
+   * fill whatever the parent gives it, keeping the floating canvas dock on screen.
+   * Separate from `hideSidebar` (which is a content decision) because height
+   * ownership is orthogonal — the embedded dashboard wants both, but a future
+   * caller could want either alone.
+   */
+  fillHeight?: boolean;
+  selectedConceptId?: string | null;
+} = {}) {
   const navigate = useNavigate();
   const { activeWorkspaceId } = useScopedWorkspace();
   const includeDescendants = useBubbleUpFlag();
@@ -1295,8 +1309,8 @@ export default function KnowledgeGraphView({
       </div>
       )}
 
-      <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
-        <div className={`flex w-full flex-col gap-4 px-4 py-4 sm:px-6 ${hideSidebar ? "" : "mx-auto max-w-[1600px]"}`}>
+      <div className={`flex-1 min-h-0 min-w-0 ${fillHeight ? "flex flex-col overflow-hidden" : "overflow-y-auto"}`}>
+        <div className={`flex w-full flex-col gap-4 px-4 py-4 sm:px-6 ${hideSidebar ? "" : "mx-auto max-w-[1600px]"} ${fillHeight ? "min-h-0 flex-1" : ""}`}>
           <header className="surface-card rounded-2xl px-4 py-2.5">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div className="max-w-2xl">
@@ -1435,10 +1449,10 @@ export default function KnowledgeGraphView({
             </div>
           )}
 
-          <div className={`grid gap-4 ${hideSidebar ? "" : "xl:grid-cols-[minmax(0,1.6fr)_minmax(340px,0.95fr)]"}`}>
+          <div className={`grid gap-4 ${hideSidebar ? "" : "xl:grid-cols-[minmax(0,1.6fr)_minmax(340px,0.95fr)]"} ${fillHeight ? "min-h-0 flex-1" : ""}`}>
             {/* Untitled: the page header above already reads "Knowledge Graph". */}
-            <Section>
-              <div className="flex flex-col gap-3">
+            <Section className={fillHeight ? "flex min-h-0 flex-1 flex-col" : ""}>
+              <div className={`flex flex-col gap-3 ${fillHeight ? "min-h-0 flex-1" : ""}`}>
                 <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-end">
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="relative w-48 sm:w-64">
@@ -1514,7 +1528,12 @@ export default function KnowledgeGraphView({
                   className={
                     isFullscreen
                       ? "fixed inset-0 z-50 flex flex-col bg-[var(--bg-primary)] p-6 overflow-hidden"
-                      : "relative h-[clamp(420px,68vh,900px)] overflow-hidden rounded-2xl border border-[var(--surface-border)] bg-[linear-gradient(180deg,rgba(var(--accent-color-rgb),0.05),rgba(255,255,255,0)_40%),var(--bg-base)]"
+                      // min-h floor (not min-h-0): on a short window the canvas
+                      // keeps a usable size and the region scrolls, rather than
+                      // collapsing and hiding both the map and its dock.
+                      : fillHeight
+                        ? "relative min-h-[320px] flex-1 overflow-hidden rounded-2xl border border-[var(--surface-border)] bg-[linear-gradient(180deg,rgba(var(--accent-color-rgb),0.05),rgba(255,255,255,0)_40%),var(--bg-base)]"
+                        : "relative h-[clamp(420px,68vh,900px)] overflow-hidden rounded-2xl border border-[var(--surface-border)] bg-[linear-gradient(180deg,rgba(var(--accent-color-rgb),0.05),rgba(255,255,255,0)_40%),var(--bg-base)]"
                   }
                   data-testid="knowledge-map"
                 >
