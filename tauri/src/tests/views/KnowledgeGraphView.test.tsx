@@ -238,7 +238,7 @@ describe("KnowledgeGraphView", () => {
       expect(mocks.getSummary).toHaveBeenCalledWith("ws-1");
     });
 
-    expect(await screen.findByText("Knowledge Map")).toBeInTheDocument();
+    expect(await screen.findByTestId("knowledge-map")).toBeInTheDocument();
     expect(screen.queryByText("Suggested Next Steps")).not.toBeInTheDocument();
     expect(screen.queryByText("Knowledge Health")).not.toBeInTheDocument();
     expect(screen.queryByText("Topic Focus")).not.toBeInTheDocument();
@@ -328,7 +328,7 @@ describe("KnowledgeGraphView", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText("Knowledge Map");
+    await screen.findByTestId("knowledge-map");
     expect(screen.queryByText(/another review pass/)).not.toBeInTheDocument();
   });
 

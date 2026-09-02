@@ -36,8 +36,14 @@ function SubWorkspaceTabBar({
       onMouseDown={onDragRegionMouseDown}
       className={`relative flex items-center h-10 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2 shrink-0 select-none ${isMac ? "pl-[72px]" : ""} ${!isMac ? "pr-[112px]" : ""}`}
     >
+      {/* Fade the right edge so a long, horizontally-scrollable tab list reads
+          as continuing off-screen instead of being clipped mid-label. */}
       <div
-        className="flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none"
+        aria-hidden
+        className="pointer-events-none absolute inset-y-0 right-0 z-10 w-10 bg-[linear-gradient(to_right,transparent,var(--bg-sidebar))]"
+      />
+      <div
+        className="flex h-full min-w-0 flex-1 items-center gap-0.5 overflow-x-auto scrollbar-none"
         onWheel={handleHorizontalWheel}
       >
         {/* Pinned overview dot — navigates to the parent (overview) workspace */}
@@ -74,10 +80,10 @@ function SubWorkspaceTabBar({
                 onContextMenu(workspace, event.clientX, event.clientY);
               }
             }}
-            className={`relative mt-0.5 flex h-[34px] items-center gap-1.5 self-end rounded-t-lg border border-b-0 px-3 text-sm font-medium whitespace-nowrap transition-all select-none ${
+            className={`relative mt-0.5 flex h-[34px] items-center gap-1.5 self-end rounded-t-lg border border-b-0 px-2.5 text-[13px] whitespace-nowrap transition-all select-none ${
               activeWorkspaceId === workspace.id
-                ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)]"
-                : "border-transparent text-[var(--text-secondary)] opacity-60 hover:opacity-100 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                ? "border-[var(--surface-border)] bg-[var(--bg-primary)] font-semibold text-[var(--text-primary)]"
+                : "border-transparent font-normal text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
             }`}
           >
             {activeWorkspaceId === workspace.id && (

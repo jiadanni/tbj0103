@@ -25,6 +25,18 @@
   --bg-hover: #efefef;
   --bg-input: #ffffff;
   --border-color: #e5e7eb;
+  /* Elevation tiers: base (app ground) < surface (cards) < surface-raised
+     (popovers/floating). Each theme redefines these; never hardcode the
+     literal colors in components. --surface-border is a hairline that reads
+     correctly against its own tier, and --shadow-surface is the matching
+     drop shadow (suppressed on light themes where borders carry separation). */
+  --bg-base: #f7f7f8;
+  --surface: #ffffff;
+  --surface-hover: #f0f0f2;
+  --surface-raised: #ffffff;
+  --surface-border: rgba(0, 0, 0, 0.09);
+  --shadow-surface: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-raised: 0 8px 24px rgba(0, 0, 0, 0.10);
   --link-color: var(--accent-color);
   --message-user-bg: var(--accent-color);
   --message-user-border: transparent;
@@ -56,6 +68,13 @@
     --bg-hover: rgba(255, 255, 255, 0.06);
     --bg-input: rgba(24, 24, 27, 0.96);
     --border-color: rgba(255, 255, 255, 0.08);
+    --bg-base: #0b0c0e;
+    --surface: #15181e;
+    --surface-hover: #1f242d;
+    --surface-raised: #1c2027;
+    --surface-border: rgba(255, 255, 255, 0.10);
+    --shadow-surface: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-raised: 0 12px 32px rgba(0, 0, 0, 0.55);
     --link-color: color-mix(in srgb, rgb(var(--accent-color-rgb)) 70%, white 30%);
     --message-user-bg: rgba(var(--accent-color-rgb), 0.14);
     --message-user-border: rgba(var(--accent-color-rgb), 0.22);
@@ -79,6 +98,13 @@
   --bg-hover: #efefef;
   --bg-input: #ffffff;
   --border-color: #e5e7eb;
+  --bg-base: #f7f7f8;
+  --surface: #ffffff;
+  --surface-hover: #f0f0f2;
+  --surface-raised: #ffffff;
+  --surface-border: rgba(0, 0, 0, 0.09);
+  --shadow-surface: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-raised: 0 8px 24px rgba(0, 0, 0, 0.10);
 }
 
 
@@ -96,6 +122,13 @@
   --bg-hover: #e0d7c3;
   --bg-input: #ffffff;
   --border-color: #d6c9a8;
+  --bg-base: #ece2ca;
+  --surface: #f6efdd;
+  --surface-hover: #e6dcc4;
+  --surface-raised: #faf4e8;
+  --surface-border: rgba(90, 72, 48, 0.20);
+  --shadow-surface: 0 1px 2px rgba(90, 72, 48, 0.08);
+  --shadow-raised: 0 8px 24px rgba(90, 72, 48, 0.18);
 }
 
 /* Hacker green */
@@ -112,6 +145,13 @@
   --bg-hover: #112011;
   --bg-input: #050a05;
   --border-color: #003b00;
+  --bg-base: #050a05;
+  --surface: #0c150c;
+  --surface-hover: #142214;
+  --surface-raised: #101c10;
+  --surface-border: #00591a;
+  --shadow-surface: 0 1px 2px rgba(0, 0, 0, 0.6);
+  --shadow-raised: 0 12px 32px rgba(0, 0, 0, 0.7);
 }
 
 /* Noir */
@@ -129,6 +169,13 @@
   --bg-hover: rgba(255, 255, 255, 0.08);
   --bg-input: rgba(0, 0, 0, 0.4);
   --border-color: rgba(255, 255, 255, 0.1);
+  --bg-base: #0a0a0a;
+  --surface: #16161a;
+  --surface-hover: #212127;
+  --surface-raised: #1d1d22;
+  --surface-border: rgba(255, 255, 255, 0.12);
+  --shadow-surface: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-raised: 0 12px 32px rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
@@ -502,6 +549,31 @@ select optgroup {
 }
 
 @layer components {
+  /* Elevation helpers. Prefer these over re-deriving
+     border + background + shadow at each call site. */
+  .surface-card {
+    background-color: var(--surface);
+    border: 1px solid var(--surface-border);
+    box-shadow: var(--shadow-surface);
+  }
+
+  .surface-card-interactive {
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+  }
+  .surface-card-interactive:hover {
+    background-color: var(--surface-hover);
+    border-color: rgba(var(--accent-color-rgb), 0.35);
+  }
+
+  /* Floating chrome above the canvas: control docks, popovers. */
+  .surface-floating {
+    background-color: color-mix(in srgb, var(--surface-raised) 88%, transparent);
+    border: 1px solid var(--surface-border);
+    box-shadow: var(--shadow-raised);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
   .app-container {
     @apply mx-auto w-full px-6;
     max-width: 80rem;

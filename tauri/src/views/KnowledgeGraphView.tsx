@@ -16,11 +16,13 @@ import {
   Check,
   ChevronDown,
   Clock3,
+  Crosshair,
   Download,
   Info,
   Loader2,
   Maximize2,
   Minimize2,
+  Minus,
   Network,
   Plus,
   RefreshCw,
@@ -89,28 +91,37 @@ function Section({
   collapsed,
   onToggle,
 }: {
-  title: string;
+  /** Omit to render a chrome-less section — used where a page-level heading
+   *  already names the content and a second title would just repeat it. */
+  title?: string;
   eyebrow?: string;
   children: ReactNode;
   collapsed?: boolean;
   onToggle?: () => void;
 }) {
+  const hasHeading = Boolean(title || eyebrow);
   return (
-    <section className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-5 py-4">
-      <div className={`flex items-start justify-between ${collapsed ? "" : "mb-3"}`}>
+    <section className="surface-card rounded-2xl px-5 py-4">
+      <div
+        className={`flex items-start justify-between ${
+          collapsed || !hasHeading ? "" : "mb-3"
+        }`}
+      >
         <div>
           {eyebrow && (
             <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
               {eyebrow}
             </div>
           )}
-          <h2 className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{title}</h2>
+          {title && (
+            <h2 className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{title}</h2>
+          )}
         </div>
         {onToggle && (
           <button
             onClick={onToggle}
             className="rounded-lg p-1 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors"
-            aria-label={collapsed ? `Expand ${title}` : `Collapse ${title}`}
+            aria-label={collapsed ? `Expand ${title ?? "section"}` : `Collapse ${title ?? "section"}`}
           >
             <ChevronDown
               size={18}
@@ -1286,18 +1297,12 @@ export default function KnowledgeGraphView({
 
       <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
         <div className={`flex w-full flex-col gap-4 px-4 py-4 sm:px-6 ${hideSidebar ? "" : "mx-auto max-w-[1600px]"}`}>
-          <header className="rounded-2xl border border-[var(--border-color)] bg-[linear-gradient(135deg,rgba(var(--accent-color-rgb),0.12),rgba(255,255,255,0)_55%),var(--bg-elevated)] px-5 py-3">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <header className="surface-card rounded-2xl px-4 py-2.5">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div className="max-w-2xl">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
-                  Knowledge
-                </div>
-                <h1 className="text-xl font-semibold text-[var(--text-primary)] sm:text-2xl">
-                  Your knowledge at a glance.
+                <h1 className="text-lg font-semibold text-[var(--text-primary)]">
+                  Knowledge Graph
                 </h1>
-                <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                  Explore your concept map, spot weak areas, and decide what to review or build on next.
-                </p>
                 {summaryError && (
                   <p className="mt-2 text-sm text-red-400">
                     Overview is temporarily unavailable: {summaryError}
@@ -1431,14 +1436,10 @@ export default function KnowledgeGraphView({
           )}
 
           <div className={`grid gap-4 ${hideSidebar ? "" : "xl:grid-cols-[minmax(0,1.6fr)_minmax(340px,0.95fr)]"}`}>
-            <Section
-              title="Knowledge Map"
-            >
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
-                  <p className="max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
-                    A top-down visual roadmap of your knowledge. Core topics branch into subtopics and concepts. Click a subtopic&apos;s &quot;Show&quot; badge to expand or hide its concepts. Scroll to zoom and drag to pan.
-                  </p>
+            {/* Untitled: the page header above already reads "Knowledge Graph". */}
+            <Section>
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-end">
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="relative w-48 sm:w-64">
                       <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
@@ -1513,7 +1514,7 @@ export default function KnowledgeGraphView({
                   className={
                     isFullscreen
                       ? "fixed inset-0 z-50 flex flex-col bg-[var(--bg-primary)] p-6 overflow-hidden"
-                      : "relative h-[clamp(360px,55vh,720px)] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[linear-gradient(180deg,rgba(var(--accent-color-rgb),0.04),rgba(255,255,255,0)),var(--bg-primary)]"
+                      : "relative h-[clamp(420px,68vh,900px)] overflow-hidden rounded-2xl border border-[var(--surface-border)] bg-[linear-gradient(180deg,rgba(var(--accent-color-rgb),0.05),rgba(255,255,255,0)_40%),var(--bg-base)]"
                   }
                   data-testid="knowledge-map"
                 >
@@ -1643,14 +1644,48 @@ export default function KnowledgeGraphView({
                           onSelectConcept={setSelectedConcept}
                           searchFilter={graphSearch}
                         />
-                        <button
-                          type="button"
-                          onClick={() => setIsFullscreen(!isFullscreen)}
-                          className="absolute top-3 right-3 z-10 flex items-center justify-center p-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] shadow-md transition-all"
-                          title={isFullscreen ? "Exit Full Screen" : "Full Screen"}
-                        >
-                          {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-                        </button>
+                        {/* Floating canvas dock (Figma/Miro style): zoom, reset
+                            framing, and fullscreen grouped in one unit so the
+                            canvas chrome does not compete with page chrome. */}
+                        <div className="surface-floating absolute bottom-3 right-3 z-10 flex items-center gap-0.5 rounded-xl p-1">
+                          <button
+                            type="button"
+                            onClick={() => roadmapRef.current?.zoomBy(1 / 1.3)}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+                            title="Zoom out"
+                            aria-label="Zoom out"
+                          >
+                            <Minus size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => roadmapRef.current?.zoomBy(1.3)}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+                            title="Zoom in"
+                            aria-label="Zoom in"
+                          >
+                            <Plus size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => roadmapRef.current?.resetView()}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+                            title="Reset view"
+                            aria-label="Reset view"
+                          >
+                            <Crosshair size={15} />
+                          </button>
+                          <div className="mx-0.5 h-5 w-px bg-[var(--surface-border)]" />
+                          <button
+                            type="button"
+                            onClick={() => setIsFullscreen(!isFullscreen)}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+                            title={isFullscreen ? "Exit Full Screen" : "Full Screen"}
+                            aria-label={isFullscreen ? "Exit Full Screen" : "Full Screen"}
+                          >
+                            {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+                          </button>
+                        </div>
                       </div>
                     </>
                   )}

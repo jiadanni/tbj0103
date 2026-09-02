@@ -3,7 +3,7 @@
  * Renders chapters → sections → concepts as a top-down tree of labeled boxes
  * connected by dashed/curved paths. Supports zoom/pan and node selection.
  */
-import { forwardRef, memo, useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
+import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
 import * as d3 from "d3";
 import type { ConceptNode, ConceptLink } from "../lib/api";
 import { buildForest, pruneCollapsedSections, type RoadmapNode } from "../lib/conceptTree";
@@ -126,6 +126,10 @@ export interface RoadmapGraphHandle {
    * been computed yet (e.g., empty roadmap).
    */
   getExportableSvg: () => { svg: string; width: number; height: number } | null;
+  /** Scale about the viewport center by `factor` (>1 zooms in). */
+  zoomBy: (factor: number) => void;
+  /** Re-fit the whole roadmap into view, matching the initial framing. */
+  resetView: () => void;
 }
 
 function RoadmapGraphInner(
@@ -313,13 +317,15 @@ function RoadmapGraphInner(
     return { visibleNodes, hierarchyLinks, bbox };
   }, [nodes, links, expandedSections, dims]);
 
-  // Auto-fit when layout or dims change
-  useEffect(() => {
-    if (!layout || !svgRef.current || dims.width === 0 || dims.height === 0) { return; }
+  // Compute the transform that fits the current layout into the viewport.
+  // Shared by the auto-fit effect and the "reset view" control so both land on
+  // exactly the same framing.
+  const computeFitTransform = useCallback(() => {
+    if (!layout || dims.width === 0 || dims.height === 0) { return null; }
 
     const w = layout.bbox.maxX - layout.bbox.minX;
     const h = layout.bbox.maxY - layout.bbox.minY;
-    if (w === 0 || h === 0) { return; }
+    if (w === 0 || h === 0) { return null; }
 
     const fitScale = Math.min(dims.width / w, dims.height / h);
     const scale = Math.min(Math.max(fitScale, 0.6), 1.5);
@@ -330,7 +336,14 @@ function RoadmapGraphInner(
       ? (dims.height - contentHeight) / 2 - layout.bbox.minY * scale
       : -layout.bbox.minY * scale;
 
-    const newTransform = d3.zoomIdentity.translate(tx, ty).scale(scale);
+    return d3.zoomIdentity.translate(tx, ty).scale(scale);
+  }, [layout, dims]);
+
+  // Auto-fit when layout or dims change
+  useEffect(() => {
+    if (!svgRef.current) { return; }
+    const newTransform = computeFitTransform();
+    if (!newTransform) { return; }
 
     // Sync d3.zoom's internal state first, then update React state via
     // requestAnimationFrame to avoid a synchronous setState inside an effect.
@@ -338,7 +351,7 @@ function RoadmapGraphInner(
       d3.select(svgRef.current).call(zoomRef.current.transform, newTransform);
     }
     requestAnimationFrame(() => setTransform(newTransform));
-  }, [layout, dims]);
+  }, [computeFitTransform]);
 
   // Wire up zoom/pan
   useEffect(() => {
@@ -403,8 +416,24 @@ function RoadmapGraphInner(
         const svg = new XMLSerializer().serializeToString(clone);
         return { svg, width, height };
       },
+      zoomBy: (factor: number) => {
+        if (!svgRef.current || !zoomRef.current) { return; }
+        d3.select(svgRef.current)
+          .transition()
+          .duration(180)
+          .call(zoomRef.current.scaleBy, factor);
+      },
+      resetView: () => {
+        if (!svgRef.current || !zoomRef.current) { return; }
+        const fit = computeFitTransform();
+        if (!fit) { return; }
+        d3.select(svgRef.current)
+          .transition()
+          .duration(220)
+          .call(zoomRef.current.transform, fit);
+      },
     }),
-    [layout],
+    [layout, computeFitTransform],
   );
 
   if (!layout) {
@@ -438,8 +467,11 @@ function RoadmapGraphInner(
           <pattern id="rg-dot-grid" width="26" height="26" patternUnits="userSpaceOnUse">
             <circle cx="1.5" cy="1.5" r="1.2" fill="rgba(148,163,184,0.16)" />
           </pattern>
-          <filter id="rg-card-shadow" x="-30%" y="-30%" width="160%" height="160%">
-            <feDropShadow dx="0" dy="2" stdDeviation="4" floodColor="#0f172a" floodOpacity="0.3" />
+          {/* Two-part shadow: a tight contact shadow plus a wider ambient one,
+              which reads as elevation rather than as a single soft blur. */}
+          <filter id="rg-card-shadow" x="-40%" y="-40%" width="180%" height="180%">
+            <feDropShadow dx="0" dy="1" stdDeviation="1.5" floodColor="#000000" floodOpacity="0.35" />
+            <feDropShadow dx="0" dy="6" stdDeviation="9" floodColor="#000000" floodOpacity="0.30" />
           </filter>
           {Object.entries(TYPE_COLORS).map(([type, color]) => (
             <linearGradient key={type} id={`rg-grad-${type}`} x1="0" y1="0" x2="0" y2="1">
@@ -515,7 +547,10 @@ function RoadmapGraphInner(
             const opacity = matchesFilter ? 1 : 0.2;
 
             const typeColor = colorFor(d.data.concept_type);
-            const fillColor = isChapter || isSection ? "var(--bg-elevated)" : "var(--bg-primary)";
+            // Chapters/sections sit on the raised tier so they read as cards
+            // lifted off the canvas; concepts stay on the plain surface tier so
+            // the hierarchy is legible by elevation alone.
+            const fillColor = isChapter || isSection ? "var(--surface-raised)" : "var(--surface)";
             const borderColor = isSelected
               ? "var(--accent-color)"
               : hexToRgba(typeColor, isChapter ? 0.75 : isSection ? 0.65 : 0.6);
@@ -575,6 +610,20 @@ function RoadmapGraphInner(
                   stroke={borderColor}
                   strokeWidth={borderWidth}
                 />
+                {/* Category accent along the top edge. Clipped to the card's
+                    rounded corners by reusing the same rx, then masked to a
+                    3px band so only the top stroke shows. */}
+                {!isSelected && (
+                  <path
+                    d={`M ${isChapter ? 14 : 10} 1
+                        L ${dim.width - (isChapter ? 14 : 10)} 1`}
+                    stroke={getResolvedColor(typeColor)}
+                    strokeWidth={2.5}
+                    strokeLinecap="round"
+                    fill="none"
+                    opacity={isChapter ? 0.95 : isSection ? 0.8 : 0.6}
+                  />
+                )}
                 {lines.map((line, i) => (
                   <text
                     key={i}
