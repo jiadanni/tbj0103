@@ -37,35 +37,78 @@ function timeAgo(iso: string | undefined | null) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-function MetricCard({
+/**
+ * One metric inside the summary strip. Renders as a button only when there is
+ * somewhere to go, so zero-value metrics stay inert rather than advertising a
+ * dead click target.
+ */
+function MetricStat({
   label,
   value,
-  accent = "bg-[var(--accent-color)]",
   onClick,
 }: {
   label: string;
   value: string | number;
-  accent?: string;
   onClick?: () => void;
 }) {
-  const className = `min-w-[88px] rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-2 text-left ${
-    onClick ? "cursor-pointer transition-colors hover:border-[var(--accent-color)]" : ""
-  }`;
+  const isZero = value === 0 || value === "0";
   const content = (
     <>
-      <div className={`mb-1 h-0.5 w-4 rounded-full ${accent}`} />
-      <div className="text-xs font-semibold leading-none text-[var(--text-primary)]">{value}</div>
-      <div className="mt-1 text-[10px] text-[var(--text-muted)]">{label}</div>
+      <span
+        className={`text-sm font-semibold tabular-nums ${
+          isZero ? "text-[var(--text-muted)]" : "text-[var(--text-primary)]"
+        }`}
+      >
+        {value}
+      </span>
+      <span className="text-[11px] text-[var(--text-muted)]">{label}</span>
     </>
   );
   if (onClick) {
     return (
-      <button type="button" className={className} onClick={onClick}>
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex items-baseline gap-1.5 rounded-md px-1.5 py-0.5 transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+      >
         {content}
       </button>
     );
   }
-  return <div className={className}>{content}</div>;
+  return <span className="flex items-baseline gap-1.5 px-1.5 py-0.5">{content}</span>;
+}
+
+/**
+ * Replaces the former 2x2 grid of near-empty stat cards. A single strip carries
+ * the same numbers in roughly one quarter of the vertical space, which is what
+ * buys the roadmap canvas its extra height.
+ */
+function MetricSummaryStrip({
+  topics,
+  sources,
+  dueReview,
+  activeGoals,
+  onTopics,
+  onDueReview,
+}: {
+  topics: number;
+  sources: number;
+  dueReview: number;
+  activeGoals: number;
+  onTopics?: () => void;
+  onDueReview?: () => void;
+}) {
+  return (
+    <div className="surface-card flex flex-wrap items-center gap-x-1 gap-y-1 rounded-xl px-2 py-1.5">
+      <MetricStat label="Topics" value={topics} onClick={onTopics} />
+      <span aria-hidden className="text-[var(--text-muted)] opacity-40">·</span>
+      <MetricStat label="Sources" value={sources} />
+      <span aria-hidden className="text-[var(--text-muted)] opacity-40">·</span>
+      <MetricStat label="Due" value={dueReview} onClick={onDueReview} />
+      <span aria-hidden className="text-[var(--text-muted)] opacity-40">·</span>
+      <MetricStat label="Goals" value={activeGoals} />
+    </div>
+  );
 }
 
 function QuickActionsCard({
@@ -86,7 +129,7 @@ function QuickActionsCard({
     { label: "Practice", icon: <Target size={14} />, onClick: onPractice },
   ];
   return (
-    <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3">
+    <section className="surface-card rounded-xl p-3">
       <div className="mb-2 flex items-center justify-between">
         <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
           Quick Actions
@@ -292,23 +335,24 @@ export default function FolderDashboardView() {
       </header>
 
       {/* Top strip: metrics + goals + continue learning side-by-side */}
-      <div className="border-b border-[var(--border-color)] bg-[var(--bg-primary)] px-4 py-3">
-        <div className="grid items-stretch gap-3 xl:grid-cols-[minmax(14rem,1fr)_minmax(16rem,1fr)_minmax(16rem,1fr)_minmax(20rem,1.3fr)]">
-          <div className="grid grid-cols-2 content-start gap-2 sm:grid-cols-4 xl:grid-cols-2">
-            <MetricCard label="Due Review" value={summary.review.topics_due_for_review} />
-            <MetricCard label="Active Goals" value={summary.overview.active_goals} />
-            <MetricCard
-              label="Topics"
-              value={summary.overview.topics}
-              onClick={
-                summary.overview.topics > 0
-                  ? () => navigate("/topics")
-                  : undefined
-              }
-            />
-            <MetricCard label="Sources" value={summary.overview.sources} />
-          </div>
+      <div className="border-b border-[var(--border-color)] bg-[var(--bg-base)] px-4 py-3">
+        <MetricSummaryStrip
+          topics={summary.overview.topics}
+          sources={summary.overview.sources}
+          dueReview={summary.review.topics_due_for_review}
+          activeGoals={summary.overview.active_goals}
+          onTopics={summary.overview.topics > 0 ? () => navigate("/topics") : undefined}
+          onDueReview={
+            summary.review.topics_due_for_review > 0
+              ? () => navigate(
+                summary.review.route.path,
+                summary.review.route.state ? { state: summary.review.route.state } : undefined,
+              )
+              : undefined
+          }
+        />
 
+        <div className="mt-3 grid items-stretch gap-3 xl:grid-cols-[minmax(16rem,1fr)_minmax(16rem,1fr)_minmax(20rem,1.3fr)]">
           <GoalsCard
             workspaceId={activeWorkspaceId}
             includeDescendants={includeDescendants}
@@ -321,7 +365,7 @@ export default function FolderDashboardView() {
             onPractice={() => navigate(summary.review.route.path, summary.review.route.state ? { state: summary.review.route.state } : undefined)}
           />
 
-          <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3">
+          <section className="surface-card rounded-xl p-3">
             <div className="mb-2 flex items-center justify-between">
               <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
                 Continue Learning
@@ -502,7 +546,7 @@ function GoalsCard({
   }
 
   return (
-    <section className="flex min-h-0 flex-col rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)]">
+    <section className="flex min-h-0 flex-col surface-card rounded-xl">
       <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border-color)]">
         <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
           Workspace goals
