@@ -2197,6 +2197,52 @@ fn emit_match_task<R: Runtime>(
     );
 }
 
+/// Embed `(key, text)` pairs, returning unit-length vectors by key.
+///
+/// Entries whose text is empty are skipped, and individual failures drop that
+/// key rather than aborting: per the enrichment-must-degrade rule, a chat that
+/// fails to embed loses its semantic rescue and nothing else. Vectors are
+/// normalised here so comparisons stay a plain dot product.
+async fn embed_by_key(
+    ollama: &crate::ollama::client::OllamaClient,
+    model: &str,
+    items: Vec<(String, String)>,
+    mut on_progress: impl FnMut(usize, usize),
+) -> std::collections::HashMap<String, Vec<f32>> {
+    let total = items.len();
+    let mut out = std::collections::HashMap::new();
+    let mut failures = 0usize;
+    for (i, (key, text)) in items.into_iter().enumerate() {
+        if text.trim().is_empty() {
+            continue;
+        }
+        match ollama
+            .generate_embedding_with_options("claude_import_match", model, &text, Some("5m"))
+            .await
+        {
+            Ok(mut v) => {
+                let n = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+                if n > 0.0 {
+                    v.iter_mut().for_each(|x| *x /= n);
+                    out.insert(key, v);
+                }
+            }
+            Err(_) => {
+                failures += 1;
+                // A wholesale outage should stop early rather than spend
+                // minutes failing once per chat.
+                if failures > 20 && out.is_empty() {
+                    break;
+                }
+            }
+        }
+        if (i + 1).is_multiple_of(10) {
+            on_progress(i + 1, total);
+        }
+    }
+    out
+}
+
 /// Re-run deterministic project matching after distilling each project's
 /// prompt/description/memory into a topic list with one LLM call per few projects.
 ///
@@ -2310,14 +2356,103 @@ pub async fn match_claude_with_topics<R: Runtime>(
     )
     .await;
 
+    // Semantic rescue inputs. Embedding the ~25 projects is cheap; chats are
+    // embedded only where the lexical passes came up empty, which is where the
+    // tier can actually change the outcome. Any failure here leaves the maps
+    // empty and the match falls back to lexical-only.
+    let (chat_embeddings, project_embeddings) = {
+        let embed_model = {
+            let conn = db_state.0.get().map_err(|e| e.to_string())?;
+            crate::services::model_settings::get_embedding_model(&conn)
+        };
+        match embed_model {
+            Some(embed_model) => {
+                emit_match_task(
+                    &app,
+                    "processing",
+                    "Embedding projects",
+                    Some(embed_model.clone()),
+                    None,
+                    None,
+                );
+                let projects_input: Vec<(String, String)> = proj_previews
+                    .iter()
+                    .map(|p| {
+                        let memory =
+                            memories_by_project.get(&p.uuid).cloned().unwrap_or_default();
+                        let text = chat_file_store::claude_v2_match::project_source_text(
+                            &p.prompt_template,
+                            &p.description,
+                            &memory,
+                            chat_file_store::claude_v2_match::PROJECT_EMBED_CHARS,
+                        );
+                        (p.uuid.clone(), format!("{} {}", p.name, text))
+                    })
+                    .collect();
+                let project_embeddings =
+                    embed_by_key(&ollama, &embed_model, projects_input, |_, _| {}).await;
+
+                if project_embeddings.is_empty() {
+                    (std::collections::HashMap::new(), project_embeddings)
+                } else {
+                    // Which chats the lexical passes leave unplaced.
+                    let lexical =
+                        chat_file_store::claude_v2_match::suggest_project_for_conversations_with_options(
+                            &conv_previews,
+                            &proj_previews,
+                            &memories_by_project,
+                            &outcome.topics,
+                            match_margin,
+                        );
+                    let unplaced: Vec<(String, String)> = conv_previews
+                        .iter()
+                        .zip(&lexical)
+                        .filter(|(_, s)| s.project_uuid.is_none())
+                        .map(|(c, _)| {
+                            (
+                                c.uuid.clone(),
+                                chat_file_store::claude_v2_match::chat_embedding_input(c),
+                            )
+                        })
+                        .collect();
+                    let total = unplaced.len();
+                    let model_for_progress = embed_model.clone();
+                    let chat_embeddings = embed_by_key(
+                        &ollama,
+                        &embed_model,
+                        unplaced,
+                        |done, _| {
+                            emit_match_task(
+                                &app,
+                                "processing",
+                                &format!("Embedding unmatched chats ({done} of {total})"),
+                                Some(model_for_progress.clone()),
+                                Some(done as u32),
+                                Some(total as u32),
+                            );
+                        },
+                    )
+                    .await;
+                    (chat_embeddings, project_embeddings)
+                }
+            }
+            None => (
+                std::collections::HashMap::new(),
+                std::collections::HashMap::new(),
+            ),
+        }
+    };
+
     // Deterministic re-match with the enriched vocabulary. Projects the model
     // failed on are simply absent from `topics` and score on base vocabulary.
     let suggestions =
-        chat_file_store::claude_v2_match::suggest_project_for_conversations_with_options(
+        chat_file_store::claude_v2_match::suggest_project_for_conversations_with_embeddings(
             &conv_previews,
             &proj_previews,
             &memories_by_project,
             &outcome.topics,
+            &chat_embeddings,
+            &project_embeddings,
             match_margin,
         );
 

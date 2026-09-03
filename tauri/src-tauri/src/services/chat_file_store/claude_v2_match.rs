@@ -121,6 +121,18 @@ const CORPUS_DF_CEIL: f32 = 0.45;
 /// in batches of 10 and unit tests score a handful of chats; in a corpus that
 /// small every token looks common and damping would suppress everything.
 const MIN_CORPUS_FOR_DF: usize = 40;
+/// Cosine-similarity floor for the semantic tier. Mirrors the clustering
+/// module's `EMBED_SIMILARITY_MIN` (0.56), which was swept against this same
+/// corpus — nomic-embed-text similarities occupy a narrow band, so the useful
+/// threshold is well above the 0.0 a cosine can reach in principle.
+const EMBED_SIMILARITY_MIN: f32 = 0.56;
+/// The top project must beat the runner-up by this much. Embedding scores are
+/// compressed relative to lexical coverage, so the margin is correspondingly
+/// tighter than `MARGIN_MIN`.
+const EMBED_MARGIN_MIN: f32 = 0.03;
+/// Character budget for a project's embedded description. Matches the budget the
+/// topic distiller uses, so both semantic paths see the same source text.
+pub const PROJECT_EMBED_CHARS: usize = 1200;
 /// How many leading user messages contribute to a chat's matchable text. Chats
 /// that open with "quick question" need more than the first turn to score.
 const CHAT_CONTEXT_MESSAGES: usize = 3;
@@ -280,6 +292,35 @@ pub fn suggest_project_for_conversations_with_options(
     topics_by_project: &HashMap<String, Vec<String>>,
     margin_min: f32,
 ) -> Vec<MatchSuggestion> {
+    suggest_project_for_conversations_with_embeddings(
+        conversations,
+        projects,
+        memories_by_project,
+        topics_by_project,
+        &HashMap::new(),
+        &HashMap::new(),
+        margin_min,
+    )
+}
+
+/// As `suggest_project_for_conversations_with_options`, plus a semantic rescue
+/// tier for chats the lexical passes cannot place.
+///
+/// Both embedding maps are keyed by uuid (chat and project respectively) and
+/// must hold unit-length vectors. Passing empty maps disables the tier, which is
+/// how every caller degrades when Ollama is unavailable — per the
+/// enrichment-must-degrade rule, a missing embedding costs a chat its semantic
+/// rescue and nothing more.
+#[allow(clippy::too_many_arguments)]
+pub fn suggest_project_for_conversations_with_embeddings(
+    conversations: &[ClaudeConversationPreview],
+    projects: &[ClaudeProjectPreview],
+    memories_by_project: &HashMap<String, String>,
+    topics_by_project: &HashMap<String, Vec<String>>,
+    chat_embeddings: &HashMap<String, Vec<f32>>,
+    project_embeddings: &HashMap<String, Vec<f32>>,
+    margin_min: f32,
+) -> Vec<MatchSuggestion> {
     let vocabs = build_vocabs(projects, memories_by_project, topics_by_project);
 
     // Inverse document frequency over the project pool. A token in 1 of 20
@@ -304,6 +345,8 @@ pub fn suggest_project_for_conversations_with_options(
                 &idf,
                 &chat_df,
                 &boostable,
+                chat_embeddings,
+                project_embeddings,
                 COVERAGE_MIN,
                 margin_min,
             )
@@ -470,6 +513,82 @@ fn build_chat_df(conversations: &[ClaudeConversationPreview]) -> HashMap<String,
         .collect()
 }
 
+/// Text to embed for a chat when matching it to a project.
+///
+/// Deliberately not `claude_v2_cluster::embedding_input`, which uses the title
+/// alone: clustering compares chats to each other, where titles are the cleanest
+/// shared signal, but matching compares a chat to a project's *description*, and
+/// a bare title like "Chat" or "Monday 23rd" carries nothing to compare.
+pub fn chat_embedding_input(conv: &ClaudeConversationPreview) -> String {
+    let base = chat_context_text(conv);
+    let summary = conv.summary.trim();
+    if summary.is_empty() {
+        return base;
+    }
+    // The summary is the export's distilled overview — high-signal for semantic
+    // similarity, where it does not dilute a coverage denominator the way it
+    // does in the lexical pass.
+    format!("{base} {summary}")
+}
+
+/// Cosine similarity of two unit-length vectors, i.e. their dot product.
+/// Callers normalise on receipt (see `commands/chat_file.rs`), so this stays a
+/// plain dot product rather than re-deriving magnitudes per comparison.
+fn cosine(a: &[f32], b: &[f32]) -> f32 {
+    if a.len() != b.len() {
+        return 0.0;
+    }
+    a.iter().zip(b).map(|(x, y)| x * y).sum()
+}
+
+/// Best project for a chat by embedding similarity, subject to the same
+/// threshold-and-margin discipline as the lexical pass.
+///
+/// Returns `None` when embeddings are missing for the chat, when no project
+/// clears `EMBED_SIMILARITY_MIN`, or when the top two projects are too close to
+/// separate — an ambiguous semantic match is a guess, exactly as it is lexically.
+fn embedding_suggestion(
+    conv: &ClaudeConversationPreview,
+    chat_embeddings: &HashMap<String, Vec<f32>>,
+    project_embeddings: &HashMap<String, Vec<f32>>,
+) -> Option<MatchSuggestion> {
+    let chat_vec = chat_embeddings.get(&conv.uuid)?;
+    if project_embeddings.is_empty() {
+        return None;
+    }
+
+    let mut scored: Vec<(&str, f32)> = project_embeddings
+        .iter()
+        .map(|(uuid, vec)| (uuid.as_str(), cosine(chat_vec, vec)))
+        .collect();
+    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    let &(top_uuid, top) = scored.first()?;
+    let runner_up = scored.get(1).map(|s| s.1).unwrap_or(0.0);
+    if top < EMBED_SIMILARITY_MIN || (top - runner_up) < EMBED_MARGIN_MIN {
+        return None;
+    }
+
+    Some(MatchSuggestion {
+        conversation_uuid: conv.uuid.clone(),
+        project_uuid: Some(top_uuid.to_string()),
+        // Held below the lexical tiers' ceiling: a semantic match is a weaker
+        // claim than a shared rare term, and the UI ranks by this score.
+        score: top.min(0.8),
+        reason: "semantic",
+        alternates: scored
+            .iter()
+            .skip(1)
+            .filter(|(_, s)| *s > 0.0)
+            .take(2)
+            .map(|(uuid, s)| AltCandidate {
+                project_uuid: uuid.to_string(),
+                score: s.min(0.8),
+            })
+            .collect(),
+    })
+}
+
 /// Fraction of a token's IDF mass that survives corpus damping.
 ///
 /// Tokens the user writes in many of their chats carry no power to separate one
@@ -498,6 +617,8 @@ fn score_conversation_inner(
     idf: &HashMap<String, f32>,
     chat_df: &HashMap<String, f32>,
     boostable: &HashSet<String>,
+    chat_embeddings: &HashMap<String, Vec<f32>>,
+    project_embeddings: &HashMap<String, Vec<f32>>,
     coverage_min: f32,
     margin_min: f32,
 ) -> MatchSuggestion {
@@ -556,7 +677,19 @@ fn score_conversation_inner(
             return hit;
         }
         // The summary pass is the more informed ranking when it ran.
+        if let Some(hit) = embedding_suggestion(conv, chat_embeddings, project_embeddings) {
+            return hit;
+        }
         return no_match(conv, summary_alternates);
+    }
+
+    // 4. Semantic rescue: lexical overlap cannot connect "gradient descent" to a
+    //    project described as "ML". Consulted only for chats no lexical tier
+    //    placed, so a confident match here is a strict gain — the same scoping
+    //    the summary rescue uses. Empty maps (Ollama down, embeddings disabled)
+    //    make this a no-op and the result falls back to the lexical outcome.
+    if let Some(hit) = embedding_suggestion(conv, chat_embeddings, project_embeddings) {
+        return hit;
     }
 
     no_match(conv, base_alternates)
@@ -742,7 +875,7 @@ const MAX_TOPICS_PER_PROJECT: usize = 30;
 /// itself capped at 1/4 of the budget — so memory is never squeezed below 3/4
 /// even by a verbose template, and a short (or empty) head costs memory
 /// nothing. Projects without memory give the head the whole budget.
-pub(super) fn project_source_text(
+pub fn project_source_text(
     prompt_template: &str,
     description: &str,
     memory: &str,
@@ -1478,6 +1611,264 @@ mod tests {
             conversation_count: 0,
             has_memory: false,
             prompt_template: prompt.to_string(),
+        }
+    }
+
+    /// The semantic tier must never override a lexical match, and must be inert
+    /// when embeddings are unavailable.
+    #[test]
+    fn semantic_tier_only_rescues_unplaced_chats() {
+        let projects = vec![
+            proj("p1", "Notes", "obsidian logseq zettelkasten markdown backlinks"),
+            proj("p2", "Fitness", "squat deadlift macros protein training"),
+        ];
+        // Lexically unambiguous: "obsidian" and "zettelkasten" hit p1 only.
+        let placed = conv("c1", "Chat", "obsidian zettelkasten backlinks markdown");
+
+        let lexical =
+            suggest_project_for_conversations(std::slice::from_ref(&placed), &projects, &HashMap::new());
+        assert_eq!(lexical[0].project_uuid.as_deref(), Some("p1"));
+
+        // An embedding that points hard at the *other* project must not win.
+        let mut chat_emb = HashMap::new();
+        chat_emb.insert("c1".to_string(), vec![0.0, 1.0]);
+        let mut proj_emb = HashMap::new();
+        proj_emb.insert("p1".to_string(), vec![1.0, 0.0]);
+        proj_emb.insert("p2".to_string(), vec![0.0, 1.0]);
+
+        let with_emb = suggest_project_for_conversations_with_embeddings(
+            &[placed],
+            &projects,
+            &HashMap::new(),
+            &HashMap::new(),
+            &chat_emb,
+            &proj_emb,
+            MARGIN_MIN,
+        );
+        assert_eq!(
+            with_emb[0].project_uuid.as_deref(),
+            Some("p1"),
+            "a lexically-placed chat must keep its project"
+        );
+        assert_eq!(with_emb[0].reason, lexical[0].reason);
+    }
+
+    /// An unplaceable chat is rescued when embeddings separate the projects,
+    /// and left alone when they do not.
+    #[test]
+    fn semantic_tier_requires_a_clear_winner() {
+        let projects = vec![
+            proj("p1", "Notes", "obsidian logseq zettelkasten markdown"),
+            proj("p2", "Fitness", "squat deadlift macros protein"),
+        ];
+        // Shares nothing with either vocabulary, so no lexical tier can place it.
+        let vague = conv("c1", "Chat", "wondering about the thing we discussed");
+        assert_eq!(
+            suggest_project_for_conversations(
+                std::slice::from_ref(&vague),
+                &projects,
+                &HashMap::new(),
+            )[0]
+                .project_uuid,
+            None
+        );
+
+        let mut proj_emb = HashMap::new();
+        proj_emb.insert("p1".to_string(), vec![1.0, 0.0]);
+        proj_emb.insert("p2".to_string(), vec![0.0, 1.0]);
+
+        // Clearly nearer p1 — rescued.
+        let mut clear = HashMap::new();
+        clear.insert("c1".to_string(), vec![0.95, 0.31]);
+        let out = suggest_project_for_conversations_with_embeddings(
+            std::slice::from_ref(&vague),
+            &projects,
+            &HashMap::new(),
+            &HashMap::new(),
+            &clear,
+            &proj_emb,
+            MARGIN_MIN,
+        );
+        assert_eq!(out[0].project_uuid.as_deref(), Some("p1"));
+        assert_eq!(out[0].reason, "semantic");
+
+        // Equidistant — an ambiguous semantic match is still a guess.
+        let mut tied = HashMap::new();
+        let v = 1.0f32 / 2.0f32.sqrt();
+        tied.insert("c1".to_string(), vec![v, v]);
+        let out = suggest_project_for_conversations_with_embeddings(
+            std::slice::from_ref(&vague),
+            &projects,
+            &HashMap::new(),
+            &HashMap::new(),
+            &tied,
+            &proj_emb,
+            MARGIN_MIN,
+        );
+        assert_eq!(out[0].project_uuid, None, "a tie must not be assigned");
+
+        // No embeddings at all — inert, matching the Ollama-down path.
+        let out = suggest_project_for_conversations_with_embeddings(
+            &[vague],
+            &projects,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            MARGIN_MIN,
+        );
+        assert_eq!(out[0].project_uuid, None);
+    }
+
+    /// Measure the semantic tier's yield over the real export, with real
+    /// embeddings. Double-gated: needs the sample export and a live Ollama
+    /// holding an embedding model.
+    ///
+    /// ```text
+    /// AETHERIUM_CLAUDE_V2_SAMPLE=/path/to/export \
+    ///   AETHERIUM_EMBED_MODEL=nomic-embed-text cargo test --lib \
+    ///   semantic_tier_yield_against_sample -- --nocapture
+    /// ```
+    #[test]
+    fn semantic_tier_yield_against_sample() {
+        let Some(export_path) =
+            std::env::var_os("AETHERIUM_CLAUDE_V2_SAMPLE").map(std::path::PathBuf::from)
+        else {
+            eprintln!("skipping semantic_tier_yield_against_sample: set AETHERIUM_CLAUDE_V2_SAMPLE");
+            return;
+        };
+        let Ok(model) = std::env::var("AETHERIUM_EMBED_MODEL") else {
+            eprintln!("skipping semantic_tier_yield_against_sample: set AETHERIUM_EMBED_MODEL");
+            return;
+        };
+
+        use super::super::claude_v2;
+        let export_path = export_path.as_path();
+        let (convs_by_project, _) = claude_v2::preview_v2_design_chats(export_path).unwrap();
+        let name_map = claude_v2::load_v2_project_name_map(export_path);
+        let (memory_uuids, memories) =
+            claude_v2::parse_v2_memories(export_path, &name_map).unwrap();
+        let projects =
+            claude_v2::preview_v2_projects(export_path, &memory_uuids, &convs_by_project).unwrap();
+        let bytes = std::fs::read(export_path.join("conversations.json")).unwrap();
+        let (orphans, _) = super::super::preview_claude_conversations(&bytes).unwrap();
+        let memories_by_project: HashMap<String, String> = memories
+            .folder_memories
+            .iter()
+            .map(|m| (m.project_uuid.clone(), m.memory.clone()))
+            .collect();
+
+        let baseline = suggest_project_for_conversations(&orphans, &projects, &memories_by_project);
+        let unplaced: Vec<&ClaudeConversationPreview> = orphans
+            .iter()
+            .zip(&baseline)
+            .filter(|(_, s)| s.project_uuid.is_none())
+            .map(|(c, _)| c)
+            .collect();
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let embed = |texts: Vec<(String, String)>| -> HashMap<String, Vec<f32>> {
+            rt.block_on(async {
+                let client = crate::ollama::client::OllamaClient::new(None).unwrap();
+                let mut out = HashMap::new();
+                for (key, text) in texts {
+                    if text.trim().is_empty() {
+                        continue;
+                    }
+                    if let Ok(mut v) = client
+                        .generate_embedding_with_options("claude_match_test", &model, &text, Some("5m"))
+                        .await
+                    {
+                        let n = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+                        if n > 0.0 {
+                            v.iter_mut().for_each(|x| *x /= n);
+                            out.insert(key, v);
+                        }
+                    }
+                }
+                out
+            })
+        };
+
+        let project_embeddings = embed(
+            projects
+                .iter()
+                .map(|p| {
+                    let memory = memories_by_project.get(&p.uuid).cloned().unwrap_or_default();
+                    let text = project_source_text(
+                        &p.prompt_template,
+                        &p.description,
+                        &memory,
+                        PROJECT_EMBED_CHARS,
+                    );
+                    // Name first: it is the only signal for a project whose
+                    // prose is empty.
+                    (p.uuid.clone(), format!("{} {}", p.name, text))
+                })
+                .collect(),
+        );
+        if project_embeddings.is_empty() {
+            eprintln!("skipping semantic_tier_yield_against_sample: no embeddings (Ollama down?)");
+            return;
+        }
+
+        let chat_embeddings = embed(
+            unplaced
+                .iter()
+                .map(|c| (c.uuid.clone(), chat_embedding_input(c)))
+                .collect(),
+        );
+
+        let after = suggest_project_for_conversations_with_embeddings(
+            &orphans,
+            &projects,
+            &memories_by_project,
+            &HashMap::new(),
+            &chat_embeddings,
+            &project_embeddings,
+            MARGIN_MIN,
+        );
+
+        let before_n = baseline.iter().filter(|s| s.project_uuid.is_some()).count();
+        let after_n = after.iter().filter(|s| s.project_uuid.is_some()).count();
+        eprintln!(
+            "[semantic tier] lexical {before_n}/{} -> +embeddings {after_n}/{} (rescued {})",
+            baseline.len(),
+            after.len(),
+            after_n - before_n
+        );
+
+        // Sample of what the tier actually rescued, for eyeballing quality.
+        let names: HashMap<&str, &str> =
+            projects.iter().map(|p| (p.uuid.as_str(), p.name.as_str())).collect();
+        let mut shown = 0;
+        for (i, (b, a)) in baseline.iter().zip(&after).enumerate() {
+            if b.project_uuid.is_none() {
+                if let Some(pu) = &a.project_uuid {
+                    eprintln!(
+                        "  rescued: {:<58} -> {} ({:.2})",
+                        orphans[i].name.chars().take(56).collect::<String>(),
+                        names.get(pu.as_str()).copied().unwrap_or("?"),
+                        a.score
+                    );
+                    shown += 1;
+                    if shown >= 30 { break; }
+                }
+            }
+        }
+
+        // The tier only runs on chats no lexical pass placed, so it can only add.
+        assert!(
+            after_n >= before_n,
+            "semantic rescue must never lose a lexical match"
+        );
+        for (b, a) in baseline.iter().zip(&after) {
+            if b.project_uuid.is_some() {
+                assert_eq!(
+                    b.project_uuid, a.project_uuid,
+                    "a lexically-placed chat must keep its project"
+                );
+            }
         }
     }
 
