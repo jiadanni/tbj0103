@@ -105,6 +105,22 @@ const TOPIC_WEIGHT: f32 = 1.6;
 /// project on shared "netherlands" mass). Above this ratio a topic term still
 /// counts, at plain base weight.
 const TOPIC_BOOST_MAX_DF_RATIO: f32 = 0.25;
+/// Chat-corpus document frequency below which a token keeps its full IDF mass.
+/// Measured over full transcripts on a real 1151-chat export, topical terms sit
+/// well under this ("openpyxl" 0.005, "waveform" 0.015, "faith" 0.018, "java"
+/// 0.116, "pendo" 0.141, "training" 0.166) while filler starts around 0.19.
+const CORPUS_DF_FLOOR: f32 = 0.18;
+/// Chat-corpus document frequency at which a token contributes nothing. A term
+/// the user writes in nearly half their chats describes their voice, not any one
+/// project, and must not decide a match no matter how rare it is among project
+/// prompts. Same export: "anyway" 0.187, "didn" 0.233, "nothing" 0.285,
+/// "understand" 0.325, "make" 0.391, "know" 0.448, "something" 0.474.
+/// See `build_chat_df` for the measured failure this fixes.
+const CORPUS_DF_CEIL: f32 = 0.45;
+/// Minimum number of chats before corpus damping engages. The LLM matcher runs
+/// in batches of 10 and unit tests score a handful of chats; in a corpus that
+/// small every token looks common and damping would suppress everything.
+const MIN_CORPUS_FOR_DF: usize = 40;
 /// How many leading user messages contribute to a chat's matchable text. Chats
 /// that open with "quick question" need more than the first turn to score.
 const CHAT_CONTEXT_MESSAGES: usize = 3;
@@ -271,6 +287,9 @@ pub fn suggest_project_for_conversations_with_options(
     // "code", "explain") and must not decide the match. This is what stops a
     // project with a long prompt from absorbing unrelated chats by surface area.
     let idf = build_idf(&vocabs);
+    // Rarity across the user's own chats, used to damp filler that project
+    // prose makes look discriminative. See `build_chat_df`.
+    let chat_df = build_chat_df(conversations);
     let boostable = boostable_topic_tokens(&vocabs);
 
     let title_candidates = title_match_candidates(projects);
@@ -283,6 +302,7 @@ pub fn suggest_project_for_conversations_with_options(
                 &title_candidates,
                 &vocabs,
                 &idf,
+                &chat_df,
                 &boostable,
                 COVERAGE_MIN,
                 margin_min,
@@ -400,12 +420,83 @@ fn build_idf(vocabs: &[ProjectVocab]) -> HashMap<String, f32> {
         .collect()
 }
 
+/// Document frequency of each token across the *chat* corpus, as a fraction of
+/// chats containing it.
+///
+/// `build_idf` measures rarity across the ~25 project vocabularies, which is the
+/// wrong corpus for suppressing filler. Project vocabularies are built from prose
+/// (`prompt_template`, descriptions, memories), so ordinary English leaks in: a
+/// word like "nothing" appearing in 1 of 25 prompt templates scores as maximally
+/// rare (idf 3.26) and outweighs genuinely topical terms. Measured on a real
+/// 1151-chat export, the winning tokens for several matches were entirely filler
+/// — a corporate-risk chat landed in an Islamic-faith project on
+/// `nothing/anyway/didn/brain`.
+///
+/// Counting across the chats the user actually wrote identifies those words
+/// without a hand-maintained list, and adapts to each export's own vocabulary.
+fn build_chat_df(conversations: &[ClaudeConversationPreview]) -> HashMap<String, f32> {
+    let n = conversations.len();
+    // Document frequency is only meaningful over a corpus large enough for
+    // "common" to mean something. Below this, every token in a small batch looks
+    // corpus-wide (in a 1-chat batch every token has df 1.0) and damping would
+    // suppress the entire vocabulary. An empty map disables damping entirely —
+    // `corpus_weight` returns 1.0 for unknown tokens.
+    if n < MIN_CORPUS_FOR_DF {
+        return HashMap::new();
+    }
+    let mut df: HashMap<String, usize> = HashMap::new();
+    for conv in conversations {
+        // Full transcript, not `chat_context_text`: the 700-char scoring window
+        // is far too small to separate filler from topic. Measured on a real
+        // 1151-chat export, "nothing" appears in 2.6% of context windows but
+        // 28.5% of full transcripts, while topical terms ("openpyxl" 0.5%,
+        // "waveform" 1.5%) stay rare in both. The wide window is what makes the
+        // two populations separable.
+        //
+        // Count each token once per chat, so a word repeated within one chat
+        // does not look corpus-wide common.
+        let mut seen: HashSet<String> = HashSet::new();
+        for msg in &conv.messages {
+            seen.extend(tokenize(&msg.content));
+        }
+        seen.extend(tokenize(&conv.name));
+        for token in seen {
+            *df.entry(token).or_insert(0) += 1;
+        }
+    }
+    let n = n as f32;
+    df.into_iter()
+        .map(|(token, count)| (token, count as f32 / n))
+        .collect()
+}
+
+/// Fraction of a token's IDF mass that survives corpus damping.
+///
+/// Tokens the user writes in many of their chats carry no power to separate one
+/// project from another, however rare they look among project prompts. Below
+/// `CORPUS_DF_FLOOR` a token is untouched; above `CORPUS_DF_CEIL` it is fully
+/// suppressed; between the two it fades out linearly.
+fn corpus_weight(token: &str, chat_df: &HashMap<String, f32>) -> f32 {
+    let Some(&df) = chat_df.get(token) else {
+        // Absent from the chat corpus entirely — nothing to suppress.
+        return 1.0;
+    };
+    if df <= CORPUS_DF_FLOOR {
+        return 1.0;
+    }
+    if df >= CORPUS_DF_CEIL {
+        return 0.0;
+    }
+    1.0 - (df - CORPUS_DF_FLOOR) / (CORPUS_DF_CEIL - CORPUS_DF_FLOOR)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn score_conversation_inner(
     conv: &ClaudeConversationPreview,
     title_candidates: &[(String, String)],
     vocabs: &[ProjectVocab],
     idf: &HashMap<String, f32>,
+    chat_df: &HashMap<String, f32>,
     boostable: &HashSet<String>,
     coverage_min: f32,
     margin_min: f32,
@@ -433,6 +524,7 @@ fn score_conversation_inner(
         &chat_context_text(conv),
         vocabs,
         idf,
+        chat_df,
         boostable,
         coverage_min,
         margin_min,
@@ -455,6 +547,7 @@ fn score_conversation_inner(
             &with_summary,
             vocabs,
             idf,
+            chat_df,
             boostable,
             coverage_min,
             margin_min,
@@ -480,6 +573,7 @@ fn coverage_suggestion(
     text: &str,
     vocabs: &[ProjectVocab],
     idf: &HashMap<String, f32>,
+    chat_df: &HashMap<String, f32>,
     boostable: &HashSet<String>,
     coverage_min: f32,
     margin_min: f32,
@@ -490,14 +584,20 @@ fn coverage_suggestion(
         return (None, Vec::new());
     }
 
-    // Denominator: total IDF mass of the chat. Unknown tokens (present in no
+    // Each token's usable mass: project-pool rarity, damped by how common the
+    // token is across the user's own chats. Applied to numerator and denominator
+    // alike so coverage stays a fraction of the *discriminative* mass — filler
+    // is removed from the comparison rather than counted as unmatched.
+    let mass = |t: &String| -> f32 {
+        idf.get(t).copied().unwrap_or(UNKNOWN_TOKEN_IDF) * corpus_weight(t, chat_df)
+    };
+
+    // Denominator: total usable mass of the chat. Unknown tokens (present in no
     // project) still count against coverage — a chat that is mostly off-topic
     // for every project should not score highly for the one word it shares.
-    let total_mass: f32 = chat_tokens
-        .iter()
-        .map(|t| idf.get(t).copied().unwrap_or(UNKNOWN_TOKEN_IDF))
-        .sum();
+    let total_mass: f32 = chat_tokens.iter().map(mass).sum();
     if total_mass <= 0.0 {
+        // Every token was filler or absent — nothing left to discriminate on.
         return (None, Vec::new());
     }
 
@@ -514,7 +614,10 @@ fn coverage_suggestion(
                 if w > 1.0 {
                     hit_topic = true;
                 }
-                matched_mass += w * idf.get(token).copied().unwrap_or(0.0);
+                // Unknown-token fallback stays 0.0 here: a token in no project
+                // vocabulary cannot contribute matched mass.
+                matched_mass +=
+                    w * idf.get(token).copied().unwrap_or(0.0) * corpus_weight(token, chat_df);
             }
         }
         // TOPIC_WEIGHT can push coverage above 1.0; clamp so the threshold and
@@ -1376,6 +1479,69 @@ mod tests {
             has_memory: false,
             prompt_template: prompt.to_string(),
         }
+    }
+
+    /// Filler in a project's prompt must not win matches for it.
+    ///
+    /// Regression for the defect this damping exists to fix: because project
+    /// vocabularies are built from prose, ordinary English leaked in and scored
+    /// as maximally rare against the ~25-project pool. On a real 1151-chat
+    /// export a corporate-risk chat matched an Islamic-faith project on
+    /// `nothing/anyway/didn/brain` alone.
+    ///
+    /// Here "Chatty" shares only filler with the target chat while "Bikes"
+    /// shares the actual subject. Without corpus damping the filler-heavy
+    /// project wins on IDF mass; with it, the topical project must.
+    #[test]
+    fn corpus_common_filler_does_not_decide_a_match() {
+        let projects = vec![
+            proj("filler", "Chatty", "nothing anyway something really honestly basically"),
+            proj("topic", "Bikes", "derailleur cassette chainring bottom bracket"),
+        ];
+
+        // A corpus large enough for DF to mean something. The filler terms recur
+        // throughout it (as they do in real chats); the bike terms do not.
+        let mut corpus: Vec<ClaudeConversationPreview> = (0..MIN_CORPUS_FOR_DF + 10)
+            .map(|i| {
+                conv_with_messages(
+                    &format!("bg{i}"),
+                    "Chat",
+                    &[(
+                        "user",
+                        "nothing anyway something really honestly basically wondering",
+                    )],
+                )
+            })
+            .collect();
+
+        let target = conv_with_messages(
+            "target",
+            "Chat",
+            &[(
+                "user",
+                "nothing anyway something really honestly my derailleur and cassette need indexing",
+            )],
+        );
+        corpus.push(target);
+
+        let out = suggest_project_for_conversations(&corpus, &projects, &HashMap::new());
+        let target_hit = out.iter().find(|s| s.conversation_uuid == "target").unwrap();
+        assert_eq!(
+            target_hit.project_uuid.as_deref(),
+            Some("topic"),
+            "filler shared with the corpus must not outweigh the topical terms"
+        );
+    }
+
+    /// Damping must stay off for corpora too small to measure frequency in.
+    /// The LLM matcher scores batches of 10, where every token has df 1.0.
+    #[test]
+    fn small_corpora_skip_corpus_damping() {
+        let few = vec![conv("c1", "Chat", "derailleur cassette chainring indexing")];
+        assert!(
+            build_chat_df(&few).is_empty(),
+            "a corpus below MIN_CORPUS_FOR_DF must produce no damping"
+        );
     }
 
     /// One token's contribution to a project's coverage: (token, weighted IDF).
