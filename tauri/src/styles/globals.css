@@ -469,14 +469,11 @@ select optgroup {
    Custom Title Bar — Drag Region
    ===================================================== */
 
-[data-tauri-drag-region] {
-  -webkit-app-region: drag;
-}
-
-:root[data-platform="linux"] [data-tauri-drag-region] {
-  -webkit-app-region: no-drag;
-}
-
+/* Dragging is started programmatically via `startDragging()` in
+   WindowControls.tsx, not by `-webkit-app-region`: that property does nothing in
+   macOS's WKWebView, and where it *is* supported it consumes the mousedown
+   before React's handler runs. Interactive children stay marked `no-drag` so
+   the Chromium webviews never claim a click meant for a button. */
 [data-tauri-drag-region] button,
 [data-tauri-drag-region] input,
 [data-tauri-drag-region] select,
