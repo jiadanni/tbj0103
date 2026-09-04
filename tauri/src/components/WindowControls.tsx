@@ -24,9 +24,13 @@ async function maximizeWindow() {
   }
 }
 
-/** onMouseDown handler that initiates window dragging. Use on drag region elements. */
+/**
+ * onMouseDown handler that initiates window dragging. Use on drag region elements.
+ *
+ * `-webkit-app-region: drag` is a Chromium property and is a no-op in the
+ * WKWebView macOS uses, so every platform has to start the drag programmatically.
+ */
 export function onDragRegionMouseDown(e: React.MouseEvent) {
-  if (isMac) {return;}
   // Only drag on left-click, and only when clicking the element itself (not child buttons/inputs)
   if (e.button !== 0) {return;}
   const target = e.target as HTMLElement;
@@ -36,7 +40,7 @@ export function onDragRegionMouseDown(e: React.MouseEvent) {
 }
 
 export async function onDragRegionDoubleClick(e: React.MouseEvent) {
-  if (isMac || e.button !== 0) {return;}
+  if (e.button !== 0) {return;}
   const target = e.target as HTMLElement;
   if (target.closest("button, input, select, textarea, a, [data-no-drag]")) {return;}
 
