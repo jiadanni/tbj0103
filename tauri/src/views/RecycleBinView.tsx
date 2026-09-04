@@ -117,7 +117,7 @@ export default function RecycleBinView() {
 
       {/* Search */}
       <div className="px-4 py-2 border-b border-[var(--border-color)] shrink-0">
-        <div className="flex items-center gap-2 bg-[var(--bg-elevated)] rounded-lg px-3 py-1.5">
+        <div className="flex items-center gap-2 bg-[var(--bg-elevated)] rounded-lg px-3 py-1.5 border border-transparent transition-colors focus-within:border-[var(--accent-color)]">
           <Search size={12} className="text-[var(--text-muted)]" />
           <input
             value={query}

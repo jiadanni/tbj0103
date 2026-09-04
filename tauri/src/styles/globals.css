@@ -429,6 +429,18 @@ select:focus {
   box-shadow: 0 0 0 3px rgba(var(--accent-color-rgb), 0.1);
 }
 
+/* Inputs that delegate their chrome to a styled wrapper (the quick-search pill,
+   the command palette, the dashboard search — ~14 sites) carry Tailwind's
+   `bg-transparent` and let the parent draw the border and rounding. The rule
+   above would paint a hard-edged rectangle plus a square 3px accent ring
+   *inside* that rounded parent, because the input has no radius of its own.
+   Those wrappers style their own focus state via `focus-within:`, so the input
+   should stay invisible. */
+.bg-transparent:focus {
+  border-color: transparent !important;
+  box-shadow: none;
+}
+
 select {
   color: var(--text-primary);
 }

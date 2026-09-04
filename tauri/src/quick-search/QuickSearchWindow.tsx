@@ -256,7 +256,7 @@ export default function QuickSearchWindow() {
         }}
       >
         <div className="border-b border-[var(--border-color)] px-4 py-3">
-          <div className="relative flex items-center gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/80 px-3 py-2.5">
+          <div className="relative flex items-center gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/80 px-3 py-2.5 transition-colors focus-within:border-[var(--accent-color)] focus-within:shadow-[0_0_0_3px_rgba(var(--accent-color-rgb),0.10)]">
             <Search size={15} className="text-[var(--text-muted)]" />
             <Command.Input
               autoFocus
