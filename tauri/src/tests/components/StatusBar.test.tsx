@@ -423,6 +423,7 @@ describe("StatusBar", () => {
         status: "started",
         message: "Batch 1/1 · message…",
         model: "llama3",
+        workspace_id: "ws-1",
       });
     });
 

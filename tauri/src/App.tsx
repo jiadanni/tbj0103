@@ -3,8 +3,8 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-route
 import { listen } from "@tauri-apps/api/event";
 import { useSettingsStore } from "./stores/settingsStore";
 import { useWorkspaceStore } from "./stores/workspaceStore";
-import { api, type QuickSearchResult, type WorkspaceAnalysisProgress } from "./lib/api";
-import { useBackgroundJobsStore } from "./stores/backgroundJobs";
+import { api, type QuickSearchResult } from "./lib/api";
+import { startBackgroundJobsLifecycle } from "./lib/backgroundJobsLifecycle";
 import { hexToRgbChannels, normalizeTheme } from "./lib/theme";
 import { getPrefsWindowSingleInstance } from "./lib/prefsWindowMode";
 import Layout from "./components/Layout";
@@ -241,68 +241,10 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, []);
 
-  // Hydrate background jobs store on mount and listen for events
+  // Background APIs require both an open database and an authenticated session.
   useEffect(() => {
-    // Hydrate initially
-    useBackgroundJobsStore.getState().hydrate().catch((err) => {
-      console.error("Failed to hydrate background jobs:", err);
-    });
-
-    let unlistenTask: (() => void) | null = null;
-    let unlistenWorkspace: (() => void) | null = null;
-    let unlistenPauseStatus: (() => void) | null = null;
-
-    async function setupListeners() {
-      unlistenTask = await api.listenBackgroundTask((payload) => {
-        useBackgroundJobsStore.getState().applyEvent(payload);
-      });
-
-      unlistenPauseStatus = await api.listenBackgroundSchedulerPauseStatus((status) => {
-        useBackgroundJobsStore.setState({ pauseStatus: status });
-      });
-
-      unlistenWorkspace = await api.knowledge.listenWorkspaceProgress((payload: WorkspaceAnalysisProgress) => {
-        // Map WorkspaceAnalysisProgress event into the store as workspace_analysis task.
-        const store = useBackgroundJobsStore.getState();
-        if (payload.status === "started") {
-          // Workspace analysis preempts prompt-bank display in the StatusBar
-          // (they share the global job semaphore). Clear directly rather than
-          // emitting a fake "failed" event, which would otherwise leak into
-          // any listener watching for real failures.
-          store.removeJob("workspace_prompt_bank");
-          store.applyEvent({
-            task_type: "workspace_analysis",
-            status: "started",
-            message: payload.label,
-            model: payload.model,
-            workspace_id: payload.workspace_id,
-          });
-        } else {
-          store.removeJob("workspace_analysis");
-        }
-      });
-    }
-
-    void setupListeners();
-
-    // Rehydrate on return to visible
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        useBackgroundJobsStore.getState().hydrate().catch((err) => {
-          console.error("Failed to rehydrate background jobs on visibility change:", err);
-        });
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      unlistenTask?.();
-      unlistenWorkspace?.();
-      unlistenPauseStatus?.();
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, []);
+    return startBackgroundJobsLifecycle(bootGate !== null && !bootGate.unlock_required && isAuthenticated);
+  }, [bootGate, isAuthenticated]);
 
   // Boot gate: check whether the DB needs to be unlocked before we run the
   // main settings/workspaces fetch (which would fail without an open pool).
