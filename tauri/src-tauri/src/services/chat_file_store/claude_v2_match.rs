@@ -441,7 +441,7 @@ fn title_match_candidates(projects: &[ClaudeProjectPreview]) -> Vec<(String, Str
         .map(|p| (p.uuid.clone(), p.name.trim().to_lowercase()))
         .filter(|(_, name)| name.chars().count() >= MIN_TITLE_MATCH_NAME_LEN)
         .collect();
-    candidates.sort_by(|a, b| b.1.chars().count().cmp(&a.1.chars().count()));
+    candidates.sort_by_key(|candidate| std::cmp::Reverse(candidate.1.chars().count()));
     candidates
 }
 
