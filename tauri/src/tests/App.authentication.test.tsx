@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => {
     api: {
       boot: { checkState: vi.fn() },
       security: { isUnlocked: vi.fn(), unlockApp: vi.fn() },
+      chat: { retryFileSync: vi.fn() },
       workspace: { list: vi.fn() },
       settings: { getCore: vi.fn(), getInference: vi.fn(), getAdvanced: vi.fn() },
       quickSearch: { markMainWindowReady: vi.fn(async () => {}) },
@@ -46,7 +47,7 @@ vi.mock("@/stores/workspaceStore", () => ({
   ),
 }));
 vi.mock("@/stores/backgroundJobs", () => ({
-  useBackgroundJobsStore: { getState: () => mocks.jobs },
+  useBackgroundJobsStore: { getState: () => mocks.jobs, setState: vi.fn() },
 }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => vi.fn()) }));
 vi.mock("@/components/Layout", () => ({ default: () => <div>Private application</div> }));
@@ -67,6 +68,7 @@ describe("fail-closed application boot", () => {
     vi.clearAllMocks();
     mocks.api.boot.checkState.mockReset().mockResolvedValue({ unlock_required: false, pending_action: "" });
     mocks.api.security.isUnlocked.mockReset().mockResolvedValue(false);
+    mocks.api.chat.retryFileSync.mockReset().mockResolvedValue(undefined);
     mocks.api.workspace.list.mockReset().mockResolvedValue([{ id: "workspace-1" }]);
     mocks.api.settings.getCore.mockReset().mockResolvedValue({});
     mocks.api.settings.getInference.mockReset().mockResolvedValue({});
@@ -78,10 +80,15 @@ describe("fail-closed application boot", () => {
     await screen.findByRole("button", { name: "Authenticate" });
     expect(mocks.api.workspace.list).not.toHaveBeenCalled();
     expect(mocks.api.settings.getCore).not.toHaveBeenCalled();
+    expect(mocks.api.chat.retryFileSync).not.toHaveBeenCalled();
+    expect(mocks.jobs.hydrate).not.toHaveBeenCalled();
+    expect(mocks.api.listenBackgroundTask).not.toHaveBeenCalled();
     mocks.api.security.isUnlocked.mockResolvedValue(true);
     fireEvent.click(screen.getByRole("button", { name: "Authenticate" }));
     await screen.findByText("Private application");
     expect(mocks.workspaces.setWorkspaces).toHaveBeenCalled();
+    expect(mocks.api.chat.retryFileSync).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mocks.jobs.hydrate).toHaveBeenCalledTimes(1));
   });
 
   it("never grants authentication after a failed boot probe", async () => {
@@ -116,6 +123,21 @@ describe("fail-closed application boot", () => {
     render(<App />);
     await screen.findByText("Encrypted boot");
     expect(mocks.api.security.isUnlocked).not.toHaveBeenCalled();
+    expect(mocks.api.chat.retryFileSync).not.toHaveBeenCalled();
+  });
+
+  it("surfaces file synchronization failure without blocking authenticated boot", async () => {
+    const failure = new Error("File synchronization unavailable");
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.api.security.isUnlocked.mockResolvedValue(true);
+    mocks.api.chat.retryFileSync.mockRejectedValue(failure);
+    try {
+      render(<App />);
+      await screen.findByText("Private application");
+      expect(errorLog).toHaveBeenCalledWith("Failed to retry pending chat file synchronization:", failure);
+    } finally {
+      errorLog.mockRestore();
+    }
   });
 
   it("opens normally when the backend reports no lock or an existing unlock", async () => {
