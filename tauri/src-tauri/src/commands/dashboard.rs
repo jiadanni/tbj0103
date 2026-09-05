@@ -160,8 +160,71 @@ fn route(path: impl Into<String>, state: Option<serde_json::Value>) -> Dashboard
     }
 }
 
+/// Flatten inline Markdown to plain text for preview strings.
+///
+/// Dashboard snippets render into a plain `<div>`, not a Markdown component, so
+/// emphasis/code/heading/link syntax would otherwise show up as literal `**`,
+/// `` ` `` and `[text](url)` in the UI.
+fn strip_inline_markdown(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+
+    for line in raw.lines() {
+        let mut rest = line.trim_start();
+        // Leading block markers: headings, blockquotes, list bullets.
+        rest = rest.trim_start_matches(['#', '>']).trim_start();
+        if let Some(stripped) = rest
+            .strip_prefix("- ")
+            .or_else(|| rest.strip_prefix("* "))
+            .or_else(|| rest.strip_prefix("+ "))
+        {
+            rest = stripped;
+        }
+
+        let chars: Vec<char> = rest.chars().collect();
+        let mut i = 0;
+        while i < chars.len() {
+            let c = chars[i];
+            match c {
+                // Emphasis / inline code runs: drop the delimiters, keep the text.
+                '*' | '_' | '`' | '~' => {
+                    while i < chars.len() && chars[i] == c {
+                        i += 1;
+                    }
+                }
+                // Links and images: keep the label, drop the target.
+                '[' => {
+                    i += 1;
+                }
+                '!' if chars.get(i + 1) == Some(&'[') => {
+                    i += 2;
+                }
+                ']' if chars.get(i + 1) == Some(&'(') => {
+                    i += 2;
+                    let mut depth = 1;
+                    while i < chars.len() && depth > 0 {
+                        match chars[i] {
+                            '(' => depth += 1,
+                            ')' => depth -= 1,
+                            _ => {}
+                        }
+                        i += 1;
+                    }
+                }
+                _ => {
+                    out.push(c);
+                    i += 1;
+                }
+            }
+        }
+        out.push(' ');
+    }
+
+    out
+}
+
 fn snippet(raw: String, max_chars: usize) -> String {
-    let collapsed = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    let plain = strip_inline_markdown(&raw);
+    let collapsed = plain.split_whitespace().collect::<Vec<_>>().join(" ");
     if collapsed.chars().count() > max_chars {
         let truncated: String = collapsed
             .chars()
@@ -437,4 +500,43 @@ pub fn get_review_topics(
         .map_err(|e| e.to_string())?;
 
     Ok(rows)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn snippet_strips_inline_markdown() {
+        // Reported case: bold markers rendered literally in the dashboard's
+        // "Continue Learning" preview.
+        let raw = "When you say you want to **mirror source,** you are moving \
+                   from a \"synchronize\" operation to a **make dest** one."
+            .to_string();
+        let out = snippet(raw, 160);
+        assert!(!out.contains('*'), "asterisks survived: {out}");
+        assert!(out.contains("mirror source,"));
+        assert!(out.contains("make dest"));
+    }
+
+    #[test]
+    fn snippet_strips_headings_code_and_links() {
+        let raw = "## Heading\n- a `code` item with _em_ and ~~strike~~\n\
+                   see [the docs](https://example.com/a(b)) for more"
+            .to_string();
+        let out = snippet(raw, 200);
+        assert_eq!(
+            out,
+            "Heading a code item with em and strike see the docs for more"
+        );
+    }
+
+    #[test]
+    fn snippet_truncates_after_stripping() {
+        let raw = format!("**{}**", "x".repeat(300));
+        let out = snippet(raw, 160);
+        assert_eq!(out.chars().count(), 160);
+        assert!(out.ends_with('…'));
+        assert!(!out.contains('*'));
+    }
 }
