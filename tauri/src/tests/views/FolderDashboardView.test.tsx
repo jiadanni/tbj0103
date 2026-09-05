@@ -7,6 +7,14 @@ import FolderDashboardView from "@/views/FolderDashboardView";
 
 const mocks = vi.hoisted(() => ({
   getSummary: vi.fn(),
+  quickSearchQuery: vi.fn(() => Promise.resolve([])),
+  getQuickSearchContext: vi.fn(() => Promise.resolve({ preferred_workspace_id: null })),
+  getAdvancedSettings: vi.fn(() => Promise.resolve({
+    quick_search_workspace_scope: null,
+    quick_search_type_filters: null,
+  })),
+  updateOneSetting: vi.fn(() => Promise.resolve()),
+  listWorkspaces: vi.fn(() => Promise.resolve([])),
   getLayout: vi.fn(),
   setLayout: vi.fn(),
   resetLayout: vi.fn(),
@@ -30,6 +38,17 @@ vi.mock("@/lib/api", () => ({
       create: mocks.createGoal,
       update: mocks.updateGoal,
       delete: mocks.deleteGoal,
+    },
+    quickSearch: {
+      query: mocks.quickSearchQuery,
+      getContext: mocks.getQuickSearchContext,
+    },
+    settings: {
+      getAdvanced: mocks.getAdvancedSettings,
+      updateOne: mocks.updateOneSetting,
+    },
+    workspace: {
+      list: mocks.listWorkspaces,
     },
   },
 }));
@@ -151,7 +170,7 @@ describe("FolderDashboardView", () => {
     expect(await screen.findByText("Continue Learning")).toBeInTheDocument();
     expect(screen.getByText("cgroups vs namespaces")).toBeInTheDocument();
     expect(screen.getByText("Rootless container setup")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ask" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Map/ })).not.toBeInTheDocument();
 
     // The retired AI-scored sections must not render.
@@ -176,8 +195,8 @@ describe("FolderDashboardView", () => {
     const searchInput = screen.getByPlaceholderText("Search or ask anything...");
     fireEvent.change(searchInput, { target: { value: "hello local AI" } });
 
-    const searchButton = screen.getByRole("button", { name: "Search" });
-    fireEvent.click(searchButton);
+    const askButton = screen.getByRole("button", { name: "Ask" });
+    fireEvent.click(askButton);
 
     expect(mockNavigate).toHaveBeenCalledWith("/chat", {
       state: {
@@ -198,16 +217,19 @@ describe("FolderDashboardView", () => {
       expect(mocks.getSummary).toHaveBeenCalledWith("ws-1", { includeDescendants: false });
     });
 
-    expect(screen.queryByText("Let me know once you've checked the unshare flags.")).not.toBeInTheDocument();
+    // The snippet stays mounted so hovering cannot change the row's height and
+    // shove the rest of the page around; hover only fades it in.
+    const snippet = screen.getByText("Let me know once you've checked the unshare flags.");
+    expect(snippet).toHaveClass("opacity-0");
 
     const row = screen.getByRole("button", { name: /cgroups vs namespaces/i });
     fireEvent.mouseEnter(row);
 
-    expect(screen.getByText("Let me know once you've checked the unshare flags.")).toBeInTheDocument();
+    expect(snippet).toHaveClass("opacity-100");
 
     fireEvent.mouseLeave(row);
 
-    expect(screen.queryByText("Let me know once you've checked the unshare flags.")).not.toBeInTheDocument();
+    expect(snippet).toHaveClass("opacity-0");
   });
 
   it("shows a warm-up default state for sparse workspaces", async () => {

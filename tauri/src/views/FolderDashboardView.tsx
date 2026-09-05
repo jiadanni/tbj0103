@@ -7,7 +7,6 @@ import {
   MessageSquare,
   Plus,
   RefreshCw,
-  Search,
   Sparkles,
   Target,
   Trash2,
@@ -18,6 +17,7 @@ import {
   type LearningGoal,
 } from "../lib/api";
 import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
+import DashboardOmnibox from "../components/DashboardOmnibox";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 
 const RoadmapPane = lazy(() =>
@@ -197,7 +197,6 @@ export default function FolderDashboardView() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
   const [activeContinueThreadId, setActiveContinueThreadId] = useState<string | null>(null);
   const roadmapSectionRef = useRef<HTMLDivElement | null>(null);
 
@@ -229,12 +228,6 @@ export default function FolderDashboardView() {
       .finally(() => { if (!cancelled) { setIsLoading(false); } });
     return () => { cancelled = true; };
   }, [activeWorkspaceId, includeDescendants]);
-
-  function handleSearchSubmit() {
-    navigate("/chat", {
-      state: { createNewChat: true, searchQuery: searchQuery.trim() },
-    });
-  }
 
   function refreshSummary() {
     if (!activeWorkspaceId) { return; }
@@ -311,25 +304,7 @@ export default function FolderDashboardView() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-1.5 focus-within:border-[var(--accent-color)] transition-colors">
-              <Search size={14} className="text-[var(--text-muted)]" />
-              <input
-                id="dashboard-search-input"
-                type="text"
-                placeholder="Search or ask anything..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") { handleSearchSubmit(); } }}
-                className="bg-transparent text-sm text-[var(--text-primary)] outline-none w-48 sm:w-64 placeholder-[var(--text-muted)]"
-              />
-            </div>
-            <button
-              id="dashboard-search-button"
-              onClick={handleSearchSubmit}
-              className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent-color)] px-4 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
-            >
-              Search
-            </button>
+            <DashboardOmnibox />
           </div>
         </div>
       </header>

@@ -6,6 +6,7 @@ import { useWorkspaceStore } from "./stores/workspaceStore";
 import { api, type QuickSearchResult } from "./lib/api";
 import { startBackgroundJobsLifecycle } from "./lib/backgroundJobsLifecycle";
 import { hexToRgbChannels, normalizeTheme } from "./lib/theme";
+import { navigateToQuickSearchResult } from "./lib/quickSearchNavigation";
 import { getPrefsWindowSingleInstance } from "./lib/prefsWindowMode";
 import Layout from "./components/Layout";
 import ZoomIndicator from "./components/ZoomIndicator";
@@ -66,44 +67,7 @@ function MenuEventHandler() {
       if (target.workspace_id) {
         setActiveWorkspaceId(target.workspace_id);
       }
-
-      switch (target.kind) {
-        case "artifact":
-          if (target.session_id) {
-            navigateRef.current(`/chat/${target.session_id}`);
-          } else {
-            navigateRef.current("/chat");
-          }
-          window.setTimeout(() => {
-            window.dispatchEvent(new CustomEvent("aetherium:open-artifact", {
-              detail: { artifactId: target.target_id },
-            }));
-          }, 0);
-          break;
-        case "memory":
-          if (target.source_session_id) {
-            navigateRef.current(`/chat/${target.source_session_id}`);
-          } else {
-            navigateRef.current("/preferences", { state: { settingsTab: "memory" } });
-          }
-          break;
-        case "message":
-        case "summary":
-          if (target.session_id) {
-            navigateRef.current(`/chat/${target.session_id}`);
-          } else {
-            navigateRef.current("/chat");
-          }
-          break;
-        case "conversation":
-        default:
-          if (target.session_id ?? target.target_id) {
-            navigateRef.current(`/chat/${target.session_id ?? target.target_id}`);
-          } else {
-            navigateRef.current("/chat");
-          }
-          break;
-      }
+      navigateToQuickSearchResult(navigateRef.current, target);
     });
 
     return () => {
