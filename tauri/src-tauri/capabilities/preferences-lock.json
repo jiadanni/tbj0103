@@ -1,0 +1,9 @@
+{
+  "identifier": "preferences-lock",
+  "local": true,
+  "windows": ["preferences-*"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten"
+  ]
+}

@@ -178,6 +178,21 @@ fn apply_linux_webkit_env() {
     }
 }
 
+fn authenticated_handler<R: tauri::Runtime>(
+    handler: impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static,
+) -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
+    move |invoke| {
+        if let Err(error) = commands::security::authorize_command(
+            invoke.message.command(),
+            invoke.message.webview().app_handle(),
+        ) {
+            invoke.resolver.reject(error);
+            return true;
+        }
+        handler(invoke)
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "linux")]
@@ -253,7 +268,7 @@ pub fn run() {
             complete_db_dependent_setup(app.handle().clone(), app_dir, pool)?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler(authenticated_handler(tauri::generate_handler![
             // Workspace commands
             commands::workspace::create_workspace,
             commands::workspace::create_child_workspace,
@@ -471,6 +486,7 @@ pub fn run() {
             commands::security::remove_pin_passcode,
             commands::security::authenticate_biometric,
             commands::security::unlock_app,
+            commands::security::is_app_unlocked,
             commands::security::lock_app,
             commands::security::get_db_encryption_status,
             commands::security::enable_db_encryption,
@@ -624,7 +640,7 @@ pub fn run() {
             commands::log::log_frontend_events_batch,
             commands::log::set_log_level,
             commands::log::get_log_level,
-        ])
+        ]))
         .run(tauri::generate_context!());
 
     if let Err(err) = run_result {

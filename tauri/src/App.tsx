@@ -124,6 +124,9 @@ export default function App() {
   const setWorkspaces = useWorkspaceStore((state) => state.setWorkspaces);
   const setFoldersForWorkspace = useWorkspaceStore((state) => state.setFoldersForWorkspace);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authAttempt, setAuthAttempt] = useState(0);
+  const [bootError, setBootError] = useState("");
+  const [lockListenerReady, setLockListenerReady] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState("Loading…");
   // null = still checking; { unlock_required: true } gates the rest of boot
@@ -253,24 +256,30 @@ export default function App() {
     api.boot.checkState().then((status) => {
       if (cancelled) {return;}
       setBootGate(status);
-    }).catch(() => {
+    }).catch((err: unknown) => {
       if (cancelled) {return;}
-      // If the boot probe itself fails, assume no encryption and continue —
-      // the main boot effect will surface any real errors.
-      setBootGate({ unlock_required: false, pending_action: "" });
+      setBootError(`Unable to initialize security: ${String(err)}`);
+      setIsLoading(false);
     });
     return () => { cancelled = true; };
   }, []);
 
   // Boot: load settings + workspaces
   useEffect(() => {
-    if (!bootGate || bootGate.unlock_required) {return;}
+    if (!bootGate || bootGate.unlock_required || !lockListenerReady) {return;}
     let cancelled = false;
 
     async function boot() {
       try {
+        setBootError("");
+        const unlocked = await api.security.isUnlocked();
+        if (cancelled) {return;}
+        if (!unlocked) {
+          setIsAuthenticated(false);
+          return;
+        }
         setLoadingMessage("Loading workspace…");
-        const [workspaces, core, ai, advanced] = await Promise.all([
+        const [workspaces, core, ai] = await Promise.all([
           api.workspace.list(),
           api.settings.getCore(),
           api.settings.getInference(),
@@ -303,11 +312,7 @@ export default function App() {
 
         setWorkspaces(finalWorkspaces);
 
-        // Auto-authenticate if neither lock method is active
-        if (!advanced.touch_id_enabled && !advanced.pin_lock_enabled) {
-          await api.security.unlockApp();
-          setIsAuthenticated(true);
-        }
+        setIsAuthenticated(true);
 
         // Kick off Ollama warmup in the background — must not block first paint.
         // Cold boots spend several seconds on the /api/show capability sweep
@@ -318,21 +323,10 @@ export default function App() {
         if (ai.auto_start_ollama && !ai.ollama_remote_enabled) {
           void api.ollama.ensureRunning(ai.ollama_base_url || undefined).catch(() => null);
         }
-      } catch {
-        // First run or Ollama not available — still OK
-        await api.security.unlockApp().catch(() => {});
-        setIsAuthenticated(true);
-        // The failure may have come from a settings call in the Promise.all
-        // above, which would otherwise leave the workspace list empty and the
-        // workspace/sub-workspace selectors blank until restart. Best-effort
-        // recover the workspaces on their own so navigation stays usable.
-        try {
-          const recovered = await api.workspace.list();
-          if (!cancelled && recovered.length > 0) {
-            setWorkspaces(recovered);
-          }
-        } catch {
-          // workspace list itself is unavailable — nothing more to do here
+      } catch (err) {
+        if (!cancelled) {
+          setIsAuthenticated(false);
+          setBootError(`Unable to load the app: ${String(err)}`);
         }
       } finally {
         if (!cancelled) {
@@ -346,7 +340,26 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [setWorkspaces, bootGate]);
+  }, [setWorkspaces, bootGate, authAttempt, lockListenerReady]);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listen("app-locked", () => {
+      setIsAuthenticated(false);
+      setAuthAttempt((attempt) => attempt + 1);
+    }).then((dispose) => {
+      if (disposed) { dispose(); return; }
+      unlisten = dispose;
+      setLockListenerReady(true);
+    }).catch((err: unknown) => {
+      if (disposed) { return; }
+      setIsAuthenticated(false);
+      setBootError(`Unable to monitor the app lock: ${String(err)}`);
+      setIsLoading(false);
+    });
+    return () => { disposed = true; unlisten?.(); };
+  }, []);
 
   // Listen for workspace changes from other windows
   useEffect(() => {
@@ -457,6 +470,15 @@ export default function App() {
     );
   }
 
+  if (bootError) {
+    return (
+      <div role="alert" className="flex h-screen flex-col items-center justify-center gap-4">
+        <p>{bootError}</p>
+        <button onClick={() => window.location.reload()}>Retry</button>
+      </div>
+    );
+  }
+
   if (isLoading) {
     // Inline styles so this screen is visible even if theme CSS variables
     // haven't been applied yet on a cold start.
@@ -475,7 +497,10 @@ export default function App() {
 
   if (!isAuthenticated) {
     return (
-      <AuthenticationView onAuthenticated={() => setIsAuthenticated(true)} />
+      <AuthenticationView onAuthenticated={() => {
+        setIsLoading(true);
+        setAuthAttempt((attempt) => attempt + 1);
+      }} />
     );
   }
 
