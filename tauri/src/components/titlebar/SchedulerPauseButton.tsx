@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Brain, Pause, Play, Clock, Infinity as InfinityIcon } from "lucide-react";
 import { useBackgroundJobsStore } from "../../stores/backgroundJobs";
+import { retryBackgroundJobsConnection } from "../../lib/backgroundJobsLifecycle";
 import { Tooltip } from "../Tooltip";
 
 export default function SchedulerPauseButton() {
@@ -8,9 +9,16 @@ export default function SchedulerPauseButton() {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const pauseStatus = useBackgroundJobsStore((s) => s.pauseStatus);
   const activeJobs = useBackgroundJobsStore((s) => s.jobs);
-  const fetchPauseStatus = useBackgroundJobsStore((s) => s.fetchPauseStatus);
+  const pauseError = useBackgroundJobsStore((s) => s.pauseError);
+  const hydrationError = useBackgroundJobsStore((s) => s.hydrationError);
+  const subscriptionError = useBackgroundJobsStore((s) => s.subscriptionError);
+  const hydrating = useBackgroundJobsStore((s) => s.hydrating);
+  const hydrate = useBackgroundJobsStore((s) => s.hydrate);
   const pauseScheduler = useBackgroundJobsStore((s) => s.pause);
   const resumeScheduler = useBackgroundJobsStore((s) => s.resume);
+  const pendingRef = useRef(false);
+  const [pending, setPending] = useState(false);
+  const error = subscriptionError ?? pauseError ?? hydrationError;
 
   const [timeLeft, setTimeLeft] = useState<string | null>(null);
 
@@ -49,7 +57,6 @@ export default function SchedulerPauseButton() {
       const diff = until - now;
       if (diff <= 0) {
         setTimeLeft(null);
-        void fetchPauseStatus();
         return;
       }
       const mins = Math.floor(diff / 60000);
@@ -63,7 +70,7 @@ export default function SchedulerPauseButton() {
       clearInterval(interval);
       setTimeLeft(null);
     };
-  }, [pauseStatus, fetchPauseStatus]);
+  }, [pauseStatus]);
 
   const isPaused = pauseStatus?.is_paused ?? false;
   const isPausedIndefinitely = pauseStatus?.paused_indefinitely ?? false;
@@ -73,14 +80,20 @@ export default function SchedulerPauseButton() {
   let buttonClass = "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]";
   let iconClass = "transition-all";
 
-  if (isPaused) {
+  if (error) {
+    buttonClass = "border-red-500/30 bg-red-500/10 text-red-500 hover:border-red-500/60";
+  } else if (isPaused) {
     buttonClass = "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:border-amber-500/60";
   } else if (isJobRunning) {
     buttonClass = "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:border-emerald-500/60";
     iconClass = "animate-pulse";
   }
 
-  const tooltipContent = isPaused
+  const tooltipContent = error
+    ? `Scheduler status error: ${error}`
+    : !pauseStatus
+    ? "Scheduler status unavailable"
+    : isPaused
     ? isPausedIndefinitely
       ? "Scheduler Frozen (Indefinitely)"
       : `Scheduler Frozen (Resumes in ${timeLeft || "soon"})`
@@ -88,15 +101,25 @@ export default function SchedulerPauseButton() {
     ? "Scheduler Active (Processing background tasks)"
     : "Scheduler Active (Idle)";
 
-  const handlePauseOption = (seconds: number | null) => {
-    void pauseScheduler(seconds);
-    setOpen(false);
+  const runAction = async (action: () => Promise<void>) => {
+    if (pendingRef.current) { return; }
+    pendingRef.current = true;
+    setPending(true);
+    try {
+      await action();
+      setOpen(false);
+    } catch (actionError) {
+      // The store retains the failure; keep its controls open for retry.
+      console.error("Scheduler action failed:", actionError);
+      setOpen(true);
+    } finally {
+      pendingRef.current = false;
+      setPending(false);
+    }
   };
 
-  const handleResume = () => {
-    void resumeScheduler();
-    setOpen(false);
-  };
+  const handlePauseOption = (seconds: number | null) => { void runAction(() => pauseScheduler(seconds)); };
+  const handleResume = () => { void runAction(resumeScheduler); };
 
   return (
     <div ref={rootRef} className="relative inline-block">
@@ -111,6 +134,7 @@ export default function SchedulerPauseButton() {
           ) : (
             <Brain size={14} className={`shrink-0 ${iconClass}`} />
           )}
+          {error && <span aria-label="Scheduler error" className="font-bold">!</span>}
           {timeLeft && (
             <span className="text-[10px] tabular-nums font-medium opacity-90">{timeLeft}</span>
           )}
@@ -122,7 +146,13 @@ export default function SchedulerPauseButton() {
           <div className="px-3 py-2 border-b border-[var(--border-color)] bg-[var(--bg-primary)]/50">
             <span className="block font-semibold text-[var(--text-primary)]">Scheduled Jobs</span>
             <span className="mt-0.5 block text-[10px] text-[var(--text-muted)] font-medium">
-              {isPaused
+              {hydrating
+                ? "Refreshing status..."
+                : error
+                ? "Status may be out of date"
+                : !pauseStatus
+                ? "Status unavailable"
+                : isPaused
                 ? isPausedIndefinitely
                   ? "Status: Frozen indefinitely"
                   : `Status: Frozen (resumes in ${timeLeft || "soon"})`
@@ -132,7 +162,24 @@ export default function SchedulerPauseButton() {
             </span>
           </div>
 
-          <div className="py-1">
+          {error && (
+            <div role="alert" className="px-3 py-2 text-red-500">
+              {error}
+              <button
+                type="button"
+                disabled={hydrating || pending}
+                onClick={() => {
+                  if (subscriptionError) { retryBackgroundJobsConnection(); }
+                  else { void hydrate().catch((refreshError) => console.error("Scheduler refresh failed:", refreshError)); }
+                }}
+                className="mt-1 block underline disabled:opacity-50"
+              >
+                {subscriptionError ? "Reconnect background updates" : "Retry status refresh"}
+              </button>
+            </div>
+          )}
+          {pending && <p role="status" className="px-3 py-1">Updating scheduler...</p>}
+          <fieldset disabled={pending || !pauseStatus} className="py-1 disabled:opacity-50">
             {isPaused ? (
               <>
                 <button
@@ -195,7 +242,7 @@ export default function SchedulerPauseButton() {
                 </button>
               </>
             )}
-          </div>
+          </fieldset>
         </div>
       )}
     </div>
