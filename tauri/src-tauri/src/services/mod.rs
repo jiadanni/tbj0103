@@ -5,6 +5,7 @@ pub mod background_scheduler;
 pub mod backup_service;
 pub mod chat_conversion;
 pub mod chat_file_store;
+pub mod chat_move_sync;
 pub mod chat_service;
 pub mod concept_extractor;
 pub mod concept_hierarchy;

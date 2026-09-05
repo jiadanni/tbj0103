@@ -4,9 +4,32 @@
  */
 import { invoke as _rawTauriInvoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { message as showNativeMessage } from "@tauri-apps/plugin-dialog";
 import type { Workspace, Folder } from "../stores/workspaceStore";
 import type { ChatSession, Message } from "../stores/chatStore";
 import { timed } from "./perf";
+
+export interface ChatFileSyncStatus {
+  file_sync_pending: boolean;
+  file_sync_error: string | null;
+}
+
+function reportChatFileSync<T extends ChatFileSyncStatus>(result: T): T {
+  if (result.file_sync_pending) {
+    const warning = result.file_sync_error
+      ?? "Chat changes are saved. File synchronization is pending and will retry on the next move or app startup.";
+    // Notification failure must never reject a committed move or trigger the
+    // caller's optimistic rollback. Keep the pending status in the result.
+    void showNativeMessage(warning, { title: "Chat files pending", kind: "warning" })
+      .catch((error: unknown) => {
+        logIpcEvent("error", "Chat file synchronization warning could not be displayed", {
+          warning,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+  }
+  return result;
+}
 
 // IPC observability is always on so we can see queue stalls and slow commands
 // in the dev terminal. Output is `console.log`/`console.error`, which Tauri
@@ -1283,12 +1306,15 @@ export const api = {
     updateSession: (workspaceId: string, id: string, fields: { title?: string; is_pinned?: boolean; system_prompt?: string; model_name?: string; exclude_from_analytics?: boolean; is_unread?: boolean }) =>
       invoke<void>("update_chat_session", { workspaceId, id, title: fields.title, isPinned: fields.is_pinned, systemPrompt: fields.system_prompt, modelName: fields.model_name, excludeFromAnalytics: fields.exclude_from_analytics, isUnread: fields.is_unread }),
     moveSessions: (sessionIds: string[], targetWorkspaceId: string, targetFolderId?: string) =>
-      invoke<void>("move_chat_sessions", { sessionIds, targetWorkspaceId, targetFolderId }),
+      invoke<ChatFileSyncStatus>("move_chat_sessions", { sessionIds, targetWorkspaceId, targetFolderId })
+        .then(reportChatFileSync),
     batchMoveSessions: (sessionIds: string[], targetWorkspaceId: string, preserveFolderStructure: boolean) =>
-      invoke<{ sessions_moved: number; folders_created: string[]; folder_mapping: Record<string, string> }>(
+      invoke<ChatFileSyncStatus & { sessions_moved: number; folders_created: string[]; folder_mapping: Record<string, string> }>(
         "batch_move_sessions",
         { req: { session_ids: sessionIds, target_workspace_id: targetWorkspaceId, preserve_folder_structure: preserveFolderStructure } }
-      ),
+      ).then(reportChatFileSync),
+    retryFileSync: () =>
+      invoke<ChatFileSyncStatus>("retry_chat_file_sync").then(reportChatFileSync),
     listDeletedSessions: (workspaceId: string, opts?: { includeDescendants?: boolean }) => invoke<ChatSession[]>("list_deleted_chat_sessions", { workspaceId, includeDescendants: opts?.includeDescendants }),
     restoreSession: (workspaceId: string, id: string) => invoke<void>("restore_chat_session", { workspaceId, id }),
     hardDeleteSession: (workspaceId: string, id: string) => invoke<void>("hard_delete_chat_session", { workspaceId, id }),

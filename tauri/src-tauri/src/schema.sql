@@ -793,6 +793,17 @@ CREATE TABLE IF NOT EXISTS context_snapshots (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- File relocation is retried after the chat metadata transaction commits.
+CREATE TABLE IF NOT EXISTS chat_file_sync_outbox (
+    id TEXT PRIMARY KEY NOT NULL,
+    session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+    previous_plain TEXT NOT NULL,
+    previous_encrypted TEXT NOT NULL,
+    requires_encryption INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_chat_file_sync_outbox_session ON chat_file_sync_outbox(session_id);
+
 -- Quick search document index (FTS-backed)
 CREATE TABLE IF NOT EXISTS quick_search_documents (
     rowid INTEGER PRIMARY KEY,
@@ -882,7 +893,7 @@ CREATE TRIGGER quick_search_chat_sessions_au
 AFTER UPDATE ON chat_sessions
 FOR EACH ROW
 -- Use IS NOT for folder_id comparison so NULL↔value transitions are detected.
-WHEN (OLD.title != NEW.title OR OLD.is_deleted != NEW.is_deleted OR OLD.folder_id IS NOT NEW.folder_id)
+WHEN (OLD.title != NEW.title OR OLD.is_deleted != NEW.is_deleted OR OLD.folder_id IS NOT NEW.folder_id OR OLD.workspace_id IS NOT NEW.workspace_id)
 BEGIN
     -- (a) Session soft-deleted: remove all its search documents in one pass.
     --     session_id = OLD.id covers the conversation doc and all
@@ -928,7 +939,7 @@ BEGIN
     )
     SELECT
         'artifact:' || a.id, a.id, 'artifact',
-        a.workspace_id, NULLIF(NEW.folder_id, ''), a.session_id, NULL,
+        NEW.workspace_id, NULLIF(NEW.folder_id, ''), a.session_id, NULL,
         a.title,
         CASE
             WHEN a.language IS NOT NULL AND a.language != '' THEN a.artifact_type || ' • ' || a.language
@@ -946,7 +957,7 @@ BEGIN
     )
     SELECT
         'summary:' || s.id, s.id, 'summary',
-        s.workspace_id, NULLIF(NEW.folder_id, ''), s.session_id, NULL,
+        NEW.workspace_id, NULLIF(NEW.folder_id, ''), s.session_id, NULL,
         NEW.title,
         CASE s.summary_type
             WHEN 'extensive' THEN 'Extensive summary'
@@ -970,14 +981,14 @@ BEGIN
       AND session_id = NEW.id
       AND kind IN ('conversation', 'message', 'summary');
 
-    -- (d) Session remains active and was moved between folders.
-    --     UPDATE folder_id in place on all related docs.
-    --     Because folder_id is not an FTS-indexed column, quick_search_documents_au
+    -- (d) Session remains active and was moved between folders or workspaces.
+    --     UPDATE metadata in place on all related docs.
+    --     Neither column is FTS-indexed, so quick_search_documents_au
     --     (guarded by WHEN text columns change) will NOT fire — zero FTS work.
     UPDATE quick_search_documents
-    SET folder_id = NULLIF(NEW.folder_id, '')
+    SET folder_id = NULLIF(NEW.folder_id, ''), workspace_id = NEW.workspace_id
     WHERE NEW.is_deleted = 0 AND OLD.is_deleted = 0
-      AND OLD.folder_id IS NOT NEW.folder_id
+      AND (OLD.folder_id IS NOT NEW.folder_id OR OLD.workspace_id IS NOT NEW.workspace_id)
       AND session_id = NEW.id;
 END;
 
@@ -1055,7 +1066,7 @@ AFTER INSERT ON artifacts BEGIN
         'artifact:' || NEW.id,
         NEW.id,
         'artifact',
-        NEW.workspace_id,
+        COALESCE(cs.workspace_id, NEW.workspace_id),
         NULLIF(COALESCE(cs.folder_id, ''), ''),
         NEW.session_id,
         NULL,
@@ -1084,7 +1095,7 @@ BEGIN
         'artifact:' || NEW.id,
         NEW.id,
         'artifact',
-        NEW.workspace_id,
+        COALESCE(cs.workspace_id, NEW.workspace_id),
         NULLIF(COALESCE(cs.folder_id, ''), ''),
         NEW.session_id,
         NULL,
@@ -1181,7 +1192,7 @@ AFTER INSERT ON conversation_summaries BEGIN
         'summary:' || NEW.id,
         NEW.id,
         'summary',
-        NEW.workspace_id,
+        cs.workspace_id,
         NULLIF(cs.folder_id, ''),
         NEW.session_id,
         NULL,
@@ -1211,7 +1222,7 @@ BEGIN
         'summary:' || NEW.id,
         NEW.id,
         'summary',
-        NEW.workspace_id,
+        cs.workspace_id,
         NULLIF(cs.folder_id, ''),
         NEW.session_id,
         NULL,
