@@ -288,12 +288,20 @@ pub async fn restore_backup(
     let pool = state.0.clone();
     tokio::task::spawn_blocking(move || {
     let mut conn = pool.get().map_err(|e| e.to_string())?;
+    restore_backup_data(&mut conn, &backup_json)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn restore_backup_data(conn: &mut Connection, backup_json: &str) -> Result<String, String> {
+    let _relocation = crate::services::chat_move_sync::lock_relocations()?;
     let backup: serde_json::Value =
-        serde_json::from_str(&backup_json).map_err(|e| format!("Invalid backup JSON: {e}"))?;
+        serde_json::from_str(backup_json).map_err(|e| format!("Invalid backup JSON: {e}"))?;
     validate_backup_session_ids(&backup)?;
 
     if backup.get("data").is_none() {
-        return restore_legacy_backup(&mut conn, &backup);
+        return restore_legacy_backup(conn, &backup);
     }
 
     let workspace = backup
@@ -331,9 +339,6 @@ pub async fn restore_backup(
 
     tx.commit().map_err(|e| e.to_string())?;
     Ok(workspace_id)
-    })
-    .await
-    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -722,8 +727,16 @@ pub async fn restore_global_backup(
     let pool = state.0.clone();
     tokio::task::spawn_blocking(move || {
     let mut conn = pool.get().map_err(|e| e.to_string())?;
+    restore_global_backup_data(&mut conn, &backup_json)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn restore_global_backup_data(conn: &mut Connection, backup_json: &str) -> Result<Vec<String>, String> {
+    let _relocation = crate::services::chat_move_sync::lock_relocations()?;
     let backup: serde_json::Value =
-        serde_json::from_str(&backup_json).map_err(|e| format!("Invalid backup JSON: {e}"))?;
+        serde_json::from_str(backup_json).map_err(|e| format!("Invalid backup JSON: {e}"))?;
     validate_backup_session_ids(&backup)?;
 
     let is_global = backup
@@ -783,14 +796,78 @@ pub async fn restore_global_backup(
 
     tx.commit().map_err(|e| e.to_string())?;
     Ok(restored_ids)
-    })
-    .await
-    .map_err(|e| e.to_string())?
 }
 
 #[cfg(test)]
 mod path_validation_tests {
     use super::*;
+
+    #[test]
+    fn storage_restore_waits_for_in_flight_tombstone_cleanup() {
+        use crate::services::{chat_file_store, chat_move_sync};
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        for global in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("restore-race.sqlite");
+            let pool = crate::db::initialize_database(&path).unwrap();
+            let conn = pool.get().unwrap();
+            let chats = dir.path().join("chats");
+            let variants = chat_file_store::SessionFileVariants {
+                plain: chats.join("Restored/reused.json"),
+                encrypted: chats.join("Restored/reused.json.enc"),
+            };
+            std::fs::create_dir_all(variants.plain.parent().unwrap()).unwrap();
+            std::fs::write(&variants.plain, b"old data").unwrap();
+            let tx = conn.unchecked_transaction().unwrap();
+            chat_move_sync::enqueue_deletion(
+                &tx,
+                &std::collections::HashMap::from([("reused".into(), variants.clone())]),
+            ).unwrap();
+            tx.commit().unwrap();
+
+            // Pause deletion after observing the ID is absent. Restore must
+            // not commit a replacement until the cleanup lock is released.
+            let relocation = chat_move_sync::lock_relocations().unwrap();
+            assert_eq!(conn.query_row("SELECT COUNT(*) FROM chat_sessions WHERE id = 'reused'", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+            let backup = serde_json::json!({
+                "workspace": {"id": "ws", "name": "Restored"},
+                "data": {"chat_sessions": [{"id": "reused", "workspace_id": "ws", "title": "Replacement"}]}
+            });
+            let backup = if global {
+                serde_json::json!({"is_global": true, "data": [backup]})
+            } else {
+                backup
+            }.to_string();
+            let (started_tx, started_rx) = mpsc::channel();
+            let (done_tx, done_rx) = mpsc::channel();
+            let worker_pool = pool.clone();
+            let worker = std::thread::spawn(move || {
+                let mut conn = worker_pool.get().unwrap();
+                started_tx.send(()).unwrap();
+                let result = if global {
+                    restore_global_backup_data(&mut conn, &backup).map(|_| ())
+                } else {
+                    restore_backup_data(&mut conn, &backup).map(|_| ())
+                };
+                done_tx.send(result).unwrap();
+            });
+            started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+            assert!(matches!(done_rx.recv_timeout(Duration::from_millis(100)), Err(mpsc::RecvTimeoutError::Timeout)));
+            chat_move_sync::sync_deletions(&conn, &chats).unwrap();
+            assert!(!variants.plain.exists());
+            drop(relocation);
+            done_rx.recv_timeout(Duration::from_secs(5)).unwrap().unwrap();
+            worker.join().unwrap();
+            chat_file_store::write_session_file(&conn, &chats, "reused", None).unwrap();
+            let _relocation = chat_move_sync::lock_relocations().unwrap();
+            chat_move_sync::sync_deletions(&conn, &chats).unwrap();
+            let replacement = chat_file_store::read_session_file(&variants.plain, None).unwrap();
+            assert_eq!(replacement.title, "Replacement");
+            assert_eq!(conn.query_row("SELECT COUNT(*) FROM chat_file_delete_outbox", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+        }
+    }
 
     #[test]
     fn backup_session_ids_allow_demo_and_legacy_identifiers() {

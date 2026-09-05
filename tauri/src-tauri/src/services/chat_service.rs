@@ -6,7 +6,7 @@ use crate::services::chat_file_store;
 use crate::services::chat_move_sync::{self, FileSyncStatus};
 use crate::services::quick_search_service;
 use crate::services::workspace_hierarchy::workspace_filter_sql;
-use rusqlite::Connection;
+use rusqlite::{Connection, Transaction, TransactionBehavior};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
@@ -16,6 +16,12 @@ pub struct BatchMoveSessionsOutcome {
     pub folders_created: Vec<String>,
     pub folder_mapping: HashMap<String, String>,
     pub file_sync: FileSyncStatus,
+}
+
+fn begin_hierarchy_transaction(conn: &Connection) -> Result<Transaction<'_>, String> {
+    // Reserve the writer before path/folder reads establish a WAL snapshot.
+    // A deferred read-to-write upgrade can otherwise fail with BUSY_SNAPSHOT.
+    Transaction::new_unchecked(conn, TransactionBehavior::Immediate).map_err(|e| e.to_string())
 }
 
 fn row_to_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatSession> {
@@ -287,24 +293,27 @@ pub fn hard_delete(
     id: &str,
     chats_dir: &Path,
 ) -> Result<(), String> {
+    let _relocation = chat_move_sync::lock_relocations()?;
     // Capture file paths before the DELETE — resolution reads the session row.
     let variants =
         chat_file_store::capture_session_file_variants(conn, chats_dir, &[id.to_string()]);
     if let Some(paths) = variants.get(id) {
         chat_file_store::validate_session_file_variants(chats_dir, paths, id)?;
     }
-    let deleted = conn
+    let tx = begin_hierarchy_transaction(conn)?;
+    let variants =
+        chat_file_store::capture_session_file_variants(&tx, chats_dir, &[id.to_string()]);
+    let deleted = tx
         .execute(
             "DELETE FROM chat_sessions WHERE id = ?1 AND workspace_id = ?2",
             rusqlite::params![id, workspace_id],
         )
         .map_err(|e| e.to_string())?;
     if deleted > 0 {
-        if let Some(v) = variants.get(id) {
-            chat_file_store::delete_session_file_variants(chats_dir, v, id)?;
-        }
+        chat_move_sync::enqueue_deletion(&tx, &variants)?;
     }
-    Ok(())
+    tx.commit().map_err(|e| e.to_string())?;
+    chat_move_sync::sync_deletions(conn, chats_dir)
 }
 
 pub fn list_deleted(
@@ -348,6 +357,7 @@ pub fn empty_recycle_bin(
     workspace_id: &str,
     chats_dir: &Path,
 ) -> Result<(), String> {
+    let _relocation = chat_move_sync::lock_relocations()?;
     let mut stmt = conn
         .prepare("SELECT id FROM chat_sessions WHERE workspace_id = ?1 AND is_deleted = 1")
         .map_err(|e| e.to_string())?;
@@ -367,17 +377,23 @@ pub fn empty_recycle_bin(
             chat_file_store::validate_session_file_variants(chats_dir, paths, id)?;
         }
     }
-    conn.execute(
-        "DELETE FROM chat_sessions WHERE workspace_id = ?1 AND is_deleted = 1",
-        rusqlite::params![workspace_id],
-    )
-    .map_err(|e| e.to_string())?;
+    let tx = begin_hierarchy_transaction(conn)?;
+    // Recapture SQL metadata after reserving the writer, but do not perform
+    // filesystem probes while holding it. Delete only the preflighted IDs.
+    let variants = chat_file_store::capture_session_file_variants(&tx, chats_dir, &ids);
     for id in &ids {
-        if let Some(v) = variants.get(id) {
-            chat_file_store::delete_session_file_variants(chats_dir, v, id)?;
+        let deleted = tx.execute(
+            "DELETE FROM chat_sessions WHERE id = ?1 AND workspace_id = ?2 AND is_deleted = 1",
+            rusqlite::params![id, workspace_id],
+        ).map_err(|e| e.to_string())?;
+        if deleted > 0 {
+            if let Some(paths) = variants.get(id) {
+                chat_move_sync::enqueue_deletion(&tx, &HashMap::from([(id.clone(), paths.clone())]))?;
+            }
         }
     }
-    Ok(())
+    tx.commit().map_err(|e| e.to_string())?;
+    chat_move_sync::sync_deletions(conn, chats_dir)
 }
 
 pub fn move_sessions(
@@ -393,7 +409,7 @@ pub fn move_sessions(
     }
 
     let _relocation = chat_move_sync::lock_relocations()?;
-    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let tx = begin_hierarchy_transaction(conn)?;
     let previous_paths =
         chat_file_store::capture_session_file_variants(&tx, chats_dir, session_ids);
     let target_folder_id = target_folder_id.unwrap_or_default();
@@ -440,7 +456,7 @@ pub fn batch_move_sessions(
     }
 
     let _relocation = chat_move_sync::lock_relocations()?;
-    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let tx = begin_hierarchy_transaction(conn)?;
     let previous_paths =
         chat_file_store::capture_session_file_variants(&tx, chats_dir, session_ids);
 
@@ -1372,6 +1388,79 @@ mod tests {
         assert!(!destination.exists());
         assert!(!old.exists());
         assert_eq!(conn.query_row("SELECT COUNT(*) FROM chat_file_sync_outbox", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+    }
+
+    #[test]
+    fn storage_hierarchy_transaction_reserves_writer_before_snapshot_reads() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("writers.sqlite");
+        let pool = crate::db::initialize_database(&path).unwrap();
+        let conn = pool.get().unwrap();
+        let writer = Connection::open(&path).unwrap();
+        writer.busy_timeout(std::time::Duration::ZERO).unwrap();
+        let tx = begin_hierarchy_transaction(&conn).unwrap();
+        tx.query_row("SELECT COUNT(*) FROM chat_sessions", [], |r| r.get::<_, i64>(0)).unwrap();
+        let error = writer.execute(
+            "INSERT INTO workspaces(id, name) VALUES ('concurrent', 'Concurrent')", [],
+        ).unwrap_err();
+        assert_eq!(error.sqlite_error_code(), Some(rusqlite::ErrorCode::DatabaseBusy));
+        tx.execute("INSERT INTO workspaces(id, name) VALUES ('move', 'Move')", []).unwrap();
+        tx.commit().unwrap();
+        writer.execute(
+            "INSERT INTO workspaces(id, name) VALUES ('concurrent', 'Concurrent')", [],
+        ).unwrap();
+    }
+
+    #[test]
+    fn storage_pending_origins_survive_permanent_deletion_and_restart() {
+        for empty_bin in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let db_path = dir.path().join("delete.sqlite");
+            let pool = crate::db::initialize_database(&db_path).unwrap();
+            let conn = pool.get().unwrap();
+            let source = setup_workspace(&conn);
+            let target = workspace_service::create(&conn, CreateWorkspaceRequest {
+                name: "Destination".into(), description: None,
+            }).unwrap().id;
+            let session = create_named_session(&conn, &source, "Delete pending move");
+            let chats = dir.path().join("chats");
+            chat_file_store::write_session_file(&conn, &chats, &session.id, None).unwrap();
+            let variants = chat_file_store::capture_session_file_variants(
+                &conn, &chats, std::slice::from_ref(&session.id),
+            );
+            let original = &variants[&session.id];
+            // An inaccessible old variant prevents both move cleanup and
+            // deletion cleanup without blocking deletion of the database row.
+            std::fs::create_dir_all(&original.encrypted).unwrap();
+            let moved = move_sessions(
+                &conn, std::slice::from_ref(&session.id), &target, None, &chats, None,
+            ).unwrap();
+            assert!(moved.file_sync_pending);
+            let error = if empty_bin {
+                soft_delete(&conn, &target, &session.id).unwrap();
+                empty_recycle_bin(&conn, &target, &chats).unwrap_err()
+            } else {
+                hard_delete(&conn, &target, &session.id, &chats).unwrap_err()
+            };
+            assert!(error.contains("deletion is committed"));
+            assert!(original.plain.is_file());
+            assert!(get_session(&conn, &target, &session.id).unwrap().is_none());
+            assert_eq!(conn.query_row("SELECT COUNT(*) FROM chat_file_sync_outbox", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+            assert_eq!(conn.query_row("SELECT COUNT(*) FROM chat_file_delete_outbox", [], |r| r.get::<_, i64>(0)).unwrap(), 1);
+            drop(conn);
+            drop(pool);
+            let pool = crate::db::initialize_database(&db_path).unwrap();
+            let conn = pool.get().unwrap();
+            let _relocation = chat_move_sync::lock_relocations().unwrap();
+            assert!(chat_move_sync::sync_pending(&conn, &chats, None).file_sync_pending);
+            assert!(original.plain.exists());
+            std::fs::remove_dir(&original.encrypted).unwrap();
+            assert!(!chat_move_sync::sync_pending(&conn, &chats, None).file_sync_pending);
+            assert!(!original.plain.exists());
+            assert_eq!(conn.query_row("SELECT COUNT(*) FROM chat_file_delete_outbox", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+            assert_eq!(conn.query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+            assert!(!chat_move_sync::sync_pending(&conn, &chats, None).file_sync_pending);
+        }
     }
 
     /// Write dummy chat files at every location a session's file may live,

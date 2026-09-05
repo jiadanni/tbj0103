@@ -161,16 +161,22 @@ pub fn delete_chat_session(
 }
 
 #[tauri::command]
-pub fn hard_delete_chat_session(
-    auth: State<AuthState>,
-    state: State<DbState>,
+pub async fn hard_delete_chat_session(
+    auth: State<'_, AuthState>,
+    state: State<'_, DbState>,
     workspace_id: String,
     id: String,
-    chats_dir_state: State<ChatsDirState>,
+    chats_dir_state: State<'_, ChatsDirState>,
 ) -> Result<(), String> {
     require_auth_for_destructive_ops(&auth, &state)?;
-    let conn = state.0.get().map_err(|e| e.to_string())?;
-    chat_service::hard_delete(&conn, &workspace_id, &id, &chats_dir_state.0)
+    let pool = state.0.clone();
+    let chats_dir = chats_dir_state.0.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        chat_service::hard_delete(&conn, &workspace_id, &id, &chats_dir)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -194,15 +200,21 @@ pub fn restore_chat_session(
 }
 
 #[tauri::command]
-pub fn empty_recycle_bin(
-    auth: State<AuthState>,
-    state: State<DbState>,
+pub async fn empty_recycle_bin(
+    auth: State<'_, AuthState>,
+    state: State<'_, DbState>,
     workspace_id: String,
-    chats_dir_state: State<ChatsDirState>,
+    chats_dir_state: State<'_, ChatsDirState>,
 ) -> Result<(), String> {
     require_auth_for_destructive_ops(&auth, &state)?;
-    let conn = state.0.get().map_err(|e| e.to_string())?;
-    chat_service::empty_recycle_bin(&conn, &workspace_id, &chats_dir_state.0)
+    let pool = state.0.clone();
+    let chats_dir = chats_dir_state.0.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        chat_service::empty_recycle_bin(&conn, &workspace_id, &chats_dir)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

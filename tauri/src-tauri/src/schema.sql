@@ -804,6 +804,24 @@ CREATE TABLE IF NOT EXISTS chat_file_sync_outbox (
 );
 CREATE INDEX IF NOT EXISTS idx_chat_file_sync_outbox_session ON chat_file_sync_outbox(session_id);
 
+-- Tombstones deliberately have no session FK: cleanup must survive deletion.
+CREATE TABLE IF NOT EXISTS chat_file_delete_outbox (
+    id TEXT PRIMARY KEY NOT NULL,
+    session_id TEXT NOT NULL,
+    previous_plain TEXT NOT NULL,
+    previous_encrypted TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_chat_file_delete_outbox_session ON chat_file_delete_outbox(session_id);
+CREATE TRIGGER IF NOT EXISTS chat_file_sync_preserve_deleted_origins
+BEFORE DELETE ON chat_sessions
+BEGIN
+    INSERT INTO chat_file_delete_outbox
+        (id, session_id, previous_plain, previous_encrypted, created_at)
+    SELECT id, session_id, previous_plain, previous_encrypted, created_at
+    FROM chat_file_sync_outbox WHERE session_id = OLD.id;
+END;
+
 -- Quick search document index (FTS-backed)
 CREATE TABLE IF NOT EXISTS quick_search_documents (
     rowid INTEGER PRIMARY KEY,
