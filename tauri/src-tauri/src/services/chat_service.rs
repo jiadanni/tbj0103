@@ -3,6 +3,7 @@ use crate::models::chat::{
 };
 use crate::models::folder::Folder;
 use crate::services::chat_file_store;
+use crate::services::chat_move_sync::{self, FileSyncStatus};
 use crate::services::quick_search_service;
 use crate::services::workspace_hierarchy::workspace_filter_sql;
 use rusqlite::Connection;
@@ -14,6 +15,7 @@ pub struct BatchMoveSessionsOutcome {
     pub sessions_moved: usize,
     pub folders_created: Vec<String>,
     pub folder_mapping: HashMap<String, String>,
+    pub file_sync: FileSyncStatus,
 }
 
 fn row_to_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatSession> {
@@ -385,18 +387,19 @@ pub fn move_sessions(
     target_folder_id: Option<&str>,
     chats_dir: &Path,
     passphrase: Option<&str>,
-) -> Result<(), String> {
+) -> Result<FileSyncStatus, String> {
     if session_ids.is_empty() {
-        return Ok(());
+        return Ok(FileSyncStatus::default());
     }
 
+    let _relocation = chat_move_sync::lock_relocations()?;
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
     let previous_paths =
-        chat_file_store::capture_session_file_variants(conn, chats_dir, session_ids);
+        chat_file_store::capture_session_file_variants(&tx, chats_dir, session_ids);
     let target_folder_id = target_folder_id.unwrap_or_default();
 
-    conn.execute_batch("BEGIN IMMEDIATE")
-        .map_err(|e| e.to_string())?;
-    let result = (|| {
+    {
+        let conn = &tx;
         let placeholders = session_ids
             .iter()
             .enumerate()
@@ -418,26 +421,10 @@ pub fn move_sessions(
             params.iter().map(|param| param.as_ref()).collect();
         conn.execute(&sql, param_refs.as_slice())
             .map_err(|e| e.to_string())?;
-        Ok(())
-    })();
-
-    match result {
-        Ok(()) => {
-            conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
-            chat_file_store::sync_session_files_for_hierarchy_change(
-                conn,
-                chats_dir,
-                session_ids,
-                &previous_paths,
-                passphrase,
-            )?;
-            Ok(())
-        }
-        Err(e) => {
-            let _ = conn.execute_batch("ROLLBACK");
-            Err(e)
-        }
+        chat_move_sync::enqueue(conn, &previous_paths, passphrase.is_some())?;
     }
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(chat_move_sync::sync_pending(conn, chats_dir, passphrase))
 }
 
 pub fn batch_move_sessions(
@@ -452,12 +439,13 @@ pub fn batch_move_sessions(
         return Ok(BatchMoveSessionsOutcome::default());
     }
 
+    let _relocation = chat_move_sync::lock_relocations()?;
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
     let previous_paths =
-        chat_file_store::capture_session_file_variants(conn, chats_dir, session_ids);
-    conn.execute_batch("BEGIN IMMEDIATE")
-        .map_err(|e| e.to_string())?;
+        chat_file_store::capture_session_file_variants(&tx, chats_dir, session_ids);
 
     let result = (|| -> Result<BatchMoveSessionsOutcome, String> {
+        let conn = &tx;
         let mut outcome = BatchMoveSessionsOutcome::default();
         let placeholders = session_ids
             .iter()
@@ -574,9 +562,15 @@ pub fn batch_move_sessions(
                 .map_err(|e| e.to_string())?;
             }
         } else {
+            let update_placeholders = session_ids
+                .iter()
+                .enumerate()
+                .map(|(i, _)| format!("?{}", i + 3))
+                .collect::<Vec<_>>()
+                .join(", ");
             let sql = format!(
                 "UPDATE chat_sessions SET workspace_id = ?1, folder_id = ?2 WHERE id IN ({})",
-                placeholders
+                update_placeholders
             );
             let mut params: Vec<Box<dyn rusqlite::types::ToSql>> =
                 Vec::with_capacity(2 + session_ids.len());
@@ -592,27 +586,16 @@ pub fn batch_move_sessions(
         }
 
         outcome.sessions_moved = session_project_pairs.len();
-        chat_file_store::sync_session_files_for_hierarchy_change(
-            conn,
-            chats_dir,
-            session_ids,
-            &previous_paths,
-            passphrase,
-        )?;
+        chat_move_sync::enqueue(conn, &previous_paths, passphrase.is_some())?;
 
         Ok(outcome)
-    })();
+    })()?;
 
-    match result {
-        Ok(outcome) => {
-            conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
-            Ok(outcome)
-        }
-        Err(e) => {
-            let _ = conn.execute_batch("ROLLBACK");
-            Err(e)
-        }
-    }
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(BatchMoveSessionsOutcome {
+        file_sync: chat_move_sync::sync_pending(conn, chats_dir, passphrase),
+        ..result
+    })
 }
 
 pub fn add_message(conn: &Connection, req: AddMessageRequest) -> Result<Message, String> {
@@ -1290,6 +1273,105 @@ mod tests {
             },
         )
         .unwrap()
+    }
+
+    #[test]
+    fn storage_moves_preserve_search_scope_with_and_without_folders() {
+        for preserve in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let pool = crate::db::initialize_database(&dir.path().join("moves.sqlite")).unwrap();
+            let conn = pool.get().unwrap();
+            let source = setup_workspace(&conn);
+            let target = workspace_service::create(&conn, CreateWorkspaceRequest {
+                name: "Destination".into(), description: None,
+            }).unwrap().id;
+            conn.execute(
+                "INSERT INTO folders(id, workspace_id, name) VALUES ('source-folder', ?1, 'Notes')",
+                [&source],
+            ).unwrap();
+            let one = create_named_session(&conn, &source, "needle");
+            let two = create_named_session(&conn, &source, "needle");
+            conn.execute(
+                "UPDATE chat_sessions SET folder_id = 'source-folder' WHERE id = ?1",
+                [&one.id],
+            ).unwrap();
+            let chats = dir.path().join("chats");
+            let result = batch_move_sessions(
+                &conn, &[one.id.clone(), two.id.clone()], &target, preserve, &chats, None,
+            ).unwrap();
+            assert_eq!(result.sessions_moved, 2);
+            assert!(!result.file_sync.file_sync_pending, "{:?}", result.file_sync);
+            assert_eq!(result.folders_created.len(), usize::from(preserve));
+            let moved = get_session(&conn, &target, &one.id).unwrap().unwrap();
+            assert_eq!(moved.folder_id.is_empty(), !preserve);
+            assert_eq!(conn.query_row(
+                "SELECT COUNT(*) FROM quick_search_documents_fts f
+                 JOIN quick_search_documents d ON d.rowid = f.rowid
+                 WHERE quick_search_documents_fts MATCH 'needle' AND d.workspace_id = ?1",
+                [&target], |row| row.get::<_, i64>(0),
+            ).unwrap(), 2);
+            let normal = move_sessions(
+                &conn, &[one.id.clone(), two.id.clone()], &source, None, &chats, None,
+            ).unwrap();
+            assert!(!normal.file_sync_pending);
+            assert!(get_session(&conn, &source, &one.id).unwrap().is_some());
+            assert_eq!(conn.query_row("SELECT COUNT(*) FROM chat_file_sync_outbox", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+            assert_eq!(conn.query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+        }
+    }
+
+    #[test]
+    fn storage_move_file_failure_keeps_committed_database_and_retries() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::initialize_database(&dir.path().join("moves.sqlite")).unwrap();
+        let conn = pool.get().unwrap();
+        let source = setup_workspace(&conn);
+        let target = workspace_service::create(&conn, CreateWorkspaceRequest {
+            name: "Destination".into(), description: None,
+        }).unwrap().id;
+        let session = create_named_session(&conn, &source, "Saved chat");
+        let chats = dir.path().join("chats");
+        chat_file_store::write_session_file(&conn, &chats, &session.id, None).unwrap();
+        let old = chat_file_store::session_file_path_for_session(&conn, &chats, &session.id, false);
+        let tx = conn.unchecked_transaction().unwrap();
+        tx.execute("UPDATE chat_sessions SET workspace_id = ?1 WHERE id = ?2", [&target, &session.id]).unwrap();
+        let destination = chat_file_store::session_file_path_for_session(&tx, &chats, &session.id, false);
+        tx.rollback().unwrap();
+        std::fs::create_dir_all(&destination).unwrap();
+
+        let status = move_sessions(&conn, std::slice::from_ref(&session.id), &target, None, &chats, None).unwrap();
+        assert!(status.file_sync_pending);
+        assert!(status.file_sync_error.unwrap().contains("saved in the database"));
+        assert!(get_session(&conn, &target, &session.id).unwrap().is_some());
+        assert!(old.exists(), "preserve source until replacement is durable");
+        assert_eq!(conn.query_row("SELECT COUNT(*) FROM chat_file_sync_outbox", [], |r| r.get::<_, i64>(0)).unwrap(), 1);
+        std::fs::remove_dir(&destination).unwrap();
+
+        // A second move must retain the first source's cleanup job, and retry
+        // must use the latest database contents rather than a stale snapshot.
+        let third = workspace_service::create(&conn, CreateWorkspaceRequest {
+            name: "Third".into(), description: None,
+        }).unwrap().id;
+        let tx = conn.unchecked_transaction().unwrap();
+        tx.execute("UPDATE chat_sessions SET workspace_id = ?1 WHERE id = ?2", [&third, &session.id]).unwrap();
+        let newest_destination = chat_file_store::session_file_path_for_session(&tx, &chats, &session.id, false);
+        tx.rollback().unwrap();
+        std::fs::create_dir_all(&newest_destination).unwrap();
+        conn.execute("UPDATE chat_sessions SET title = 'Newest content' WHERE id = ?1", [&session.id]).unwrap();
+        let status = move_sessions(&conn, std::slice::from_ref(&session.id), &third, None, &chats, None).unwrap();
+        assert!(status.file_sync_pending);
+        assert!(old.exists());
+        assert_eq!(conn.query_row("SELECT COUNT(*) FROM chat_file_sync_outbox", [], |r| r.get::<_, i64>(0)).unwrap(), 2);
+        std::fs::remove_dir(&newest_destination).unwrap();
+
+        let _relocation = chat_move_sync::lock_relocations().unwrap();
+        let status = chat_move_sync::sync_pending(&conn, &chats, None);
+        assert!(!status.file_sync_pending, "{status:?}");
+        let file: serde_json::Value = serde_json::from_slice(&std::fs::read(&newest_destination).unwrap()).unwrap();
+        assert_eq!(file["title"], "Newest content");
+        assert!(!destination.exists());
+        assert!(!old.exists());
+        assert_eq!(conn.query_row("SELECT COUNT(*) FROM chat_file_sync_outbox", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
     }
 
     /// Write dummy chat files at every location a session's file may live,

@@ -7,6 +7,7 @@ use crate::db::DbState;
 use crate::logging;
 use crate::models::chat::{AddMessageRequest, ChatSession, CreateChatSessionRequest, Message};
 use crate::services::chat_service;
+use crate::services::chat_move_sync::{self, FileSyncStatus};
 use crate::services::quick_search_service::{self, QuickSearchResult};
 
 #[derive(Debug, serde::Deserialize)]
@@ -205,24 +206,32 @@ pub fn empty_recycle_bin(
 }
 
 #[tauri::command]
-pub fn move_chat_sessions(
-    state: State<DbState>,
+pub async fn move_chat_sessions(
+    auth: State<'_, AuthState>,
+    state: State<'_, DbState>,
     session_ids: Vec<String>,
     target_workspace_id: String,
     target_folder_id: Option<String>,
-    chats_dir_state: State<ChatsDirState>,
-    crypto: State<ChatCryptoState>,
-) -> Result<(), String> {
-    let conn = state.0.get().map_err(|e| e.to_string())?;
+    chats_dir_state: State<'_, ChatsDirState>,
+    crypto: State<'_, ChatCryptoState>,
+) -> Result<FileSyncStatus, String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
+    let pool = state.0.clone();
+    let chats_dir = chats_dir_state.0.clone();
     let pass = crypto.0.lock().map_err(|e| e.to_string())?.clone();
-    chat_service::move_sessions(
-        &conn,
-        &session_ids,
-        &target_workspace_id,
-        target_folder_id.as_deref(),
-        &chats_dir_state.0,
-        pass.as_deref(),
-    )
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        chat_service::move_sessions(
+            &conn,
+            &session_ids,
+            &target_workspace_id,
+            target_folder_id.as_deref(),
+            &chats_dir,
+            pass.as_deref(),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Request for batch cross-workspace move with optional folder structure preservation.
@@ -240,32 +249,63 @@ pub struct BatchMoveSessionsResult {
     pub folders_created: Vec<String>,
     /// Map from source project ID to destination folder ID
     pub folder_mapping: std::collections::HashMap<String, String>,
+    #[serde(flatten)]
+    pub file_sync: FileSyncStatus,
 }
 
 /// Batch move sessions across workspaces in a single transaction.
 /// When preserve_folder_structure is true, creates matching folders in the target workspace.
 #[tauri::command]
-pub fn batch_move_sessions(
-    state: State<DbState>,
+pub async fn batch_move_sessions(
+    auth: State<'_, AuthState>,
+    state: State<'_, DbState>,
     req: BatchMoveSessionsRequest,
-    chats_dir_state: State<ChatsDirState>,
-    crypto: State<ChatCryptoState>,
+    chats_dir_state: State<'_, ChatsDirState>,
+    crypto: State<'_, ChatCryptoState>,
 ) -> Result<BatchMoveSessionsResult, String> {
-    let conn = state.0.get().map_err(|e| e.to_string())?;
+    require_auth_for_destructive_ops(&auth, &state)?;
+    let pool = state.0.clone();
+    let chats_dir = chats_dir_state.0.clone();
     let pass = crypto.0.lock().map_err(|e| e.to_string())?.clone();
-    let outcome = chat_service::batch_move_sessions(
-        &conn,
-        &req.session_ids,
-        &req.target_workspace_id,
-        req.preserve_folder_structure,
-        &chats_dir_state.0,
-        pass.as_deref(),
-    )?;
+    let outcome = tokio::task::spawn_blocking(move || {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        chat_service::batch_move_sessions(
+            &conn,
+            &req.session_ids,
+            &req.target_workspace_id,
+            req.preserve_folder_structure,
+            &chats_dir,
+            pass.as_deref(),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())??;
     Ok(BatchMoveSessionsResult {
         sessions_moved: outcome.sessions_moved,
         folders_created: outcome.folders_created,
         folder_mapping: outcome.folder_mapping,
+        file_sync: outcome.file_sync,
     })
+}
+
+#[tauri::command]
+pub async fn retry_chat_file_sync(
+    auth: State<'_, AuthState>,
+    state: State<'_, DbState>,
+    chats_dir_state: State<'_, ChatsDirState>,
+    crypto: State<'_, ChatCryptoState>,
+) -> Result<FileSyncStatus, String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
+    let pool = state.0.clone();
+    let chats_dir = chats_dir_state.0.clone();
+    let pass = crypto.0.lock().map_err(|e| e.to_string())?.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let _relocation = chat_move_sync::lock_relocations()?;
+        Ok(chat_move_sync::sync_pending(&conn, &chats_dir, pass.as_deref()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

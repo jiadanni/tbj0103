@@ -94,6 +94,8 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v78_learning_cards_kind",
     "v79_import_source_links",
     "v80_roadmap_snapshot_reason",
+    "v81_search_session_workspace",
+    "v82_chat_file_sync_outbox",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -145,6 +147,7 @@ pub fn initialize_database_with_key(
         // panic on v72's `RENAME TO memories_old`. Repair it before migrations
         // run so v72 can re-apply cleanly.
         repair_orphaned_memories_old(&conn)?;
+        repair_interrupted_v75(&conn)?;
         // Existing databases must migrate first so schema-level indexes do not
         // reference columns that are added by later migrations.
         run_migrations(&conn)?;
@@ -2262,6 +2265,9 @@ fn run_migrations(conn: &Connection) -> Result<()> {
     // Each table is rebuilt to the schema.sql shape only when the drift marker
     // is present, so fresh installs and already-repaired databases skip the
     // rebuild entirely (idempotent re-runs).
+    // Keep the shipped migration unchanged, but commit its work and marker
+    // together so a new interruption cannot strand another rebuild table.
+    apply_v75_atomically(conn)?;
     let applied_v75: i64 = conn.query_row(
         "SELECT COUNT(*) FROM _migrations WHERE name = 'v75_fix_workspace_fk_shapes'",
         [],
@@ -2458,11 +2464,175 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
     }
 
+    let applied_v81: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v81_search_session_workspace'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v81 == 0 {
+        let tx = conn.unchecked_transaction()?;
+        let has_search: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'quick_search_documents')",
+            [],
+            |row| row.get(0),
+        )?;
+        if has_search {
+            // Install the metadata guard before backfilling. Bootstrap applies
+            // the current schema immediately after migrations, replacing the
+            // session/artifact/summary triggers on every upgraded database.
+            tx.execute_batch(
+                "DROP TRIGGER IF EXISTS quick_search_documents_au;
+                 CREATE TRIGGER quick_search_documents_au
+                 AFTER UPDATE ON quick_search_documents
+                 WHEN OLD.title != NEW.title OR OLD.subtitle != NEW.subtitle OR OLD.body != NEW.body
+                 BEGIN
+                     INSERT INTO quick_search_documents_fts(quick_search_documents_fts, rowid, title, subtitle, body)
+                     VALUES ('delete', OLD.rowid, OLD.title, OLD.subtitle, OLD.body);
+                     INSERT INTO quick_search_documents_fts(rowid, title, subtitle, body)
+                     VALUES (NEW.rowid, NEW.title, NEW.subtitle, NEW.body);
+                 END;
+                 UPDATE quick_search_documents AS d
+                 SET workspace_id = cs.workspace_id, folder_id = NULLIF(cs.folder_id, '')
+                 FROM chat_sessions AS cs
+                 WHERE d.session_id = cs.id
+                   AND d.kind IN ('conversation', 'message', 'artifact', 'summary')
+                   AND (d.workspace_id IS NOT cs.workspace_id OR d.folder_id IS NOT NULLIF(cs.folder_id, ''));",
+            )?;
+        }
+        tx.execute(
+            "INSERT INTO _migrations(name) VALUES('v81_search_session_workspace')",
+            [],
+        )?;
+        tx.commit()?;
+    }
+
+    let applied_v82: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v82_chat_file_sync_outbox'",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied_v82 == 0 {
+        let tx = conn.unchecked_transaction()?;
+        tx.execute_batch(
+            "CREATE TABLE IF NOT EXISTS chat_file_sync_outbox (
+                 id TEXT PRIMARY KEY NOT NULL,
+                 session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                 previous_plain TEXT NOT NULL,
+                 previous_encrypted TEXT NOT NULL,
+                 requires_encryption INTEGER NOT NULL DEFAULT 0,
+                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
+             );
+             CREATE INDEX IF NOT EXISTS idx_chat_file_sync_outbox_session
+                 ON chat_file_sync_outbox(session_id);",
+        )?;
+        tx.execute(
+            "INSERT INTO _migrations(name) VALUES('v82_chat_file_sync_outbox')",
+            [],
+        )?;
+        tx.commit()?;
+    }
+
     Ok(())
 }
 
-/// Returns true when `table`'s current DDL is missing the healthy
-/// `workspace_id TEXT NOT NULL REFERENCES workspaces` shape.
+/// Recover the five nontransactional rebuilds before schema bootstrap can
+/// recreate an empty original table over a surviving temporary copy.
+fn repair_interrupted_v75(conn: &Connection) -> Result<()> {
+    let applied: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM _migrations WHERE name = 'v75_fix_workspace_fk_shapes')",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied {
+        return Ok(());
+    }
+
+    let legacy_alter: bool = conn.query_row("PRAGMA legacy_alter_table", [], |r| r.get(0))?;
+    conn.pragma_update(None, "legacy_alter_table", true)?;
+    let result = (|| {
+        let tx = conn.unchecked_transaction()?;
+        for table in [
+            "learning_cards",
+            "uploaded_documents",
+            "web_captures",
+            "audio_transcriptions",
+            "project_notes",
+        ] {
+            let temp = format!("{table}_v75");
+            let exists = |name: &str| -> Result<bool> {
+                tx.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+                    [name],
+                    |row| row.get(0),
+                )
+            };
+            if !exists(&temp)? {
+                continue;
+            }
+            if exists(table)? {
+                // A pre-DROP interruption leaves the original authoritative.
+                // Verify every temporary row is still represented before
+                // discarding the partial copy; unexpected drift fails closed.
+                let columns = tx
+                    .prepare("SELECT name FROM pragma_table_info(?1) ORDER BY cid")?
+                    .query_map([&temp], |row| row.get::<_, String>(0))?
+                    .collect::<Result<Vec<_>>>()?
+                    .into_iter()
+                    .map(|name| format!("\"{}\"", name.replace('"', "\"\"")))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let diverged: bool = tx.query_row(
+                    &format!(
+                        "SELECT EXISTS(SELECT {columns} FROM \"{temp}\"
+                         EXCEPT SELECT {columns} FROM \"{table}\")"
+                    ),
+                    [],
+                    |row| row.get(0),
+                )?;
+                if diverged {
+                    return Err(rusqlite::Error::InvalidParameterName(format!(
+                        "Cannot recover {temp}: temporary rows differ from the original; both copies preserved"
+                    )));
+                }
+                tx.execute_batch(&format!("DROP TABLE \"{temp}\";"))?;
+            } else {
+                // After DROP the temporary table is the only surviving copy.
+                // Legacy ALTER permits the rename while old triggers still
+                // refer to the temporarily absent original table.
+                tx.execute_batch(&format!("ALTER TABLE \"{temp}\" RENAME TO \"{table}\";"))?;
+            }
+        }
+        tx.commit()
+    })();
+    conn.pragma_update(None, "legacy_alter_table", legacy_alter)?;
+    result
+}
+
+fn apply_v75_atomically(conn: &Connection) -> Result<()> {
+    let applied: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM _migrations WHERE name = 'v75_fix_workspace_fk_shapes')",
+        [],
+        |row| row.get(0),
+    )?;
+    if applied {
+        return Ok(());
+    }
+    let foreign_keys: bool = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0))?;
+    conn.pragma_update(None, "foreign_keys", false)?;
+    let result = (|| {
+        let tx = conn.unchecked_transaction()?;
+        v75_fix_workspace_fk_shapes(&tx)?;
+        tx.execute(
+            "INSERT INTO _migrations(name) VALUES('v75_fix_workspace_fk_shapes')",
+            [],
+        )?;
+        tx.commit()
+    })();
+    conn.pragma_update(None, "foreign_keys", foreign_keys)?;
+    result
+}
+
+/// Returns true when the workspace foreign-key declaration has drifted.
 fn v75_table_needs_rebuild(conn: &Connection, table: &str) -> Result<bool> {
     let sql: Option<String> = conn
         .query_row(
@@ -2792,6 +2962,160 @@ fn dedupe_ai_models(conn: &Connection) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn storage_v75_recovers_every_rebuild_phase_and_repeated_startup() {
+        for (table, fields, values) in [
+            ("learning_cards", "front, back", "'front', 'back'"),
+            ("uploaded_documents", "filename, file_type", "'doc', 'text'"),
+            ("web_captures", "url", "'https://example.invalid'"),
+            ("audio_transcriptions", "filename", "'audio'"),
+            ("project_notes", "title", "'note'"),
+        ] {
+            for phase in 0..5 {
+                let dir = tempfile::tempdir().unwrap();
+                let path = dir.path().join("recovery.sqlite");
+                drop(super::initialize_database(&path).unwrap());
+                let conn = rusqlite::Connection::open(&path).unwrap();
+                conn.execute_batch("PRAGMA foreign_keys=OFF; PRAGMA legacy_alter_table=ON;").unwrap();
+                let ddl: String = conn.query_row(
+                    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                    [table], |row| row.get(0),
+                ).unwrap();
+                let objects = |conn: &rusqlite::Connection| -> Vec<String> {
+                    conn.prepare(
+                        "SELECT name FROM sqlite_master WHERE tbl_name = ?1 AND type IN ('index', 'trigger') ORDER BY name"
+                    ).unwrap().query_map([table], |row| row.get(0)).unwrap()
+                        .collect::<rusqlite::Result<Vec<_>>>().unwrap()
+                };
+                let original_objects = objects(&conn);
+                conn.execute_batch(&format!("DROP TABLE {table};")).unwrap();
+                conn.execute_batch(&ddl.replace(
+                    "workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE",
+                    "workspace_id TEXT NOT NULL",
+                )).unwrap();
+                conn.execute_batch(&format!(
+                    "INSERT INTO workspaces(id, name) VALUES ('recovery-ws', 'Recovery');
+                     INSERT INTO {table}(id, workspace_id, {fields})
+                     VALUES ('one', 'recovery-ws', {values}), ('two', 'recovery-ws', {values});
+                     CREATE TABLE recovery_child (
+                         id TEXT PRIMARY KEY, parent_id TEXT REFERENCES {table}(id) ON DELETE CASCADE
+                     );
+                     INSERT INTO recovery_child(id, parent_id) VALUES ('child', 'one');"
+                )).unwrap();
+                let temp = format!("{table}_v75");
+                conn.execute_batch(&ddl.replacen(table, &temp, 1)).unwrap();
+                let columns = conn.prepare("SELECT name FROM pragma_table_info(?1) ORDER BY cid")
+                    .unwrap().query_map([table], |row| row.get::<_, String>(0)).unwrap()
+                    .collect::<rusqlite::Result<Vec<_>>>().unwrap().join(", ");
+                if phase > 0 {
+                    let predicate = if phase == 1 { "WHERE id = 'one'" } else { "" };
+                    conn.execute_batch(&format!(
+                        "INSERT INTO {temp}({columns}) SELECT {columns} FROM {table} {predicate};"
+                    )).unwrap();
+                }
+                if phase >= 3 {
+                    conn.execute_batch(&format!("DROP TABLE {table};")).unwrap();
+                }
+                if phase == 4 {
+                    conn.execute_batch(&format!("ALTER TABLE {temp} RENAME TO {table};")).unwrap();
+                }
+                let start = super::ALL_MIGRATION_NAMES.iter()
+                    .position(|name| *name == "v75_fix_workspace_fk_shapes").unwrap();
+                for name in &super::ALL_MIGRATION_NAMES[start..] {
+                    conn.execute("DELETE FROM _migrations WHERE name = ?1", [name]).unwrap();
+                }
+                drop(conn);
+                for _ in 0..2 {
+                    let pool = super::initialize_database(&path)
+                        .unwrap_or_else(|e| panic!("{table}, phase {phase}: {e}"));
+                    let conn = pool.get().unwrap();
+                    assert_eq!(conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get::<_, i64>(0)).unwrap(), 2);
+                    assert_eq!(conn.query_row("SELECT COUNT(*) FROM recovery_child", [], |r| r.get::<_, i64>(0)).unwrap(), 1);
+                    assert_eq!(conn.query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+                    assert_eq!(conn.query_row("SELECT COUNT(*) FROM sqlite_master WHERE name = ?1", [&temp], |r| r.get::<_, i64>(0)).unwrap(), 0);
+                    assert_eq!(objects(&conn), original_objects);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn storage_v75_preserves_divergent_temp_copy_and_rolls_back_failures() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        super::create_migrations_table(&conn).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE learning_cards (id TEXT PRIMARY KEY, workspace_id TEXT);
+             CREATE TABLE learning_cards_v75 (id TEXT PRIMARY KEY, workspace_id TEXT);
+             INSERT INTO learning_cards_v75(id, workspace_id) VALUES ('only-copy', 'ws');"
+        ).unwrap();
+        assert!(super::repair_interrupted_v75(&conn).is_err());
+        assert_eq!(conn.query_row("SELECT COUNT(*) FROM learning_cards_v75", [], |r| r.get::<_, i64>(0)).unwrap(), 1);
+        conn.execute_batch("DROP TABLE learning_cards_v75; PRAGMA foreign_keys=ON;").unwrap();
+        assert!(super::apply_v75_atomically(&conn).is_err());
+        assert_eq!(conn.query_row("PRAGMA foreign_keys", [], |r| r.get::<_, i64>(0)).unwrap(), 1);
+        assert_eq!(conn.query_row("SELECT COUNT(*) FROM sqlite_master WHERE name = 'learning_cards_v75'", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+        assert_eq!(conn.query_row("SELECT COUNT(*) FROM _migrations", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+    }
+
+    #[test]
+    fn storage_v81_repairs_metadata_without_touching_fts() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("search.sqlite");
+        let pool = super::initialize_database(&path).unwrap();
+        let conn = pool.get().unwrap();
+        conn.execute_batch(
+            "INSERT INTO workspaces(id, name) VALUES ('old', 'Old'), ('new', 'New');
+             INSERT INTO folders(id, workspace_id, name) VALUES ('target-folder', 'new', 'Folder');
+             INSERT INTO chat_sessions(id, workspace_id, title) VALUES ('session', 'old', 'needle');
+             INSERT INTO messages(id, session_id, role, content) VALUES ('message', 'session', 'user', 'needle');
+             INSERT INTO artifacts(id, workspace_id, session_id, title, artifact_type, content)
+                 VALUES ('artifact', 'old', 'session', 'needle', 'code', 'needle');
+             INSERT INTO conversation_summaries(id, workspace_id, session_id, content, message_range_start, message_range_end)
+                 VALUES ('summary', 'old', 'session', 'needle', 0, 1);
+             CREATE TABLE storage_fts_audit (id INTEGER);
+             CREATE TRIGGER storage_fts_audit_update AFTER UPDATE ON quick_search_documents
+                 WHEN OLD.title != NEW.title OR OLD.subtitle != NEW.subtitle OR OLD.body != NEW.body
+                 BEGIN INSERT INTO storage_fts_audit(id) VALUES (1); END;
+             CREATE TRIGGER storage_fts_audit_delete AFTER DELETE ON quick_search_documents
+                 BEGIN INSERT INTO storage_fts_audit(id) VALUES (1); END;
+             DROP TRIGGER quick_search_chat_sessions_au;
+             UPDATE chat_sessions SET workspace_id = 'new', folder_id = 'target-folder';
+             DELETE FROM _migrations WHERE name = 'v81_search_session_workspace';"
+        ).unwrap();
+        drop(conn);
+        drop(pool);
+        for _ in 0..2 {
+            let pool = super::initialize_database(&path).unwrap();
+            let conn = pool.get().unwrap();
+            let count = |workspace: &str| conn.query_row(
+                "SELECT COUNT(*) FROM quick_search_documents_fts f
+                 JOIN quick_search_documents d ON d.rowid = f.rowid
+                 WHERE quick_search_documents_fts MATCH 'needle' AND d.workspace_id = ?1",
+                [workspace], |r| r.get::<_, i64>(0)
+            ).unwrap();
+            assert_eq!(count("new"), 4);
+            assert_eq!(count("old"), 0);
+            assert_eq!(conn.query_row("SELECT COUNT(*) FROM storage_fts_audit", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+            conn.execute_batch("UPDATE chat_sessions SET workspace_id = 'old', folder_id = '';").unwrap();
+            assert_eq!(count("old"), 4);
+            conn.execute_batch("UPDATE chat_sessions SET workspace_id = 'new', folder_id = 'target-folder';").unwrap();
+            assert_eq!(count("new"), 4);
+            assert_eq!(conn.query_row("SELECT COUNT(*) FROM storage_fts_audit", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+            assert_eq!(conn.query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+            conn.execute_batch(
+                "UPDATE artifacts SET content = content || ' needle';
+                 UPDATE conversation_summaries SET content = content || ' needle';
+                 UPDATE chat_sessions SET is_deleted = 1;
+                 UPDATE chat_sessions SET is_deleted = 0;"
+            ).unwrap();
+            assert_eq!(count("new"), 4, "edits and restore must not resurrect stale scope");
+            crate::services::quick_search_index::rebuild(&conn).unwrap();
+            assert_eq!(count("new"), 4, "full rebuild must retain the session's new scope");
+            assert_eq!(count("old"), 0);
+            conn.execute("DELETE FROM storage_fts_audit", []).unwrap();
+        }
+    }
+
     use super::{initialize_database, ALL_MIGRATION_NAMES};
     use rusqlite::Connection;
 
