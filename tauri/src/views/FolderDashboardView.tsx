@@ -400,8 +400,19 @@ export default function FolderDashboardView() {
                       <div className="text-[11px] text-[var(--text-muted)]">
                         {item.folder_name ? `${item.folder_name} · ` : ""}{timeAgo(item.updated_at)}
                       </div>
-                      {activeContinueThreadId === item.session_id && item.last_snippet && (
-                        <div className="mt-1 line-clamp-2 text-[11px] text-[var(--text-secondary)]">
+                      {/* The snippet row is always laid out, and hover only fades
+                          it in. Mounting it on hover instead would grow the row,
+                          pushing the rows below it -- and every section after this
+                          card -- down as the pointer moves across the list. */}
+                      {item.last_snippet && (
+                        <div
+                          className={`mt-1 line-clamp-2 text-[11px] text-[var(--text-secondary)] transition-opacity duration-150 ${
+                            activeContinueThreadId === item.session_id
+                              ? "opacity-100"
+                              : "opacity-0"
+                          }`}
+                          aria-hidden={activeContinueThreadId !== item.session_id}
+                        >
                           {item.last_snippet}
                         </div>
                       )}
