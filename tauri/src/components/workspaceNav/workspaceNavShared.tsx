@@ -120,7 +120,10 @@ function workspaceTabClassName({
   isActive: boolean;
   isDragTarget?: boolean;
 }) {
-  return `relative mt-1 flex h-[34px] items-center gap-1.5 self-end rounded-t-xl border border-b-0 px-3.5 text-sm font-medium whitespace-nowrap transition-all select-none ${
+  // h-full + self-end so the tab meets the titlebar's bottom border, the way a
+  // browser tab does. A fixed height with `mt-1` inside an `items-center` strip
+  // left the tabs sitting a few px below the chevron/+/action buttons.
+  return `relative flex h-[34px] items-center gap-1.5 self-end rounded-t-xl border border-b-0 px-3.5 text-sm font-medium whitespace-nowrap transition-all select-none ${
     isDragTarget
       ? "border-[rgba(var(--accent-color-rgb),0.45)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)] shadow-sm"
       : isActive

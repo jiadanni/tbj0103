@@ -206,7 +206,7 @@ describe("FolderDashboardView", () => {
     });
   });
 
-  it("shows the last message for the highlighted continue-learning row", async () => {
+  it("keeps the continue-learning snippet visible so hover cannot shift the layout", async () => {
     render(
       <MemoryRouter>
         <FolderDashboardView />
@@ -217,19 +217,20 @@ describe("FolderDashboardView", () => {
       expect(mocks.getSummary).toHaveBeenCalledWith("ws-1", { includeDescendants: false });
     });
 
-    // The snippet stays mounted so hovering cannot change the row's height and
-    // shove the rest of the page around; hover only fades it in.
-    const snippet = screen.getByText("Let me know once you've checked the unshare flags.");
-    expect(snippet).toHaveClass("opacity-0");
+    // The snippet is always visible and clamped to one line, so hovering cannot
+    // change the row's height and shove the rest of the page around. Hover only
+    // brightens the text.
+    const snippet = screen.getByText(/Let me know once you've checked the unshare flags\./);
+    expect(snippet).toHaveClass("text-[var(--text-muted)]");
 
     const row = screen.getByRole("button", { name: /cgroups vs namespaces/i });
     fireEvent.mouseEnter(row);
 
-    expect(snippet).toHaveClass("opacity-100");
+    expect(snippet).toHaveClass("text-[var(--text-secondary)]");
 
     fireEvent.mouseLeave(row);
 
-    expect(snippet).toHaveClass("opacity-0");
+    expect(snippet).toHaveClass("text-[var(--text-muted)]");
   });
 
   it("shows a warm-up default state for sparse workspaces", async () => {
