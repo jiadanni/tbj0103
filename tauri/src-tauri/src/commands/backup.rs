@@ -10,6 +10,7 @@ use tauri::State;
 
 use crate::commands::security::{require_auth, require_auth_for_destructive_ops, AuthState};
 use crate::db::DbState;
+use crate::services::chat_file_store::validate_session_id;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackupInfo {
@@ -289,6 +290,7 @@ pub async fn restore_backup(
     let mut conn = pool.get().map_err(|e| e.to_string())?;
     let backup: serde_json::Value =
         serde_json::from_str(&backup_json).map_err(|e| format!("Invalid backup JSON: {e}"))?;
+    validate_backup_session_ids(&backup)?;
 
     if backup.get("data").is_none() {
         return restore_legacy_backup(&mut conn, &backup);
@@ -392,6 +394,38 @@ fn table_exists(conn: &Connection, table_name: &str) -> Result<bool, String> {
     Ok(exists != 0)
 }
 
+fn validate_backup_session_row(row: &serde_json::Value) -> Result<(), String> {
+    let id = row
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .ok_or("Backup chat session is missing a string id")?;
+    validate_session_id(id).map_err(|error| format!("Invalid backup chat session: {error}"))
+}
+
+/// Check every workspace in a global backup before any restore transaction mutates data.
+fn validate_backup_session_ids(backup: &serde_json::Value) -> Result<(), String> {
+    match backup.get("data") {
+        Some(serde_json::Value::Array(workspaces)) => {
+            for workspace in workspaces {
+                validate_backup_session_ids(workspace)?;
+            }
+        }
+        Some(serde_json::Value::Object(data)) => {
+            if let Some(rows) = data.get("chat_sessions") {
+                let rows = rows
+                    .as_array()
+                    .ok_or("Backup table 'chat_sessions' is not an array")?;
+                for row in rows {
+                    validate_backup_session_row(row)?;
+                }
+            }
+        }
+        // Legacy backups only restore the workspace and its folders.
+        _ => {}
+    }
+    Ok(())
+}
+
 fn query_optional_json_row(
     conn: &Connection,
     query: &str,
@@ -478,6 +512,9 @@ fn insert_value_object(
     table_name: &str,
     row: &serde_json::Value,
 ) -> Result<(), String> {
+    if table_name == "chat_sessions" {
+        validate_backup_session_row(row)?;
+    }
     let object = row
         .as_object()
         .ok_or_else(|| format!("Backup row for '{table_name}' is not an object"))?;
@@ -687,6 +724,7 @@ pub async fn restore_global_backup(
     let mut conn = pool.get().map_err(|e| e.to_string())?;
     let backup: serde_json::Value =
         serde_json::from_str(&backup_json).map_err(|e| format!("Invalid backup JSON: {e}"))?;
+    validate_backup_session_ids(&backup)?;
 
     let is_global = backup
         .get("is_global")
@@ -748,4 +786,62 @@ pub async fn restore_global_backup(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[cfg(test)]
+mod path_validation_tests {
+    use super::*;
+
+    #[test]
+    fn backup_session_ids_allow_demo_and_legacy_identifiers() {
+        for id in ["demo-chat-1", "legacy_session.2", "550e8400-e29b-41d4-a716-446655440000"] {
+            let backup = serde_json::json!({"data": {"chat_sessions": [{"id": id}]}});
+            assert!(validate_backup_session_ids(&backup).is_ok());
+        }
+        assert!(validate_backup_session_ids(&serde_json::json!({
+            "workspace": {"id": "legacy", "folders": []}
+        })).is_ok());
+    }
+
+    #[test]
+    fn backup_session_ids_reject_traversal_and_non_string_ids() {
+        for id in [
+            serde_json::json!("../outside"),
+            serde_json::json!("/absolute"),
+            serde_json::json!("..\\outside"),
+            serde_json::json!("C:\\outside"),
+            serde_json::json!("session:stream"),
+            serde_json::json!(""),
+            serde_json::json!(null),
+            serde_json::json!(12),
+        ] {
+            let backup = serde_json::json!({"data": {"chat_sessions": [{"id": id}]}});
+            assert!(validate_backup_session_ids(&backup).is_err(), "{id}");
+        }
+    }
+
+    #[test]
+    fn global_backup_preflights_later_workspaces() {
+        let backup = serde_json::json!({"is_global": true, "data": [
+            {"data": {"chat_sessions": [{"id": "demo-safe"}]}},
+            {"data": {"chat_sessions": [{"id": "../../outside"}]}}
+        ]});
+        assert!(validate_backup_session_ids(&backup).is_err());
+    }
+
+    #[test]
+    fn backup_insert_rejects_unsafe_session_before_sql() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE chat_sessions (id TEXT PRIMARY KEY);").unwrap();
+        let error = insert_value_object(
+            &conn,
+            "chat_sessions",
+            &serde_json::json!({"id": "../outside"}),
+        ).unwrap_err();
+        assert!(error.contains("Invalid backup chat session"));
+        assert_eq!(
+            conn.query_row("SELECT COUNT(id) FROM chat_sessions", [], |row| row.get::<_, i64>(0)).unwrap(),
+            0
+        );
+    }
 }

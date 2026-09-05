@@ -19,7 +19,9 @@ use base64::Engine;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::io::Write;
+use std::path::{Component, Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 pub mod account_memory;
 pub mod claude_v2;
@@ -69,6 +71,145 @@ struct EncryptedFile {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+fn session_file_writer_lock(session_id: &str) -> Result<Arc<Mutex<()>>, String> {
+    static WRITERS: OnceLock<Mutex<HashMap<String, Weak<Mutex<()>>>>> = OnceLock::new();
+    validate_session_id(session_id)?;
+    let mut writers = WRITERS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .map_err(|_| "Chat file writer registry is poisoned")?;
+    // Only active/waiting writers retain entries; unrelated sessions never share a lock.
+    writers.retain(|_, writer| writer.strong_count() > 0);
+    if let Some(writer) = writers.get(session_id).and_then(Weak::upgrade) {
+        return Ok(writer);
+    }
+    let writer = Arc::new(Mutex::new(()));
+    writers.insert(session_id.to_string(), Arc::downgrade(&writer));
+    Ok(writer)
+}
+
+/// Session IDs are portable file-name components, not necessarily UUIDs.
+pub fn validate_session_id(session_id: &str) -> Result<(), String> {
+    let stem = session_id.split('.').next().unwrap_or_default();
+    let reserved = matches!(
+        stem.to_ascii_uppercase().as_str(),
+        "CON" | "PRN" | "AUX" | "NUL" | "COM1" | "COM2" | "COM3" | "COM4"
+            | "COM5" | "COM6" | "COM7" | "COM8" | "COM9" | "LPT1" | "LPT2"
+            | "LPT3" | "LPT4" | "LPT5" | "LPT6" | "LPT7" | "LPT8" | "LPT9"
+    );
+    if session_id.is_empty()
+        || session_id.len() > 240
+        || matches!(session_id, "." | "..")
+        || session_id.ends_with(['.', ' '])
+        || session_id.chars().any(|c| {
+            c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+        })
+        || reserved
+    {
+        return Err("Unsafe chat session ID: expected a portable file-name component".into());
+    }
+    Ok(())
+}
+
+/// Check lexical containment and every component at/below the configured root.
+/// Missing components are allowed so callers can preflight before creating directories.
+fn validate_store_path(chats_dir: &Path, path: &Path) -> Result<(), String> {
+    let relative = path
+        .strip_prefix(chats_dir)
+        .map_err(|_| "Chat file path is outside the chat storage directory".to_string())?;
+    if relative.components().any(|c| !matches!(c, Component::Normal(_))) {
+        return Err("Unsafe chat storage path component".into());
+    }
+    let root = std::path::absolute(chats_dir).map_err(|e| e.to_string())?;
+    let absolute = std::path::absolute(path).map_err(|e| e.to_string())?;
+    let mut current = PathBuf::new();
+    for component in absolute.components() {
+        if matches!(component, Component::ParentDir) {
+            return Err("Unsafe parent component in chat storage path".into());
+        }
+        current.push(component);
+        // Ancestors of the trusted root may be system aliases (e.g. macOS /var).
+        // The configured root itself and all untrusted descendants must not be links.
+        if !current.starts_with(&root) {
+            continue;
+        }
+        match std::fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(format!("Symlink in chat storage path: {}", current.display()));
+            }
+            Ok(metadata) if !metadata.is_dir() && !metadata.is_file() => {
+                return Err(format!("Unsupported chat storage entry: {}", current.display()));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    Ok(())
+}
+
+fn validate_store_file(chats_dir: &Path, path: &Path) -> Result<(), String> {
+    validate_store_path(chats_dir, path)?;
+    if path == chats_dir || path.is_dir() {
+        return Err("Expected a chat file, not a directory".into());
+    }
+    Ok(())
+}
+
+/// Preflight every path before any variant is written or removed.
+pub fn validate_session_file_variants(
+    chats_dir: &Path,
+    variants: &SessionFileVariants,
+    session_id: &str,
+) -> Result<(), String> {
+    validate_session_id(session_id)?;
+    for path in [
+        variants.plain.clone(),
+        variants.encrypted.clone(),
+        session_file_path(chats_dir, session_id, false),
+        session_file_path(chats_dir, session_id, true),
+    ] {
+        validate_store_file(chats_dir, &path)?;
+    }
+    Ok(())
+}
+
+fn remove_store_file(chats_dir: &Path, path: &Path) -> Result<(), String> {
+    validate_store_file(chats_dir, path)?;
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+fn atomic_write_store_file(chats_dir: &Path, path: &Path, bytes: &[u8]) -> Result<(), String> {
+    validate_store_file(chats_dir, path)?;
+    let parent = path.parent().ok_or("Chat file has no parent directory")?;
+    let temporary = parent.join(format!(".aetherium-{}.tmp", uuid::Uuid::new_v4()));
+    validate_store_file(chats_dir, &temporary)?;
+    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    validate_store_file(chats_dir, &temporary)?;
+    // Exclusive creation never follows or truncates a pre-existing temporary file.
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)
+        .map_err(|e| e.to_string())?;
+    let result = (|| {
+        file.write_all(bytes).map_err(|e| e.to_string())?;
+        file.sync_all().map_err(|e| e.to_string())?;
+        drop(file);
+        validate_store_file(chats_dir, path)?;
+        validate_store_file(chats_dir, &temporary)?;
+        std::fs::rename(&temporary, path).map_err(|e| e.to_string())
+    })();
+    if result.is_err() {
+        let _ = remove_store_file(chats_dir, &temporary);
+    }
+    result
+}
+
 /// Returns the flat (legacy) file path for a session. Encrypted files use `.json.enc`.
 /// Used as a fallback when the DB-aware path cannot be resolved.
 pub fn session_file_path(chats_dir: &Path, session_id: &str, encrypted: bool) -> PathBuf {
@@ -81,16 +222,21 @@ pub fn session_file_path(chats_dir: &Path, session_id: &str, encrypted: bool) ->
 
 /// Replace filesystem-unsafe characters in a workspace or project name.
 fn sanitize_dir_name(name: &str) -> String {
-    name.trim()
+    let sanitized: String = name.trim()
         .chars()
         .map(|c| match c {
             '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\0' => '_',
             c => c,
         })
-        .collect()
+        .collect();
+    if matches!(sanitized.as_str(), "" | "." | "..") {
+        "_".into()
+    } else {
+        sanitized
+    }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionFileVariants {
     pub plain: PathBuf,
     pub encrypted: PathBuf,
@@ -157,7 +303,8 @@ pub fn capture_session_file_variants(
         .collect()
 }
 
-fn prune_empty_parent_dirs(chats_dir: &Path, file_path: &Path) {
+fn prune_empty_parent_dirs(chats_dir: &Path, file_path: &Path) -> Result<(), String> {
+    validate_store_file(chats_dir, file_path)?;
     let mut current = file_path.parent();
 
     while let Some(dir) = current {
@@ -165,21 +312,24 @@ fn prune_empty_parent_dirs(chats_dir: &Path, file_path: &Path) {
             break;
         }
 
+        validate_store_path(chats_dir, dir)?;
         match std::fs::remove_dir(dir) {
             Ok(()) => current = dir.parent(),
             Err(_) => break,
         }
     }
+    Ok(())
 }
 
-fn remove_stale_file_if_needed(chats_dir: &Path, old_path: &Path, new_path: &Path) {
+fn remove_stale_file_if_needed(chats_dir: &Path, old_path: &Path, new_path: &Path) -> Result<(), String> {
+    validate_store_file(chats_dir, old_path)?;
+    validate_store_file(chats_dir, new_path)?;
     if old_path == new_path {
-        return;
+        return Ok(());
     }
 
-    if std::fs::remove_file(old_path).is_ok() {
-        prune_empty_parent_dirs(chats_dir, old_path);
-    }
+    remove_store_file(chats_dir, old_path)?;
+    prune_empty_parent_dirs(chats_dir, old_path)
 }
 
 pub fn sync_session_files_for_hierarchy_change(
@@ -189,13 +339,23 @@ pub fn sync_session_files_for_hierarchy_change(
     previous_paths: &HashMap<String, SessionFileVariants>,
     passphrase: Option<&str>,
 ) -> Result<(), String> {
+    // Validate the complete batch before writing even its first session.
     for session_id in session_ids {
-        write_session_file(conn, chats_dir, session_id, passphrase)?;
+        let current = session_file_variants_for_session(conn, chats_dir, session_id);
+        validate_session_file_variants(chats_dir, &current, session_id)?;
+        if let Some(previous) = previous_paths.get(session_id) {
+            validate_session_file_variants(chats_dir, previous, session_id)?;
+        }
+    }
+    for session_id in session_ids {
+        let writer = session_file_writer_lock(session_id)?;
+        let _guard = writer.lock().map_err(|_| "Chat file writer is poisoned")?;
+        write_session_file_locked(conn, chats_dir, session_id, passphrase)?;
 
         let current_paths = session_file_variants_for_session(conn, chats_dir, session_id);
         if let Some(previous) = previous_paths.get(session_id) {
-            remove_stale_file_if_needed(chats_dir, &previous.plain, &current_paths.plain);
-            remove_stale_file_if_needed(chats_dir, &previous.encrypted, &current_paths.encrypted);
+            remove_stale_file_if_needed(chats_dir, &previous.plain, &current_paths.plain)?;
+            remove_stale_file_if_needed(chats_dir, &previous.encrypted, &current_paths.encrypted)?;
         }
     }
 
@@ -268,20 +428,25 @@ pub fn write_session_file(
     session_id: &str,
     passphrase: Option<&str>,
 ) -> Result<(), String> {
+    let writer = session_file_writer_lock(session_id)?;
+    let _guard = writer.lock().map_err(|_| "Chat file writer is poisoned")?;
+    write_session_file_locked(conn, chats_dir, session_id, passphrase)
+}
+
+fn write_session_file_locked(
+    conn: &Connection,
+    chats_dir: &Path,
+    session_id: &str,
+    passphrase: Option<&str>,
+) -> Result<(), String> {
+    validate_session_id(session_id)?;
+    let variants = session_file_variants_for_session(conn, chats_dir, session_id);
+    validate_session_file_variants(chats_dir, &variants, session_id)?;
     let encrypted = passphrase.is_some();
     let target_path = session_file_path_for_session(conn, chats_dir, session_id, encrypted);
-    let target_dir = target_path.parent().unwrap_or(chats_dir);
-    std::fs::create_dir_all(target_dir).map_err(|e| e.to_string())?;
 
-    // Remove legacy flat-directory twins (migration from old layout)
     let legacy_plain = session_file_path(chats_dir, session_id, false);
     let legacy_enc = session_file_path(chats_dir, session_id, true);
-    if legacy_plain != target_path {
-        let _ = std::fs::remove_file(&legacy_plain);
-    }
-    if legacy_enc != target_path {
-        let _ = std::fs::remove_file(&legacy_enc);
-    }
 
     let data = load_from_db(conn, session_id)?;
     let json_bytes = serde_json::to_vec_pretty(&data).map_err(|e| e.to_string())?;
@@ -310,18 +475,17 @@ pub fn write_session_file(
             ciphertext: B64.encode(&ciphertext),
         };
 
-        // Remove the plaintext twin at the new location
-        let _ = std::fs::remove_file(session_file_path_for_session(
-            conn, chats_dir, session_id, false,
-        ));
         let out = serde_json::to_vec_pretty(&envelope).map_err(|e| e.to_string())?;
-        std::fs::write(&target_path, out).map_err(|e| e.to_string())?;
+        atomic_write_store_file(chats_dir, &target_path, &out)?;
     } else {
-        // Remove the encrypted twin at the new location
-        let _ = std::fs::remove_file(session_file_path_for_session(
-            conn, chats_dir, session_id, true,
-        ));
-        std::fs::write(&target_path, &json_bytes).map_err(|e| e.to_string())?;
+        atomic_write_store_file(chats_dir, &target_path, &json_bytes)?;
+    }
+
+    // Only remove older copies after the replacement has been persisted.
+    for path in [&legacy_plain, &legacy_enc, &variants.plain, &variants.encrypted] {
+        if path != &target_path {
+            remove_store_file(chats_dir, path)?;
+        }
     }
 
     Ok(())
@@ -339,14 +503,17 @@ pub fn delete_session_file_variants(
     chats_dir: &Path,
     variants: &SessionFileVariants,
     session_id: &str,
-) {
+) -> Result<(), String> {
+    let writer = session_file_writer_lock(session_id)?;
+    let _guard = writer.lock().map_err(|_| "Chat file writer is poisoned")?;
+    validate_session_file_variants(chats_dir, variants, session_id)?;
     // Delete from the current (subdirectory) location
-    let _ = std::fs::remove_file(&variants.plain);
-    let _ = std::fs::remove_file(&variants.encrypted);
+    remove_store_file(chats_dir, &variants.plain)?;
+    remove_store_file(chats_dir, &variants.encrypted)?;
     // Also clean up any legacy flat-dir files
-    let _ = std::fs::remove_file(session_file_path(chats_dir, session_id, false));
-    let _ = std::fs::remove_file(session_file_path(chats_dir, session_id, true));
-    prune_empty_parent_dirs(chats_dir, &variants.plain);
+    remove_store_file(chats_dir, &session_file_path(chats_dir, session_id, false))?;
+    remove_store_file(chats_dir, &session_file_path(chats_dir, session_id, true))?;
+    prune_empty_parent_dirs(chats_dir, &variants.plain)
 }
 
 /// Read and optionally decrypt a chat JSON file.
@@ -948,52 +1115,45 @@ pub fn reencrypt_all_files(
     old_passphrase: Option<&str>,
     new_passphrase: Option<&str>,
 ) -> Result<usize, String> {
+    validate_store_path(chats_dir, chats_dir)?;
     if !chats_dir.exists() {
         return Ok(0);
     }
+    let mut files = Vec::new();
+    collect_reencrypt_files(chats_dir, chats_dir, &mut files)?;
+    let mut sessions = Vec::new();
+    for path in files {
+        validate_store_file(chats_dir, &path)?;
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let stem = name
+            .strip_suffix(".json.enc")
+            .or_else(|| name.strip_suffix(".json"))
+            .ok_or("Invalid chat file extension")?;
+        validate_session_id(stem)?;
+        let parent = path.parent().ok_or("Chat file has no parent directory")?;
+        let plain = parent.join(format!("{stem}.json"));
+        let encrypted = parent.join(format!("{stem}.json.enc"));
+        validate_store_file(chats_dir, &plain)?;
+        validate_store_file(chats_dir, &encrypted)?;
+        // Retain the legacy behavior of skipping unreadable chat files.
+        if let Ok(data) = read_session_file(&path, old_passphrase) {
+            validate_session_id(&data.id)?;
+            sessions.push((path.clone(), plain, encrypted, stem.to_string()));
+        }
+    }
     let mut count = 0usize;
-    reencrypt_walk(chats_dir, old_passphrase, new_passphrase, &mut count);
-    Ok(count)
-}
-
-fn reencrypt_walk(
-    dir: &Path,
-    old_passphrase: Option<&str>,
-    new_passphrase: Option<&str>,
-    count: &mut usize,
-) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            reencrypt_walk(&path, old_passphrase, new_passphrase, count);
+    for (path, plain, encrypted, session_id) in sessions {
+        let writer = session_file_writer_lock(&session_id)?;
+        let _guard = writer.lock().map_err(|_| "Chat file writer is poisoned")?;
+        validate_store_file(chats_dir, &path)?;
+        // A writer may have replaced this file since the batch preflight.
+        let Ok(data) = read_session_file(&path, old_passphrase) else {
             continue;
-        }
-        let name = match path.file_name().and_then(|n| n.to_str()) {
-            Some(n) => n.to_string(),
-            None => continue,
         };
-        if !name.ends_with(".json") && !name.ends_with(".json.enc") {
-            continue;
-        }
-        // Try to read the file
-        let data = match read_session_file(&path, old_passphrase) {
-            Ok(d) => d,
-            Err(_) => continue, // skip unreadable files
-        };
-        let json_bytes = match serde_json::to_vec_pretty(&data) {
-            Ok(b) => b,
-            Err(_) => continue,
-        };
-        let stem = if name.ends_with(".json.enc") {
-            name.trim_end_matches(".json.enc")
-        } else {
-            name.trim_end_matches(".json")
-        };
-        // File lives in `path.parent()` (its subdir), so write back there
-        let file_dir = path.parent().unwrap_or(dir);
+        validate_session_id(&data.id)?;
+        let json_bytes = serde_json::to_vec_pretty(&data).map_err(|e| e.to_string())?;
 
         if let Some(pass) = new_passphrase {
             use aes_gcm::aead::rand_core::RngCore;
@@ -1005,10 +1165,9 @@ fn reencrypt_walk(
             let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
             let key = derive_key(pass, &salt);
             let cipher = Aes256Gcm::new(aes_gcm::Key::<Aes256Gcm>::from_slice(&key));
-            let ciphertext = match cipher.encrypt(&nonce, json_bytes.as_ref()) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
+            let ciphertext = cipher
+                .encrypt(&nonce, json_bytes.as_ref())
+                .map_err(|e| format!("Encryption failed: {e}"))?;
             let envelope = EncryptedFile {
                 encrypted: true,
                 version: 1,
@@ -1016,20 +1175,40 @@ fn reencrypt_walk(
                 nonce: B64.encode(nonce.as_slice()),
                 ciphertext: B64.encode(&ciphertext),
             };
-            let new_path = file_dir.join(format!("{}.json.enc", stem));
-            let _ = std::fs::remove_file(file_dir.join(format!("{}.json", stem)));
-            let _ = std::fs::remove_file(file_dir.join(format!("{}.json.enc", stem)));
-            if let Ok(out) = serde_json::to_vec_pretty(&envelope) {
-                let _ = std::fs::write(new_path, out);
-            }
+            let out = serde_json::to_vec_pretty(&envelope).map_err(|e| e.to_string())?;
+            validate_store_file(chats_dir, &plain)?;
+            atomic_write_store_file(chats_dir, &encrypted, &out)?;
+            remove_store_file(chats_dir, &plain)?;
         } else {
-            let new_path = file_dir.join(format!("{}.json", stem));
-            let _ = std::fs::remove_file(file_dir.join(format!("{}.json.enc", stem)));
-            let _ = std::fs::remove_file(file_dir.join(format!("{}.json", stem)));
-            let _ = std::fs::write(new_path, &json_bytes);
+            validate_store_file(chats_dir, &encrypted)?;
+            atomic_write_store_file(chats_dir, &plain, &json_bytes)?;
+            remove_store_file(chats_dir, &encrypted)?;
         }
-        *count += 1;
+        count += 1;
     }
+    Ok(count)
+}
+
+fn collect_reencrypt_files(
+    chats_dir: &Path,
+    dir: &Path,
+    files: &mut Vec<PathBuf>,
+) -> Result<(), String> {
+    validate_store_path(chats_dir, dir)?;
+    for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
+        let path = entry.map_err(|e| e.to_string())?.path();
+        validate_store_path(chats_dir, &path)?;
+        if path.is_dir() {
+            collect_reencrypt_files(chats_dir, &path, files)?;
+        } else if path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.ends_with(".json") || name.ends_with(".json.enc"))
+        {
+            files.push(path);
+        }
+    }
+    Ok(())
 }
 
 // ── Google Takeout (Gemini) parser ──────────────────────────────────────────
@@ -2046,6 +2225,247 @@ pub fn parse_claude_conversations_filtered(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn path_test_dir() -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix(".chat-path-test-")
+            .tempdir_in(std::env::current_dir().unwrap())
+            .unwrap()
+    }
+
+    fn path_test_db(session_id: &str) -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE workspaces (id TEXT, name TEXT);
+             CREATE TABLE folders (id TEXT, name TEXT);
+             CREATE TABLE chat_sessions (
+                 id TEXT, workspace_id TEXT, folder_id TEXT, title TEXT,
+                 model_name TEXT, system_prompt TEXT, created_at TEXT, updated_at TEXT);
+             CREATE TABLE messages (
+                 id TEXT, session_id TEXT, role TEXT, content TEXT, model_name TEXT,
+                 tokens_used INTEGER, duration_ms INTEGER, created_at TEXT);
+             INSERT INTO workspaces (id, name) VALUES ('workspace', 'Workspace');",
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO chat_sessions
+             (id, workspace_id, folder_id, title, model_name, system_prompt, created_at, updated_at)
+             VALUES (?1, 'workspace', '', 'Test', 'model', '', 'now', 'now')",
+            [session_id],
+        ).unwrap();
+        conn
+    }
+
+    #[test]
+    fn path_guard_writer_locks_are_per_session_and_span_snapshot_loading() {
+        let dir = path_test_dir();
+        let root = dir.path().to_path_buf();
+        let writer = session_file_writer_lock("serialized-session").unwrap();
+        let same_writer = session_file_writer_lock("serialized-session").unwrap();
+        let other_writer = session_file_writer_lock("independent-session").unwrap();
+        assert!(Arc::ptr_eq(&writer, &same_writer));
+        assert!(!Arc::ptr_eq(&writer, &other_writer));
+        let guard = writer.lock().unwrap();
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (finished_tx, finished_rx) = std::sync::mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            let conn = path_test_db("serialized-session");
+            started_tx.send(()).unwrap();
+            let result = write_session_file(&conn, &root, "serialized-session", None);
+            finished_tx.send(result).unwrap();
+        });
+        started_rx.recv().unwrap();
+        assert!(finished_rx.recv_timeout(std::time::Duration::from_millis(50)).is_err());
+        assert!(!dir.path().join("Workspace").exists());
+        drop(guard);
+        finished_rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap().unwrap();
+        handle.join().unwrap();
+        assert!(dir.path().join("Workspace/serialized-session.json").is_file());
+    }
+
+    #[test]
+    fn path_guard_previous_variants_roundtrip_for_durable_outbox() {
+        let variants = SessionFileVariants {
+            plain: PathBuf::from("chats/Workspace/session.json"),
+            encrypted: PathBuf::from("chats/Workspace/session.json.enc"),
+        };
+        let json = serde_json::to_string(&variants).unwrap();
+        let restored: SessionFileVariants = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.plain, variants.plain);
+        assert_eq!(restored.encrypted, variants.encrypted);
+    }
+
+    #[test]
+    fn path_guard_accepts_non_uuid_ids_and_rejects_path_syntax() {
+        for id in ["demo-chat-1", "legacy_session.2", "chat name", "会話-1"] {
+            assert!(validate_session_id(id).is_ok(), "{id}");
+        }
+        for id in [
+            "", ".", "..", "../victim", "/absolute", "..\\victim", "C:\\victim",
+            "chat:stream", "chat\0name", "chat\nname", "name.", "name ", "CON", "nul.txt",
+        ] {
+            assert!(validate_session_id(id).is_err(), "{id:?}");
+        }
+        assert_eq!(sanitize_dir_name(".."), "_");
+        assert_eq!(sanitize_dir_name(" . "), "_");
+        assert!(validate_session_id(&"a".repeat(241)).is_err());
+    }
+
+    #[test]
+    fn path_guard_write_rejects_unsafe_id_before_creating_storage() {
+        let dir = path_test_dir();
+        let root = dir.path().join("chats");
+        let conn = path_test_db("../outside");
+        assert!(write_session_file(&conn, &root, "../outside", None).is_err());
+        assert!(!root.exists());
+        assert!(!dir.path().join("outside.json").exists());
+    }
+
+    #[test]
+    fn path_guard_writes_legacy_id_and_migrates_only_after_success() {
+        let dir = path_test_dir();
+        let root = dir.path();
+        let conn = path_test_db("demo-chat-1");
+        let legacy = session_file_path(root, "demo-chat-1", false);
+        std::fs::write(&legacy, "legacy copy").unwrap();
+        write_session_file(&conn, root, "demo-chat-1", None).unwrap();
+        let path = root.join("Workspace/demo-chat-1.json");
+        assert_eq!(read_session_file(&path, None).unwrap().id, "demo-chat-1");
+        assert!(!legacy.exists());
+        write_session_file(&conn, root, "demo-chat-1", Some("test-passphrase")).unwrap();
+        assert!(!path.exists());
+        assert_eq!(
+            read_session_file(&root.join("Workspace/demo-chat-1.json.enc"), Some("test-passphrase"))
+                .unwrap().id,
+            "demo-chat-1"
+        );
+    }
+
+    #[test]
+    fn path_guard_delete_and_hierarchy_preflight_every_variant() {
+        let dir = path_test_dir();
+        let root = dir.path().join("chats");
+        std::fs::create_dir(&root).unwrap();
+        let plain = root.join("safe.json");
+        let outside = dir.path().join("outside.json.enc");
+        std::fs::write(&plain, "keep").unwrap();
+        std::fs::write(&outside, "outside").unwrap();
+        let variants = SessionFileVariants { plain: plain.clone(), encrypted: outside.clone() };
+        assert!(delete_session_file_variants(&root, &variants, "safe").is_err());
+        let previous = HashMap::from([("safe".into(), variants)]);
+        assert!(sync_session_files_for_hierarchy_change(
+            &path_test_db("safe"), &root, &["safe".into()], &previous, None,
+        ).is_err());
+        assert_eq!(std::fs::read_to_string(plain).unwrap(), "keep");
+        assert_eq!(std::fs::read_to_string(outside).unwrap(), "outside");
+        assert!(!root.join("Workspace").exists());
+    }
+
+    #[test]
+    fn path_guard_cleanup_cannot_prune_outside_or_storage_root() {
+        let dir = path_test_dir();
+        let root = dir.path().join("chats");
+        let nested = root.join("Workspace/Folder");
+        std::fs::create_dir_all(&nested).unwrap();
+        assert!(prune_empty_parent_dirs(&root, &dir.path().join("missing.json")).is_err());
+        prune_empty_parent_dirs(&root, &nested.join("missing.json")).unwrap();
+        assert!(root.is_dir());
+        assert!(!root.join("Workspace").exists());
+        assert!(validate_store_file(&root, &root.join("../escape.json")).is_err());
+    }
+
+    #[test]
+    fn path_guard_reencryption_roundtrip_uses_atomic_replacement() {
+        let dir = path_test_dir();
+        let root = dir.path();
+        write_session_file(&path_test_db("legacy-chat"), root, "legacy-chat", None).unwrap();
+        assert_eq!(reencrypt_all_files(root, None, Some("test-passphrase")).unwrap(), 1);
+        assert!(!root.join("Workspace/legacy-chat.json").exists());
+        assert_eq!(reencrypt_all_files(root, Some("test-passphrase"), None).unwrap(), 1);
+        assert!(!root.join("Workspace/legacy-chat.json.enc").exists());
+        assert_eq!(
+            read_session_file(&root.join("Workspace/legacy-chat.json"), None).unwrap().id,
+            "legacy-chat"
+        );
+        let names: Vec<_> = std::fs::read_dir(root.join("Workspace"))
+            .unwrap().map(|entry| entry.unwrap().file_name()).collect();
+        assert_eq!(names, ["legacy-chat.json"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn path_guard_rejects_symlink_roots_ancestors_and_dangling_targets() {
+        use std::os::unix::fs::symlink;
+        let dir = path_test_dir();
+        let real = dir.path().join("real");
+        std::fs::create_dir(&real).unwrap();
+        let root = dir.path().join("chats");
+        symlink(&real, &root).unwrap();
+        assert!(atomic_write_store_file(&root, &root.join("safe.json"), b"unsafe").is_err());
+        assert!(reencrypt_all_files(&root, None, None).is_err());
+        std::fs::remove_file(&root).unwrap();
+        std::fs::create_dir(&root).unwrap();
+        symlink(&real, root.join("Workspace")).unwrap();
+        assert!(write_session_file(&path_test_db("safe"), &root, "safe", None).is_err());
+        assert!(reencrypt_all_files(&root, None, None).is_err());
+        std::fs::remove_file(root.join("Workspace")).unwrap();
+        let missing = dir.path().join("not-created");
+        symlink(&missing, root.join("safe.json")).unwrap();
+        assert!(atomic_write_store_file(&root, &root.join("safe.json"), b"unsafe").is_err());
+        assert!(!missing.exists());
+        assert!(std::fs::read_dir(real).unwrap().next().is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn path_guard_allows_trusted_root_parent_aliases() {
+        use std::os::unix::fs::symlink;
+        let dir = path_test_dir();
+        let real = dir.path().join("real");
+        std::fs::create_dir(&real).unwrap();
+        let alias = dir.path().join("alias");
+        symlink(&real, &alias).unwrap();
+        let root = alias.join("chats");
+        atomic_write_store_file(&root, &root.join("safe.json"), b"new").unwrap();
+        assert_eq!(std::fs::read(real.join("chats/safe.json")).unwrap(), b"new");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn path_guard_write_and_delete_reject_symlink_twins_before_any_changes() {
+        use std::os::unix::fs::symlink;
+        let dir = path_test_dir();
+        let root = dir.path().join("chats");
+        std::fs::create_dir(&root).unwrap();
+        let outside = dir.path().join("outside");
+        std::fs::write(&outside, "outside").unwrap();
+        let plain = root.join("safe.json");
+        std::fs::write(&plain, "keep").unwrap();
+        let encrypted = root.join("safe.json.enc");
+        symlink(&outside, &encrypted).unwrap();
+        let variants = SessionFileVariants { plain: plain.clone(), encrypted };
+        assert!(delete_session_file_variants(&root, &variants, "safe").is_err());
+        assert!(write_session_file(&path_test_db("safe"), &root, "safe", None).is_err());
+        assert!(reencrypt_all_files(&root, None, None).is_err());
+        assert_eq!(std::fs::read_to_string(plain).unwrap(), "keep");
+        assert_eq!(std::fs::read_to_string(outside).unwrap(), "outside");
+        assert!(!root.join("Workspace").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn path_guard_atomic_write_does_not_follow_predictable_temporary_links() {
+        use std::os::unix::fs::symlink;
+        let dir = path_test_dir();
+        let root = dir.path().join("chats");
+        std::fs::create_dir(&root).unwrap();
+        let outside = dir.path().join("outside");
+        std::fs::write(&outside, "keep").unwrap();
+        symlink(&outside, root.join("safe.json.tmp")).unwrap();
+        atomic_write_store_file(&root, &root.join("safe.json"), b"new").unwrap();
+        assert_eq!(std::fs::read_to_string(&outside).unwrap(), "keep");
+        assert_eq!(std::fs::read_to_string(root.join("safe.json")).unwrap(), "new");
+        assert_eq!(std::fs::read_dir(root).unwrap().count(), 2);
+    }
 
     #[test]
     fn v2_extractor_reads_content_blocks_when_text_is_empty() {

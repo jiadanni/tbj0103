@@ -288,6 +288,9 @@ pub fn hard_delete(
     // Capture file paths before the DELETE — resolution reads the session row.
     let variants =
         chat_file_store::capture_session_file_variants(conn, chats_dir, &[id.to_string()]);
+    if let Some(paths) = variants.get(id) {
+        chat_file_store::validate_session_file_variants(chats_dir, paths, id)?;
+    }
     let deleted = conn
         .execute(
             "DELETE FROM chat_sessions WHERE id = ?1 AND workspace_id = ?2",
@@ -296,7 +299,7 @@ pub fn hard_delete(
         .map_err(|e| e.to_string())?;
     if deleted > 0 {
         if let Some(v) = variants.get(id) {
-            chat_file_store::delete_session_file_variants(chats_dir, v, id);
+            chat_file_store::delete_session_file_variants(chats_dir, v, id)?;
         }
     }
     Ok(())
@@ -357,6 +360,11 @@ pub fn empty_recycle_bin(
 
     // Capture file paths before the DELETE — resolution reads the session rows.
     let variants = chat_file_store::capture_session_file_variants(conn, chats_dir, &ids);
+    for id in &ids {
+        if let Some(paths) = variants.get(id) {
+            chat_file_store::validate_session_file_variants(chats_dir, paths, id)?;
+        }
+    }
     conn.execute(
         "DELETE FROM chat_sessions WHERE workspace_id = ?1 AND is_deleted = 1",
         rusqlite::params![workspace_id],
@@ -364,7 +372,7 @@ pub fn empty_recycle_bin(
     .map_err(|e| e.to_string())?;
     for id in &ids {
         if let Some(v) = variants.get(id) {
-            chat_file_store::delete_session_file_variants(chats_dir, v, id);
+            chat_file_store::delete_session_file_variants(chats_dir, v, id)?;
         }
     }
     Ok(())
@@ -1306,6 +1314,46 @@ mod tests {
             std::fs::write(path, b"{}").unwrap();
         }
         paths
+    }
+
+    #[test]
+    fn hard_delete_rejects_unsafe_paths_before_deleting_database_rows() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        let ws_id = setup_workspace(&conn);
+        let chats_dir = tempfile::tempdir().unwrap();
+        conn.execute(
+            "INSERT INTO chat_sessions (id, workspace_id) VALUES (?1, ?2)",
+            rusqlite::params!["../outside", ws_id],
+        ).unwrap();
+
+        assert!(hard_delete(&conn, &ws_id, "../outside", chats_dir.path()).is_err());
+        assert!(get_session(&conn, &ws_id, "../outside").unwrap().is_some());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn recycle_bin_preflights_all_paths_before_any_deletion() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        let ws_id = setup_workspace(&conn);
+        let chats_dir = tempfile::tempdir().unwrap();
+        let external = tempfile::tempdir().unwrap();
+        let outside_file = external.path().join("untouched.json");
+        std::fs::write(&outside_file, "private").unwrap();
+        let valid = create_named_session(&conn, &ws_id, "Safe");
+        let unsafe_session = create_named_session(&conn, &ws_id, "Symlink");
+        let valid_paths = write_session_files(&conn, chats_dir.path(), &valid.id);
+        let unsafe_paths = write_session_files(&conn, chats_dir.path(), &unsafe_session.id);
+        std::fs::remove_file(&unsafe_paths[0]).unwrap();
+        std::os::unix::fs::symlink(&outside_file, &unsafe_paths[0]).unwrap();
+        soft_delete(&conn, &ws_id, &valid.id).unwrap();
+        soft_delete(&conn, &ws_id, &unsafe_session.id).unwrap();
+
+        assert!(empty_recycle_bin(&conn, &ws_id, chats_dir.path()).is_err());
+        assert_eq!(list_deleted(&conn, &ws_id, false).unwrap().len(), 2);
+        assert!(valid_paths.iter().all(|path| path.exists()));
+        assert_eq!(std::fs::read_to_string(outside_file).unwrap(), "private");
     }
 
     #[test]
