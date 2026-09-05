@@ -137,6 +137,25 @@ pub async fn process_memory_extraction_for_workspaces(
         let mut sessions = Vec::new();
         if workspace_ids.is_empty() {
             let idle_minutes = get_extraction_idle_minutes(&conn);
+            // Queue the whole eligible set before taking a bounded batch. An
+            // outage must not let unselected sessions age out without a receipt.
+            conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value)
+                 SELECT 'memory_extraction_retry:' || s.id, ?1
+                 FROM chat_sessions s
+                 WHERE datetime(s.updated_at) > datetime('now', ?2)
+                   AND s.is_incognito = 0
+                   AND s.exclude_from_analytics = 0
+                   AND s.is_imported = 0
+                   AND s.message_count > s.last_processed_message_count
+                   AND s.message_count >= ?3",
+                rusqlite::params![
+                    chrono::Utc::now().to_rfc3339(),
+                    format!("-{idle_minutes} minutes"),
+                    i64::try_from(threshold).unwrap_or(i64::MAX)
+                ],
+            )
+            .map_err(|e| e.to_string())?;
             let sql = format!(
                 "SELECT s.id, s.workspace_id, s.folder_id, s.last_processed_message_count FROM chat_sessions s \
                  LEFT JOIN settings retry ON retry.key = 'memory_extraction_retry:' || s.id \
@@ -445,8 +464,8 @@ pub async fn extract_and_store_memories(
     let mut rejected_items = 0;
     let mut embedding_failures = Vec::new();
     let mut warnings = Vec::new();
-    // Keep the structured/legacy parsing paths, but distinguish rejection from
-    // a valid empty extraction. Rejection is terminal for this message window.
+    // Invalid transport/model output remains retryable. Only successfully
+    // parsed candidates rejected by semantic validation are terminal.
     {
         // Parse structured JSON: [{"type":"fact"|"preference","content":"..."}]
         if let Some(start) = response.find('[') {
@@ -484,7 +503,7 @@ pub async fn extract_and_store_memories(
                     } else if let Ok(plain) = serde_json::from_str::<Vec<String>>(json_str) {
                         plain.into_iter().map(|s| (s, "fact".to_string())).collect()
                     } else {
-                        return Ok(ExtractionOutcome::Rejected("Malformed memory JSON".into()));
+                        return Err("Malformed memory JSON; extraction will be retried".into());
                     };
 
                 // Post-extraction validation: reject assistant-like content
@@ -772,10 +791,10 @@ pub async fn extract_and_store_memories(
                     }
                 }
             } else {
-                return Ok(ExtractionOutcome::Rejected("Missing JSON array end".into()));
+                return Err("Missing JSON array end; extraction will be retried".into());
             }
         } else {
-            return Ok(ExtractionOutcome::Rejected("Missing JSON array".into()));
+            return Err("Missing JSON array; extraction will be retried".into());
         }
     }
 
@@ -1119,14 +1138,36 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn malformed_extractions_are_reported_once_and_checkpointed() {
-        for response in [
-            "not JSON",
-            "][",
-            "[{}]",
-            "[1]",
-            r#"[{"type":"fact","content":"The sky is blue"}]"#,
-        ] {
+    async fn malformed_extractions_retry_without_advancing_checkpoint() {
+        for response in ["not JSON", "][", "[1]", r#"[{"type":"fact""#] {
+            let calls = Arc::new(Mutex::new(0));
+            let seen = calls.clone();
+            let server = FakeOllama::start(move |_, _| {
+                let mut count = seen.lock().unwrap();
+                *count += 1;
+                chat(if *count == 1 { response } else { "[]" })
+            })
+            .await;
+            let state = extraction_state();
+            assert!(run(&state, &server).await.unwrap_err().contains("retried"));
+            assert_eq!(checkpoint(&state), 0);
+            assert_eq!(
+                scalar(
+                    &state,
+                    "SELECT COUNT(*) FROM settings WHERE key = 'memory_extraction_retry:session'"
+                ),
+                1
+            );
+            assert_eq!(scalar(&state, "SELECT COUNT(*) FROM settings WHERE key = 'memory_extraction_progress:session'"), 0);
+            run(&state, &server).await.unwrap();
+            assert_eq!(checkpoint(&state), 1);
+            assert_eq!(*calls.lock().unwrap(), 2);
+        }
+    }
+
+    #[tokio::test]
+    async fn semantically_rejected_candidates_are_reported_once_and_checkpointed() {
+        for response in ["[{}]", r#"[{"type":"fact","content":"The sky is blue"}]"#] {
             let calls = Arc::new(Mutex::new(0));
             let seen = calls.clone();
             let server = FakeOllama::start(move |_, _| {
@@ -1144,6 +1185,112 @@ mod tests {
             run(&state, &server).await.unwrap();
             assert_eq!(*calls.lock().unwrap(), 1);
         }
+    }
+
+    #[tokio::test]
+    async fn outage_queues_all_sessions_before_limit_and_retries_fairly_after_idle() {
+        let state = extraction_state();
+        {
+            let conn = state.0.get().unwrap();
+            for index in 1..6 {
+                let id = format!("session-{index}");
+                conn.execute(
+                    "INSERT INTO chat_sessions (id, workspace_id) VALUES (?1, 'ws')",
+                    [&id],
+                )
+                .unwrap();
+                conn.execute(
+                    "INSERT INTO messages (id, session_id, role, content)
+                     VALUES (?1, ?1, 'user', 'User enjoys Rust')",
+                    [&id],
+                )
+                .unwrap();
+            }
+        }
+        let available = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let server_available = available.clone();
+        let server = FakeOllama::start(move |_, _| {
+            if server_available.load(std::sync::atomic::Ordering::SeqCst) {
+                chat("[]")
+            } else {
+                (503, json!({"error": "offline"}))
+            }
+        })
+        .await;
+        assert!(run(&state, &server).await.is_err());
+        assert_eq!(
+            scalar(
+                &state,
+                "SELECT COUNT(*) FROM settings WHERE key LIKE 'memory_extraction_retry:%'"
+            ),
+            6
+        );
+        assert_eq!(
+            scalar(
+                &state,
+                "SELECT COUNT(*) FROM chat_sessions WHERE last_processed_message_count > 0"
+            ),
+            0
+        );
+        state
+            .0
+            .get()
+            .unwrap()
+            .execute(
+                "UPDATE chat_sessions SET updated_at = datetime('now', '-2 days')",
+                [],
+            )
+            .unwrap();
+        let oldest_pending: String = state
+            .0
+            .get()
+            .unwrap()
+            .query_row(
+                "SELECT substr(key, length('memory_extraction_retry:') + 1)
+             FROM settings WHERE key LIKE 'memory_extraction_retry:%'
+             ORDER BY value ASC LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        available.store(true, std::sync::atomic::Ordering::SeqCst);
+        run(&state, &server).await.unwrap();
+        // The previously unselected oldest receipt must be in the next batch.
+        assert_eq!(
+            state
+                .0
+                .get()
+                .unwrap()
+                .query_row(
+                    "SELECT last_processed_message_count FROM chat_sessions WHERE id = ?1",
+                    [&oldest_pending],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            scalar(
+                &state,
+                "SELECT COUNT(*) FROM chat_sessions WHERE last_processed_message_count = 1"
+            ),
+            5
+        );
+        run(&state, &server).await.unwrap();
+        assert_eq!(
+            scalar(
+                &state,
+                "SELECT COUNT(*) FROM chat_sessions WHERE last_processed_message_count = 1"
+            ),
+            6
+        );
+        assert_eq!(
+            scalar(
+                &state,
+                "SELECT COUNT(*) FROM settings WHERE key LIKE 'memory_extraction_retry:%'"
+            ),
+            0
+        );
     }
 
     #[tokio::test]
