@@ -278,6 +278,9 @@ export default function App() {
           setIsAuthenticated(false);
           return;
         }
+        void api.chat.retryFileSync().catch((error: unknown) => {
+          console.error("Failed to retry pending chat file synchronization:", error);
+        });
         setLoadingMessage("Loading workspace…");
         const [workspaces, core, ai] = await Promise.all([
           api.workspace.list(),
