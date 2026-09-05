@@ -24,7 +24,9 @@ export default function AuthenticationView({ onAuthenticated }: Props) {
       setPinLockEnabled(status.pin_lock_enabled);
       // If Touch ID is not the primary method, go straight to PIN
       if (!status.touch_id_enabled) { setShowPinFallback(true); }
-    }).catch(() => { onAuthenticated(); });
+    }).catch((err: unknown) => {
+      setError(err instanceof Error ? err.message : "Unable to load security settings.");
+    });
   }, [onAuthenticated]);
 
   async function handleTouchId() {
@@ -33,7 +35,6 @@ export default function AuthenticationView({ onAuthenticated }: Props) {
     try {
       const success = await api.security.authenticateBiometric();
       if (success) {
-        await api.security.unlockApp({ biometric: true });
         onAuthenticated();
       } else {
         setError("Touch ID was not recognised. Try your PIN instead.");
@@ -56,13 +57,8 @@ export default function AuthenticationView({ onAuthenticated }: Props) {
 
     setLoading(true);
     try {
-      const verified = await api.security.verifyPin(secret);
-      if (verified) {
-        await api.security.unlockApp({ pin: secret });
-        onAuthenticated();
-      } else {
-        setError("Incorrect PIN.");
-      }
+      await api.security.unlockApp({ pin: secret });
+      onAuthenticated();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Incorrect PIN.");
     } finally {

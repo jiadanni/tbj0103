@@ -8,6 +8,7 @@ import { installConsoleTimestamps } from "../lib/consoleTimestamps";
 import { isLinux, isMac } from "../lib/platform";
 import { installNativeContextMenuSuppressor } from "../lib/nativeContextMenu";
 import "../styles/globals.css";
+import WindowAuthGate from "../components/WindowAuthGate";
 
 // Lazy-load the (very large) PreferencesView so the standalone window can paint
 // its theme-aware splash and shell immediately, then hydrate the heavy bundle.
@@ -84,7 +85,7 @@ export function PreferencesApp() {
         )}
         <div className="flex-1 min-h-0 overflow-hidden">
           <Suspense fallback={<PreferencesFallback />}>
-            <PreferencesView />
+            <WindowAuthGate><PreferencesView /></WindowAuthGate>
           </Suspense>
         </div>
       </div>

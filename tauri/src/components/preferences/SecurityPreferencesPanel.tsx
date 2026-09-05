@@ -204,7 +204,8 @@ export function SecurityPreferencesPanel({
                     <div>
                       <p className="text-sm font-semibold text-[var(--text-primary)]">Require auth for destructive actions</p>
                       <p className="text-xs text-[var(--text-muted)] mt-1">
-                        When enabled, deleting items and importing data require authentication. Disabled by default.
+                        Adds command-level authentication checks for deleting items and importing data. Disabled by default.
+                        Locked app data is always protected, regardless of this setting.
                       </p>
                     </div>
                   </div>

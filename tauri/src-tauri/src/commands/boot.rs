@@ -15,11 +15,16 @@ use tauri::{AppHandle, Emitter, Manager, State};
 pub struct BootState {
     pub app_dir: PathBuf,
     pub db_path: PathBuf,
+    unlock: tokio::sync::Mutex<()>,
 }
 
 impl BootState {
     pub fn new(app_dir: PathBuf, db_path: PathBuf) -> Self {
-        Self { app_dir, db_path }
+        Self {
+            app_dir,
+            db_path,
+            unlock: tokio::sync::Mutex::new(()),
+        }
     }
 }
 
@@ -33,7 +38,16 @@ pub struct BootStatus {
 }
 
 #[tauri::command]
-pub async fn boot_check_state(boot: State<'_, BootState>) -> Result<BootStatus, String> {
+pub async fn boot_check_state(
+    app: AppHandle,
+    boot: State<'_, BootState>,
+) -> Result<BootStatus, String> {
+    if app.try_state::<crate::db::DbState>().is_some() {
+        return Ok(BootStatus {
+            unlock_required: false,
+            pending_action: String::new(),
+        });
+    }
     let db_path = boot.db_path.clone();
     tokio::task::spawn_blocking(move || -> Result<BootStatus, String> {
         if !crate::services::db_encryption::sidecar_exists(&db_path) {
@@ -55,6 +69,11 @@ pub async fn boot_check_state(boot: State<'_, BootState>) -> Result<BootStatus, 
 
 #[tauri::command]
 pub async fn boot_unlock(app: AppHandle, pin: String) -> Result<(), String> {
+    let boot = app.state::<BootState>();
+    let _unlock = boot.unlock.lock().await;
+    if app.try_state::<crate::db::DbState>().is_some() {
+        return Err("Database is already open. Use the app authentication flow.".to_string());
+    }
     let (db_path, app_dir) = {
         let boot = app.state::<BootState>();
         (boot.db_path.clone(), boot.app_dir.clone())
@@ -102,6 +121,8 @@ pub async fn boot_unlock(app: AppHandle, pin: String) -> Result<(), String> {
     // Finish the rest of setup with the open pool. complete_db_dependent_setup
     // lives in lib.rs.
     crate::complete_db_dependent_setup(app.clone(), app_dir, pool)?;
+    app.state::<super::security::AuthState>()
+        .unlock();
 
     // Tell the frontend that the main app is ready to mount.
     let _ = app.emit("boot-unlocked", ());

@@ -1,6 +1,7 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU8, Ordering};
 
 use pbkdf2::pbkdf2_hmac;
+use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -15,45 +16,116 @@ const MAX_PIN_ATTEMPTS: u32 = 5;
 
 /// Backend authentication state — tracks whether the app has been unlocked.
 /// Prevents IPC bypass of the lock screen (e.g. via DevTools or injected JS).
-pub struct AuthState(pub AtomicBool);
+pub struct AuthState(AtomicU8);
+
+const AUTH_INITIAL: u8 = 0;
+const AUTH_UNLOCKED: u8 = 1;
+const AUTH_LOCKED: u8 = 2;
+
+impl AuthState {
+    pub(crate) fn unlock(&self) {
+        self.0.store(AUTH_UNLOCKED, Ordering::Release);
+    }
+
+    fn is_unlocked(&self) -> bool {
+        self.0.load(Ordering::Acquire) == AUTH_UNLOCKED
+    }
+
+    fn explicitly_locked(&self) -> bool {
+        self.0.load(Ordering::Acquire) == AUTH_LOCKED
+    }
+
+    fn lock(&self) {
+        self.0.store(AUTH_LOCKED, Ordering::Release);
+    }
+}
 
 impl Default for AuthState {
     fn default() -> Self {
         // Start locked; the frontend must call unlock_app after successful auth
-        Self(AtomicBool::new(false))
+        Self(AtomicU8::new(AUTH_INITIAL))
     }
 }
 
 /// Returns an error if the app is locked and auth is required.
 /// Commands that handle sensitive data should call this at the top.
 pub fn require_auth(auth: &State<AuthState>, db: &State<DbState>) -> Result<(), String> {
-    // If no lock is configured, auth is not required
     let conn = db.0.get().map_err(|e| e.to_string())?;
-    let pin_enabled = get_setting(&conn, PIN_HASH_KEY)
-        .map(|v| !v.trim().is_empty())
-        .unwrap_or(false);
-    let pin_lock_enabled = get_setting(&conn, "pin_lock_enabled")
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(false)
-        && pin_enabled;
-    let touch_id_enabled = get_setting(&conn, "touch_id_enabled")
-        .map(|v| v == "true")
-        .unwrap_or(false)
-        && pin_lock_enabled;
+    require_auth_connection(auth, &conn)
+}
 
-    if !pin_lock_enabled && !touch_id_enabled {
-        return Ok(());
+fn lock_configured(conn: &rusqlite::Connection) -> Result<bool, String> {
+    let value: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'pin_lock_enabled'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Cannot read lock configuration: {e}"))?;
+    match value.as_deref() {
+        None | Some("false") => Ok(false),
+        Some("true") => Ok(true),
+        _ => Err("Invalid lock configuration.".to_string()),
     }
+}
 
-    if !auth.0.load(Ordering::Acquire) {
+fn require_auth_connection(auth: &AuthState, conn: &rusqlite::Connection) -> Result<(), String> {
+    if (lock_configured(conn)? || auth.explicitly_locked()) && !auth.is_unlocked() {
         return Err("App is locked. Please authenticate first.".to_string());
     }
     Ok(())
 }
 
+// Every application command passes through this boundary, including commands
+// added in the future. Boot/auth probes expose no workspace or settings data.
+pub fn authorize_command<R: tauri::Runtime>(
+    command: &str,
+    app: &AppHandle<R>,
+) -> Result<(), String> {
+    if is_locked_command_allowed(command) {
+        return Ok(());
+    }
+    let auth = app
+        .try_state::<AuthState>()
+        .ok_or_else(|| "Authentication is not initialized.".to_string())?;
+    let db = app
+        .try_state::<DbState>()
+        .ok_or_else(|| "Database is locked. Please authenticate first.".to_string())?;
+    require_auth(&auth, &db)
+}
+
+fn is_locked_command_allowed(command: &str) -> bool {
+    matches!(
+        command,
+        "boot_check_state"
+            | "boot_unlock"
+            | "get_security_status"
+            | "is_app_unlocked"
+            | "unlock_app"
+            | "authenticate_biometric"
+            | "lock_app"
+            | "get_db_encryption_status"
+            | "hide_quick_search"
+    )
+}
+
+#[tauri::command]
+pub fn is_app_unlocked(auth: State<AuthState>, state: State<DbState>) -> Result<bool, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    // Preserve the active no-lock session if its user subsequently enables a
+    // startup PIN. The next process still starts locked via AuthState::default.
+    if !lock_configured(&conn)? {
+        let _ = auth.0.compare_exchange(
+            AUTH_INITIAL, AUTH_UNLOCKED, Ordering::AcqRel, Ordering::Acquire,
+        );
+    }
+    Ok(auth.is_unlocked())
+}
+
 /// Like `require_auth`, but only enforced when the `strict_auth_mode`
-/// setting is enabled. Disabled by default — destructive operations are
-/// unprotected unless the user opts in via Settings → Security.
+/// setting is enabled. This optional extra check does not replace the
+/// mandatory command boundary, which always protects locked app data.
 pub fn require_auth_for_destructive_ops(
     auth: &State<AuthState>,
     db: &State<DbState>,
@@ -70,12 +142,12 @@ pub fn require_auth_for_destructive_ops(
 }
 
 fn biometric_available() -> bool {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     {
         true
     }
 
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(not(target_os = "macos"))]
     {
         false
     }
@@ -362,9 +434,28 @@ pub fn remove_pin_passcode(
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
 #[tauri::command]
-pub async fn authenticate_biometric() -> Result<bool, String> {
+pub async fn authenticate_biometric(
+    auth: State<'_, AuthState>,
+    state: State<'_, DbState>,
+) -> Result<bool, String> {
+    {
+        let conn = state.0.get().map_err(|e| e.to_string())?;
+        if !lock_configured(&conn)?
+            || get_setting(&conn, "touch_id_enabled").as_deref() != Some("true")
+        {
+            return Err("Biometric authentication is not enabled.".to_string());
+        }
+    }
+    let success = challenge_biometric().await?;
+    if success {
+        auth.unlock();
+    }
+    Ok(success)
+}
+
+#[cfg(target_os = "macos")]
+async fn challenge_biometric() -> Result<bool, String> {
     use block2::RcBlock;
     use objc2::runtime::Bool;
     use objc2_foundation::{NSError, NSString};
@@ -397,16 +488,13 @@ pub async fn authenticate_biometric() -> Result<bool, String> {
 }
 
 #[cfg(not(target_os = "macos"))]
-#[tauri::command]
-pub async fn authenticate_biometric() -> Result<bool, String> {
+async fn challenge_biometric() -> Result<bool, String> {
     Ok(false)
 }
 
 /// Called by the frontend to unlock the app.
 /// Verifies the PIN server-side before setting the auth state.
-/// For biometric unlock, pass `biometric: true` with `pin` omitted —
-/// the biometric challenge must already have succeeded via
-/// `authenticate_biometric`.
+/// Biometric unlock is performed entirely by `authenticate_biometric`.
 #[tauri::command]
 pub fn unlock_app(
     auth: State<AuthState>,
@@ -414,31 +502,27 @@ pub fn unlock_app(
     pin: Option<String>,
     biometric: Option<bool>,
 ) -> Result<(), String> {
+    reject_renderer_biometric_claim(biometric)?;
     let conn = state.0.get().map_err(|e| e.to_string())?;
+    unlock_with_pin(&auth, &conn, pin)
+}
 
+fn unlock_with_pin(
+    auth: &AuthState,
+    conn: &rusqlite::Connection,
+    pin: Option<String>,
+) -> Result<(), String> {
     // If no lock is configured, just unlock
-    let stored_hash = get_setting(&conn, PIN_HASH_KEY).unwrap_or_default();
-    let pin_lock_enabled = get_setting(&conn, "pin_lock_enabled")
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(false)
-        && !stored_hash.trim().is_empty();
+    let stored_hash = get_setting(conn, PIN_HASH_KEY).unwrap_or_default();
+    let pin_lock_enabled = lock_configured(conn)? || auth.explicitly_locked();
 
     if !pin_lock_enabled {
-        auth.0.store(true, Ordering::Release);
-        return Ok(());
-    }
-
-    // Biometric path: the OS-level challenge already ran in authenticate_biometric.
-    // We trust that result because it is a Tauri command that cannot be faked from JS.
-    if biometric.unwrap_or(false) {
-        let touch_id_enabled = get_setting(&conn, "touch_id_enabled")
-            .map(|v| v == "true")
-            .unwrap_or(false);
-        if !touch_id_enabled {
-            return Err("Biometric authentication is not enabled.".to_string());
-        }
-        auth.0.store(true, Ordering::Release);
-        return Ok(());
+        return match auth.0.compare_exchange(
+            AUTH_INITIAL, AUTH_UNLOCKED, Ordering::AcqRel, Ordering::Acquire,
+        ) {
+            Ok(_) | Err(AUTH_UNLOCKED) => Ok(()),
+            Err(_) => Err("App was locked. Please enter your PIN.".to_string()),
+        };
     }
 
     // PIN path: verify server-side
@@ -446,7 +530,7 @@ pub fn unlock_app(
     validate_pin(&pin)?;
 
     // Check lockout
-    if let Some(lockout_until) = get_setting(&conn, PIN_LOCKOUT_UNTIL_KEY) {
+    if let Some(lockout_until) = get_setting(conn, PIN_LOCKOUT_UNTIL_KEY) {
         if let Ok(until) = lockout_until.parse::<i64>() {
             let now = chrono::Utc::now().timestamp();
             if now < until {
@@ -456,24 +540,24 @@ pub fn unlock_app(
                     remaining
                 ));
             }
-            set_setting(&conn, PIN_FAILED_ATTEMPTS_KEY, "0")?;
-            set_setting(&conn, PIN_LOCKOUT_UNTIL_KEY, "")?;
+            set_setting(conn, PIN_FAILED_ATTEMPTS_KEY, "0")?;
+            set_setting(conn, PIN_LOCKOUT_UNTIL_KEY, "")?;
         }
     }
 
     if !verify_pin_hash(&pin, &stored_hash)? {
         // Increment failed attempts
-        let attempts: u32 = get_setting(&conn, PIN_FAILED_ATTEMPTS_KEY)
+        let attempts: u32 = get_setting(conn, PIN_FAILED_ATTEMPTS_KEY)
             .and_then(|v| v.parse().ok())
             .unwrap_or(0)
             + 1;
-        set_setting(&conn, PIN_FAILED_ATTEMPTS_KEY, &attempts.to_string())?;
+        set_setting(conn, PIN_FAILED_ATTEMPTS_KEY, &attempts.to_string())?;
 
         if attempts >= MAX_PIN_ATTEMPTS {
             let rounds_over = attempts - MAX_PIN_ATTEMPTS;
             let lockout_secs: i64 = std::cmp::min(30 * (1i64 << rounds_over), 900);
             let until = chrono::Utc::now().timestamp() + lockout_secs;
-            set_setting(&conn, PIN_LOCKOUT_UNTIL_KEY, &until.to_string())?;
+            set_setting(conn, PIN_LOCKOUT_UNTIL_KEY, &until.to_string())?;
             return Err(format!(
                 "Too many failed attempts. Try again in {} seconds.",
                 lockout_secs
@@ -484,17 +568,222 @@ pub fn unlock_app(
     }
 
     // Success — reset failed attempts and unlock
-    set_setting(&conn, PIN_FAILED_ATTEMPTS_KEY, "0")?;
-    set_setting(&conn, PIN_LOCKOUT_UNTIL_KEY, "")?;
-    auth.0.store(true, Ordering::Release);
+    set_setting(conn, PIN_FAILED_ATTEMPTS_KEY, "0")?;
+    set_setting(conn, PIN_LOCKOUT_UNTIL_KEY, "")?;
+    auth.unlock();
+    Ok(())
+}
+
+fn reject_renderer_biometric_claim(biometric: Option<bool>) -> Result<(), String> {
+    if biometric == Some(true) {
+        return Err("Use the backend biometric authentication challenge to unlock.".to_string());
+    }
     Ok(())
 }
 
 /// Called by the frontend when the user locks the app or on session timeout.
 #[tauri::command]
-pub fn lock_app(auth: State<AuthState>) -> Result<(), String> {
-    auth.0.store(false, Ordering::Release);
+pub fn lock_app(app: AppHandle, auth: State<AuthState>, state: State<DbState>) -> Result<(), String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    if get_setting(&conn, PIN_HASH_KEY).is_none_or(|hash| hash.trim().is_empty()) {
+        return Err("Configure a PIN before locking the app.".to_string());
+    }
+    auth.lock();
+    app.emit("app-locked", ()).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod authorization_tests {
+    use super::*;
+
+    fn invoke(
+        window: &tauri::WebviewWindow<tauri::test::MockRuntime>,
+        command: &str,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, serde_json::Value> {
+        tauri::test::get_ipc_response(
+            window,
+            tauri::webview::InvokeRequest {
+                cmd: command.into(),
+                callback: tauri::ipc::CallbackFn(0),
+                error: tauri::ipc::CallbackFn(1),
+                url: "http://tauri.localhost".parse().unwrap(),
+                body: tauri::ipc::InvokeBody::Json(body),
+                headers: Default::default(),
+                invoke_key: tauri::test::INVOKE_KEY.into(),
+            },
+        )
+        .map(|response| response.deserialize().unwrap())
+    }
+
+    #[test]
+    fn ipc_boundary_blocks_locked_reads_and_writes_and_allows_verified_pin() {
+        use serde_json::json;
+        use tauri::test::{mock_builder, mock_context, noop_assets};
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::initialize_database(&dir.path().join("auth-test.db")).unwrap();
+        {
+            let conn = pool.get().unwrap();
+            set_setting(&conn, "pin_lock_enabled", "true").unwrap();
+            set_setting(&conn, PIN_HASH_KEY, &generate_pin_hash("1234")).unwrap();
+            conn.execute(
+                "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES ('ws', 'Private workspace', 'now', 'now')", []
+            ).unwrap();
+            conn.execute(
+                "INSERT INTO project_notes (id, workspace_id, title, content, note_type, tags, is_pinned, folder, created_at, updated_at)
+                 VALUES ('note', 'ws', 'Private note', 'Secret content', 'manual', '[]', 0, '', 'now', 'now')", []
+            ).unwrap();
+        }
+        let app = mock_builder()
+            .manage(DbState(pool))
+            .manage(AuthState::default())
+            .invoke_handler(crate::authenticated_handler(tauri::generate_handler![
+                crate::commands::note::get_note,
+                crate::commands::note::list_notes,
+                crate::commands::note::update_note,
+                crate::commands::workspace::list_workspaces,
+                unlock_app,
+                is_app_unlocked,
+            ]))
+            .build(mock_context(noop_assets()))
+            .unwrap();
+        let window = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap();
+        for (command, body) in [
+            ("get_note", json!({"id": "note"})),
+            ("list_notes", json!({"workspaceId": "ws"})),
+            ("list_workspaces", json!({})),
+            (
+                "update_note",
+                json!({"req": {"id": "note", "content": "tampered"}}),
+            ),
+        ] {
+            let error = invoke(&window, command, body).unwrap_err();
+            assert!(
+                error.as_str().unwrap().contains("locked"),
+                "{command}: {error}"
+            );
+        }
+        assert!(invoke(&window, "unlock_app", json!({"biometric": true})).is_err());
+        assert!(invoke(&window, "unlock_app", json!({"pin": "0000"})).is_err());
+        assert_eq!(
+            invoke(&window, "is_app_unlocked", json!({})).unwrap(),
+            json!(false)
+        );
+        invoke(&window, "unlock_app", json!({"pin": "1234"})).unwrap();
+        let note = invoke(&window, "get_note", json!({"id": "note"})).unwrap();
+        assert_eq!(note["content"], "Secret content");
+        invoke(
+            &window,
+            "update_note",
+            json!({"req": {"id": "note", "content": "authorized"}}),
+        )
+        .unwrap();
+        assert_eq!(
+            invoke(&window, "get_note", json!({"id": "note"})).unwrap()["content"],
+            "authorized"
+        );
+
+        app.state::<AuthState>().0.store(AUTH_INITIAL, Ordering::Release);
+        let conn = app.state::<DbState>().0.get().unwrap();
+        set_setting(&conn, "pin_lock_enabled", "false").unwrap();
+        drop(conn);
+        assert!(invoke(&window, "get_note", json!({"id": "note"})).is_ok());
+        assert_eq!(
+            invoke(&window, "is_app_unlocked", json!({})).unwrap(),
+            json!(true)
+        );
+        assert!(app.state::<AuthState>().is_unlocked());
+        let conn = app.state::<DbState>().0.get().unwrap();
+        set_setting(&conn, "pin_lock_enabled", "true").unwrap();
+        assert!(require_auth_connection(&AuthState::default(), &conn).is_err());
+        set_setting(&conn, "pin_lock_enabled", "false").unwrap();
+        drop(conn);
+        app.state::<AuthState>().lock();
+        assert_eq!(invoke(&window, "is_app_unlocked", json!({})).unwrap(), json!(false));
+        assert!(invoke(&window, "get_note", json!({"id": "note"})).is_err());
+        assert!(invoke(&window, "unlock_app", json!({})).is_err());
+        invoke(&window, "unlock_app", json!({"pin": "1234"})).unwrap();
+        assert!(invoke(&window, "get_note", json!({"id": "note"})).is_ok());
+    }
+
+    fn settings_db() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+            [],
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn sensitive_commands_are_default_denied_while_locked() {
+        for command in [
+            "list_notes",
+            "get_note",
+            "update_note",
+            "list_workspaces",
+            "get_settings",
+            "get_core_settings",
+            "update_setting",
+            "restore_global",
+            "new_future_sensitive_command",
+            "verify_pin_passcode",
+        ] {
+            assert!(!is_locked_command_allowed(command), "{command}");
+        }
+        for command in [
+            "boot_check_state",
+            "boot_unlock",
+            "get_security_status",
+            "unlock_app",
+            "authenticate_biometric",
+            "is_app_unlocked",
+        ] {
+            assert!(is_locked_command_allowed(command), "{command}");
+        }
+    }
+
+    #[test]
+    fn renderer_biometric_boolean_never_grants_access() {
+        assert!(reject_renderer_biometric_claim(Some(true)).is_err());
+        let auth = AuthState::default();
+        let conn = settings_db();
+        set_setting(&conn, "pin_lock_enabled", "true").unwrap();
+        set_setting(&conn, "touch_id_enabled", "true").unwrap();
+        assert!(unlock_with_pin(&auth, &conn, None).is_err());
+        assert!(require_auth_connection(&auth, &conn).is_err());
+    }
+
+    #[test]
+    fn pin_unlock_and_locked_reads_share_backend_state() {
+        let auth = AuthState::default();
+        let conn = settings_db();
+        set_setting(&conn, "pin_lock_enabled", "true").unwrap();
+        set_setting(&conn, PIN_HASH_KEY, &generate_pin_hash("1234")).unwrap();
+        assert!(require_auth_connection(&auth, &conn).is_err());
+        assert!(unlock_with_pin(&auth, &conn, Some("0000".into())).is_err());
+        assert!(!auth.is_unlocked());
+        unlock_with_pin(&auth, &conn, Some("1234".into())).unwrap();
+        assert!(require_auth_connection(&auth, &conn).is_ok());
+        auth.lock();
+        assert!(require_auth_connection(&auth, &conn).is_err());
+    }
+
+    #[test]
+    fn no_lock_mode_works_but_configuration_errors_fail_closed() {
+        let auth = AuthState::default();
+        let conn = settings_db();
+        assert!(require_auth_connection(&auth, &conn).is_ok());
+        unlock_with_pin(&auth, &conn, None).unwrap();
+        set_setting(&conn, "pin_lock_enabled", "invalid").unwrap();
+        assert!(require_auth_connection(&auth, &conn).is_err());
+        conn.execute("DROP TABLE settings", []).unwrap();
+        assert!(require_auth_connection(&auth, &conn).is_err());
+    }
 }
 
 // ─── DB encryption ────────────────────────────────────────────────────────

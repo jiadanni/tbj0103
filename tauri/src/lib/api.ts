@@ -1691,13 +1691,14 @@ export const api = {
   },
 
   security: {
+    isUnlocked: () => invoke<boolean>("is_app_unlocked"),
     getStatus: () => invoke<SecurityStatus>("get_security_status"),
     setPin: (newPin: string, currentPin?: string) => invoke<void>("set_pin_passcode", { newPin, currentPin }),
     verifyPin: (pin: string) => invoke<boolean>("verify_pin_passcode", { pin }),
     removePin: (currentPin: string) => invoke<void>("remove_pin_passcode", { currentPin }),
     authenticateBiometric: () => invoke<boolean>("authenticate_biometric"),
-    unlockApp: (args?: { pin?: string; biometric?: boolean }) =>
-      invoke<void>("unlock_app", { pin: args?.pin ?? null, biometric: args?.biometric ?? null }),
+    unlockApp: (args?: { pin?: string }) =>
+      invoke<void>("unlock_app", { pin: args?.pin ?? null }),
     lockApp: () => invoke<void>("lock_app"),
     getDbEncryptionStatus: () => invoke<DbEncryptionStatus>("get_db_encryption_status"),
     enableDbEncryption: (pin: string) => invoke<void>("enable_db_encryption", { pin }),
