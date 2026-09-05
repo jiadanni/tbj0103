@@ -176,6 +176,20 @@ export function useScopedFolders() {
   );
 }
 
+export function useScopedTopicSignature() {
+  const pane = useWorkspacePane();
+  const paneId = pane?.paneId ?? null;
+  return useWorkspaceStore(
+    useCallback(
+      (state) => {
+        const workspaceId = paneId ? state.panes[paneId].workspaceId : state.activeWorkspaceId;
+        return state.workspaces.find((workspace) => workspace.id === workspaceId)?.topic_signature ?? null;
+      },
+      [paneId],
+    ),
+  );
+}
+
 /**
  * Returns `true` when the active workspace is a root workspace (no parent),
  * meaning descendant content should bubble up into this view.

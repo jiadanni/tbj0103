@@ -1,7 +1,9 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { act, render, screen, waitFor, fireEvent, cleanup } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+
+const scope = vi.hoisted(() => ({ activeWorkspaceId: "ws-1" }));
 
 function makeIcon(testid: string) {
   const C: React.FC = () => <div data-testid={testid} />;
@@ -43,7 +45,7 @@ vi.mock("@tauri-apps/plugin-fs", () => ({ readTextFile: vi.fn(() => Promise.reso
 vi.mock("@tauri-apps/plugin-shell", () => ({ open: vi.fn() }));
 
 vi.mock("../../lib/workspacePane", () => ({
-  useScopedWorkspace: () => ({ activeWorkspaceId: "ws-1" }),
+  useScopedWorkspace: () => scope,
   useBubbleUpFlag: () => false,
 }));
 
@@ -73,6 +75,8 @@ vi.mock("../../lib/api", () => ({
 
 import NoteEditorView from "../../views/NoteEditorView";
 import { api } from "../../lib/api";
+import { discardNoteDraft, flushNoteDraft, useNoteDraftStore } from "../../hooks/useNoteDraft";
+import { useNoteComposerDraftStore } from "../../hooks/useNoteComposerDraft";
 
 describe("NoteEditorView", () => {
   const mockNotes = [
@@ -90,8 +94,16 @@ describe("NoteEditorView", () => {
     },
   ];
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    cleanup();
+    useNoteComposerDraftStore.setState({ drafts: {} });
+    for (const id of Object.keys(useNoteDraftStore.getState().drafts)) {
+      await flushNoteDraft(id);
+      discardNoteDraft(id);
+    }
     vi.clearAllMocks();
+    scope.activeWorkspaceId = "ws-1";
+    vi.mocked(api.note.update).mockResolvedValue(undefined);
     vi.mocked(api.note.list).mockResolvedValue(mockNotes as unknown as never[]);
     vi.mocked(api.source.list).mockResolvedValue([] as unknown as never[]);
   });
@@ -200,5 +212,148 @@ describe("NoteEditorView", () => {
     await waitFor(() => {
       expect(api.note.create).toHaveBeenCalledWith("ws-1", "Pinned note", "Pinned content", null, true);
     });
+  });
+
+  it("flushes a fast close and reopens the latest text with its tags and pin", async () => {
+    render(<MemoryRouter><NoteEditorView /></MemoryRouter>);
+    fireEvent.click(await screen.findByText("First Note"));
+    fireEvent.change(screen.getByTestId("smart-editor"), { target: { value: "Edited immediately" } });
+    fireEvent.click(screen.getByLabelText("Pin note"));
+    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Close note"));
+    await waitFor(() => expect(screen.queryByTestId("smart-editor")).not.toBeInTheDocument());
+    expect(api.note.update).toHaveBeenLastCalledWith("note-1", expect.objectContaining({
+      content: "Edited immediately", tags: ["tag1"], is_pinned: true,
+    }));
+    fireEvent.click(screen.getByText("First Note"));
+    expect(screen.getByTestId("smart-editor")).toHaveValue("Edited immediately");
+  });
+
+  it("keeps the modal open and exposes retry when close cannot save", async () => {
+    vi.mocked(api.note.update).mockRejectedValueOnce(new Error("Disk full"));
+    render(<MemoryRouter><NoteEditorView /></MemoryRouter>);
+    fireEvent.click(await screen.findByText("First Note"));
+    fireEvent.change(screen.getByTestId("smart-editor"), { target: { value: "Do not lose" } });
+    fireEvent.click(screen.getByLabelText("Close note"));
+    await screen.findByText("Not saved");
+    expect(screen.getByTestId("smart-editor")).toHaveValue("Do not lose");
+    expect(screen.getAllByRole("alert").some((node) => node.textContent?.includes("Disk full"))).toBe(true);
+    fireEvent.click(screen.getByLabelText("Close note"));
+    await waitFor(() => expect(screen.queryByTestId("smart-editor")).not.toBeInTheDocument());
+  });
+
+  it("flushes edited text when the library unmounts", async () => {
+    const view = render(<MemoryRouter><NoteEditorView /></MemoryRouter>);
+    fireEvent.click(await screen.findByText("First Note"));
+    fireEvent.change(screen.getByTestId("smart-editor"), { target: { value: "Navigation draft" } });
+    await act(async () => { view.unmount(); });
+    expect(api.note.update).toHaveBeenCalledWith("note-1", expect.objectContaining({ content: "Navigation draft" }));
+  });
+
+  it("does not seed a second note with the first note's edit buffer", async () => {
+    vi.mocked(api.note.list).mockResolvedValue([...mockNotes, { ...mockNotes[0], id: "note-2", title: "Second Note", content: "Second content" }]);
+    render(<MemoryRouter><NoteEditorView /></MemoryRouter>);
+    fireEvent.click(await screen.findByText("First Note"));
+    fireEvent.change(screen.getByTestId("smart-editor"), { target: { value: "First draft" } });
+    fireEvent.click(screen.getByText("Second Note"));
+    expect(screen.getByTestId("smart-editor")).toHaveValue("Second content");
+    fireEvent.change(screen.getByTestId("smart-editor"), { target: { value: "Second draft" } });
+    fireEvent.click(screen.getByLabelText("Close note"));
+    await waitFor(() => expect(screen.queryByTestId("smart-editor")).not.toBeInTheDocument());
+    expect(api.note.update).toHaveBeenCalledWith("note-1", expect.objectContaining({ content: "First draft" }));
+    expect(api.note.update).toHaveBeenCalledWith("note-2", expect.objectContaining({ content: "Second draft" }));
+  });
+
+  it("submits a composer only once when closed again while creation is pending", async () => {
+    let resolve!: (note: typeof mockNotes[number]) => void;
+    vi.mocked(api.note.create).mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+    render(<MemoryRouter><NoteEditorView /></MemoryRouter>);
+    fireEvent.click(screen.getByText("Take a note…"));
+    fireEvent.change(screen.getByPlaceholderText("Title"), { target: { value: "New draft" } });
+    fireEvent.click(screen.getByText("Close"));
+    fireEvent.mouseDown(document.body);
+    expect(api.note.create).toHaveBeenCalledTimes(1);
+    await act(async () => { resolve({ ...mockNotes[0], id: "created", title: "New draft" }); });
+    expect(screen.getByText("Take a note…")).toBeInTheDocument();
+  });
+
+  it("retains composer fields and shows errors after a failed creation", async () => {
+    vi.mocked(api.note.create).mockRejectedValueOnce(new Error("Write failed"));
+    render(<MemoryRouter><NoteEditorView /></MemoryRouter>);
+    fireEvent.click(screen.getByText("Take a note…"));
+    fireEvent.change(screen.getByPlaceholderText("Title"), { target: { value: "Retry me" } });
+    fireEvent.click(screen.getByText("Close"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Write failed");
+    expect(screen.getByPlaceholderText("Title")).toHaveValue("Retry me");
+  });
+
+  it("flushes into the original note on workspace navigation without leaking its modal", async () => {
+    const view = render(<MemoryRouter><NoteEditorView /></MemoryRouter>);
+    fireEvent.click(await screen.findByText("First Note"));
+    fireEvent.change(screen.getByTestId("smart-editor"), { target: { value: "Workspace one draft" } });
+    vi.mocked(api.note.list).mockResolvedValue([]);
+    scope.activeWorkspaceId = "ws-2";
+    view.rerender(<MemoryRouter><NoteEditorView /></MemoryRouter>);
+    expect(screen.queryByTestId("smart-editor")).not.toBeInTheDocument();
+    await waitFor(() => expect(api.note.update).toHaveBeenCalledWith("note-1", {
+      title: "First Note", content: "Workspace one draft", tags: ["tag1"], is_pinned: false,
+    }));
+    expect(screen.queryByText("First Note")).not.toBeInTheDocument();
+  });
+
+  it("retries composer metadata against the created note rather than duplicating it", async () => {
+    vi.mocked(api.note.create).mockResolvedValue({ ...mockNotes[0], id: "created", title: "Tagged" });
+    vi.mocked(api.note.update).mockRejectedValueOnce(new Error("Metadata write failed"));
+    render(<MemoryRouter><NoteEditorView /></MemoryRouter>);
+    fireEvent.click(screen.getByText("Take a note…"));
+    fireEvent.change(screen.getByPlaceholderText("Title"), { target: { value: "Tagged" } });
+    fireEvent.change(screen.getByPlaceholderText("Add tag…"), { target: { value: "New tag" } });
+    fireEvent.keyDown(screen.getByPlaceholderText("Add tag…"), { key: "Enter" });
+    fireEvent.click(screen.getByText("Close"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Metadata write failed");
+    fireEvent.click(screen.getByText("Retry save"));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    expect(api.note.create).toHaveBeenCalledTimes(1);
+    expect(api.note.update).toHaveBeenLastCalledWith("created", expect.objectContaining({ tags: ["New tag"] }));
+  });
+
+  it("retains composer text and failure in the originating workspace after navigation", async () => {
+    let reject!: (error: Error) => void;
+    vi.mocked(api.note.create).mockReturnValueOnce(new Promise((_resolve, fail) => { reject = fail; }));
+    const view = render(<MemoryRouter><NoteEditorView /></MemoryRouter>);
+    fireEvent.click(screen.getByText("Take a note…"));
+    fireEvent.change(screen.getByPlaceholderText("Title"), { target: { value: "Uncreated note" } });
+    fireEvent.change(screen.getByPlaceholderText("Take a note…"), { target: { value: "Keep this body" } });
+    fireEvent.click(screen.getByLabelText("Pin draft note"));
+    fireEvent.mouseDown(document.body);
+    expect(api.note.create).toHaveBeenCalledWith("ws-1", "Uncreated note", "Keep this body", null, true);
+    scope.activeWorkspaceId = "ws-2";
+    view.rerender(<MemoryRouter><NoteEditorView /></MemoryRouter>);
+    await act(async () => { reject(new Error("Creation rejected")); });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText("Take a note…")).toBeInTheDocument();
+    scope.activeWorkspaceId = "ws-1";
+    view.rerender(<MemoryRouter><NoteEditorView /></MemoryRouter>);
+    expect(screen.getByPlaceholderText("Title")).toHaveValue("Uncreated note");
+    expect(screen.getByPlaceholderText("Take a note…")).toHaveValue("Keep this body");
+    expect(screen.getByLabelText("Unpin draft note")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Creation rejected");
+    vi.mocked(api.note.create).mockResolvedValueOnce({ ...mockNotes[0], id: "retry", is_pinned: true });
+    fireEvent.click(screen.getByText("Close"));
+    await screen.findByText("Take a note…");
+    expect(useNoteComposerDraftStore.getState().drafts["ws-1"]).toBeUndefined();
+  });
+
+  it("retains an unsubmitted composer draft when navigation does not click outside", async () => {
+    const view = render(<MemoryRouter><NoteEditorView /></MemoryRouter>);
+    fireEvent.click(screen.getByText("Take a note…"));
+    fireEvent.change(screen.getByPlaceholderText("Title"), { target: { value: "Keyboard navigation" } });
+    scope.activeWorkspaceId = "ws-2";
+    view.rerender(<MemoryRouter><NoteEditorView /></MemoryRouter>);
+    scope.activeWorkspaceId = "ws-1";
+    view.rerender(<MemoryRouter><NoteEditorView /></MemoryRouter>);
+    expect(screen.getByPlaceholderText("Title")).toHaveValue("Keyboard navigation");
+    expect(api.note.create).not.toHaveBeenCalled();
+    await act(async () => { view.unmount(); });
   });
 });

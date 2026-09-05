@@ -678,13 +678,16 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       }
 
       const primaryWorkspaceId = state.activeWorkspaceId ?? state.workspaces[0]?.id ?? null;
-      const secondaryWorkspaceId = state.workspaces.find((workspace) => workspace.id !== primaryWorkspaceId)?.id ?? primaryWorkspaceId;
+      const secondaryWorkspaceId = state.panes.secondary.workspaceId !== primaryWorkspaceId
+        && state.workspaces.some((workspace) => workspace.id === state.panes.secondary.workspaceId)
+        ? state.panes.secondary.workspaceId
+        : state.workspaces.find((workspace) => workspace.id !== primaryWorkspaceId)?.id ?? primaryWorkspaceId;
       const panes = {
         primary: {
           ...state.panes.primary,
           workspaceId: primaryWorkspaceId,
           folderId: state.activeFolderId,
-          chatSessionId: state.panes.primary.chatSessionId,
+          chatSessionId: state.panes.primary.chatSessionId ?? useChatStore.getState().activeChatId,
           view: state.panes.primary.view,
         },
         secondary: {
@@ -707,9 +710,15 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         state.workspaces,
         state.panes.primary.workspaceId ?? state.activeWorkspaceId,
         state.activeParentWorkspaceId,
+        { resolveRootToChild: false },
       );
       const activeWorkspaceId = nextSelection.workspaceId;
-      const activeFolderId = state.panes.primary.folderId ?? state.activeFolderId;
+      const folders = activeWorkspaceId ? state.foldersByWorkspace[activeWorkspaceId] : undefined;
+      const paneFolderId = state.panes.primary.workspaceId === activeWorkspaceId
+        ? state.panes.primary.folderId : null;
+      // A null pane folder explicitly selects the workspace root, not the
+      // last folder selected in the window before split mode.
+      const activeFolderId = folders && !hasFolderId(folders, paneFolderId) ? null : paneFolderId;
       useChatStore.getState().setActiveChatId(state.panes.primary.chatSessionId ?? null);
       persistSplitLayout({ splitMode: false, splitSizes: state.splitSizes, activePaneId: "primary", panes: state.panes });
       return {
@@ -718,6 +727,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         activeWorkspaceId,
         activeParentWorkspaceId: nextSelection.parentWorkspaceId,
         activeFolderId,
+        folders: folders ?? [],
       };
     }),
     toggleSplitMode: () => {
