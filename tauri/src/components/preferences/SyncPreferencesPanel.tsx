@@ -36,9 +36,21 @@ export function SyncPreferencesPanel({
             <div className="pb-1.5 border-b border-[var(--border-color)]">
               <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Multi-device Sync</h3>
               <p className="text-xs text-[var(--text-muted)]/80 mt-1">
-                Sync your chats, memories, and settings across devices using a private Git remote.
+                Sync your chat export files across devices using a private Git remote.
                 Requires a private repository (GitHub, GitLab, or any SSH-accessible bare repo) and
                 Git installed on this machine.
+              </p>
+              <p className="text-xs text-amber-400 mt-2" role="note">
+                Only chat JSON exports are synced. Databases, settings, browser profiles, cookies,
+                keys, and logs are excluded. Chats can still contain sensitive content; use a
+                private repository.
+              </p>
+              <p className="text-xs text-amber-400 mt-2" role="note">
+                Previously enabled Git sync? Existing local and remote Git history may contain
+                browser sessions or secrets. Untracking files does not erase that history, and
+                changing the remote URL can upload it again. History is never rewritten automatically.
+                Disable sync until you have safely retired the old sync repository and created a
+                fresh local repository with a new empty remote. Revoke exposed sessions and credentials.
               </p>
             </div>
 

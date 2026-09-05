@@ -37,10 +37,10 @@ pub fn get_git_sync_status(state: State<DbState>) -> Result<GitSyncStatus, Strin
 }
 
 #[tauri::command]
-pub fn configure_git_sync(
-    auth: State<AuthState>,
+pub async fn configure_git_sync(
+    auth: State<'_, AuthState>,
     app: AppHandle,
-    state: State<DbState>,
+    state: State<'_, DbState>,
     remote_url: String,
     enabled: bool,
 ) -> Result<(), String> {
@@ -50,6 +50,12 @@ pub fn configure_git_sync(
     }
 
     let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    if enabled && !remote_url.is_empty() {
+        let remote = remote_url.clone();
+        tokio::task::spawn_blocking(move || git_sync::ensure_repo(&app_dir, &remote))
+            .await
+            .map_err(|e| e.to_string())??;
+    }
     let conn = state.0.get().map_err(|e| e.to_string())?;
 
     let set = |key: &str, val: &str| {
@@ -65,21 +71,30 @@ pub fn configure_git_sync(
     set("git_sync_remote_url", &remote_url)?;
     set("git_sync_last_error", "")?;
 
-    if enabled && !remote_url.is_empty() {
-        git_sync::ensure_repo(&app_dir, &remote_url)?;
-    }
     Ok(())
 }
 
 #[tauri::command]
 pub async fn trigger_git_sync(
+    auth: State<'_, AuthState>,
     app: AppHandle,
     state: State<'_, DbState>,
 ) -> Result<GitSyncStatus, String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
     let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
 
     let remote_url = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
+        let enabled = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'git_sync_enabled'",
+                [],
+                |r| r.get::<_, String>(0),
+            )
+            .unwrap_or_default();
+        if enabled != "true" {
+            return Err("Git sync is disabled".to_string());
+        }
         conn.query_row(
             "SELECT value FROM settings WHERE key = 'git_sync_remote_url'",
             [],
@@ -95,8 +110,13 @@ pub async fn trigger_git_sync(
         return Err("Git sync requires an SSH remote URL.".to_string());
     }
 
-    git_sync::ensure_repo(&app_dir, &remote_url)?;
-    let result = git_sync::sync(&app_dir);
+    let remote = remote_url.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        git_sync::ensure_repo(&app_dir, &remote)?;
+        Ok::<_, String>(git_sync::sync(&app_dir))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
 
     let now = chrono::Utc::now().to_rfc3339();
     let error_str = result.error.clone().unwrap_or_default();
