@@ -7,11 +7,12 @@ use crate::services::model_settings::{
 use crate::services::{git_sync, memory_pipeline, summarization_service, workspace_glossary};
 use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
+use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
-use tokio::sync::{broadcast, oneshot, OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{broadcast, oneshot, watch, OwnedSemaphorePermit, Semaphore};
 
 static SCHEDULER_RUNNING: AtomicBool = AtomicBool::new(false);
 
@@ -111,6 +112,8 @@ static PENDING: LazyLock<Mutex<PendingMap>> = LazyLock::new(|| Mutex::new(HashMa
 /// sets these; running jobs check between stages and abort cooperatively.
 static CANCEL_FLAGS: LazyLock<Mutex<HashMap<String, bool>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+static CANCEL_NOTIFICATIONS: LazyLock<watch::Sender<()>> = LazyLock::new(|| watch::channel(()).0);
+static FOREGROUND_CANCEL: OnceLock<watch::Sender<u64>> = OnceLock::new();
 
 /// Live in-memory queue/running state for scheduler-managed jobs. This powers
 /// the frontend queue view for jobs that do not persist their own status in
@@ -310,6 +313,9 @@ pub fn request_cancel(task_type: &str) -> bool {
             *val = true;
             cancelled_any = true;
         }
+        if cancelled_any {
+            CANCEL_NOTIFICATIONS.send_replace(());
+        }
         return cancelled_any;
     }
     false
@@ -340,6 +346,167 @@ pub fn is_cancelled(task_type: &str) -> bool {
         }
     }
     false
+}
+
+/// Drop in-flight work when the scheduler stop button cancels registered jobs.
+/// Subscribe before checking the flags so cancellation cannot fall between
+/// the state check and installing the asynchronous waiter.
+pub(crate) async fn cancellable<T>(
+    task_type: &str,
+    future: impl Future<Output = T>,
+) -> Result<T, String> {
+    let notifications = CANCEL_NOTIFICATIONS.subscribe();
+    let foreground = FOREGROUND_CANCEL.get().map(watch::Sender::subscribe);
+    if is_cancelled(task_type) {
+        return Err("cancelled".to_string());
+    }
+    let result = cancellable_with_signals(notifications, foreground, future).await;
+    if result.is_err() {
+        // Preserve scheduler cancellation reporting when foreground inference
+        // interrupted the job rather than the explicit stop button.
+        request_cancel(task_type);
+    }
+    result
+}
+
+#[cfg(test)]
+async fn cancellable_with_notifications<T>(
+    notifications: watch::Receiver<()>,
+    future: impl Future<Output = T>,
+) -> Result<T, String> {
+    cancellable_with_signals(notifications, None, future).await
+}
+
+async fn cancellable_with_signals<T>(
+    mut notifications: watch::Receiver<()>,
+    mut foreground: Option<watch::Receiver<u64>>,
+    future: impl Future<Output = T>,
+) -> Result<T, String> {
+    let preempted = async {
+        if let Some(receiver) = foreground.as_mut() {
+            let _ = receiver.changed().await;
+        } else {
+            std::future::pending::<()>().await;
+        }
+    };
+    tokio::select! {
+        biased;
+        _ = notifications.changed() => Err("cancelled".to_string()),
+        _ = preempted => Err("cancelled".to_string()),
+        value = future => Ok(value),
+    }
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+    use super::{cancellable_with_notifications, cancellable_with_signals};
+    use std::cell::Cell;
+    use std::future::{pending, poll_fn};
+    use std::task::Poll;
+    use tokio::sync::{oneshot, watch};
+
+    #[tokio::test]
+    async fn cancellation_before_first_poll_never_starts_work() {
+        let (cancel, notifications) = watch::channel(());
+        let polled = Cell::new(false);
+        cancel.send_replace(());
+        let result = cancellable_with_notifications(notifications, async {
+            polled.set(true);
+        })
+        .await;
+        assert_eq!(result, Err("cancelled".to_string()));
+        assert!(!polled.get());
+    }
+
+    #[tokio::test]
+    async fn cancellation_drops_in_flight_work_and_stops_iteration() {
+        struct DropProbe<'a>(&'a Cell<bool>);
+        impl Drop for DropProbe<'_> {
+            fn drop(&mut self) {
+                self.0.set(true);
+            }
+        }
+        let (cancel, notifications) = watch::channel(());
+        let (started, ready) = oneshot::channel();
+        let iterations = Cell::new(0);
+        let dropped = Cell::new(false);
+        let mut started = Some(started);
+        let work = async {
+            for _ in 0..50 {
+                cancellable_with_notifications(notifications.clone(), async {
+                    iterations.set(iterations.get() + 1);
+                    let _probe = DropProbe(&dropped);
+                    if let Some(started) = started.take() {
+                        let _ = started.send(());
+                    }
+                    pending::<()>().await;
+                })
+                .await?;
+            }
+            Ok::<(), String>(())
+        };
+        let stop = async {
+            ready.await.unwrap();
+            cancel.send_replace(());
+        };
+        let (result, ()) = tokio::join!(work, stop);
+        assert_eq!(result, Err("cancelled".to_string()));
+        assert_eq!(iterations.get(), 1);
+        assert!(dropped.get());
+    }
+
+    #[tokio::test]
+    async fn cancellation_during_initial_poll_is_not_lost() {
+        let (cancel, notifications) = watch::channel(());
+        let result = cancellable_with_notifications(
+            notifications,
+            poll_fn(|_| {
+                cancel.send_replace(());
+                Poll::<()>::Pending
+            }),
+        )
+        .await;
+        assert_eq!(result, Err("cancelled".to_string()));
+    }
+
+    #[tokio::test]
+    async fn foreground_epoch_stops_in_flight_loop_without_explicit_cancel() {
+        let (_cancel, notifications) = watch::channel(());
+        let (foreground, receiver) = watch::channel(0_u64);
+        let (started, ready) = oneshot::channel();
+        let iterations = Cell::new(0);
+        let mut started = Some(started);
+        let work = cancellable_with_signals(notifications, Some(receiver), async {
+            for _ in 0..50 {
+                iterations.set(iterations.get() + 1);
+                if let Some(started) = started.take() {
+                    let _ = started.send(());
+                }
+                pending::<()>().await;
+            }
+        });
+        let preempt = async {
+            ready.await.unwrap();
+            foreground.send_modify(|epoch| *epoch += 1);
+        };
+        let (result, ()) = tokio::join!(work, preempt);
+        assert_eq!(result, Err("cancelled".to_string()));
+        assert_eq!(iterations.get(), 1);
+    }
+
+    #[tokio::test]
+    async fn foreground_epoch_before_first_poll_never_starts_work() {
+        let (_cancel, notifications) = watch::channel(());
+        let (foreground, receiver) = watch::channel(0_u64);
+        foreground.send_modify(|epoch| *epoch += 1);
+        let polled = Cell::new(false);
+        let result = cancellable_with_signals(notifications, Some(receiver), async {
+            polled.set(true);
+        })
+        .await;
+        assert_eq!(result, Err("cancelled".to_string()));
+        assert!(!polled.get());
+    }
 }
 
 /// Read run-mode and heavy-model for a job from settings.
@@ -721,7 +888,11 @@ fn has_auto_work(conn: &rusqlite::Connection, job_key: &str) -> bool {
                 &format!(
                     "SELECT COUNT(*)
                      FROM chat_sessions cs
-                     WHERE datetime(cs.updated_at) > datetime('now', '-24 hours')
+                     WHERE (datetime(cs.updated_at) > datetime('now', '-24 hours')
+                            OR EXISTS (
+                                SELECT 1 FROM settings retry
+                                WHERE retry.key = 'memory_extraction_retry:' || cs.id
+                            ))
                        AND cs.is_incognito = 0
                        AND cs.exclude_from_analytics = 0
                        AND cs.is_imported = 0
@@ -914,6 +1085,74 @@ fn has_auto_work(conn: &rusqlite::Connection, job_key: &str) -> bool {
                ), 0) < 15",
         ),
         _ => true,
+    }
+}
+
+#[cfg(test)]
+mod memory_retry_gate_tests {
+    use super::{has_auto_work, pending_workload_for_job};
+
+    #[test]
+    fn aged_retries_reach_scheduler_and_workload_without_bypassing_exclusions() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+             CREATE TABLE chat_sessions (
+                 id TEXT PRIMARY KEY, workspace_id TEXT, updated_at TEXT,
+                 is_incognito INTEGER, exclude_from_analytics INTEGER,
+                 is_imported INTEGER, last_processed_message_count INTEGER
+             );
+             CREATE TABLE messages (session_id TEXT, content TEXT);
+             INSERT INTO settings (key, value) VALUES ('memory_extraction_threshold', '1');
+             INSERT INTO chat_sessions (
+                 id, workspace_id, updated_at, is_incognito,
+                 exclude_from_analytics, is_imported, last_processed_message_count
+             ) VALUES ('session', 'workspace', '2000-01-01', 0, 0, 0, 0);
+             INSERT INTO messages (session_id, content) VALUES ('session', 'User learns Rust');",
+        )
+        .unwrap();
+        assert!(!has_auto_work(&conn, "memory_extraction"));
+        assert_eq!(
+            pending_workload_for_job(&conn, "memory_extraction", Some("workspace")).0,
+            None
+        );
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('memory_extraction_retry:session', 'retry')",
+            [],
+        )
+        .unwrap();
+        assert!(has_auto_work(&conn, "memory_extraction"));
+        assert_eq!(
+            pending_workload_for_job(&conn, "memory_extraction", Some("workspace")).0,
+            Some(1)
+        );
+        for field in ["is_incognito", "exclude_from_analytics", "is_imported"] {
+            conn.execute(
+                &format!("UPDATE chat_sessions SET {field} = 1 WHERE id = 'session'"),
+                [],
+            )
+            .unwrap();
+            assert!(!has_auto_work(&conn, "memory_extraction"));
+            assert_eq!(
+                pending_workload_for_job(&conn, "memory_extraction", Some("workspace")).0,
+                None
+            );
+            conn.execute(
+                &format!("UPDATE chat_sessions SET {field} = 0 WHERE id = 'session'"),
+                [],
+            )
+            .unwrap();
+        }
+        conn.execute(
+            "UPDATE chat_sessions SET last_processed_message_count = 1 WHERE id = 'session'",
+            [],
+        )
+        .unwrap();
+        assert!(!has_auto_work(&conn, "memory_extraction"));
+        assert_eq!(
+            pending_workload_for_job(&conn, "memory_extraction", Some("workspace")).0,
+            None
+        );
     }
 }
 
@@ -1267,7 +1506,7 @@ async fn run_manual_processing_job(
     let workspace_total = u32::try_from(workspace_ids.len()).unwrap_or(u32::MAX);
     match task_type {
         "memory_extraction" => {
-            let mut any_failed = false;
+            let mut failures = Vec::new();
             for (idx, workspace_id) in workspace_ids.iter().enumerate() {
                 if is_cancelled("manual_data_processing") {
                     return Err("cancelled".to_string());
@@ -1286,20 +1525,22 @@ async fn run_manual_processing_job(
                     workspace_index,
                     workspace_total,
                 );
-                if memory_pipeline::process_memory_extraction_for_workspaces(
+                if let Err(error) = memory_pipeline::process_memory_extraction_for_workspaces(
                     &db,
                     std::slice::from_ref(workspace_id),
                     include_imported,
                     ollama_url.clone(),
                 )
                 .await
-                .is_err()
                 {
-                    any_failed = true;
+                    if error == "cancelled" {
+                        return Err(error);
+                    }
+                    failures.push(format!("Workspace {workspace_id}: {error}"));
                 }
             }
-            if any_failed {
-                Err("Memory extraction failed".to_string())
+            if !failures.is_empty() {
+                Err(format!("Memory extraction failed: {}", failures.join("; ")))
             } else {
                 Ok(())
             }
@@ -1672,6 +1913,55 @@ async fn collect_summary_sessions_for_workspaces(
     .unwrap_or_default()
 }
 
+fn manual_processing_result_message(
+    cancelled: bool,
+    completed: usize,
+    total: usize,
+    failures: &[String],
+) -> String {
+    let summary = if cancelled {
+        "Background processing cancelled".to_string()
+    } else if !failures.is_empty() {
+        format!("Background processing finished with issues ({completed}/{total})")
+    } else {
+        format!("Background processing done ({completed}/{total})")
+    };
+    if failures.is_empty() {
+        summary
+    } else {
+        format!("{summary}: {}", failures.join("; "))
+    }
+}
+
+#[cfg(test)]
+mod manual_processing_result_tests {
+    use super::manual_processing_result_message;
+
+    #[test]
+    fn partial_failure_message_preserves_actual_workspace_errors() {
+        let failures = vec![
+            "Memory Extraction: Workspace w1: malformed extraction JSON".to_string(),
+            "Memory Extraction: Workspace w2: provider unavailable".to_string(),
+        ];
+        let message = manual_processing_result_message(false, 1, 2, &failures);
+        assert!(message.contains("finished with issues (1/2)"));
+        for failure in &failures {
+            assert!(message.contains(failure));
+        }
+        let cancelled = manual_processing_result_message(true, 1, 2, &failures);
+        assert!(cancelled.contains("cancelled"));
+        assert!(cancelled.contains("provider unavailable"));
+    }
+
+    #[test]
+    fn successful_batch_has_no_failure_suffix() {
+        assert_eq!(
+            manual_processing_result_message(false, 2, 2, &[]),
+            "Background processing done (2/2)"
+        );
+    }
+}
+
 async fn run_manual_processing_batch(
     app: AppHandle,
     req: QueueBackgroundProcessingRequest,
@@ -1693,11 +1983,12 @@ async fn run_manual_processing_batch(
     );
     register_running(task_type);
 
-    let mut any_failed = false;
+    let mut failures = Vec::new();
+    let mut cancelled = false;
     let mut completed = 0usize;
     for (idx, task) in tasks.iter().enumerate() {
         if is_cancelled(task_type) {
-            any_failed = true;
+            cancelled = true;
             break;
         }
         let current_idx = u32::try_from(idx + 1).unwrap_or(u32::MAX);
@@ -1723,29 +2014,20 @@ async fn run_manual_processing_batch(
         {
             Ok(()) => completed += 1,
             Err(error) if error == "cancelled" => {
-                any_failed = true;
+                cancelled = true;
                 break;
             }
-            Err(_) => any_failed = true,
+            Err(error) => failures.push(format!("{}: {error}", job_label(task))),
         }
     }
 
-    let cancelled = is_cancelled(task_type);
-    let status = if cancelled || any_failed {
+    cancelled |= is_cancelled(task_type);
+    let status = if cancelled || !failures.is_empty() {
         "failed"
     } else {
         "completed"
     };
-    let message = if cancelled {
-        "Background processing cancelled".to_string()
-    } else if any_failed {
-        format!(
-            "Background processing finished with issues ({completed}/{})",
-            tasks.len()
-        )
-    } else {
-        format!("Background processing done ({completed}/{})", tasks.len())
-    };
+    let message = manual_processing_result_message(cancelled, completed, tasks.len(), &failures);
     let completed_u32 = u32::try_from(completed).unwrap_or(u32::MAX);
     emit_task_with_progress(
         &app,
@@ -1842,6 +2124,11 @@ async fn lookup_job_model(app: &AppHandle, job_key: &str) -> Option<String> {
 }
 
 pub fn start_scheduler(app: AppHandle) {
+    FOREGROUND_CANCEL.get_or_init(|| {
+        app.state::<crate::commands::ollama::BackgroundInferenceCancel>()
+            .0
+            .clone()
+    });
     tauri::async_runtime::spawn(async move {
         let mut interval =
             tokio::time::interval(Duration::from_secs(SCHEDULER_INTERVAL_SECS as u64));
@@ -1984,6 +2271,14 @@ pub fn start_scheduler(app: AppHandle) {
                                 .await
                         };
                         let cancelled = is_cancelled("memory_extraction");
+                        let mem_message = if cancelled {
+                            "Memory extraction cancelled".to_string()
+                        } else {
+                            match &mem_result {
+                                Ok(()) => "Memory extraction done".to_string(),
+                                Err(error) => format!("Memory extraction failed: {error}"),
+                            }
+                        };
                         emit_task(
                             &app,
                             "memory_extraction",
@@ -1994,13 +2289,7 @@ pub fn start_scheduler(app: AppHandle) {
                             } else {
                                 "failed"
                             },
-                            if cancelled {
-                                "Memory extraction cancelled"
-                            } else if mem_result.is_ok() {
-                                "Memory extraction done"
-                            } else {
-                                "Memory extraction failed"
-                            },
+                            &mem_message,
                             mem_model,
                         );
                         unregister_running("memory_extraction");
@@ -2723,7 +3012,11 @@ fn pending_workload_for_job(
                      FROM chat_sessions cs
                      JOIN messages m ON m.session_id = cs.id
                      WHERE cs.workspace_id = ?1
-                       AND datetime(cs.updated_at) > datetime('now', '-24 hours')
+                       AND (datetime(cs.updated_at) > datetime('now', '-24 hours')
+                            OR EXISTS (
+                                SELECT 1 FROM settings retry
+                                WHERE retry.key = 'memory_extraction_retry:' || cs.id
+                            ))
                        AND cs.is_incognito = 0
                        AND cs.exclude_from_analytics = 0
                        AND cs.is_imported = 0
