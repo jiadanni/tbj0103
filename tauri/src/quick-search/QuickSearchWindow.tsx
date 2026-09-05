@@ -1,37 +1,17 @@
 import { Command } from "cmdk";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Brain, Check, Clock, FileText, MessageSquare, ScrollText, Search, Settings2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Check, Clock, Search, Settings2 } from "lucide-react";
 import { api, type CoreSettings, type QuickSearchResult } from "../lib/api";
-import { useSettingsStore } from "../stores/settingsStore";
-import type { Workspace } from "../stores/workspaceStore";
 import { hexToRgbChannels, normalizeTheme } from "../lib/theme";
-
-const ICON_BY_KIND = {
-  conversation: MessageSquare,
-  message: MessageSquare,
-  artifact: FileText,
-  memory: Brain,
-  summary: ScrollText,
-} as const;
-
-type ResultGroup = {
-  id: string;
-  label: string;
-  Icon: typeof Search;
-  items: QuickSearchResult[];
-};
-
-type KindFilter = "conversation" | "message" | "artifact" | "memory" | "summary";
-
-const ALL_WORKSPACES_SCOPE = "__all__";
-const SUPPORTED_KIND_FILTERS: KindFilter[] = ["conversation", "message", "artifact", "memory", "summary"];
-const KIND_FILTER_LABELS: Record<KindFilter, string> = {
-  conversation: "Chats",
-  message: "Messages",
-  artifact: "Artifacts",
-  memory: "Memory",
-  summary: "Summaries",
-};
+import {
+  buildMetaLine,
+  fallbackTitle,
+  iconForResult,
+  KIND_FILTER_LABELS,
+  shortKind,
+  SUPPORTED_KIND_FILTERS,
+  useQuickSearch,
+} from "../hooks/useQuickSearch";
 
 export default function QuickSearchWindow() {
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -41,65 +21,65 @@ export default function QuickSearchWindow() {
     accent_color: "#007AFF",
     font_size: 16,
   });
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<QuickSearchResult[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [workspaceScope, setWorkspaceScope] = useState<string>(ALL_WORKSPACES_SCOPE);
-  const [selectedKinds, setSelectedKinds] = useState<string[]>(SUPPORTED_KIND_FILTERS);
   const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+
+  const {
+    query,
+    setQuery,
+    clearQuery,
+    groupedResults,
+    isLoading,
+    workspaceScope,
+    workspaceOptions,
+    activeWorkspaceLabel,
+    updateWorkspaceScope,
+    selectedKinds,
+    toggleKind,
+    resetKinds,
+    hasActiveFilters,
+    syncFilterState,
+  } = useQuickSearch();
 
   useEffect(() => {
     let cancelled = false;
 
-    async function syncWindowState() {
+    async function syncDisplaySettings() {
       try {
-        const [core, advanced, availableWorkspaces, context] = await Promise.all([
-          api.settings.getCore(),
-          api.settings.getAdvanced(),
-          api.workspace.list().catch(() => [] as Workspace[]),
-          api.quickSearch.getContext().catch(() => ({ preferred_workspace_id: null })),
-        ]);
+        const core = await api.settings.getCore();
         if (cancelled) {return;}
-
         setDisplaySettings({
           theme: normalizeTheme(core.theme),
           accent_color: core.accent_color,
           font_size: core.font_size,
         });
-        setWorkspaces(availableWorkspaces);
-
-        // If no explicit workspace scope was persisted, auto-scope to the active workspace
-        const persistedScope = advanced.quick_search_workspace_scope;
-        const preferredScope = context.preferred_workspace_id
-          && availableWorkspaces.some((ws) => ws.id === context.preferred_workspace_id)
-          ? context.preferred_workspace_id
-          : null;
-        const effectiveScope = persistedScope || preferredScope || ALL_WORKSPACES_SCOPE;
-        setWorkspaceScope(resolveWorkspaceScope(effectiveScope, availableWorkspaces));
-        setSelectedKinds(normalizeSelectedKinds(advanced.quick_search_type_filters));
       } catch {
         // Keep local defaults if settings are not available yet.
       }
     }
 
+    function syncWindowState() {
+      void syncDisplaySettings();
+      void syncFilterState();
+    }
+
+    // The window is reused across invocations, so every re-focus starts fresh.
     function handleFocus() {
-      setQuery("");
-      setResults([]);
+      clearQuery();
       setIsFilterMenuOpen(false);
-      void syncWindowState();
+      syncWindowState();
       window.requestAnimationFrame(() => {
         inputRef.current?.focus();
         inputRef.current?.select();
       });
     }
 
-    void syncWindowState();
+    syncWindowState();
     window.addEventListener("focus", handleFocus);
     return () => {
       cancelled = true;
       window.removeEventListener("focus", handleFocus);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -118,26 +98,6 @@ export default function QuickSearchWindow() {
     root.style.backgroundColor = "transparent";
     document.body.style.backgroundColor = "transparent";
   }, [displaySettings]);
-
-  const includeDescendants = workspaceScope !== ALL_WORKSPACES_SCOPE
-    && workspaces.find((ws) => ws.id === workspaceScope)?.parent_workspace_id == null;
-
-  useEffect(() => {
-    const runQuery = window.setTimeout(() => {
-      setIsLoading(true);
-      api.quickSearch.query(query, {
-        limit: query.trim() ? 24 : 10,
-        workspaceId: workspaceScope === ALL_WORKSPACES_SCOPE ? null : workspaceScope,
-        kindFilters: effectiveKindFilters(selectedKinds),
-        includeDescendants,
-      })
-        .then(setResults)
-        .catch(() => setResults([]))
-        .finally(() => setIsLoading(false));
-    }, query.trim() ? 80 : 0);
-
-    return () => window.clearTimeout(runQuery);
-  }, [query, selectedKinds, workspaceScope, includeDescendants]);
 
   useEffect(() => {
     function handleBlur() {
@@ -169,71 +129,6 @@ export default function QuickSearchWindow() {
       window.removeEventListener("keydown", handleEscape);
     };
   }, [isFilterMenuOpen]);
-
-  const groupedResults = useMemo<ResultGroup[]>(() => {
-    const groups = new Map<string, ResultGroup>();
-
-    for (const item of results) {
-      const groupId = item.recent ? "recent" : item.kind;
-      if (!groups.has(groupId)) {
-        groups.set(groupId, {
-          id: groupId,
-          label: groupLabelFor(item),
-          Icon: groupIconFor(item),
-          items: [],
-        });
-      }
-      groups.get(groupId)?.items.push(item);
-    }
-
-    return Array.from(groups.values());
-  }, [results]);
-
-  const workspaceOptions = useMemo(() => [
-    { value: ALL_WORKSPACES_SCOPE, label: "All workspaces" },
-    ...workspaces.map((workspace) => ({ value: workspace.id, label: workspace.name })),
-  ], [workspaces]);
-
-  const activeWorkspaceLabel = useMemo(
-    () => workspaceOptions.find((option) => option.value === workspaceScope)?.label ?? "All workspaces",
-    [workspaceOptions, workspaceScope],
-  );
-
-  const hasActiveFilters = workspaceScope !== ALL_WORKSPACES_SCOPE || effectiveKindFilters(selectedKinds) !== null;
-
-  async function persistQuickSearchSettings(nextWorkspaceScope: string, nextSelectedKinds: string[]) {
-    const normalizedKinds = normalizeSelectedKinds(nextSelectedKinds);
-
-    useSettingsStore.getState().setQuickSearchWorkspaceScope(nextWorkspaceScope);
-    useSettingsStore.getState().setQuickSearchTypeFilters(normalizedKinds);
-    // Per-key writes so we don't have to round-trip the full Settings blob
-    // through `update_settings`. Each call is a single SQLite upsert.
-    void api.settings
-      .updateOne("quick_search_workspace_scope", nextWorkspaceScope)
-      .catch(() => {
-        // Keep local state if persistence fails. The user can retry by toggling again.
-      });
-    void api.settings
-      .updateOne("quick_search_type_filters", normalizedKinds)
-      .catch(() => {
-        // Keep local state if persistence fails. The user can retry by toggling again.
-      });
-  }
-
-  function updateWorkspaceScope(nextWorkspaceScope: string) {
-    setWorkspaceScope(nextWorkspaceScope);
-    void persistQuickSearchSettings(nextWorkspaceScope, selectedKinds);
-  }
-
-  function toggleKind(kind: KindFilter) {
-    setSelectedKinds((currentKinds) => {
-      const nextKinds = currentKinds.includes(kind)
-        ? currentKinds.filter((value) => value !== kind)
-        : [...currentKinds, kind];
-      void persistQuickSearchSettings(workspaceScope, nextKinds);
-      return nextKinds;
-    });
-  }
 
   async function openResult(result: QuickSearchResult) {
     await api.quickSearch.openResult(result);
@@ -330,10 +225,7 @@ export default function QuickSearchWindow() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => {
-                          setSelectedKinds(SUPPORTED_KIND_FILTERS);
-                          void persistQuickSearchSettings(workspaceScope, SUPPORTED_KIND_FILTERS);
-                        }}
+                        onClick={resetKinds}
                         className="rounded-lg border border-[var(--border-color)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--accent-color)]"
                       >
                         Reset
@@ -432,74 +324,3 @@ export default function QuickSearchWindow() {
   );
 }
 
-function resolveWorkspaceScope(workspaceScope: string | null | undefined, workspaces: Workspace[]) {
-  if (!workspaceScope || workspaceScope === ALL_WORKSPACES_SCOPE) {
-    return ALL_WORKSPACES_SCOPE;
-  }
-  return workspaces.some((workspace) => workspace.id === workspaceScope)
-    ? workspaceScope
-    : ALL_WORKSPACES_SCOPE;
-}
-
-function normalizeSelectedKinds(kinds: string[] | null | undefined) {
-  const normalized = (kinds ?? []).filter((kind): kind is KindFilter =>
-    SUPPORTED_KIND_FILTERS.includes(kind as KindFilter)
-  );
-  return Array.from(new Set(normalized));
-}
-
-function effectiveKindFilters(kinds: string[]) {
-  const normalized = normalizeSelectedKinds(kinds);
-  if (normalized.length === 0 || normalized.length === SUPPORTED_KIND_FILTERS.length) {
-    return null;
-  }
-  return normalized;
-}
-
-function groupLabelFor(result: QuickSearchResult) {
-  if (result.recent) {return "Recent Chats";}
-  switch (result.kind) {
-    case "artifact": return "Artifacts";
-    case "memory": return "Memory";
-    case "summary": return "Summaries";
-    default: return "Conversations";
-  }
-}
-
-function groupIconFor(result: QuickSearchResult) {
-  if (result.recent) {return Clock;}
-  return iconForResult(result);
-}
-
-function iconForResult(result: QuickSearchResult) {
-  return ICON_BY_KIND[result.kind as keyof typeof ICON_BY_KIND] ?? Search;
-}
-
-function shortKind(kind: QuickSearchResult["kind"]) {
-  switch (kind) {
-    case "message": return "Message";
-    case "artifact": return "Artifact";
-    case "memory": return "Memory";
-    case "summary": return "Summary";
-    default: return "Chat";
-  }
-}
-
-function fallbackTitle(result: QuickSearchResult) {
-  switch (result.kind) {
-    case "memory": return "Memory";
-    case "artifact": return "Artifact";
-    case "summary": return "Summary";
-    default: return "Untitled chat";
-  }
-}
-
-function buildMetaLine(result: QuickSearchResult) {
-  const parts = [
-    result.subtitle,
-    result.workspace_name || null,
-    result.folder_name || null,
-  ].filter(Boolean);
-
-  return parts.length > 0 ? parts.join(" • ") : "Search result";
-}
