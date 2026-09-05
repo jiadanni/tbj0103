@@ -22,6 +22,109 @@ pub struct BackupInfo {
     pub chat_count: i64,
 }
 
+/// User-facing selective-import categories, each owning a set of backup tables.
+///
+/// Dependent tables always travel with their parent so a selection can never
+/// orphan rows (e.g. `messages` FK to `chat_sessions`, so both live in `chats`).
+/// Every table in `RESTORE_TABLE_ORDER` must appear in exactly one category —
+/// `every_restore_table_has_a_category` enforces that.
+const BACKUP_CATEGORIES: [(&str, &str, &[&str]); 7] = [
+    (
+        "chats",
+        "Chats & messages",
+        &[
+            "folders",
+            "chat_sessions",
+            "messages",
+            "citations",
+            "context_snapshots",
+            "conversation_summaries",
+            "artifacts",
+        ],
+    ),
+    (
+        "notes",
+        "Notes & templates",
+        &["project_notes", "daily_notes", "note_templates"],
+    ),
+    (
+        "sources",
+        "Sources & documents",
+        &["sources", "source_chunks", "audio_transcriptions"],
+    ),
+    (
+        "flashcards",
+        "Flashcards & goals",
+        &["learning_cards", "learning_goals"],
+    ),
+    (
+        "concepts",
+        "Concepts & links",
+        &["concept_nodes", "concept_links", "concept_mentions"],
+    ),
+    ("memories", "Memories", &["memories"]),
+    (
+        "queue",
+        "Thought queue & alarms",
+        &["thought_queue", "calendar_alarms"],
+    ),
+];
+
+fn category_for_table(table: &str) -> Option<&'static str> {
+    BACKUP_CATEGORIES
+        .iter()
+        .find(|(_, _, tables)| tables.contains(&table))
+        .map(|(id, _, _)| *id)
+}
+
+/// Conflict strategy for a row insert during restore or selective import.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OnConflict {
+    /// Backup rows win over local rows (full restore semantics).
+    Replace,
+    /// Local rows win; the backup only fills in what is missing (merge).
+    Ignore,
+}
+
+impl OnConflict {
+    fn sql(self) -> &'static str {
+        match self {
+            OnConflict::Replace => "INSERT OR REPLACE",
+            OnConflict::Ignore => "INSERT OR IGNORE",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackupCategoryCount {
+    pub id: String,
+    pub label: String,
+    pub row_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackupWorkspacePreview {
+    pub id: String,
+    pub name: String,
+    pub exists_locally: bool,
+    pub categories: Vec<BackupCategoryCount>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackupPreview {
+    pub is_global: bool,
+    pub created_at: String,
+    pub app_version: Option<String>,
+    pub workspaces: Vec<BackupWorkspacePreview>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SelectiveImportResult {
+    pub workspace_ids: Vec<String>,
+    pub rows_imported: usize,
+    pub per_category: Vec<BackupCategoryCount>,
+}
+
 const BACKUP_TABLES: [(&str, &str); 15] = [
     (
         "folders",
@@ -329,11 +432,12 @@ fn restore_backup_data(conn: &mut Connection, backup_json: &str) -> Result<Strin
         &tx,
         "workspaces",
         &serde_json::Value::Object(workspace.clone()),
+        OnConflict::Replace,
     )?;
 
     for table in RESTORE_TABLE_ORDER {
         if let Some(rows) = data.get(table) {
-            insert_json_rows(&tx, table, rows)?;
+            insert_json_rows(&tx, table, rows, OnConflict::Replace)?;
         }
     }
 
@@ -380,7 +484,7 @@ fn restore_legacy_backup(
 
     if let Some(folders) = workspace.get("folders").and_then(|value| value.as_array()) {
         for folder in folders {
-            insert_value_object(&tx, "folders", folder)?;
+            insert_value_object(&tx, "folders", folder, OnConflict::Replace)?;
         }
     }
 
@@ -488,16 +592,18 @@ fn insert_json_rows(
     conn: &Connection,
     table_name: &str,
     rows: &serde_json::Value,
-) -> Result<(), String> {
+    on_conflict: OnConflict,
+) -> Result<usize, String> {
     let rows = rows
         .as_array()
         .ok_or_else(|| format!("Backup table '{table_name}' is not an array"))?;
 
+    let mut inserted = 0;
     for row in rows {
-        insert_value_object(conn, table_name, row)?;
+        inserted += insert_value_object(conn, table_name, row, on_conflict)?;
     }
 
-    Ok(())
+    Ok(inserted)
 }
 
 fn get_table_columns(conn: &Connection, table_name: &str) -> Result<Vec<String>, String> {
@@ -516,7 +622,8 @@ fn insert_value_object(
     conn: &Connection,
     table_name: &str,
     row: &serde_json::Value,
-) -> Result<(), String> {
+    on_conflict: OnConflict,
+) -> Result<usize, String> {
     if table_name == "chat_sessions" {
         validate_backup_session_row(row)?;
     }
@@ -525,7 +632,7 @@ fn insert_value_object(
         .ok_or_else(|| format!("Backup row for '{table_name}' is not an object"))?;
 
     if object.is_empty() {
-        return Ok(());
+        return Ok(0);
     }
 
     let valid_columns = get_table_columns(conn, table_name)?;
@@ -539,12 +646,13 @@ fn insert_value_object(
         .collect();
 
     if columns.is_empty() {
-        return Ok(());
+        return Ok(0);
     }
 
     let placeholders = vec!["?"; columns.len()].join(", ");
+    let verb = on_conflict.sql();
     let sql = format!(
-        "INSERT OR REPLACE INTO {table_name} ({}) VALUES ({placeholders})",
+        "{verb} INTO {table_name} ({}) VALUES ({placeholders})",
         columns.join(", "),
     );
 
@@ -554,10 +662,11 @@ fn insert_value_object(
         .collect::<Result<Vec<_>, _>>()?;
     let params: Vec<&dyn ToSql> = values.iter().map(|value| value as &dyn ToSql).collect();
 
-    conn.execute(&sql, params_from_iter(params))
+    let changed = conn
+        .execute(&sql, params_from_iter(params))
         .map_err(|e| format!("Failed to restore row into '{table_name}': {e}"))?;
 
-    Ok(())
+    Ok(changed)
 }
 
 fn json_to_sql_value(value: &serde_json::Value) -> Result<Value, String> {
@@ -782,12 +891,13 @@ fn restore_global_backup_data(conn: &mut Connection, backup_json: &str) -> Resul
             &tx,
             "workspaces",
             &serde_json::Value::Object(workspace.clone()),
+            OnConflict::Replace,
         )?;
 
         // Restore tables in order
         for table in RESTORE_TABLE_ORDER {
             if let Some(rows) = data.get(table) {
-                insert_json_rows(&tx, table, rows)?;
+                insert_json_rows(&tx, table, rows, OnConflict::Replace)?;
             }
         }
 
@@ -796,6 +906,279 @@ fn restore_global_backup_data(conn: &mut Connection, backup_json: &str) -> Resul
 
     tx.commit().map_err(|e| e.to_string())?;
     Ok(restored_ids)
+}
+
+type JsonObject = serde_json::Map<String, serde_json::Value>;
+
+/// One backup entry: the workspace row plus its table data.
+type BackupEntry = (JsonObject, JsonObject);
+
+/// Normalize either backup envelope into `(workspace_object, table_data_object)`
+/// pairs. Per-workspace backups carry `data` as an object; global backups mark
+/// `is_global` and carry `data` as an array of `{workspace, data}` entries.
+fn backup_workspace_entries(backup: &serde_json::Value) -> Result<Vec<BackupEntry>, String> {
+    let is_global = backup
+        .get("is_global")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+
+    let mut entries = Vec::new();
+    if is_global {
+        let workspaces = backup
+            .get("data")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| "Backup is missing workspace data".to_string())?;
+        for entry in workspaces {
+            let workspace = entry
+                .get("workspace")
+                .and_then(serde_json::Value::as_object)
+                .ok_or_else(|| "Backup entry is missing workspace object".to_string())?;
+            let data = entry
+                .get("data")
+                .and_then(serde_json::Value::as_object)
+                .ok_or_else(|| "Backup workspace is missing table data".to_string())?;
+            entries.push((workspace.clone(), data.clone()));
+        }
+    } else {
+        let workspace = backup
+            .get("workspace")
+            .and_then(serde_json::Value::as_object)
+            .ok_or_else(|| "Backup is missing workspace data".to_string())?;
+        let data = backup
+            .get("data")
+            .and_then(serde_json::Value::as_object)
+            .ok_or_else(|| "Backup is missing table data".to_string())?;
+        entries.push((workspace.clone(), data.clone()));
+    }
+
+    Ok(entries)
+}
+
+fn workspace_id_of(workspace: &JsonObject) -> Result<String, String> {
+    workspace
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| "Backup workspace is missing an id".to_string())
+}
+
+/// Inspect a backup file without writing anything, so the UI can offer a
+/// selective import instead of an all-or-nothing restore.
+#[tauri::command]
+pub async fn preview_backup(
+    auth: State<'_, AuthState>,
+    state: State<'_, DbState>,
+    backup_json: String,
+) -> Result<BackupPreview, String> {
+    require_auth(&auth, &state)?;
+    let pool = state.0.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let backup: serde_json::Value =
+            serde_json::from_str(&backup_json).map_err(|e| format!("Invalid backup JSON: {e}"))?;
+        validate_backup_session_ids(&backup)?;
+
+        let is_global = backup
+            .get("is_global")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+
+        let mut workspaces = Vec::new();
+        for (workspace, data) in backup_workspace_entries(&backup)? {
+            let id = workspace_id_of(&workspace)?;
+            let name = workspace
+                .get("name")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("Untitled workspace")
+                .to_string();
+
+            let exists_locally = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM workspaces WHERE id = ?1)",
+                    [&id],
+                    |row| row.get::<_, i64>(0),
+                )
+                .map_err(|e| e.to_string())?
+                != 0;
+
+            let categories = BACKUP_CATEGORIES
+                .iter()
+                .map(|(category_id, label, tables)| {
+                    let row_count = tables
+                        .iter()
+                        .filter_map(|table| data.get(*table))
+                        .filter_map(serde_json::Value::as_array)
+                        .map(Vec::len)
+                        .sum();
+                    BackupCategoryCount {
+                        id: (*category_id).to_string(),
+                        label: (*label).to_string(),
+                        row_count,
+                    }
+                })
+                .collect();
+
+            workspaces.push(BackupWorkspacePreview {
+                id,
+                name,
+                exists_locally,
+                categories,
+            });
+        }
+
+        Ok(BackupPreview {
+            is_global,
+            created_at: backup
+                .get("created_at")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            app_version: backup
+                .get("app_version")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string),
+            workspaces,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Import only the selected workspaces and data categories from a backup.
+///
+/// `mode` is `"merge"` (default, never deletes — local rows win) or
+/// `"replace"` (deletes the workspace first, matching `restore_backup`).
+#[tauri::command]
+pub async fn import_backup_selective(
+    auth: State<'_, AuthState>,
+    state: State<'_, DbState>,
+    backup_json: String,
+    workspace_ids: Vec<String>,
+    category_ids: Vec<String>,
+    mode: String,
+) -> Result<SelectiveImportResult, String> {
+    require_auth_for_destructive_ops(&auth, &state)?;
+    let pool = state.0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        import_selective_data(&mut conn, &backup_json, &workspace_ids, &category_ids, &mode)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn import_selective_data(
+    conn: &mut Connection,
+    backup_json: &str,
+    workspace_ids: &[String],
+    category_ids: &[String],
+    mode: &str,
+) -> Result<SelectiveImportResult, String> {
+    let _relocation = crate::services::chat_move_sync::lock_relocations()?;
+    let backup: serde_json::Value =
+        serde_json::from_str(backup_json).map_err(|e| format!("Invalid backup JSON: {e}"))?;
+    validate_backup_session_ids(&backup)?;
+
+    let on_conflict = match mode {
+        "merge" => OnConflict::Ignore,
+        "replace" => OnConflict::Replace,
+        other => return Err(format!("Unknown import mode '{other}'")),
+    };
+
+    if workspace_ids.is_empty() {
+        return Err("Select at least one workspace to import".to_string());
+    }
+    if category_ids.is_empty() {
+        return Err("Select at least one data category to import".to_string());
+    }
+
+    for category_id in category_ids {
+        if !BACKUP_CATEGORIES
+            .iter()
+            .any(|(id, _, _)| id == category_id)
+        {
+            return Err(format!("Unknown import category '{category_id}'"));
+        }
+    }
+
+    let entries = backup_workspace_entries(&backup)?;
+    let mut selected = Vec::new();
+    for (workspace, data) in entries {
+        let id = workspace_id_of(&workspace)?;
+        if workspace_ids.contains(&id) {
+            selected.push((id, workspace, data));
+        }
+    }
+
+    for requested in workspace_ids {
+        if !selected.iter().any(|(id, _, _)| id == requested) {
+            return Err(format!(
+                "Workspace '{requested}' is not present in this backup"
+            ));
+        }
+    }
+
+    // Only restore tables belonging to a selected category, but keep the
+    // canonical RESTORE_TABLE_ORDER so foreign keys always land in order.
+    let tables: Vec<&str> = RESTORE_TABLE_ORDER
+        .iter()
+        .copied()
+        .filter(|table| {
+            category_for_table(table)
+                .is_some_and(|category| category_ids.iter().any(|id| id == category))
+        })
+        .collect();
+
+    let mut per_category: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    let mut rows_imported = 0;
+    let mut restored_ids = Vec::new();
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    for (workspace_id, workspace, data) in &selected {
+        if on_conflict == OnConflict::Replace {
+            tx.execute("DELETE FROM workspaces WHERE id = ?1", [workspace_id])
+                .map_err(|e| e.to_string())?;
+        }
+
+        // In merge mode this is INSERT OR IGNORE, so an existing local
+        // workspace keeps its own name, about_you and survey_data.
+        insert_value_object(
+            &tx,
+            "workspaces",
+            &serde_json::Value::Object(workspace.clone()),
+            on_conflict,
+        )?;
+
+        for table in &tables {
+            if let Some(rows) = data.get(*table) {
+                let inserted = insert_json_rows(&tx, table, rows, on_conflict)?;
+                rows_imported += inserted;
+                if let Some(category) = category_for_table(table) {
+                    *per_category.entry(category).or_default() += inserted;
+                }
+            }
+        }
+
+        restored_ids.push(workspace_id.clone());
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+
+    let per_category = BACKUP_CATEGORIES
+        .iter()
+        .filter(|(id, _, _)| category_ids.iter().any(|selected| selected == id))
+        .map(|(id, label, _)| BackupCategoryCount {
+            id: (*id).to_string(),
+            label: (*label).to_string(),
+            row_count: per_category.get(id).copied().unwrap_or(0),
+        })
+        .collect();
+
+    Ok(SelectiveImportResult {
+        workspace_ids: restored_ids,
+        rows_imported,
+        per_category,
+    })
 }
 
 #[cfg(test)]
@@ -914,11 +1297,309 @@ mod path_validation_tests {
             &conn,
             "chat_sessions",
             &serde_json::json!({"id": "../outside"}),
+            OnConflict::Replace,
         ).unwrap_err();
         assert!(error.contains("Invalid backup chat session"));
         assert_eq!(
             conn.query_row("SELECT COUNT(id) FROM chat_sessions", [], |row| row.get::<_, i64>(0)).unwrap(),
             0
         );
+    }
+}
+
+#[cfg(test)]
+mod selective_import_tests {
+    use super::*;
+
+    fn test_conn() -> (tempfile::TempDir, r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>) {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::initialize_database(&dir.path().join("selective.sqlite")).unwrap();
+        let conn = pool.get().unwrap();
+        (dir, conn)
+    }
+
+    /// A backup of workspace `ws` holding one chat session and one project note.
+    fn sample_backup() -> String {
+        serde_json::json!({
+            "version": "2.0",
+            "created_at": "2026-01-01T00:00:00Z",
+            "workspace": {"id": "ws", "name": "Backup Name"},
+            "data": {
+                "chat_sessions": [
+                    {"id": "backup-chat", "workspace_id": "ws", "title": "From backup"}
+                ],
+                "project_notes": [
+                    {"id": "backup-note", "workspace_id": "ws", "title": "Note", "content": "body"}
+                ]
+            }
+        })
+        .to_string()
+    }
+
+    fn count(conn: &Connection, sql: &str) -> i64 {
+        conn.query_row(sql, [], |row| row.get::<_, i64>(0)).unwrap()
+    }
+
+    #[test]
+    fn every_restore_table_has_exactly_one_category() {
+        for table in RESTORE_TABLE_ORDER {
+            let owners: Vec<&str> = BACKUP_CATEGORIES
+                .iter()
+                .filter(|(_, _, tables)| tables.contains(&table))
+                .map(|(id, _, _)| *id)
+                .collect();
+            assert_eq!(
+                owners.len(),
+                1,
+                "table '{table}' should belong to exactly one category, found {owners:?}"
+            );
+        }
+
+        // And no category claims a table that is never restored.
+        for (id, _, tables) in BACKUP_CATEGORIES {
+            for table in tables {
+                assert!(
+                    RESTORE_TABLE_ORDER.contains(table),
+                    "category '{id}' claims unknown table '{table}'"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn merge_mode_keeps_local_rows_and_adds_missing_ones() {
+        let (_dir, mut conn) = test_conn();
+        conn.execute(
+            "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES ('ws', 'Local Name', 'now', 'now')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO chat_sessions (id, workspace_id, title) VALUES ('local-chat', 'ws', 'Local chat')",
+            [],
+        )
+        .unwrap();
+
+        let result = import_selective_data(
+            &mut conn,
+            &sample_backup(),
+            &["ws".to_string()],
+            &["chats".to_string(), "notes".to_string()],
+            "merge",
+        )
+        .unwrap();
+
+        // The pre-existing local chat survives, and the backup's chat is added.
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM chat_sessions"), 2);
+        assert_eq!(
+            count(&conn, "SELECT COUNT(*) FROM chat_sessions WHERE id = 'local-chat'"),
+            1
+        );
+        assert_eq!(
+            count(&conn, "SELECT COUNT(*) FROM chat_sessions WHERE id = 'backup-chat'"),
+            1
+        );
+        // Merge must not clobber the local workspace's own name.
+        let name: String = conn
+            .query_row("SELECT name FROM workspaces WHERE id = 'ws'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(name, "Local Name");
+        assert_eq!(result.rows_imported, 2);
+    }
+
+    #[test]
+    fn merge_mode_does_not_overwrite_a_locally_edited_row() {
+        let (_dir, mut conn) = test_conn();
+        conn.execute(
+            "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES ('ws', 'Local', 'now', 'now')",
+            [],
+        )
+        .unwrap();
+        // Same id as the backup row, but locally renamed.
+        conn.execute(
+            "INSERT INTO chat_sessions (id, workspace_id, title) VALUES ('backup-chat', 'ws', 'Locally edited')",
+            [],
+        )
+        .unwrap();
+
+        import_selective_data(
+            &mut conn,
+            &sample_backup(),
+            &["ws".to_string()],
+            &["chats".to_string()],
+            "merge",
+        )
+        .unwrap();
+
+        let title: String = conn
+            .query_row(
+                "SELECT title FROM chat_sessions WHERE id = 'backup-chat'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(title, "Locally edited");
+    }
+
+    #[test]
+    fn replace_mode_deletes_existing_workspace_data() {
+        let (_dir, mut conn) = test_conn();
+        conn.execute(
+            "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES ('ws', 'Local Name', 'now', 'now')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO chat_sessions (id, workspace_id, title) VALUES ('local-chat', 'ws', 'Local chat')",
+            [],
+        )
+        .unwrap();
+
+        import_selective_data(
+            &mut conn,
+            &sample_backup(),
+            &["ws".to_string()],
+            &["chats".to_string()],
+            "replace",
+        )
+        .unwrap();
+
+        assert_eq!(
+            count(&conn, "SELECT COUNT(*) FROM chat_sessions WHERE id = 'local-chat'"),
+            0
+        );
+        assert_eq!(
+            count(&conn, "SELECT COUNT(*) FROM chat_sessions WHERE id = 'backup-chat'"),
+            1
+        );
+        let name: String = conn
+            .query_row("SELECT name FROM workspaces WHERE id = 'ws'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(name, "Backup Name");
+    }
+
+    #[test]
+    fn unselected_categories_are_not_imported() {
+        let (_dir, mut conn) = test_conn();
+
+        let result = import_selective_data(
+            &mut conn,
+            &sample_backup(),
+            &["ws".to_string()],
+            &["notes".to_string()],
+            "merge",
+        )
+        .unwrap();
+
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM chat_sessions"), 0);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM project_notes"), 1);
+        let notes = result
+            .per_category
+            .iter()
+            .find(|c| c.id == "notes")
+            .unwrap();
+        assert_eq!(notes.row_count, 1);
+        assert!(result.per_category.iter().all(|c| c.id != "chats"));
+    }
+
+    #[test]
+    fn global_backup_imports_only_the_selected_workspace() {
+        let (_dir, mut conn) = test_conn();
+        let backup = serde_json::json!({
+            "is_global": true,
+            "created_at": "2026-01-01T00:00:00Z",
+            "data": [
+                {
+                    "workspace": {"id": "ws-a", "name": "Alpha"},
+                    "data": {"chat_sessions": [{"id": "chat-a", "workspace_id": "ws-a", "title": "A"}]}
+                },
+                {
+                    "workspace": {"id": "ws-b", "name": "Beta"},
+                    "data": {"chat_sessions": [{"id": "chat-b", "workspace_id": "ws-b", "title": "B"}]}
+                }
+            ]
+        })
+        .to_string();
+
+        import_selective_data(
+            &mut conn,
+            &backup,
+            &["ws-a".to_string()],
+            &["chats".to_string()],
+            "merge",
+        )
+        .unwrap();
+
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM workspaces WHERE id = 'ws-a'"), 1);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM workspaces WHERE id = 'ws-b'"), 0);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM chat_sessions"), 1);
+    }
+
+    #[test]
+    fn selective_import_rejects_bad_input() {
+        let (_dir, mut conn) = test_conn();
+        let backup = sample_backup();
+
+        let empty_workspaces =
+            import_selective_data(&mut conn, &backup, &[], &["chats".into()], "merge").unwrap_err();
+        assert!(empty_workspaces.contains("at least one workspace"));
+
+        let empty_categories =
+            import_selective_data(&mut conn, &backup, &["ws".into()], &[], "merge").unwrap_err();
+        assert!(empty_categories.contains("at least one data category"));
+
+        let bad_mode =
+            import_selective_data(&mut conn, &backup, &["ws".into()], &["chats".into()], "wipe")
+                .unwrap_err();
+        assert!(bad_mode.contains("Unknown import mode"));
+
+        let bad_category =
+            import_selective_data(&mut conn, &backup, &["ws".into()], &["nope".into()], "merge")
+                .unwrap_err();
+        assert!(bad_category.contains("Unknown import category"));
+
+        let missing_workspace =
+            import_selective_data(&mut conn, &backup, &["ghost".into()], &["chats".into()], "merge")
+                .unwrap_err();
+        assert!(missing_workspace.contains("not present in this backup"));
+    }
+
+    #[test]
+    fn selective_import_rejects_unsafe_session_ids() {
+        let (_dir, mut conn) = test_conn();
+        let backup = serde_json::json!({
+            "workspace": {"id": "ws", "name": "W"},
+            "data": {"chat_sessions": [{"id": "../escape", "workspace_id": "ws"}]}
+        })
+        .to_string();
+
+        assert!(import_selective_data(
+            &mut conn,
+            &backup,
+            &["ws".into()],
+            &["chats".into()],
+            "merge",
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn backup_entries_normalize_both_envelope_shapes() {
+        let per_workspace: serde_json::Value =
+            serde_json::from_str(&sample_backup()).unwrap();
+        let entries = backup_workspace_entries(&per_workspace).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(workspace_id_of(&entries[0].0).unwrap(), "ws");
+
+        let global = serde_json::json!({
+            "is_global": true,
+            "data": [
+                {"workspace": {"id": "ws-a", "name": "A"}, "data": {}},
+                {"workspace": {"id": "ws-b", "name": "B"}, "data": {}}
+            ]
+        });
+        let entries = backup_workspace_entries(&global).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(workspace_id_of(&entries[1].0).unwrap(), "ws-b");
     }
 }

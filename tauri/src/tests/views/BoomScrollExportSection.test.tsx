@@ -9,6 +9,9 @@ import { writeTextFile } from "@tauri-apps/plugin-fs";
 vi.mock("lucide-react", () => ({
   RefreshCw: () => <div data-testid="icon-refresh-cw" />,
   Smartphone: () => <div data-testid="icon-smartphone" />,
+  CheckSquare: () => <div data-testid="icon-check-square" />,
+  Square: () => <div data-testid="icon-square" />,
+  X: () => <div data-testid="icon-x" />,
 }));
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
@@ -66,6 +69,15 @@ const rustStudy = makeWorkspace("workspace-1", "Rust Study");
 const biology = makeWorkspace("workspace-2", "Biology");
 const subWorkspace = makeWorkspace("workspace-3", "Genetics", "workspace-2");
 
+/** The section's Export button now opens a picker dialog first. */
+function openPicker() {
+  fireEvent.click(screen.getByRole("button", { name: /^export$/i }));
+}
+
+function confirmExport() {
+  fireEvent.click(screen.getByRole("button", { name: /export deck/i }));
+}
+
 describe("BoomScrollExportSection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -81,7 +93,8 @@ describe("BoomScrollExportSection", () => {
     vi.mocked(api.export.feedDeck).mockResolvedValue(deckJson);
 
     render(<BoomScrollExportSection />);
-    fireEvent.click(screen.getByRole("button", { name: /export/i }));
+    openPicker();
+    confirmExport();
 
     await waitFor(() => {
       expect(api.export.feedDeck).toHaveBeenCalledWith([
@@ -102,24 +115,34 @@ describe("BoomScrollExportSection", () => {
     vi.mocked(api.export.feedDeck).mockResolvedValue(deckJson);
 
     render(<BoomScrollExportSection />);
-    fireEvent.click(screen.getByLabelText("Biology"));
-    fireEvent.click(screen.getByLabelText("Genetics"));
-    fireEvent.click(screen.getByRole("button", { name: /export/i }));
+    openPicker();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Biology" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Genetics" }));
+    confirmExport();
 
     await waitFor(() => {
       expect(api.export.feedDeck).toHaveBeenCalledWith(["workspace-1"]);
     });
   });
 
-  it("select-all checkbox clears and restores the selection", () => {
+  it("All / None clears and restores the selection", () => {
     render(<BoomScrollExportSection />);
-    const selectAll = screen.getByLabelText(/All workspaces/);
+    openPicker();
 
-    fireEvent.click(selectAll);
-    expect(screen.getByRole("button", { name: /export/i })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "None" }));
+    expect(screen.getByRole("button", { name: /export deck/i })).toBeDisabled();
 
-    fireEvent.click(selectAll);
-    expect(screen.getByRole("button", { name: /export/i })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    expect(screen.getByRole("button", { name: /export deck/i })).toBeEnabled();
+  });
+
+  it("cancelling the picker exports nothing", () => {
+    render(<BoomScrollExportSection />);
+    openPicker();
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+
+    expect(screen.queryByRole("button", { name: /export deck/i })).not.toBeInTheDocument();
+    expect(api.export.feedDeck).not.toHaveBeenCalled();
   });
 
   it("does nothing when the save dialog is cancelled", async () => {
@@ -128,7 +151,8 @@ describe("BoomScrollExportSection", () => {
     vi.mocked(saveDialog).mockResolvedValue(null);
 
     render(<BoomScrollExportSection />);
-    fireEvent.click(screen.getByRole("button", { name: /export/i }));
+    openPicker();
+    confirmExport();
 
     await waitFor(() => {
       expect(api.export.feedDeck).toHaveBeenCalled();
@@ -141,7 +165,8 @@ describe("BoomScrollExportSection", () => {
     vi.mocked(api.export.feedDeck).mockRejectedValue("No flashcards in the selected workspaces");
 
     render(<BoomScrollExportSection />);
-    fireEvent.click(screen.getByRole("button", { name: /export/i }));
+    openPicker();
+    confirmExport();
 
     await waitFor(() => {
       expect(showMessage).toHaveBeenCalledWith(
@@ -158,6 +183,6 @@ describe("BoomScrollExportSection", () => {
     useWorkspaceStore.setState({ workspaces: [], activeWorkspaceId: null });
 
     render(<BoomScrollExportSection />);
-    expect(screen.getByRole("button", { name: /export/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^export$/i })).toBeDisabled();
   });
 });

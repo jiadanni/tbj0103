@@ -1184,6 +1184,34 @@ export interface ChatSuggestion {
 }
 
 /** A previously imported chat with its current in-app location. */
+export interface BackupCategoryCount {
+  id: string;
+  label: string;
+  row_count: number;
+}
+
+export interface BackupWorkspacePreview {
+  id: string;
+  name: string;
+  exists_locally: boolean;
+  categories: BackupCategoryCount[];
+}
+
+export interface BackupPreview {
+  is_global: boolean;
+  created_at: string;
+  app_version: string | null;
+  workspaces: BackupWorkspacePreview[];
+}
+
+export interface SelectiveImportResult {
+  workspace_ids: string[];
+  rows_imported: number;
+  per_category: BackupCategoryCount[];
+}
+
+export type BackupImportMode = "merge" | "replace";
+
 export interface LinkedImportInfo {
   session_id: string;
   source_conversation_uuid: string;
@@ -2232,6 +2260,19 @@ export const api = {
     delete: (id: string) => invoke<void>("delete_backup", { id }),
     createGlobal: () => invoke<string>("create_global_backup"),
     restoreGlobal: (backupJson: string) => invoke<string[]>("restore_global_backup", { backupJson }),
+    preview: (backupJson: string) => invoke<BackupPreview>("preview_backup", { backupJson }),
+    importSelective: (
+      backupJson: string,
+      workspaceIds: string[],
+      categoryIds: string[],
+      mode: BackupImportMode,
+    ) =>
+      invoke<SelectiveImportResult>("import_backup_selective", {
+        backupJson,
+        workspaceIds,
+        categoryIds,
+        mode,
+      }),
   },
 
   settings: {

@@ -9,6 +9,7 @@ import { RefreshCw, Smartphone } from "lucide-react";
 import { api } from "../lib/api";
 import { useWorkspaceStore, type Workspace } from "../stores/workspaceStore";
 import SuccessDialog from "../components/SuccessDialog";
+import BoomScrollExportDialog from "../components/BoomScrollExportDialog";
 
 function sanitizeFilenamePart(value: string) {
   return value
@@ -49,11 +50,9 @@ export default function BoomScrollExportSection() {
   const [error, setError] = useState<string | null>(null);
   const [successDialog, setSuccessDialog] = useState<{ title: string; description: string } | null>(null);
   const [cardCounts, setCardCounts] = useState<Record<string, number>>({});
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const picker = useMemo(() => orderForPicker(workspaces), [workspaces]);
-  const [selected, setSelected] = useState<Set<string>>(
-    () => new Set(picker.map((entry) => entry.workspace.id)),
-  );
 
   useEffect(() => {
     let active = true;
@@ -79,27 +78,9 @@ export default function BoomScrollExportSection() {
     };
   }, [picker]);
 
-  const allSelected = picker.length > 0 && picker.every((entry) => selected.has(entry.workspace.id));
-  const selectedCount = picker.filter((entry) => selected.has(entry.workspace.id)).length;
+  const totalCards = picker.reduce((total, entry) => total + (cardCounts[entry.workspace.id] ?? 0), 0);
 
-  function toggle(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  }
-
-  function toggleAll() {
-    setSelected(allSelected ? new Set() : new Set(picker.map((entry) => entry.workspace.id)));
-  }
-
-  async function exportDeck() {
-    const ids = picker.map((entry) => entry.workspace.id).filter((id) => selected.has(id));
+  async function exportDeck(ids: string[]) {
     if (ids.length === 0) { return; }
 
     setError(null);
@@ -117,6 +98,7 @@ export default function BoomScrollExportSection() {
       if (!destination) { return; }
 
       await writeTextFile(destination, deckJson);
+      setPickerOpen(false);
       setSuccessDialog({
         title: "Deck exported",
         description: `Saved a Boom Scroll deck with flashcards from ${ids.length} workspace${ids.length === 1 ? "" : "s"}. Move the file to your phone and open it in the Boom Scroll app.`,
@@ -132,65 +114,59 @@ export default function BoomScrollExportSection() {
 
   return (
     <div className="w-full">
-      {error && (
+      {error && !pickerOpen && (
         <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
           {error}
         </div>
       )}
 
-      <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <Smartphone size={16} className="text-[var(--accent-color)]" />
-              <h2 className="text-sm font-medium text-[var(--text-primary)]">Boom Scroll Deck</h2>
+      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Smartphone size={16} className="text-[var(--accent-color)]" />
+                <h2 className="text-sm font-medium text-[var(--text-primary)]">Boom Scroll Deck</h2>
+              </div>
+              <p className="mt-2 text-xs text-[var(--text-muted)]">
+                Export flashcards as a deck file for the Boom Scroll mobile companion app.
+                Everything stays local — transfer the file to your phone yourself.
+              </p>
+              <p className="mt-3 text-xs text-[var(--text-muted)]">
+                {picker.length > 0
+                  ? `${totalCards} card${totalCards === 1 ? "" : "s"} across ${picker.length} workspace${picker.length === 1 ? "" : "s"}.`
+                  : "No workspaces available to export."}
+              </p>
             </div>
-            <p className="mt-2 text-xs text-[var(--text-muted)]">
-              Export flashcards from the selected workspaces as a deck file for the Boom Scroll
-              mobile companion app. Everything stays local — transfer the file to your phone yourself.
-            </p>
+
+            <button
+              onClick={() => {
+                setError(null);
+                setPickerOpen(true);
+              }}
+              disabled={exporting || picker.length === 0}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-color)] px-3 py-2 text-xs text-white hover:opacity-90 disabled:opacity-40"
+            >
+              {exporting ? <RefreshCw size={12} className="animate-spin" /> : <Smartphone size={12} />}
+              {exporting ? "Exporting..." : "Export"}
+            </button>
           </div>
+        </section>
+      </div>
 
-          <button
-            onClick={() => void exportDeck()}
-            disabled={exporting || selectedCount === 0}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-color)] px-3 py-2 text-xs text-white hover:opacity-90 disabled:opacity-40"
-          >
-            {exporting ? <RefreshCw size={12} className="animate-spin" /> : <Smartphone size={12} />}
-            {exporting ? "Exporting..." : "Export"}
-          </button>
-        </div>
-
-        <div className="mt-4 border-t border-[var(--border-color)] pt-3">
-          <label className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-            <input type="checkbox" checked={allSelected} onChange={toggleAll} />
-            <span className="font-medium">All workspaces</span>
-            <span className="text-[var(--text-muted)]">({selectedCount} of {picker.length} selected)</span>
-          </label>
-          <ul className="mt-2 max-h-56 space-y-1 overflow-y-auto">
-            {picker.map(({ workspace, depth }) => {
-              const count = cardCounts[workspace.id];
-              return (
-                <li key={workspace.id} style={{ paddingLeft: depth * 20 }}>
-                  <label className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-                    <input
-                      type="checkbox"
-                      checked={selected.has(workspace.id)}
-                      onChange={() => toggle(workspace.id)}
-                    />
-                    <span>{workspace.name}</span>
-                    {count !== undefined && (
-                      <span className="text-[var(--text-muted)] text-[10px]">
-                        ({count} {count === 1 ? "card" : "cards"})
-                      </span>
-                    )}
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      </section>
+      {pickerOpen && (
+        <BoomScrollExportDialog
+          entries={picker}
+          cardCounts={cardCounts}
+          busy={exporting}
+          error={error}
+          onCancel={() => {
+            setPickerOpen(false);
+            setError(null);
+          }}
+          onExport={(ids) => void exportDeck(ids)}
+        />
+      )}
 
       {successDialog && (
         <SuccessDialog
