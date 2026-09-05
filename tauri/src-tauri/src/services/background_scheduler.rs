@@ -306,7 +306,7 @@ pub fn request_cancel(task_type: &str) -> bool {
             cancelled_any = true;
         }
         // Cancel all currently registered jobs (including manual_data_processing)
-        for (_key, val) in map.iter_mut() {
+        for val in map.values_mut() {
             *val = true;
             cancelled_any = true;
         }
