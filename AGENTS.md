@@ -37,6 +37,8 @@ The targeted check is the cheap one matched to the edit: `cargo check --manifest
 
 `SKIP_TESTS=1 ./lint.sh` runs the static checks only, for a fast lint-only pass. Clippy runs with `--all-targets`, so warnings inside `#[cfg(test)]` modules are errors too.
 
+**A skipped check is not a passing check.** `lint.sh` exits 1 if any linter was skipped because its tool was not found, and names what it skipped — otherwise a machine missing `cargo` or `node` reports a green gate while checking nothing. On Linux, SwiftLint is legitimately unavailable, so use `ALLOW_SKIPPED_LINTERS=1 ./lint.sh` there. If a check you expected to run reports as skipped, install the tool rather than reaching for the opt-out.
+
 ### 2. Surgical Editing vs. Rewrite
 *   **Prefer surgical editing** for files over 200 lines. Avoid rewriting the entire file unless necessary.
 *   **Anti-Regression Check:** After a modification, run `git diff --stat`. If you see a massive deletion (e.g., -500 lines) that wasn't explicitly requested, you must REVERT immediately and use a more surgical approach.
@@ -244,6 +246,7 @@ cargo clippy --manifest-path tauri/src-tauri/Cargo.toml -- -D warnings
 # Run all checks at once (SwiftLint + ESLint + tsc + migrations + clippy + vitest + cargo test)
 # Every check must exit 0 — treat any non-zero exit (including lint warnings under -D warnings) as a blocker.
 # SKIP_TESTS=1 ./lint.sh   # static checks only, skips vitest + cargo test
+# ALLOW_SKIPPED_LINTERS=1 ./lint.sh   # tolerate unavailable tools (e.g. SwiftLint on Linux)
 ./lint.sh
 
 # Run dev server (requires Ollama running on :11434 for AI features)

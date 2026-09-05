@@ -387,7 +387,9 @@ pub async fn restore_backup(
     state: State<'_, DbState>,
     backup_json: String,
 ) -> Result<String, String> {
-    require_auth(&auth, &state)?;
+    // Restore deletes and replaces existing workspaces, so it must clear
+    // the destructive-ops gate that strict auth mode installs.
+    require_auth_for_destructive_ops(&auth, &state)?;
     let pool = state.0.clone();
     tokio::task::spawn_blocking(move || {
     let mut conn = pool.get().map_err(|e| e.to_string())?;
@@ -832,7 +834,9 @@ pub async fn restore_global_backup(
     state: State<'_, DbState>,
     backup_json: String,
 ) -> Result<Vec<String>, String> {
-    require_auth(&auth, &state)?;
+    // Restore deletes and replaces existing workspaces, so it must clear
+    // the destructive-ops gate that strict auth mode installs.
+    require_auth_for_destructive_ops(&auth, &state)?;
     let pool = state.0.clone();
     tokio::task::spawn_blocking(move || {
     let mut conn = pool.get().map_err(|e| e.to_string())?;
