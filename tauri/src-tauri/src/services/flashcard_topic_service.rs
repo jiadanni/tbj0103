@@ -5,6 +5,7 @@ use crate::commands::knowledge_graph::{
 use crate::db::DbState;
 use crate::models::learning_card::LearningCard;
 use crate::models::workspace::TopicSignature;
+use crate::services::background_scheduler::{cancellable, is_cancelled};
 use crate::services::model_settings::get_model_for_job;
 use rusqlite::Connection;
 use std::collections::HashSet;
@@ -44,6 +45,10 @@ const DEFAULT_BATCH_SIZE: u32 = 3;
 pub(crate) const DEFAULT_CLEANUP_INTERVAL_HOURS: i64 = 24;
 /// Topics examined per cleanup sweep (one LLM call each).
 const CLEANUP_TOPICS_PER_RUN: i64 = 10;
+const CLEANUP_TOPICS_QUERY: &str = "SELECT id, topic FROM flashcard_topics
+    WHERE card_count >= 2 AND (?2 IS NULL OR workspace_id = ?2)
+    ORDER BY card_count DESC
+    LIMIT ?1";
 /// Workspaces examined per topic-quality sweep (one LLM call each).
 const TOPIC_CLEANUP_WORKSPACES_PER_RUN: i64 = 5;
 
@@ -660,6 +665,26 @@ pub async fn tick_for_workspaces(
     ollama_url: Option<String>,
     workspace_filter: Option<&[String]>,
 ) -> Result<(), String> {
+    cancellable(
+        "flashcard_generation",
+        tick_for_workspaces_inner(state, ollama_url, workspace_filter),
+    )
+    .await?
+}
+
+fn check_cancelled(task_type: &str) -> Result<(), String> {
+    if is_cancelled(task_type) {
+        Err("cancelled".to_string())
+    } else {
+        Ok(())
+    }
+}
+
+async fn tick_for_workspaces_inner(
+    state: &DbState,
+    ollama_url: Option<String>,
+    workspace_filter: Option<&[String]>,
+) -> Result<(), String> {
     let (workspace_ids, model, min_interval, target_cards) = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
         let model = get_model_for_job(&conn, "flashcard_model").unwrap_or_default();
@@ -698,16 +723,19 @@ pub async fn tick_for_workspaces(
     // `topic_analysis_interval_minutes`) before the sync loop reads the
     // signature below.
     for ws_id in &workspace_ids {
+        check_cancelled("flashcard_generation")?;
         crate::services::topic_signature::ensure_ai_enriched_signature(state, ws_id).await;
     }
 
     for ws_id in &workspace_ids {
+        check_cancelled("flashcard_generation")?;
         let conn = state.0.get().map_err(|e| e.to_string())?;
         let _ = sync_concepts_from_signatures(&conn, ws_id);
     }
 
     let max_iterations = if workspace_filter.is_some() { 50 } else { 1 };
     for _ in 0..max_iterations {
+        check_cancelled("flashcard_generation")?;
         let due = {
             let conn = state.0.get().map_err(|e| e.to_string())?;
             let current = crate::services::model_settings::get_current_workspace_id(&conn);
@@ -869,6 +897,7 @@ async fn topic_quality_pass_for_workspace(
     model: &str,
     ws_id: &str,
 ) -> Result<(), String> {
+    check_cancelled("flashcard_cleanup")?;
     let topics: Vec<TopicQualityRow> = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
         let blocked = crate::services::topic_block_service::blocked_names_set(&conn, ws_id)
@@ -935,6 +964,7 @@ async fn topic_quality_pass_for_workspace(
         )
         .await
         .map_err(|e| format!("Topic cleanup for workspace {ws_id} failed: {e}"))?;
+    check_cancelled("flashcard_cleanup")?;
     let plan = parse_topic_cleanup_response(&raw)
         .map_err(|e| format!("Topic cleanup for workspace {ws_id} failed: {e}"))?;
     if plan.junk.is_empty() && plan.duplicates.is_empty() {
@@ -1017,24 +1047,27 @@ async fn cleanup_tick_inner(
     ollama_url: Option<String>,
     workspace_id: Option<&str>,
 ) -> Result<(), String> {
+    cancellable(
+        "flashcard_cleanup",
+        cleanup_tick_work(state, ollama_url, workspace_id),
+    )
+    .await?
+}
+
+async fn cleanup_tick_work(
+    state: &DbState,
+    ollama_url: Option<String>,
+    workspace_id: Option<&str>,
+) -> Result<(), String> {
     let (model, topics) = {
         let conn = state.0.get().map_err(|e| e.to_string())?;
         let model = get_model_for_job(&conn, "flashcard_cleanup_model").unwrap_or_default();
-        let sql = if workspace_id.is_some() {
-            "SELECT id, topic FROM flashcard_topics
-             WHERE card_count >= 2 AND workspace_id = ?2
-             ORDER BY card_count DESC
-             LIMIT ?1"
-        } else {
-            "SELECT id, topic FROM flashcard_topics
-             WHERE card_count >= 2
-             ORDER BY card_count DESC
-             LIMIT ?1"
-        };
-        let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(CLEANUP_TOPICS_QUERY)
+            .map_err(|e| e.to_string())?;
         let topics: Vec<(String, String)> = stmt
             .query_map(
-                rusqlite::params![CLEANUP_TOPICS_PER_RUN, workspace_id.unwrap_or("")],
+                rusqlite::params![CLEANUP_TOPICS_PER_RUN, workspace_id],
                 |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
             )
             .map_err(|e| e.to_string())?
@@ -1057,6 +1090,7 @@ async fn cleanup_tick_inner(
     }
 
     for (topic_id, topic_name) in &topics {
+        check_cancelled("flashcard_cleanup")?;
         let cards: Vec<CleanupCard> = {
             let conn = state.0.get().map_err(|e| e.to_string())?;
             let mut stmt = conn
@@ -1113,6 +1147,7 @@ async fn cleanup_tick_inner(
             )
             .await
             .map_err(|e| format!("Cleanup for topic \"{topic_name}\" failed: {e}"))?;
+        check_cancelled("flashcard_cleanup")?;
         let trimmed = raw.trim();
         let json_str = match (trimmed.find('['), trimmed.rfind(']')) {
             (Some(start), Some(end)) if end > start => &trimmed[start..=end],
@@ -1191,6 +1226,7 @@ async fn cleanup_tick_inner(
     // Only the unscoped (global) sweep advances it — a single-workspace run
     // from the manual batch runner hasn't covered the sampled set the
     // watermark is meant to gate.
+    check_cancelled("flashcard_cleanup")?;
     if workspace_id.is_some() {
         return Ok(());
     }
@@ -1202,6 +1238,66 @@ async fn cleanup_tick_inner(
     .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod cleanup_entrypoint_tests {
+    use super::*;
+
+    fn offline_state() -> DbState {
+        let pool = r2d2::Pool::builder()
+            .max_size(1)
+            .build(r2d2_sqlite::SqliteConnectionManager::memory())
+            .unwrap();
+        pool.get()
+            .unwrap()
+            .execute_batch(
+                "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+                 CREATE TABLE flashcard_topics (
+                     id TEXT PRIMARY KEY, workspace_id TEXT, topic TEXT, card_count INTEGER
+                 );
+                 INSERT INTO flashcard_topics (id, workspace_id, topic, card_count)
+                 VALUES ('a', 'w1', 'Rust', 3), ('b', 'w2', 'SQLite', 2),
+                        ('c', 'w1', 'Single card', 1), ('d', '', 'Empty workspace', 2);",
+            )
+            .unwrap();
+        DbState(pool)
+    }
+
+    #[tokio::test]
+    async fn unscoped_cleanup_entrypoint_binds_nullable_workspace_offline() {
+        let state = offline_state();
+        cleanup_tick(&state, None).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn scoped_cleanup_entrypoint_binds_workspace_offline() {
+        let state = offline_state();
+        cleanup_tick_for_workspace(&state, None, "w1").await.unwrap();
+    }
+
+    #[test]
+    fn cleanup_selection_distinguishes_null_empty_and_named_workspaces() {
+        let state = offline_state();
+        let conn = state.0.get().unwrap();
+        let select = |workspace_id: Option<&str>| {
+            let mut stmt = conn.prepare(CLEANUP_TOPICS_QUERY).unwrap();
+            let mut ids = stmt
+                .query_map(rusqlite::params![CLEANUP_TOPICS_PER_RUN, workspace_id], |r| {
+                    r.get::<_, String>(0)
+                })
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap();
+            ids.sort();
+            ids
+        };
+        assert_eq!(select(None), ["a", "b", "d"]);
+        assert_eq!(select(Some("w1")), ["a"]);
+        assert_eq!(select(Some("w2")), ["b"]);
+        assert_eq!(select(Some("")), ["d"]);
+        assert!(select(Some("missing")).is_empty());
+    }
 }
 
 #[cfg(test)]
