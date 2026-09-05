@@ -99,8 +99,11 @@ function WorkspaceNavigationTabs({
 
   return (
     <div className="relative flex h-full min-w-0 flex-1 items-center gap-1" data-no-drag>
+      {/* items-end (not items-center) so each tab's `self-end` resolves against
+          the titlebar's bottom edge. With items-center the tabs sat a few px
+          below the chevron and + buttons beside them. */}
       <div
-        className="flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none"
+        className="flex h-full min-w-0 flex-1 items-end gap-1 overflow-x-auto scrollbar-none"
         onWheel={handleHorizontalWheel}
       >
         {workspaces.map((workspace) => (

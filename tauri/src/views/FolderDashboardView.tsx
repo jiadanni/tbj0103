@@ -365,34 +365,36 @@ export default function FolderDashboardView() {
                     onMouseLeave={() => setActiveContinueThreadId((current) => current === item.session_id ? null : current)}
                     onFocus={() => setActiveContinueThreadId(item.session_id)}
                     onBlur={() => setActiveContinueThreadId((current) => current === item.session_id ? null : current)}
-                    className="group flex w-full items-start gap-2 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-[var(--bg-primary)]"
+                    className="group flex w-full items-start gap-2 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-[var(--bg-primary)]"
                   >
-                    <MessageSquare size={12} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
+                    <MessageSquare size={12} className="mt-[3px] shrink-0 text-[var(--text-muted)]" />
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium text-[var(--text-primary)]">
-                        {item.title}
+                      {/* Title and age share a line so each row is two lines, not
+                          three -- three left the card looking sparse. */}
+                      <div className="flex items-baseline gap-2">
+                        <span className="truncate text-sm font-medium text-[var(--text-primary)]">
+                          {item.title}
+                        </span>
+                        <span className="ml-auto shrink-0 text-[10px] text-[var(--text-muted)]">
+                          {timeAgo(item.updated_at)}
+                        </span>
                       </div>
-                      <div className="text-[11px] text-[var(--text-muted)]">
-                        {item.folder_name ? `${item.folder_name} · ` : ""}{timeAgo(item.updated_at)}
+                      {/* Always shown, clamped to a single line: the row's height
+                          never depends on hover, so nothing below it can shift.
+                          Hover only brightens the text. Reserving two hidden
+                          lines instead left the list looking sparse. */}
+                      <div
+                        className={`truncate text-[11px] transition-colors duration-150 ${
+                          activeContinueThreadId === item.session_id
+                            ? "text-[var(--text-secondary)]"
+                            : "text-[var(--text-muted)]"
+                        }`}
+                      >
+                        {item.folder_name ? `${item.folder_name} · ` : ""}
+                        {item.last_snippet || "No messages yet"}
                       </div>
-                      {/* The snippet row is always laid out, and hover only fades
-                          it in. Mounting it on hover instead would grow the row,
-                          pushing the rows below it -- and every section after this
-                          card -- down as the pointer moves across the list. */}
-                      {item.last_snippet && (
-                        <div
-                          className={`mt-1 line-clamp-2 text-[11px] text-[var(--text-secondary)] transition-opacity duration-150 ${
-                            activeContinueThreadId === item.session_id
-                              ? "opacity-100"
-                              : "opacity-0"
-                          }`}
-                          aria-hidden={activeContinueThreadId !== item.session_id}
-                        >
-                          {item.last_snippet}
-                        </div>
-                      )}
                     </div>
-                    <ArrowRight size={12} className="mt-0.5 shrink-0 text-[var(--text-muted)] transition-transform group-hover:translate-x-0.5 group-hover:text-[var(--accent-color)]" />
+                    <ArrowRight size={12} className="mt-[3px] shrink-0 text-[var(--text-muted)] transition-transform group-hover:translate-x-0.5 group-hover:text-[var(--accent-color)]" />
                   </button>
                 ))}
               </div>
