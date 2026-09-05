@@ -20,6 +20,8 @@ import { useSettingsStore } from "../stores/settingsStore";
 import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
 import SmartTextEditor from "../components/SmartTextEditor";
 import { Tooltip } from "../components/Tooltip";
+import { discardNoteDraft, flushNoteDraft, refreshNoteDrafts, updateNoteDraft, useNoteDraft, useNoteDraftStore } from "../hooks/useNoteDraft";
+import { useNoteComposerDraft } from "../hooks/useNoteComposerDraft";
 
 // ── Unified item model ──────────────────────────────────────────────────
 
@@ -47,29 +49,27 @@ function formatTokens(n?: number | null): string {
 // ── Composer ────────────────────────────────────────────────────────────
 
 interface ComposerProps {
+  workspaceId: string;
   onCreate: (fields: { title: string; content: string; tags: string[]; isPinned: boolean }) => Promise<void>;
   onUpload: () => void;
   onWebCapture: () => void;
   disabled?: boolean;
 }
 
-function Composer({ onCreate, onUpload, onWebCapture, disabled }: ComposerProps) {
-  const [expanded, setExpanded] = useState(false);
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  const [tags, setTags] = useState<string[]>([]);
+function Composer({ workspaceId, onCreate, onUpload, onWebCapture, disabled }: ComposerProps) {
+  const { draft, update, save } = useNoteComposerDraft(workspaceId, onCreate);
+  const { title, content, tags, isPinned, creating, error: createError } = draft;
+  const [expanded, setExpanded] = useState(() => !!(title || content || creating || createError));
   const [tagInput, setTagInput] = useState("");
-  const [isPinned, setIsPinned] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const close = useCallback(async () => {
-    if ((title.trim() || content.trim()) && !disabled) {
-      await onCreate({ title: title.trim(), content: content.trim(), tags, isPinned });
+    if (disabled) { return; }
+    if (await save()) {
+      setTagInput("");
+      setExpanded(false);
     }
-    setTitle(""); setContent(""); setTags([]); setTagInput("");
-    setIsPinned(false);
-    setExpanded(false);
-  }, [title, content, tags, isPinned, onCreate, disabled]);
+  }, [save, disabled]);
 
   useEffect(() => {
     if (!expanded) { return; }
@@ -83,7 +83,7 @@ function Composer({ onCreate, onUpload, onWebCapture, disabled }: ComposerProps)
   function addTag() {
     const t = tagInput.trim();
     if (!t || tags.includes(t)) { return; }
-    setTags((prev) => [...prev, t]);
+    update({ tags: [...tags, t] });
     setTagInput("");
   }
 
@@ -94,12 +94,13 @@ function Composer({ onCreate, onUpload, onWebCapture, disabled }: ComposerProps)
         className="w-full max-w-2xl bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-lg shadow-sm hover:shadow-md transition-shadow"
       >
         {expanded ? (
-          <div className="flex flex-col">
+          <fieldset disabled={creating} className="flex flex-col">
+            {createError && <p role="alert" className="px-4 pt-2 text-xs text-red-400">{createError}</p>}
             <div className="flex items-center px-4 pt-3 pb-1">
               <input
                 autoFocus
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => update({ title: e.target.value })}
                 placeholder="Title"
                 className="flex-1 text-sm font-medium bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
               />
@@ -108,7 +109,7 @@ function Composer({ onCreate, onUpload, onWebCapture, disabled }: ComposerProps)
                 aria-label={isPinned ? "Unpin draft note" : "Pin draft note"}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setIsPinned((prev) => !prev);
+                  update({ isPinned: !isPinned });
                 }}
                 className={`p-1 ${isPinned ? "text-[var(--accent-color)]" : "text-[var(--text-muted)] hover:text-[var(--accent-color)]"}`}
               >
@@ -117,7 +118,7 @@ function Composer({ onCreate, onUpload, onWebCapture, disabled }: ComposerProps)
             </div>
             <textarea
               value={content}
-              onChange={(e) => setContent(e.target.value)}
+              onChange={(e) => update({ content: e.target.value })}
               placeholder="Take a note…"
               rows={3}
               className="w-full px-4 py-2 text-sm bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none resize-none"
@@ -127,7 +128,7 @@ function Composer({ onCreate, onUpload, onWebCapture, disabled }: ComposerProps)
                 {tags.map((t) => (
                   <span key={t} className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-[var(--accent-color)]/15 text-[var(--accent-color)]">
                     {t}
-                    <button onClick={() => setTags((prev) => prev.filter((x) => x !== t))} className="hover:text-red-400">×</button>
+                    <button onClick={() => update({ tags: tags.filter((x) => x !== t) })} className="hover:text-red-400">×</button>
                   </span>
                 ))}
               </div>
@@ -157,7 +158,7 @@ function Composer({ onCreate, onUpload, onWebCapture, disabled }: ComposerProps)
                 Close
               </button>
             </div>
-          </div>
+          </fieldset>
         ) : (
           <button
             onClick={() => setExpanded(true)}
@@ -325,37 +326,34 @@ function NoteCard({ item, onClick, onDelete, onProcessSource, processing }: Card
 
 interface NoteModalProps {
   note: ProjectNote;
-  saving: boolean;
-  onChange: (fields: { title: string; content: string; tags: string[]; is_pinned: boolean }) => void;
   onClose: () => void;
   onDelete: () => void;
-  onGenerateFlashcards: () => void;
+  onGenerateFlashcards: (content: string) => void;
   generatingFlashcards: boolean;
   canGenerateFlashcards: boolean;
 }
 
 function NoteModal({
-  note, saving, onChange, onClose, onDelete, onGenerateFlashcards, generatingFlashcards, canGenerateFlashcards,
+  note, onClose, onDelete, onGenerateFlashcards, generatingFlashcards, canGenerateFlashcards,
 }: NoteModalProps) {
-  const [title, setTitle] = useState(note.title);
-  const [content, setContent] = useState(note.content);
-  const [tags, setTags] = useState<string[]>(note.tags ?? []);
-  const [isPinned, setIsPinned] = useState(note.is_pinned);
+  const draft = useNoteDraft(note);
+  const { title, content, is_pinned: isPinned } = draft.fields;
+  const tags = draft.fields.tags ?? [];
   const [tagInput, setTagInput] = useState("");
 
-  // Push edits up — parent debounces & persists.
-  useEffect(() => { onChange({ title, content, tags, is_pinned: isPinned }); // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, content, tags, isPinned]);
+  async function close() {
+    if (await draft.flush()) { onClose(); }
+  }
 
   function addTag() {
     const t = tagInput.trim();
     if (!t || tags.includes(t)) { return; }
-    setTags((prev) => [...prev, t]);
+    draft.update({ ...draft.fields, tags: [...tags, t] });
     setTagInput("");
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-6" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-6" onClick={() => { void close(); }}>
       <div
         className="w-full max-w-2xl max-h-[90vh] bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-xl shadow-2xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
@@ -364,17 +362,19 @@ function NoteModal({
           <FileText size={14} className="text-[var(--text-muted)]" />
           <input
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => draft.update({ ...draft.fields, title: e.target.value })}
             placeholder="Title"
             className="flex-1 text-sm font-medium bg-transparent text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
           />
-          <span className="text-[11px] text-[var(--text-muted)] shrink-0">{saving ? "Saving…" : "Saved"}</span>
+          <span className="text-[11px] text-[var(--text-muted)] shrink-0">
+            {draft.error ? "Not saved" : draft.saving ? "Saving…" : draft.dirty ? "Unsaved changes" : "Saved"}
+          </span>
           <Tooltip content="Save now">
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onChange({ title, content, tags, is_pinned: isPinned });
+                void draft.flush();
               }}
               className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-color)]"
             >
@@ -387,7 +387,7 @@ function NoteModal({
               aria-label={isPinned ? "Unpin note" : "Pin note"}
               onClick={(e) => {
                 e.stopPropagation();
-                setIsPinned((prev) => !prev);
+                draft.update({ ...draft.fields, is_pinned: !isPinned });
               }}
               className={`p-1 ${isPinned ? "text-[var(--accent-color)]" : "text-[var(--text-muted)] hover:text-[var(--accent-color)]"}`}
             >
@@ -399,7 +399,7 @@ function NoteModal({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onGenerateFlashcards();
+                onGenerateFlashcards(content);
               }}
               disabled={generatingFlashcards || !canGenerateFlashcards || content.length < 50}
               className="p-1 text-[var(--text-muted)] hover:text-[var(--accent-color)] disabled:opacity-40"
@@ -425,7 +425,7 @@ function NoteModal({
             aria-label="Close note"
             onClick={(e) => {
               e.stopPropagation();
-              onClose();
+              void close();
             }}
             className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
           >
@@ -433,6 +433,12 @@ function NoteModal({
           </button>
         </div>
 
+        {draft.error && (
+          <div role="alert" className="px-5 py-2 text-xs text-red-400">
+            {draft.error} Your draft is retained while the app is open.
+            <button type="button" onClick={() => { void draft.flush(); }} className="ml-2 underline">Retry save</button>
+          </div>
+        )}
         <div className="flex items-center gap-1.5 px-5 py-2 border-b border-[var(--border-color)] flex-wrap">
           <Tag size={11} className="text-[var(--text-muted)]" />
           {tags.map((t) => (
@@ -443,7 +449,7 @@ function NoteModal({
                 aria-label={`Remove tag ${t}`}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setTags((prev) => prev.filter((x) => x !== t));
+                  draft.update({ ...draft.fields, tags: tags.filter((x) => x !== t) });
                 }}
                 className="hover:text-red-400"
               >
@@ -461,7 +467,7 @@ function NoteModal({
         </div>
 
         <div className="flex-1 overflow-y-auto min-h-0">
-          <SmartTextEditor value={content} onChange={setContent} placeholder="Take a note…" minHeight="300px" />
+          <SmartTextEditor value={content} onChange={(value) => draft.update({ ...draft.fields, content: value })} placeholder="Take a note…" minHeight="300px" />
         </div>
       </div>
     </div>
@@ -558,6 +564,11 @@ function SourceModal({
 
 export default function NoteEditorView() {
   const { activeWorkspaceId } = useScopedWorkspace();
+  return <NoteLibrary key={activeWorkspaceId ?? "no-workspace"} />;
+}
+
+function NoteLibrary() {
+  const { activeWorkspaceId } = useScopedWorkspace();
   const includeDescendants = useBubbleUpFlag();
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
   const preferredModel = useSettingsStore((s) => s.preferredModel);
@@ -571,12 +582,7 @@ export default function NoteEditorView() {
   const [openNoteId, setOpenNoteId] = useState<string | null>(null);
   const [openSourceId, setOpenSourceId] = useState<string | null>(null);
 
-  // Modal-edit buffers
-  const [editTitle, setEditTitle] = useState("");
-  const [editContent, setEditContent] = useState("");
-  const [editTags, setEditTags] = useState<string[]>([]);
-  const [editIsPinned, setEditIsPinned] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const drafts = useNoteDraftStore((state) => state.drafts);
   const [generatingFlashcards, setGeneratingFlashcards] = useState(false);
 
   // Source actions
@@ -596,13 +602,21 @@ export default function NoteEditorView() {
 
   // Load notes + sources
   useEffect(() => {
+    setOpenNoteId(null);
+    setOpenSourceId(null);
+    setNotes([]);
+    setSources([]);
     if (!activeWorkspaceId) { return; }
     let cancelled = false;
+    const draftsAtLoad = useNoteDraftStore.getState().drafts;
     Promise.all([
       api.note.list(activeWorkspaceId, { limit: 500, offset: 0, includeDescendants }),
       api.source.list(activeWorkspaceId, undefined, { includeDescendants }),
     ]).then(([noteList, sourceList]) => {
       if (cancelled) { return; }
+      // Only refresh clean cache entries predating this read. A save completing
+      // during the request must not be replaced by the older list response.
+      refreshNoteDrafts(noteList, draftsAtLoad);
       setNotes(noteList);
       setSources(sourceList);
     }).catch(() => {});
@@ -618,46 +632,16 @@ export default function NoteEditorView() {
     [openSourceId, sources]
   );
 
-  // Seed modal buffers when a note opens
-  useEffect(() => {
-    if (!openNoteId) { return; }
-    const n = notes.find((x) => x.id === openNoteId);
-    if (!n) { return; }
-    setEditTitle(n.title);
-    setEditContent(n.content);
-    setEditTags(n.tags ?? []);
-    setEditIsPinned(n.is_pinned);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openNoteId]);
-
-  // Debounced autosave for the open note
-  useEffect(() => {
-    if (!openNoteId) { return; }
-    const t = setTimeout(() => {
-      setSaving(true);
-      api.note.update(openNoteId, { title: editTitle, content: editContent, tags: editTags, is_pinned: editIsPinned })
-        .then(() => {
-          setNotes((prev) => prev.map((n) =>
-            n.id === openNoteId
-              ? { ...n, title: editTitle, content: editContent, tags: editTags, is_pinned: editIsPinned, updated_at: new Date().toISOString() }
-              : n
-          ));
-        })
-        .finally(() => setSaving(false));
-    }, 1200);
-    return () => clearTimeout(t);
-  }, [openNoteId, editTitle, editContent, editTags, editIsPinned]);
-
   // Items + search
   const allItems = useMemo<WorkspaceItem[]>(
-    () => [...notes.map(itemFromNote), ...sources.map(itemFromSource)]
+    () => [...notes.map((note) => itemFromNote({ ...note, ...drafts[note.id]?.fields })), ...sources.map(itemFromSource)]
       .sort((a, b) => {
         const aPinned = a.kind === "note" ? a.note.is_pinned : false;
         const bPinned = b.kind === "note" ? b.note.is_pinned : false;
         if (aPinned !== bPinned) { return aPinned ? -1 : 1; }
         return a.updatedAt < b.updatedAt ? 1 : -1;
       }),
-    [notes, sources]
+    [notes, sources, drafts]
   );
 
   const filtered = useMemo(() => {
@@ -683,10 +667,13 @@ export default function NoteEditorView() {
     if (!activeWorkspaceId) { return; }
     const note = await api.note.create(activeWorkspaceId, title || "Untitled", content || undefined, null, isPinned);
     const seeded: ProjectNote = { ...note, title: title || "Untitled", content, tags, is_pinned: isPinned };
-    if (tags.length > 0 || note.is_pinned !== isPinned) {
-      await api.note.update(note.id, { tags, is_pinned: isPinned });
-    }
     setNotes((prev) => [seeded, ...prev]);
+    if (tags.length > 0 || note.is_pinned !== isPinned) {
+      // Creation already succeeded: retry metadata against that same note,
+      // rather than creating a duplicate if the second IPC fails.
+      updateNoteDraft(note, { title: seeded.title, content, tags, is_pinned: isPinned });
+      await flushNoteDraft(note.id);
+    }
   }
 
   async function createBlankNote() {
@@ -702,17 +689,19 @@ export default function NoteEditorView() {
       return;
     }
     if (!await confirm("Delete this note?", { title: "Delete note?", kind: "warning" })) { return; }
+    if (!await flushNoteDraft(id)) { return; }
     await api.note.delete(id);
+    discardNoteDraft(id);
     setNotes((prev) => prev.filter((n) => n.id !== id));
     if (openNoteId === id) { setOpenNoteId(null); }
   }
 
-  async function generateFlashcardsFromOpenNote() {
-    if (!activeWorkspaceId || !preferredModel || !openNote || editContent.length < 50) { return; }
+  async function generateFlashcardsFromOpenNote(content: string) {
+    if (!activeWorkspaceId || !preferredModel || !openNote || content.length < 50) { return; }
     setGeneratingFlashcards(true);
     try {
       const cards = await api.flashcard.extractFromContent(
-        activeWorkspaceId, editContent, "note", preferredModel, openNote.id, ollamaUrl || undefined
+        openNote.workspace_id, content, "note", preferredModel, openNote.id, ollamaUrl || undefined
       );
       if (cards.length > 0) {
         await message(`Generated ${cards.length} flashcard${cards.length !== 1 ? "s" : ""} from this note.`, { title: "Flashcards" });
@@ -824,7 +813,14 @@ export default function NoteEditorView() {
 
       {/* Scroll body */}
       <div className="flex-1 overflow-y-auto min-h-0">
+        {Object.entries(drafts).filter(([, draft]) => draft.workspaceId === activeWorkspaceId && draft.error).map(([id, draft]) => (
+          <div key={id} role="alert" className="px-4 py-2 text-xs text-red-400">
+            {draft.fields.title || "Untitled"}: {draft.error} Draft retained while the app is open.
+            <button type="button" onClick={() => { void flushNoteDraft(id); }} className="ml-2 underline">Retry save</button>
+          </div>
+        ))}
         <Composer
+          workspaceId={activeWorkspaceId ?? ""}
           onCreate={createNoteFromComposer}
           onUpload={handleUpload}
           onWebCapture={() => setShowAddCapture(true)}
@@ -865,14 +861,9 @@ export default function NoteEditorView() {
       {/* Note edit modal */}
       {openNote && (
         <NoteModal
+          key={openNote.id}
           note={openNote}
-          saving={saving}
-          onChange={({ title, content, tags, is_pinned }) => {
-            setEditTitle(title); setEditContent(content); setEditTags(tags);
-            setEditIsPinned(is_pinned);
-            setNotes((prev) => prev.map((n) => (n.id === openNote.id ? { ...n, is_pinned } : n)));
-          }}
-          onClose={() => setOpenNoteId(null)}
+          onClose={() => setOpenNoteId((current) => current === openNote.id ? null : current)}
           onDelete={() => deleteNote(openNote.id)}
           onGenerateFlashcards={generateFlashcardsFromOpenNote}
           generatingFlashcards={generatingFlashcards}
