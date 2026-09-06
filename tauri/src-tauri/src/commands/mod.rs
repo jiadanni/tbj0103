@@ -10,6 +10,7 @@ pub mod chat_conversion;
 pub mod chat_file;
 pub mod context;
 pub mod dashboard;
+pub mod data_deletion;
 pub mod demo;
 pub mod document;
 pub mod export;

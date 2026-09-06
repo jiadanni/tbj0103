@@ -37,10 +37,16 @@ const apiMocks = vi.hoisted(() => ({
       Promise.resolve({ created: true, reason_skipped: null, snapshot_id: "snap-1" })
   ),
   getPromptBankStatus: vi.fn(() => Promise.resolve(null)),
+  previewDataDeletion: vi.fn(),
+  executeDataDeletion: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => ({
   api: {
+    dataDeletion: {
+      preview: apiMocks.previewDataDeletion,
+      execute: apiMocks.executeDataDeletion,
+    },
     workspace: {
       create: apiMocks.createWorkspace,
       createChild: apiMocks.createChildWorkspace,
@@ -177,6 +183,22 @@ describe("WorkspaceSettingsView", () => {
       created: true,
       reason_skipped: null,
       snapshot_id: "snap-1",
+    });
+    apiMocks.previewDataDeletion.mockResolvedValue({
+      workspace_count: 1,
+      categories: [
+        { id: "chats", label: "Chats & messages", item_count: 5, total_rows: 25 },
+      ],
+      total_items: 5,
+      total_rows: 25,
+    });
+    apiMocks.executeDataDeletion.mockResolvedValue({
+      workspace_count: 1,
+      total_deleted_items: 5,
+      total_deleted_rows: 25,
+      categories: [
+        { id: "chats", label: "Chats & messages", item_count: 5, total_rows: 25 },
+      ],
     });
   });
 
@@ -526,5 +548,44 @@ describe("WorkspaceSettingsView", () => {
     fireEvent.click(await screen.findByRole("button", { name: /snapshot now/i }));
 
     expect(await screen.findByText("No changes")).toBeInTheDocument();
+  });
+
+  it("opens granular data deletion modal and triggers deletion for selected workspace", async () => {
+    useWorkspaceStore.setState({
+      workspaces: [makeWorkspace({ id: "root-1", name: "Parent Workspace" })],
+      activeWorkspaceId: "root-1",
+    });
+
+    render(
+      <MemoryRouter>
+        <WorkspaceSettingsView />
+      </MemoryRouter>
+    );
+
+    const deleteBtn = await screen.findByRole("button", { name: /Delete Selected Workspace Data/i });
+    fireEvent.click(deleteBtn);
+
+    await waitFor(() => {
+      expect(apiMocks.previewDataDeletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scope: "workspace",
+          workspace_ids: ["root-1"],
+        })
+      );
+    });
+
+    expect(await screen.findByRole("heading", { name: /Permanently Delete Workspace Data/i })).toBeInTheDocument();
+
+    const confirmBtn = screen.getByRole("button", { name: /Permanently Delete Data/i });
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(apiMocks.executeDataDeletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scope: "workspace",
+          workspace_ids: ["root-1"],
+        })
+      );
+    });
   });
 });

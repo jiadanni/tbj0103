@@ -21,12 +21,18 @@ import { Tooltip } from "../components/Tooltip";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useBackgroundJobsStore } from "../stores/backgroundJobs";
 import type { Workspace } from "../stores/workspaceStore";
-import type { DashboardSummary, KnowledgeResetOptions, KnowledgeResetResult, KnowledgeResetScope, PromptBankStatus, RoadmapSnapshot, TopicSignature, WorkspaceGlossaryTerm } from "../lib/api";
+import type { DashboardSummary, DataDeletionPreview, DataDeletionTimeFilter, KnowledgeResetOptions, KnowledgeResetResult, KnowledgeResetScope, PromptBankStatus, RoadmapSnapshot, TopicSignature, WorkspaceGlossaryTerm } from "../lib/api";
 import {
   DEFAULT_KNOWLEDGE_RESET_OPTIONS,
   KnowledgeResetDialog,
   formatKnowledgeResetResult,
 } from "../components/KnowledgeReset";
+import {
+  DATA_DELETION_CATEGORIES,
+  DataDeletionDialog,
+  TIME_FILTER_OPTIONS,
+  formatDataDeletionResult,
+} from "../components/DataDeletion";
 import { inferWorkspaceIconName } from "../lib/workspaceIconRules";
 import { WorkspaceIcon } from "../lib/workspaceIcon";
 
@@ -199,6 +205,17 @@ export default function WorkspaceSettingsView() {
   const [isCapturingSnapshot, setIsCapturingSnapshot] = useState(false);
   const [resetDialog, setResetDialog] = useState<KnowledgeResetDialogState | null>(null);
   const [successDialog, setSuccessDialog] = useState<{ title: string; description: string } | null>(null);
+
+  const [deletionCategories, setDeletionCategories] = useState<string[]>(
+    DATA_DELETION_CATEGORIES.map((c) => c.id)
+  );
+  const [deletionTimeFilter, setDeletionTimeFilter] = useState<DataDeletionTimeFilter>("all");
+  const [includeChildWorkspacesInDeletion, setIncludeChildWorkspacesInDeletion] = useState(false);
+  const [deletionDialogOpen, setDeletionDialogOpen] = useState(false);
+  const [deletionPreview, setDeletionPreview] = useState<DataDeletionPreview | null>(null);
+  const [loadingDeletionPreview, setLoadingDeletionPreview] = useState(false);
+  const [deletionRunning, setDeletionRunning] = useState(false);
+  const [deletionError, setDeletionError] = useState<string | null>(null);
 
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
     try {
@@ -564,6 +581,89 @@ export default function WorkspaceSettingsView() {
         : current
       );
     }
+  }
+
+  function getResolvedDeletionWorkspaceIds(includeChildren: boolean): string[] {
+    if (!selectedWorkspace) {
+      return [];
+    }
+    if (includeChildren && selectedWorkspaceHasChildren) {
+      const children = childWorkspacesByParent[selectedWorkspace.id] ?? [];
+      return [selectedWorkspace.id, ...children.map((c) => c.id)];
+    }
+    return [selectedWorkspace.id];
+  }
+
+  function getDeletionScopeDescription(includeChildren: boolean): string {
+    if (!selectedWorkspace) {
+      return "Workspace";
+    }
+    if (includeChildren && selectedWorkspaceHasChildren) {
+      const children = childWorkspacesByParent[selectedWorkspace.id] ?? [];
+      return `"${selectedWorkspace.name}" and ${children.length} sub-workspace${children.length === 1 ? "" : "s"}`;
+    }
+    return `"${selectedWorkspace.name}"`;
+  }
+
+  async function openWorkspaceDataDeletion(includeChildren: boolean) {
+    if (!selectedWorkspace) {
+      return;
+    }
+    setIncludeChildWorkspacesInDeletion(includeChildren);
+    setDeletionDialogOpen(true);
+    setLoadingDeletionPreview(true);
+    setDeletionError(null);
+    try {
+      const wsIds = getResolvedDeletionWorkspaceIds(includeChildren);
+      const prev = await api.dataDeletion.preview({
+        scope: includeChildren && selectedWorkspaceHasChildren ? "selected_workspaces" : "workspace",
+        workspace_ids: wsIds,
+        categories: deletionCategories,
+        time_filter: deletionTimeFilter,
+      });
+      setDeletionPreview(prev);
+    } catch (err) {
+      setDeletionError(err instanceof Error ? err.message : String(err));
+      setDeletionPreview(null);
+    } finally {
+      setLoadingDeletionPreview(false);
+    }
+  }
+
+  async function confirmWorkspaceDataDeletion() {
+    if (!selectedWorkspace) {
+      return;
+    }
+    setDeletionRunning(true);
+    setDeletionError(null);
+    try {
+      const wsIds = getResolvedDeletionWorkspaceIds(includeChildWorkspacesInDeletion);
+      const result = await api.dataDeletion.execute({
+        scope: includeChildWorkspacesInDeletion && selectedWorkspaceHasChildren ? "selected_workspaces" : "workspace",
+        workspace_ids: wsIds,
+        categories: deletionCategories,
+        time_filter: deletionTimeFilter,
+      });
+      setDeletionDialogOpen(false);
+      await reloadSelectedDerivedState();
+      if (selectedId) {
+        api.workspaceGlossary.list(selectedId, true).then(setGlossaryTerms).catch(() => {});
+      }
+      setSuccessDialog({
+        title: "Workspace Data Deleted",
+        description: formatDataDeletionResult(result),
+      });
+    } catch (err) {
+      setDeletionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeletionRunning(false);
+    }
+  }
+
+  function toggleDeletionCategory(catId: string) {
+    setDeletionCategories((prev) =>
+      prev.includes(catId) ? prev.filter((id) => id !== catId) : [...prev, catId]
+    );
   }
 
   useEffect(() => {
@@ -1533,6 +1633,133 @@ export default function WorkspaceSettingsView() {
               </div>
 
               <div className="space-y-3 py-5">
+                <button
+                  onClick={() => toggleSection("data-deletion")}
+                  className="flex w-full items-center justify-between"
+                >
+                  <h3 className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-2">
+                    <Trash2 size={12} /> Granular Data Deletion
+                  </h3>
+                  <ChevronDown size={14} className={`text-[var(--text-muted)] transition-transform ${collapsedSections["data-deletion"] ? "-rotate-90" : ""}`} />
+                </button>
+                {!collapsedSections["data-deletion"] && (
+                  <div className="space-y-4 rounded-xl border border-red-500/20 bg-red-500/5 p-4">
+                    <div>
+                      <div className="text-sm font-medium text-[var(--text-primary)]">
+                        Selectively delete workspace records
+                      </div>
+                      <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
+                        Permanently erase specific categories of data for this workspace with preview and optional retention filters.
+                      </p>
+                    </div>
+
+                    {/* Category Checkboxes */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                          Data Categories
+                        </span>
+                        <div className="flex gap-2 text-xs">
+                          <button
+                            type="button"
+                            onClick={() => setDeletionCategories(DATA_DELETION_CATEGORIES.map((c) => c.id))}
+                            className="text-[var(--accent-color)] hover:underline"
+                          >
+                            Select All
+                          </button>
+                          <span className="text-[var(--border-color)]">·</span>
+                          <button
+                            type="button"
+                            onClick={() => setDeletionCategories([])}
+                            className="text-[var(--text-muted)] hover:underline"
+                          >
+                            Deselect All
+                          </button>
+                        </div>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {DATA_DELETION_CATEGORIES.map((cat) => {
+                          const isChecked = deletionCategories.includes(cat.id);
+                          return (
+                            <label
+                              key={cat.id}
+                              className={`flex cursor-pointer items-start gap-2.5 rounded-lg border p-2.5 transition-colors ${
+                                isChecked
+                                  ? "border-red-500/40 bg-red-500/10"
+                                  : "border-[var(--border-color)] bg-[var(--bg-primary)] opacity-70 hover:opacity-100"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => toggleDeletionCategory(cat.id)}
+                                className="mt-0.5 rounded border-[var(--border-color)] text-red-500 focus:ring-red-500"
+                              />
+                              <div className="min-w-0">
+                                <div className="text-xs font-medium text-[var(--text-primary)]">
+                                  {cat.label}
+                                </div>
+                                <div className="text-[11px] text-[var(--text-muted)] leading-4">
+                                  {cat.description}
+                                </div>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Time Filter */}
+                    <div className="space-y-2">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                        Retention / Time Cutoff
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {TIME_FILTER_OPTIONS.map((tf) => (
+                          <button
+                            key={tf.value}
+                            type="button"
+                            onClick={() => setDeletionTimeFilter(tf.value)}
+                            className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                              deletionTimeFilter === tf.value
+                                ? "bg-red-500/20 text-red-300 border border-red-500/40"
+                                : "border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                            }`}
+                          >
+                            {tf.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => void openWorkspaceDataDeletion(false)}
+                        disabled={deletionCategories.length === 0}
+                        className="inline-flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Trash2 size={13} />
+                        Delete Selected Workspace Data…
+                      </button>
+                      {selectedWorkspaceHasChildren && (
+                        <button
+                          type="button"
+                          onClick={() => void openWorkspaceDataDeletion(true)}
+                          disabled={deletionCategories.length === 0}
+                          className="inline-flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <Trash2 size={13} />
+                          Delete Selected + Children Data…
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-3 py-5">
                 <div className="flex items-center justify-between">
                   <button
                     onClick={() => toggleSection("glossary")}
@@ -1736,6 +1963,24 @@ export default function WorkspaceSettingsView() {
           title={successDialog.title}
           description={successDialog.description}
           onConfirm={() => setSuccessDialog(null)}
+        />
+      )}
+
+      {deletionDialogOpen && (
+        <DataDeletionDialog
+          scopeDescription={getDeletionScopeDescription(includeChildWorkspacesInDeletion)}
+          timeFilter={deletionTimeFilter}
+          selectedCategories={deletionCategories}
+          preview={deletionPreview}
+          loadingPreview={loadingDeletionPreview}
+          running={deletionRunning}
+          error={deletionError}
+          onConfirm={() => { void confirmWorkspaceDataDeletion(); }}
+          onCancel={() => {
+            if (!deletionRunning) {
+              setDeletionDialogOpen(false);
+            }
+          }}
         />
       )}
     </div>

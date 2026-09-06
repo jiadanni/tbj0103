@@ -279,6 +279,8 @@ pub fn run() {
             commands::workspace::get_workspace,
             commands::workspace::update_workspace,
             commands::workspace::delete_workspace,
+            commands::data_deletion::preview_data_deletion,
+            commands::data_deletion::execute_data_deletion,
             commands::workspace::set_workspace_parent,
             commands::workspace::update_workspace_icon,
             commands::workspace::recommend_workspace_icon,

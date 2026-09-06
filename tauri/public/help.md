@@ -233,10 +233,21 @@ Open via **App Menu → Preferences** or `Ctrl/Cmd + Shift + ,`.
 | **Chat** | Preferred model, dual-model mode, composer behaviour |
 | **AI** | Ollama URL, remote inference, MLX / llama.cpp paths |
 | **Security** | Touch ID / PIN lock |
+| **Data Controls** | Granular data deletion (chats, notes, sources, flashcards, concepts, memories, thought queue) and AI-inferred data reset |
 | **Memory** | View and manage workspace and global memory entries |
 | **Backup** | Export and import `.aetherium-backup` files |
 | **Workspaces** | Create, rename, delete, and configure workspaces |
 | **Advanced** | Quick-search shortcut, workspace scope, deletion behaviour |
+
+### Granular Data Deletion
+
+Aetherium lets you selectively and permanently delete user records without having to delete entire workspaces:
+1. Open **Preferences → Data Controls** (or **Preferences → Workspaces → Granular Data Deletion**).
+2. Choose the deletion scope: the active workspace, selected workspaces, or all workspaces.
+3. Select specific data categories to delete (Chats & Messages, Notes & Templates, Sources & Documents, Flashcards & Goals, Concepts & Links, Memories, Thought Queue & Alarms).
+4. Optionally specify a retention/time cutoff (e.g., all time, or older than 7, 30, 90, or 365 days).
+5. Click **Delete Selected Data…** to inspect the live preview of affected items and cascading database records.
+6. For safety, deletions of 50 or more items require typing `delete` to confirm.
 
 ### Changing the theme
 

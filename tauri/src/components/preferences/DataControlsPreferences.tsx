@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, Loader2, RefreshCw, RotateCcw } from "lucide-react";
-import { api, REFRESH_WORKSPACE_TASK_TYPES, type BackgroundProcessingScope, type BackgroundTaskEvent, type KnowledgeResetOptions, type KnowledgeResetResult } from "../../lib/api";
+import { ChevronDown, Loader2, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
+import {
+  api,
+  REFRESH_WORKSPACE_TASK_TYPES,
+  type BackgroundProcessingScope,
+  type BackgroundTaskEvent,
+  type DataDeletionPreview,
+  type DataDeletionScope,
+  type DataDeletionTimeFilter,
+  type KnowledgeResetOptions,
+  type KnowledgeResetResult,
+} from "../../lib/api";
 import { INFERENCE_JOBS_CATALOG } from "../../lib/inferenceJobsCatalog";
 import { useWorkspaceStore } from "../../stores/workspaceStore";
 import { useSettingsStore } from "../../stores/settingsStore";
@@ -11,6 +21,12 @@ import {
   formatKnowledgeResetResult,
   sumKnowledgeResetResults,
 } from "../KnowledgeReset";
+import {
+  DATA_DELETION_CATEGORIES,
+  DataDeletionDialog,
+  formatDataDeletionResult,
+  TIME_FILTER_OPTIONS,
+} from "../DataDeletion";
 
 /** Default job selection for the "Run Background Processing Now" panel:
  *  the standard refresh jobs plus the maintenance/cleanup passes, which are
@@ -115,6 +131,119 @@ export function DataControlsPreferences() {
     }
     return workspaces.find((w) => w.id === activeWorkspaceId)?.name ?? "This Workspace";
   }, [resetScope, resetWorkspaceIds, workspaces, activeWorkspaceId]);
+
+  // ── Granular Data Deletion state ──
+  const [deletionScope, setDeletionScope] = useState<DataDeletionScope>("current_workspace");
+  const [deletionWorkspaceIds, setDeletionWorkspaceIds] = useState<string[]>([]);
+  const [selectedDeletionCategories, setSelectedDeletionCategories] = useState<string[]>(
+    () => DATA_DELETION_CATEGORIES.map((c) => c.id),
+  );
+  const [deletionTimeFilter, setDeletionTimeFilter] = useState<DataDeletionTimeFilter>("all");
+  const [deletionPreview, setDeletionPreview] = useState<DataDeletionPreview | null>(null);
+  const [loadingDeletionPreview, setLoadingDeletionPreview] = useState(false);
+  const [deletionDialogOpen, setDeletionDialogOpen] = useState(false);
+  const [deletionRunning, setDeletionRunning] = useState(false);
+  const [deletionError, setDeletionError] = useState<string | null>(null);
+
+  function toggleDeletionCategory(catId: string, checked: boolean) {
+    setSelectedDeletionCategories((current) =>
+      checked ? Array.from(new Set([...current, catId])) : current.filter((id) => id !== catId),
+    );
+  }
+
+  function toggleDeletionWorkspace(workspaceId: string, checked: boolean) {
+    setDeletionWorkspaceIds((current) =>
+      checked ? Array.from(new Set([...current, workspaceId])) : current.filter((id) => id !== workspaceId),
+    );
+  }
+
+  function getResolvedDeletionWorkspaceIds(): string[] {
+    if (deletionScope === "all_workspaces") {
+      return workspaces.map((w) => w.id);
+    }
+    if (deletionScope === "selected_workspaces") {
+      return deletionWorkspaceIds;
+    }
+    return activeWorkspaceId ? [activeWorkspaceId] : [];
+  }
+
+  const deletionScopeIsEmpty =
+    deletionScope === "selected_workspaces"
+      ? deletionWorkspaceIds.length === 0
+      : deletionScope === "current_workspace" && !activeWorkspaceId;
+
+  const deletionScopeDescription = useMemo(() => {
+    if (deletionScope === "all_workspaces") {
+      return "across all workspaces";
+    }
+    if (deletionScope === "selected_workspaces") {
+      const count = deletionWorkspaceIds.length;
+      return count === 1
+        ? `for ${workspaces.find((w) => w.id === deletionWorkspaceIds[0])?.name ?? "the selected workspace"}`
+        : `across ${count} selected workspace${count === 1 ? "" : "s"}`;
+    }
+    const active = workspaces.find((w) => w.id === activeWorkspaceId);
+    return active ? `for ${active.name}` : "for the current workspace";
+  }, [deletionScope, deletionWorkspaceIds, workspaces, activeWorkspaceId]);
+
+  const deletionScopeButtonLabel = useMemo(() => {
+    if (deletionScope === "all_workspaces") {
+      return "All Workspaces";
+    }
+    if (deletionScope === "selected_workspaces") {
+      const count = deletionWorkspaceIds.length;
+      if (count === 1) {
+        return workspaces.find((w) => w.id === deletionWorkspaceIds[0])?.name ?? "1 Workspace";
+      }
+      return `${count} Workspaces`;
+    }
+    return workspaces.find((w) => w.id === activeWorkspaceId)?.name ?? "This Workspace";
+  }, [deletionScope, deletionWorkspaceIds, workspaces, activeWorkspaceId]);
+
+  async function openDeletionDialog() {
+    setDeletionDialogOpen(true);
+    setLoadingDeletionPreview(true);
+    setDeletionError(null);
+    try {
+      const wsIds = getResolvedDeletionWorkspaceIds();
+      const prev = await api.dataDeletion.preview({
+        scope: deletionScope,
+        workspace_ids: wsIds,
+        categories: selectedDeletionCategories,
+        time_filter: deletionTimeFilter,
+      });
+      setDeletionPreview(prev);
+    } catch (err) {
+      setDeletionError(err instanceof Error ? err.message : String(err));
+      setDeletionPreview(null);
+    } finally {
+      setLoadingDeletionPreview(false);
+    }
+  }
+
+  async function confirmDeletion() {
+    setDeletionRunning(true);
+    setDeletionError(null);
+    try {
+      const wsIds = getResolvedDeletionWorkspaceIds();
+      const result = await api.dataDeletion.execute({
+        scope: deletionScope,
+        workspace_ids: wsIds,
+        categories: selectedDeletionCategories,
+        time_filter: deletionTimeFilter,
+      });
+      setDeletionDialogOpen(false);
+      setSuccess(formatDataDeletionResult(result));
+      setSuccessDialog({
+        title: "Granular Data Deletion Complete",
+        description: formatDataDeletionResult(result),
+      });
+    } catch (err) {
+      setDeletionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeletionRunning(false);
+    }
+  }
 
   async function loadPreview(nextOptions: KnowledgeResetOptions) {
     setLoadingPreview(true);
@@ -781,8 +910,185 @@ export function DataControlsPreferences() {
               </div>
             </div>
           </div>
+
+          {/* Granular Data Deletion Card */}
+          <div className="rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-4">
+            <div className="flex flex-col gap-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <Trash2 size={16} className="text-red-400" />
+                  <h3 className="text-base font-semibold text-[var(--text-primary)]">Granular Data Deletion</h3>
+                </div>
+                <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">
+                  Selectively delete specific categories of data (chats, notes, sources, flashcards, concepts, memories, queue) {deletionScopeDescription} with optional age filtering.
+                </p>
+              </div>
+
+              {/* Scope Selection */}
+              <div className="space-y-2">
+                <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Deletion scope</div>
+                <div className="flex flex-col gap-1.5 sm:flex-row">
+                  {[
+                    { value: "current_workspace", label: "Current workspace" },
+                    { value: "selected_workspaces", label: "Selected workspaces" },
+                    { value: "all_workspaces", label: "All workspaces" },
+                  ].map((option) => (
+                    <label key={option.value} className="flex flex-1 cursor-pointer items-center gap-2 rounded-lg border border-red-500/25 bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-secondary)]">
+                      <input
+                        type="radio"
+                        name="data-deletion-scope"
+                        checked={deletionScope === option.value}
+                        onChange={() => {
+                          const next = option.value as DataDeletionScope;
+                          setDeletionScope(next);
+                          if (next === "selected_workspaces" && deletionWorkspaceIds.length === 0 && activeWorkspaceId) {
+                            setDeletionWorkspaceIds([activeWorkspaceId]);
+                          }
+                        }}
+                        className="h-4 w-4 accent-red-500"
+                      />
+                      <span className="truncate">{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {deletionScope === "selected_workspaces" && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Workspaces to target</div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setDeletionWorkspaceIds([])}
+                        className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                      >
+                        Clear all
+                      </button>
+                      <span className="text-[var(--border-color)]">|</span>
+                      <button
+                        type="button"
+                        onClick={() => setDeletionWorkspaceIds(workspaces.map((w) => w.id))}
+                        className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                      >
+                        Select all
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {workspaces.map((workspace) => (
+                      <label key={workspace.id} className="flex cursor-pointer items-center gap-2 rounded-lg border border-red-500/25 bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-secondary)]">
+                        <input
+                          type="checkbox"
+                          checked={deletionWorkspaceIds.includes(workspace.id)}
+                          onChange={(event) => toggleDeletionWorkspace(workspace.id, event.target.checked)}
+                          className="h-4 w-4 accent-red-500"
+                        />
+                        <span className="truncate">{workspace.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Category Selection */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Data Categories to delete</div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDeletionCategories([])}
+                      className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                    >
+                      Clear all
+                    </button>
+                    <span className="text-[var(--border-color)]">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDeletionCategories(DATA_DELETION_CATEGORIES.map((c) => c.id))}
+                      className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                    >
+                      Select all
+                    </button>
+                  </div>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {DATA_DELETION_CATEGORIES.map((cat) => (
+                    <label key={cat.id} className="flex cursor-pointer items-start gap-2 rounded-lg border border-red-500/25 bg-[var(--bg-primary)] px-3 py-2.5">
+                      <input
+                        type="checkbox"
+                        checked={selectedDeletionCategories.includes(cat.id)}
+                        onChange={(event) => toggleDeletionCategory(cat.id, event.target.checked)}
+                        className="mt-0.5 h-4 w-4 accent-red-500"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-[var(--text-primary)]">{cat.label}</span>
+                        <span className="block text-xs leading-4 text-[var(--text-muted)] mt-0.5">{cat.description}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Time Cutoff Filter */}
+              <div className="space-y-2">
+                <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">Retention / Age Cutoff</div>
+                <div className="grid gap-1.5 sm:grid-cols-3 lg:grid-cols-5">
+                  {TIME_FILTER_OPTIONS.map((tf) => (
+                    <label key={tf.value} className="flex cursor-pointer items-center gap-2 rounded-lg border border-red-500/25 bg-[var(--bg-primary)] px-2.5 py-2 text-xs text-[var(--text-secondary)]">
+                      <input
+                        type="radio"
+                        name="data-deletion-time-filter"
+                        checked={deletionTimeFilter === tf.value}
+                        onChange={() => setDeletionTimeFilter(tf.value)}
+                        className="h-3.5 w-3.5 accent-red-500"
+                      />
+                      <span className="truncate">{tf.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Action Button */}
+              <div className="flex justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => { void openDeletionDialog(); }}
+                  disabled={deletionScopeIsEmpty || selectedDeletionCategories.length === 0}
+                  title={
+                    deletionScopeIsEmpty
+                      ? "Select at least one workspace."
+                      : selectedDeletionCategories.length === 0
+                        ? "Select at least one category to delete."
+                        : undefined
+                  }
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
+                >
+                  <Trash2 size={15} />
+                  {deletionScopeIsEmpty || selectedDeletionCategories.length === 0
+                    ? "Delete Selected Data"
+                    : `Delete Selected Data — ${deletionScopeButtonLabel}`}
+                </button>
+              </div>
+            </div>
+          </div>
         </section>
       </div>
+
+      {deletionDialogOpen && (
+        <DataDeletionDialog
+          scopeDescription={deletionScopeDescription}
+          timeFilter={deletionTimeFilter}
+          selectedCategories={selectedDeletionCategories}
+          preview={deletionPreview}
+          loadingPreview={loadingDeletionPreview}
+          running={deletionRunning}
+          error={deletionError}
+          onConfirm={() => { void confirmDeletion(); }}
+          onCancel={() => setDeletionDialogOpen(false)}
+        />
+      )}
 
       {dialogOpen && (
         <KnowledgeResetDialog
