@@ -672,7 +672,7 @@ export const SessionSidebar = memo(function SessionSidebar({
     }
 
     return (
-      <div className={`absolute left-full z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-lg ${flipUp ? "bottom-0" : "top-0"}`}>
+      <div className={`absolute left-full z-30 ml-1 min-w-[180px] surface-floating rounded-lg ${flipUp ? "bottom-0" : "top-0"}`}>
         <div className="max-h-[min(28rem,calc(100vh-32px))] overflow-y-auto py-1">
           {shouldShowWorkspaceSearch && !showNewWorkspaceInput && (
             <div className="px-2 pb-2">
@@ -794,7 +794,7 @@ export const SessionSidebar = memo(function SessionSidebar({
 
     const isAtRoot = !currentFolderId;
     return (
-      <div className="absolute left-full top-0 z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-lg">
+      <div className="absolute left-full top-0 z-30 ml-1 min-w-[180px] surface-floating rounded-lg">
         <div className="max-h-[min(28rem,calc(100vh-32px))] overflow-y-auto py-1">
           <button
             onClick={() => onSelect(null)}
@@ -874,7 +874,7 @@ export const SessionSidebar = memo(function SessionSidebar({
     }
 
     return (
-      <div className={`absolute left-full z-30 ml-1 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-lg ${flipUp ? "bottom-0" : "top-0"}`}>
+      <div className={`absolute left-full z-30 ml-1 min-w-[180px] surface-floating rounded-lg ${flipUp ? "bottom-0" : "top-0"}`}>
         <div className="max-h-[min(28rem,calc(100vh-32px))] overflow-y-auto py-1">
           {shouldShowWorkspaceSearch && !showNewWorkspaceInput && (
             <div className="px-2 pb-2">
@@ -1078,7 +1078,7 @@ export const SessionSidebar = memo(function SessionSidebar({
                   </button>
                 </Tooltip>
                 {moveMenuOpen && bulkActionPending === null && (
-                  <div className="absolute left-0 top-full z-20 mt-1 w-44 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-lg">
+                  <div className="absolute left-0 top-full z-20 mt-1 w-44 surface-floating rounded-lg">
                     <div className="max-h-[min(28rem,calc(100vh-32px))] overflow-y-auto py-1">
                       {shouldShowWorkspaceSearch && !showNewWorkspaceInput && (
                         <div className="px-2 pb-2">
@@ -1226,7 +1226,7 @@ export const SessionSidebar = memo(function SessionSidebar({
                 {bulkFolderMoveOpen && bulkActionPending === null && (() => {
                   const bulkWorkspaceId = sidebarSessions.find((s) => selectedIds.has(s.id))?.workspace_id;
                   return (
-                  <div className="absolute left-0 top-full z-20 mt-1 w-44 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-lg">
+                  <div className="absolute left-0 top-full z-20 mt-1 w-44 surface-floating rounded-lg">
                     <div className="max-h-[min(28rem,calc(100vh-32px))] overflow-y-auto py-1">
                       <button
                         onClick={() => {
@@ -1509,7 +1509,7 @@ export const SessionSidebar = memo(function SessionSidebar({
         {sidebarTooltip && (
           <div
             role="tooltip"
-            className="pointer-events-none fixed z-50 -translate-y-1/2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)] shadow-lg"
+            className="pointer-events-none fixed z-50 -translate-y-1/2 surface-floating rounded-lg px-2.5 py-1.5 text-xs font-medium text-[var(--text-primary)]"
             style={{ top: sidebarTooltip.top, left: sidebarTooltip.left }}
           >
             {sidebarTooltip.label}
@@ -1529,7 +1529,7 @@ export const SessionSidebar = memo(function SessionSidebar({
           <div
             ref={menuRef}
             data-chat-tree-context-menu
-            className="fixed z-50 min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-xl"
+            className="fixed z-50 min-w-[180px] surface-floating rounded-lg py-1"
             style={{ left: ctxMenu.x, top: ctxMenu.y }}
           >
             {ctxMenu.type === "session" ? (
@@ -1770,7 +1770,7 @@ export const SessionSidebar = memo(function SessionSidebar({
         {workspaceFolderFlyout && (
           <div
             data-chat-tree-context-menu={workspaceFolderFlyout.mode === "session-move" ? "" : undefined}
-            className="fixed z-[55] min-w-[180px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-xl"
+            className="fixed z-[55] min-w-[180px] surface-floating rounded-lg py-1"
             style={{
               left: workspaceFolderFlyout.left,
               top: workspaceFolderFlyout.top,
