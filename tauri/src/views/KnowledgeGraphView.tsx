@@ -1057,10 +1057,14 @@ export default function KnowledgeGraphView({
           {selectedConcept.concept_description}
         </p>
       )}
+      {/* The sidebar this copy points at only exists in the standalone layout.
+       *  Embedded (hideSidebar), name the destination instead of "the sidebar". */}
       <div className="mt-3 text-xs text-[var(--text-muted)]">
         {conceptCards.length > 0
-          ? `${conceptCards.length} related card${conceptCards.length === 1 ? "" : "s"} available in the sidebar.`
-          : "Select generate cards in the sidebar if you want reinforcement for this topic."}
+          ? `${conceptCards.length} related card${conceptCards.length === 1 ? "" : "s"} available${hideSidebar ? "" : " in the sidebar"}.`
+          : hideSidebar
+            ? "Open the Knowledge Graph page to generate reinforcement cards for this topic."
+            : "Select generate cards in the sidebar if you want reinforcement for this topic."}
       </div>
     </div>
   ) : null;
@@ -1379,122 +1383,6 @@ export default function KnowledgeGraphView({
 
       <div className={`flex-1 min-h-0 min-w-0 ${fillHeight ? "flex flex-col overflow-hidden" : "overflow-y-auto"}`}>
         <div className={`flex w-full flex-col gap-4 px-4 py-4 sm:px-6 ${hideSidebar ? "" : "mx-auto max-w-[1600px]"} ${fillHeight ? "min-h-0 flex-1" : ""}`}>
-          <header className="surface-card rounded-2xl px-4 py-2.5">
-            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-              <div className="max-w-2xl">
-                <h1 className="text-lg font-semibold text-[var(--text-primary)]">
-                  Knowledge Graph
-                </h1>
-                {summaryError && (
-                  <p className="mt-2 text-sm text-red-400">
-                    Overview is temporarily unavailable: {summaryError}
-                  </p>
-                )}
-              </div>
-
-              <div className="flex flex-col items-end gap-2">
-                <div className="flex flex-wrap items-end gap-2 xl:justify-end">
-                  <div className="relative inline-flex overflow-visible rounded-xl shadow-sm">
-                    <button
-                      type="button"
-                      onClick={() => { void handleRefresh("async"); }}
-                      disabled={isAnalyzing || !activeWorkspaceId}
-                      title={refreshButtonTooltip}
-                      className="inline-flex items-center gap-2 rounded-l-xl border border-r-0 border-[rgba(var(--accent-color-rgb),0.35)] bg-[var(--accent-color)] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[var(--accent-color)]/90 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {isAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                      {refreshButtonLabel}
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Refresh mode"
-                      onClick={() => setRefreshModeMenuOpen((open) => !open)}
-                      disabled={isAnalyzing}
-                      className="inline-flex self-stretch w-9 items-center justify-center rounded-l-none rounded-r-xl border border-l border-[rgba(var(--accent-color-rgb),0.35)] bg-[var(--accent-color)] text-white hover:bg-[var(--accent-color)]/90 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <ChevronDown size={14} />
-                    </button>
-                    {refreshModeMenuOpen && (
-                      <>
-                        {/* Click-outside backdrop */}
-                        <button
-                          type="button"
-                          aria-hidden
-                          tabIndex={-1}
-                          className="fixed inset-0 z-40 cursor-default bg-transparent"
-                          onClick={() => setRefreshModeMenuOpen(false)}
-                        />
-                        <div
-                          role="menu"
-                          className="absolute right-0 top-full z-50 mt-1 w-60 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-lg"
-                        >
-                          <button
-                            type="button"
-                            role="menuitem"
-                            onClick={() => {
-                              setRefreshModeMenuOpen(false);
-                              void handleRefresh("async");
-                            }}
-                            className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-primary)]"
-                          >
-                            <span className="font-medium">Refresh in background</span>
-                            <span className="text-xs text-[var(--text-muted)]">Jobs run asynchronously. The map fills in as each finishes.</span>
-                          </button>
-                          <button
-                            type="button"
-                            role="menuitem"
-                            onClick={() => {
-                              setRefreshModeMenuOpen(false);
-                              void handleRefresh("sync");
-                            }}
-                            className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-primary)]"
-                          >
-                            <span className="font-medium">Refresh and wait</span>
-                            <span className="text-xs text-[var(--text-muted)]">Shows a progress modal and dismisses when every job finishes.</span>
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-                {analyzeError && (
-                  <div className="flex items-center gap-2 text-right text-xs text-red-400">
-                    <p className="max-w-xs">{analyzeError}</p>
-                    {(analyzeError.includes("Ollama isn't reachable") || analyzeError.includes("Failed to fetch models")) && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void (async () => {
-                            try {
-                              await api.ollama.ensureRunning();
-                              await useSettingsStore.getState().checkOllamaReachability();
-                              setAnalyzeError("");
-                              void handleRefresh("async");
-                            } catch (e) {
-                              setAnalyzeError(e instanceof Error ? e.message : String(e));
-                            }
-                          })();
-                        }}
-                        className="shrink-0 rounded bg-rose-500/20 px-2 py-0.5 text-[11px] font-semibold text-rose-300 hover:bg-rose-500/30 transition-colors"
-                      >
-                        Start Ollama
-                      </button>
-                    )}
-                  </div>
-                )}
-                {!analyzeError && refreshFailedCount > 0 && !isAnalyzing && (
-                  <p className="max-w-xs text-right text-xs text-amber-400">
-                    {refreshFailedCount} job{refreshFailedCount === 1 ? "" : "s"} did not finish — open the inference jobs panel for details.
-                  </p>
-                )}
-                {!analyzeError && refreshCompletedCount > 0 && !isAnalyzing && refreshFailedCount === 0 && (
-                  <p className="max-w-xs text-right text-xs text-[var(--text-muted)]">
-                    Refreshed {refreshCompletedCount}/{refreshWatchedTasks.length} jobs.
-                  </p>
-                )}
-              </div>
-            </div>
-          </header>
 
           {!hideSidebar && (
             <div className="flex flex-wrap gap-2">
@@ -1518,10 +1406,122 @@ export default function KnowledgeGraphView({
           )}
 
           <div className={`grid gap-4 ${hideSidebar ? "" : "xl:grid-cols-[minmax(0,1.6fr)_minmax(340px,0.95fr)]"} ${fillHeight ? "min-h-0 flex-1" : ""}`}>
-            {/* Untitled: the page header above already reads "Knowledge Graph". */}
             <Section className={fillHeight ? "flex min-h-0 flex-1 flex-col" : ""}>
               <div className={`flex flex-col gap-3 ${fillHeight ? "min-h-0 flex-1" : ""}`}>
-                <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-end">
+                <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-center">
+                  <div className="max-w-2xl">
+                    <h1 className="text-lg font-semibold text-[var(--text-primary)]">
+                      Knowledge Graph
+                    </h1>
+                    {summaryError && (
+                      <p className="mt-2 text-sm text-red-400">
+                        Overview is temporarily unavailable: {summaryError}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col items-end gap-2 xl:ml-auto">
+                    <div className="flex flex-wrap items-end gap-2 xl:justify-end">
+                      <div className="relative inline-flex overflow-visible rounded-xl shadow-sm">
+                        <button
+                          type="button"
+                          onClick={() => { void handleRefresh("async"); }}
+                          disabled={isAnalyzing || !activeWorkspaceId}
+                          title={refreshButtonTooltip}
+                          className="inline-flex items-center gap-2 rounded-l-xl border border-r-0 border-[rgba(var(--accent-color-rgb),0.35)] bg-[var(--accent-color)] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[var(--accent-color)]/90 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {isAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                          {refreshButtonLabel}
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Refresh mode"
+                          onClick={() => setRefreshModeMenuOpen((open) => !open)}
+                          disabled={isAnalyzing}
+                          className="inline-flex self-stretch w-9 items-center justify-center rounded-l-none rounded-r-xl border border-l border-[rgba(var(--accent-color-rgb),0.35)] bg-[var(--accent-color)] text-white hover:bg-[var(--accent-color)]/90 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <ChevronDown size={14} />
+                        </button>
+                        {refreshModeMenuOpen && (
+                          <>
+                            {/* Click-outside backdrop */}
+                            <button
+                              type="button"
+                              aria-hidden
+                              tabIndex={-1}
+                              className="fixed inset-0 z-40 cursor-default bg-transparent"
+                              onClick={() => setRefreshModeMenuOpen(false)}
+                            />
+                            <div
+                              role="menu"
+                              className="absolute right-0 top-full z-50 mt-1 w-60 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-lg"
+                            >
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => {
+                                  setRefreshModeMenuOpen(false);
+                                  void handleRefresh("async");
+                                }}
+                                className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-primary)]"
+                              >
+                                <span className="font-medium">Refresh in background</span>
+                                <span className="text-xs text-[var(--text-muted)]">Jobs run asynchronously. The map fills in as each finishes.</span>
+                              </button>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => {
+                                  setRefreshModeMenuOpen(false);
+                                  void handleRefresh("sync");
+                                }}
+                                className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-primary)]"
+                              >
+                                <span className="font-medium">Refresh and wait</span>
+                                <span className="text-xs text-[var(--text-muted)]">Shows a progress modal and dismisses when every job finishes.</span>
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    {analyzeError && (
+                      <div className="flex items-center gap-2 text-right text-xs text-red-400">
+                        <p className="max-w-xs">{analyzeError}</p>
+                        {(analyzeError.includes("Ollama isn't reachable") || analyzeError.includes("Failed to fetch models")) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void (async () => {
+                                try {
+                                  await api.ollama.ensureRunning();
+                                  await useSettingsStore.getState().checkOllamaReachability();
+                                  setAnalyzeError("");
+                                  void handleRefresh("async");
+                                } catch (e) {
+                                  setAnalyzeError(e instanceof Error ? e.message : String(e));
+                                }
+                              })();
+                            }}
+                            className="shrink-0 rounded bg-rose-500/20 px-2 py-0.5 text-[11px] font-semibold text-rose-300 hover:bg-rose-500/30 transition-colors"
+                          >
+                            Start Ollama
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {!analyzeError && refreshFailedCount > 0 && !isAnalyzing && (
+                      <p className="max-w-xs text-right text-xs text-amber-400">
+                        {refreshFailedCount} job{refreshFailedCount === 1 ? "" : "s"} did not finish — open the inference jobs panel for details.
+                      </p>
+                    )}
+                    {!analyzeError && refreshCompletedCount > 0 && !isAnalyzing && refreshFailedCount === 0 && (
+                      <p className="max-w-xs text-right text-xs text-[var(--text-muted)]">
+                        Refreshed {refreshCompletedCount}/{refreshWatchedTasks.length} jobs.
+                      </p>
+                    )}
+                  </div>
+
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="relative w-48 sm:w-64">
                       <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
