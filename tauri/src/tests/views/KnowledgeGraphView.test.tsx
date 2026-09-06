@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 import { api } from "@/lib/api";
-import KnowledgeGraphView from "@/views/KnowledgeGraphView";
+import KnowledgeGraphView, { RoadmapPane } from "@/views/KnowledgeGraphView";
 
 const mocks = vi.hoisted(() => ({
   listModels: vi.fn(),
@@ -374,4 +374,27 @@ describe("KnowledgeGraphView", () => {
       expect(api.graph.applyChangeProposal).toHaveBeenCalledWith("proposal-1");
     });
   });
+
+  it("pins the topic detail inside the canvas in fillHeight mode so it cannot overlap the map", async () => {
+    render(
+      <MemoryRouter initialEntries={[{ pathname: "/", state: null }]}>
+        <RoadmapPane hideSidebar fillHeight />
+      </MemoryRouter>,
+    );
+
+    const canvas = await screen.findByTestId("knowledge-map");
+
+    const graphNodeButton = await screen.findByRole("button", { name: "Select graph node" });
+    fireEvent.click(graphNodeButton);
+
+    // The panel must live inside the canvas element. Rendered as a sibling
+    // below it, the canvas min-height floor pushes it past the bottom of the
+    // surrounding overflow-hidden column and it reads as floating on the map.
+    const heading = await screen.findByText("Selected Topic");
+    expect(canvas).toContainElement(heading);
+
+    const panel = heading.parentElement as HTMLElement;
+    expect(panel.className).toContain("absolute");
+    expect(panel.className).toContain("overflow-y-auto");
+  }, 15000);
 });
