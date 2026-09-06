@@ -875,27 +875,9 @@ export default function KnowledgeGraphView({
   // the space that is actually free, instead of laying nodes out underneath
   // the chrome. Measured from the live panel so a long description (which
   // makes it taller) still reserves the right amount.
-  const detailPanelRef = useRef<HTMLDivElement | null>(null);
-  const [detailPanelHeight, setDetailPanelHeight] = useState(0);
-  const showDetailOverlay = fillHeight && Boolean(selectedConcept);
-
-  useEffect(() => {
-    const node = detailPanelRef.current;
-    if (!showDetailOverlay || !node || typeof ResizeObserver === "undefined") {
-      setDetailPanelHeight(0);
-      return;
-    }
-    const observer = new ResizeObserver(([entry]) => {
-      setDetailPanelHeight(entry.contentRect.height);
-    });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [showDetailOverlay]);
-
-  const roadmapViewportInset = useMemo(() => ({
-    // 12px inset + 32px dock + 12px breathing room.
-    bottom: Math.max(56, showDetailOverlay ? detailPanelHeight + 24 : 0),
-  }), [showDetailOverlay, detailPanelHeight]);
+  // 12px inset + 32px dock + 12px breathing room. Constant: the dock is the
+  // only chrome pinned over the canvas.
+  const roadmapViewportInset = useMemo(() => ({ bottom: 56 }), []);
 
   if (!activeWorkspaceId) {
     return (
@@ -1732,24 +1714,6 @@ export default function KnowledgeGraphView({
                           searchFilter={graphSearch}
                           viewportInset={roadmapViewportInset}
                         />
-                        {/* Topic detail as a canvas overlay. The canvas has a
-                            min-height floor so it cannot give room to a sibling
-                            row below it; pinning the panel here keeps it inside
-                            the map bounds instead of spilling past the bottom
-                            edge of the surrounding overflow-hidden column.
-                            The graph reserves this strip via viewportInset, so
-                            no node is laid out underneath it. */}
-                        {fillHeight && selectedConcept && (
-                          <div
-                            ref={detailPanelRef}
-                            className="surface-floating absolute bottom-3 left-3 z-10 w-[min(20rem,calc(100%-6.5rem))] max-h-[calc(100%-1.5rem)] overflow-y-auto rounded-xl p-2"
-                          >
-                            <div className="mb-1 px-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
-                              Selected Topic
-                            </div>
-                            {selectedConceptDetail}
-                          </div>
-                        )}
                         {/* Floating canvas dock (Figma/Miro style): zoom, reset
                             framing, and fullscreen grouped in one unit so the
                             canvas chrome does not compete with page chrome. */}
