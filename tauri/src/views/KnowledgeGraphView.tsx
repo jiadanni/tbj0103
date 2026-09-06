@@ -1039,7 +1039,7 @@ export default function KnowledgeGraphView({
   ) : null;
 
   return (
-    <div className="flex h-full min-h-0 overflow-hidden bg-[var(--bg-primary)]">
+    <div className="flex h-full min-h-0 overflow-hidden bg-[var(--bg-base)]">
       {!hideSidebar && (
       <div className="w-72 flex-shrink-0 overflow-y-auto border-r border-[var(--border-color)] bg-[var(--bg-sidebar)]">
         <div className="flex flex-col gap-3 p-3">

@@ -38,12 +38,12 @@
      literal colors in components. --surface-border is a hairline that reads
      correctly against its own tier, and --shadow-surface is the matching
      drop shadow (suppressed on light themes where borders carry separation). */
-  --bg-base: #f7f7f8;
+  --bg-base: #f2f3f5;
   --surface: #ffffff;
   --surface-hover: #f0f0f2;
   --surface-raised: #ffffff;
-  --surface-border: rgba(0, 0, 0, 0.09);
-  --shadow-surface: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --surface-border: rgba(0, 0, 0, 0.12);
+  --shadow-surface: 0 1px 3px rgba(0, 0, 0, 0.08);
   --shadow-raised: 0 8px 24px rgba(0, 0, 0, 0.10);
   --link-color: var(--accent-color);
   --message-user-bg: var(--accent-color);
@@ -106,12 +106,12 @@
   --bg-hover: #efefef;
   --bg-input: #ffffff;
   --border-color: #e5e7eb;
-  --bg-base: #f7f7f8;
+  --bg-base: #f2f3f5;
   --surface: #ffffff;
   --surface-hover: #f0f0f2;
   --surface-raised: #ffffff;
-  --surface-border: rgba(0, 0, 0, 0.09);
-  --shadow-surface: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --surface-border: rgba(0, 0, 0, 0.12);
+  --shadow-surface: 0 1px 3px rgba(0, 0, 0, 0.08);
   --shadow-raised: 0 8px 24px rgba(0, 0, 0, 0.10);
 }
 
