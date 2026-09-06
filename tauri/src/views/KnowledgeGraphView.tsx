@@ -1708,9 +1708,13 @@ export default function KnowledgeGraphView({
                             row below it; pinning the panel here keeps it inside
                             the map bounds instead of spilling past the bottom
                             edge of the surrounding overflow-hidden column.
-                            Left-aligned so it clears the zoom dock. */}
+                            Top-left rather than bottom-left: the map is
+                            vertically centered and expanding a node grows its
+                            children downward, so a bottom-pinned panel covered
+                            the very node that was just expanded. Top-left also
+                            keeps it clear of the bottom-right zoom dock. */}
                         {fillHeight && selectedConcept && (
-                          <div className="surface-floating absolute bottom-3 left-3 z-10 w-[min(22rem,calc(100%-6.5rem))] max-h-[calc(100%-1.5rem)] overflow-y-auto rounded-xl p-2">
+                          <div className="surface-floating absolute top-3 left-3 z-10 w-[min(20rem,calc(100%-6.5rem))] max-h-[calc(100%-1.5rem)] overflow-y-auto rounded-xl p-2">
                             <div className="mb-1 px-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
                               Selected Topic
                             </div>
