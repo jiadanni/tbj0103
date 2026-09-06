@@ -103,7 +103,7 @@ function Section({
 }) {
   const hasHeading = Boolean(title || eyebrow);
   return (
-    <section className={`surface-card rounded-2xl px-5 py-4 ${className ?? ""}`}>
+    <section className={`surface-card rounded-xl px-4 py-3 ${className ?? ""}`}>
       <div
         className={`flex items-start justify-between ${
           collapsed || !hasHeading ? "" : "mb-3"
@@ -145,7 +145,7 @@ function SidebarCard({
   className?: string;
 }) {
   return (
-    <section className={`rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] ${className}`}>
+    <section className={`surface-card rounded-xl ${className}`}>
       {children}
     </section>
   );

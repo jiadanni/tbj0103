@@ -141,7 +141,7 @@ function QuickActionsCard({
             key={action.label}
             type="button"
             onClick={action.onClick}
-            className="group flex items-center gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-2 py-2 text-left transition-colors hover:border-[rgba(var(--accent-color-rgb),0.35)] hover:bg-[var(--bg-hover)]"
+            className="surface-card surface-card-interactive group flex items-center gap-2 rounded-lg px-2 py-2 text-left"
           >
             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]">
               {action.icon}
@@ -173,9 +173,9 @@ function EmptyStateActionCard({
     <button
       type="button"
       onClick={onClick}
-      className="group flex h-full flex-col items-start rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-4 text-left transition-all hover:border-[rgba(var(--accent-color-rgb),0.35)] hover:bg-[var(--bg-hover)]"
+      className="surface-card surface-card-interactive group flex h-full flex-col items-start rounded-xl p-4 text-left"
     >
-      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]">
+      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]">
         {icon}
       </div>
       <div className="mt-4 text-sm font-semibold text-[var(--text-primary)]">{title}</div>
@@ -242,7 +242,7 @@ export default function FolderDashboardView() {
   if (!activeWorkspaceId) {
     return (
       <div className="flex h-full items-center justify-center px-6">
-        <div className="max-w-lg rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-6 text-center">
+        <div className="surface-card max-w-lg rounded-xl p-6 text-center">
           <h1 className="text-xl font-semibold text-[var(--text-primary)]">No workspace selected</h1>
           <p className="mt-2 text-sm text-[var(--text-secondary)]">
             Pick a workspace to see your learning overview.
@@ -255,7 +255,7 @@ export default function FolderDashboardView() {
   if (isLoading && !summary) {
     return (
       <div className="flex h-full items-center justify-center px-6">
-        <div className="flex items-center gap-3 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] px-5 py-4 text-sm text-[var(--text-secondary)]">
+        <div className="surface-card flex items-center gap-3 rounded-xl px-5 py-4 text-sm text-[var(--text-secondary)]">
           <RefreshCw size={16} className="animate-spin text-[var(--accent-color)]" />
           Loading…
         </div>
@@ -292,7 +292,7 @@ export default function FolderDashboardView() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header: workspace name + search */}
-      <header className="border-b border-[var(--border-color)] bg-[linear-gradient(135deg,rgba(var(--accent-color-rgb),0.10),rgba(255,255,255,0)_50%),var(--bg-elevated)] px-4 py-3">
+      <header className="border-b border-[var(--surface-border)] bg-[linear-gradient(135deg,rgba(var(--accent-color-rgb),0.10),rgba(255,255,255,0)_50%),var(--surface)] px-4 py-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0 flex-1">
             <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
@@ -416,7 +416,7 @@ export default function FolderDashboardView() {
       >
         {showWorkspaceWarmupState ? (
           <div className="px-4 py-4 sm:px-6">
-            <section className="rounded-[28px] border border-[var(--border-color)] bg-[linear-gradient(145deg,rgba(var(--accent-color-rgb),0.10),rgba(255,255,255,0)_45%),var(--bg-elevated)] p-5 sm:p-6">
+            <section className="surface-card rounded-2xl bg-[linear-gradient(145deg,rgba(var(--accent-color-rgb),0.10),rgba(255,255,255,0)_45%),var(--surface)] p-5 sm:p-6">
               <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
                 <div className="max-w-2xl">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
@@ -432,7 +432,7 @@ export default function FolderDashboardView() {
                   </p>
                 </div>
 
-                <div className="grid gap-2 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-3 text-sm text-[var(--text-secondary)] sm:grid-cols-3 xl:min-w-[360px] xl:grid-cols-1">
+                <div className="surface-card grid gap-2 rounded-xl p-3 text-sm text-[var(--text-secondary)] sm:grid-cols-3 xl:min-w-[360px] xl:grid-cols-1">
                   <div>
                     <div className="text-[10px] uppercase tracking-[0.12em] text-[var(--text-muted)]">Chats</div>
                     <div className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{summary.overview.chat_sessions}</div>
@@ -545,7 +545,7 @@ function GoalsCard({
 
   return (
     <section className="flex min-h-0 flex-col surface-card rounded-xl">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border-color)]">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--surface-border)]">
         <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
           Workspace goals
         </div>
@@ -603,7 +603,7 @@ function GoalsCard({
         ))}
 
         {complete.length > 0 && (
-          <div className="pt-2 mt-2 border-t border-[var(--border-color)]/60">
+          <div className="pt-2 mt-2 border-t border-[var(--surface-border)]">
             <div className="px-1 pb-1 text-[9px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
               Completed · {complete.length}
             </div>
