@@ -997,6 +997,46 @@ export default function KnowledgeGraphView({
     ? [{ value: "", label: isDemoWithoutModels ? "Demo simulation only" : "No models found" }]
     : groupedModelOptions.options;
 
+  // Rendered in two places: as a section under the map in the standalone
+  // layout, and as an overlay pinned inside the canvas in fillHeight mode,
+  // where the canvas has a min-height floor and cannot yield room to a
+  // sibling row. Defined once so the two stay identical.
+  const selectedConceptDetail = selectedConcept ? (
+    <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-medium text-[var(--text-primary)]">{selectedConcept.name}</div>
+          <div className="mt-1 flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+            <span className="capitalize">{selectedConcept.concept_type}</span>
+            {selectedConcept.created_at && (
+              <>
+                <span className="text-[var(--text-muted)]">•</span>
+                <span className="text-[var(--text-muted)]">Extracted {formatTimestamp(selectedConcept.created_at)}</span>
+              </>
+            )}
+          </div>
+        </div>
+        <button
+          onClick={() => setSelectedConcept(null)}
+          aria-label="Close topic detail"
+          className="rounded-lg p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)]"
+        >
+          <X size={14} />
+        </button>
+      </div>
+      {selectedConcept.concept_description && (
+        <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+          {selectedConcept.concept_description}
+        </p>
+      )}
+      <div className="mt-3 text-xs text-[var(--text-muted)]">
+        {conceptCards.length > 0
+          ? `${conceptCards.length} related card${conceptCards.length === 1 ? "" : "s"} available in the sidebar.`
+          : "Select generate cards in the sidebar if you want reinforcement for this topic."}
+      </div>
+    </div>
+  ) : null;
+
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-[var(--bg-primary)]">
       {!hideSidebar && (
@@ -1663,6 +1703,20 @@ export default function KnowledgeGraphView({
                           onSelectConcept={setSelectedConcept}
                           searchFilter={graphSearch}
                         />
+                        {/* Topic detail as a canvas overlay. The canvas has a
+                            min-height floor so it cannot give room to a sibling
+                            row below it; pinning the panel here keeps it inside
+                            the map bounds instead of spilling past the bottom
+                            edge of the surrounding overflow-hidden column.
+                            Left-aligned so it clears the zoom dock. */}
+                        {fillHeight && selectedConcept && (
+                          <div className="surface-floating absolute bottom-3 left-3 z-10 w-[min(22rem,calc(100%-6.5rem))] max-h-[calc(100%-1.5rem)] overflow-y-auto rounded-xl p-2">
+                            <div className="mb-1 px-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
+                              Selected Topic
+                            </div>
+                            {selectedConceptDetail}
+                          </div>
+                        )}
                         {/* Floating canvas dock (Figma/Miro style): zoom, reset
                             framing, and fullscreen grouped in one unit so the
                             canvas chrome does not compete with page chrome. */}
@@ -1785,51 +1839,18 @@ export default function KnowledgeGraphView({
             </div>
           </div>
 
-          {/* In fillHeight mode the roadmap grid above is `flex-1` inside an
-              `overflow-hidden` column, so this row must claim its own space
-              (shrink-0) or it gets pushed past the bottom edge and reads as
-              floating on top of the canvas. Cap it and let it scroll so a
-              long detail body shrinks the canvas rather than evicting it. */}
-          {selectedConcept && (
-            <div className={`grid gap-4 xl:grid-cols-[0.9fr_1.1fr] ${fillHeight ? "shrink-0 max-h-[45%] overflow-y-auto" : ""}`}>
+          {/* fillHeight mode renders this as an overlay pinned inside the canvas
+              instead (see the roadmap container), because the canvas has a
+              min-h floor and cannot yield height to a sibling row. */}
+          {selectedConcept && !fillHeight && (
+            <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
               <Section
                 title="Selected Topic"
                 eyebrow="Detail"
                 collapsed={collapsedSections["conceptFocus"]}
                 onToggle={() => toggleSection("conceptFocus")}
               >
-                <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-medium text-[var(--text-primary)]">{selectedConcept.name}</div>
-                      <div className="mt-1 flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-                        <span className="capitalize">{selectedConcept.concept_type}</span>
-                        {selectedConcept.created_at && (
-                          <>
-                            <span className="text-[var(--text-muted)]">•</span>
-                            <span className="text-[var(--text-muted)]">Extracted {formatTimestamp(selectedConcept.created_at)}</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => setSelectedConcept(null)}
-                      className="rounded-lg p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)]"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                  {selectedConcept.concept_description && (
-                    <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                      {selectedConcept.concept_description}
-                    </p>
-                  )}
-                  <div className="mt-3 text-xs text-[var(--text-muted)]">
-                    {conceptCards.length > 0
-                      ? `${conceptCards.length} related card${conceptCards.length === 1 ? "" : "s"} available in the sidebar.`
-                      : "Select generate cards in the sidebar if you want reinforcement for this topic."}
-                  </div>
-                </div>
+                {selectedConceptDetail}
               </Section>
             </div>
           )}
