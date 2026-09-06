@@ -1785,8 +1785,13 @@ export default function KnowledgeGraphView({
             </div>
           </div>
 
+          {/* In fillHeight mode the roadmap grid above is `flex-1` inside an
+              `overflow-hidden` column, so this row must claim its own space
+              (shrink-0) or it gets pushed past the bottom edge and reads as
+              floating on top of the canvas. Cap it and let it scroll so a
+              long detail body shrinks the canvas rather than evicting it. */}
           {selectedConcept && (
-            <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+            <div className={`grid gap-4 xl:grid-cols-[0.9fr_1.1fr] ${fillHeight ? "shrink-0 max-h-[45%] overflow-y-auto" : ""}`}>
               <Section
                 title="Selected Topic"
                 eyebrow="Detail"
