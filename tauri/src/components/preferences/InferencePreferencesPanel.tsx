@@ -66,7 +66,7 @@ export function InferencePreferencesPanel({
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-8">
-        <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 space-y-3">
+        <div className="surface-card rounded-xl p-3 space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-sm text-[var(--text-secondary)]">Detected hardware guidance</p>
@@ -95,24 +95,24 @@ export function InferencePreferencesPanel({
             )}
 
             <div className="grid gap-2 sm:grid-cols-2">
-              <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
+              <div className="surface-card rounded-lg px-3 py-2">
                 <p className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">System</p>
                 <p className="mt-0.5 text-xs text-[var(--text-primary)]">{formatSystemName(systemSpecs)}</p>
                 <p className="text-[10px] text-[var(--text-secondary)]">{systemSpecs.cpu_arch}</p>
               </div>
-              <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
+              <div className="surface-card rounded-lg px-3 py-2">
                 <p className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">CPU</p>
                 <p className="mt-0.5 text-xs text-[var(--text-primary)]">{systemSpecs.cpu_brand}</p>
                 <p className="text-[10px] text-[var(--text-secondary)]">
                   {systemSpecs.physical_cores ? `${systemSpecs.physical_cores} physical` : "Physical cores unavailable"} / {systemSpecs.logical_cores} logical
                 </p>
               </div>
-              <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
+              <div className="surface-card rounded-lg px-3 py-2">
                 <p className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">Memory</p>
                 <p className="mt-0.5 text-xs text-[var(--text-primary)]">{formatBytes(systemSpecs.total_memory_bytes)} total</p>
                 <p className="text-[10px] text-[var(--text-secondary)]">{formatBytes(systemSpecs.available_memory_bytes)} available now</p>
               </div>
-              <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
+              <div className="surface-card rounded-lg px-3 py-2">
                 <p className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">
                   {systemSpecs.gpu_name ? "GPU" : "Swap"}
                 </p>
@@ -135,7 +135,7 @@ export function InferencePreferencesPanel({
               <p className="text-[10px] text-[var(--text-secondary)]">{systemGuidance.caution}</p>
             )}
 
-            <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2.5 space-y-3">
+            <div className="surface-card rounded-lg px-3 py-2.5 space-y-3">
               <div>
                 <p className="text-[11px] font-semibold text-[var(--text-primary)]">Memory headroom</p>
                 <p className="mt-1 text-[10px] text-[var(--text-secondary)] leading-relaxed">
@@ -299,7 +299,7 @@ export function InferencePreferencesPanel({
           </p>
         </div>
 
-        <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-4 space-y-4">
+        <div className="surface-card rounded-xl p-4 space-y-4">
           <div className="flex items-start gap-3">
             <Toggle
               on={dbSettings.ollama_remote_enabled}
@@ -405,7 +405,7 @@ export function InferencePreferencesPanel({
         </div>
 
         {isMac && (
-          <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-4 space-y-3">
+          <div className="surface-card rounded-xl p-4 space-y-3">
             <div className="flex items-center justify-between mb-1">
               <div>
                 <label className="text-sm text-[var(--text-secondary)]">MLX</label>
@@ -441,7 +441,7 @@ export function InferencePreferencesPanel({
           </div>
         )}
 
-        <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-4 space-y-3">
+        <div className="surface-card rounded-xl p-4 space-y-3">
           <div className="flex items-center justify-between mb-2">
             <div>
               <label className="text-sm text-[var(--text-secondary)]">llama.cpp (GGUF)</label>
