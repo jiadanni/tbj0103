@@ -1735,7 +1735,7 @@ export default function ImportSettingsSection() {
             return (
               <div className="shrink-0 grid grid-cols-4 gap-3">
                 {sources.map((src) => (
-                  <section key={src.key} className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 flex flex-col gap-2">
+                  <section key={src.key} className="surface-card rounded-xl p-3 flex flex-col gap-2">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <FolderInput size={15} className="shrink-0 text-[var(--accent-color)]" />
@@ -1781,7 +1781,7 @@ export default function ImportSettingsSection() {
 
         {/* ── LM Studio preview (below grid, only when a single folder was scanned) ── */}
         {lmStudioPreviews.length > 0 && (
-          <section className="shrink-0 max-w-3xl rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3">
+          <section className="shrink-0 max-w-3xl surface-card rounded-xl p-3">
             <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-between">
@@ -1803,7 +1803,7 @@ export default function ImportSettingsSection() {
                       </button>
                     </div>
                   </div>
-                  <div className="max-h-56 overflow-y-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)]">
+                  <div className="max-h-56 overflow-y-auto surface-card rounded-lg">
                     {lmStudioPreviews.map((conversation) => {
                       const checked = lmStudioSelected.has(conversation.uuid);
                       return (
@@ -1866,7 +1866,7 @@ export default function ImportSettingsSection() {
                         </button>
                       </div>
                     </div>
-                    <div className="max-h-44 overflow-y-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)]">
+                    <div className="max-h-44 overflow-y-auto surface-card rounded-lg">
                       {lmStudioProjects.map((project) => {
                         const checked = lmStudioSelectedFolders.has(project.uuid);
                         return (
@@ -1913,7 +1913,7 @@ export default function ImportSettingsSection() {
                   </p>
                 )}
 
-                <div className="flex flex-col gap-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2">
+                <div className="flex flex-col gap-1 surface-card rounded-lg px-3 py-2">
                   <label className="flex items-center gap-2 text-[11px] text-[var(--text-secondary)]">
                     <input
                       type="checkbox"
@@ -1961,7 +1961,7 @@ export default function ImportSettingsSection() {
 
         {/* ── Google Takeout preview (below grid, only when a file was scanned) ── */}
         {geminiPreviews.length > 0 && (
-          <section className="flex-1 min-h-[450px] max-w-4xl rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 flex flex-col gap-3 overflow-hidden">
+          <section className="flex-1 min-h-[450px] max-w-4xl surface-card rounded-xl p-3 flex flex-col gap-3 overflow-hidden">
             <ImportConversationPreview
               conversations={geminiPreviews}
               selected={geminiSelected}
@@ -1991,7 +1991,7 @@ export default function ImportSettingsSection() {
 
         {/* ── ChatGPT preview (below grid, only when a folder was scanned) ── */}
         {chatGptPreviews.length > 0 && (
-          <section className="flex-1 min-h-[450px] max-w-4xl rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3 flex flex-col gap-3 overflow-hidden">
+          <section className="flex-1 min-h-[450px] max-w-4xl surface-card rounded-xl p-3 flex flex-col gap-3 overflow-hidden">
             {/* Destination Configuration */}
             <div className="shrink-0 flex flex-wrap items-center gap-4 border-b border-[var(--border-color)] pb-3">
               <div className="flex items-center gap-2">
@@ -2084,7 +2084,7 @@ export default function ImportSettingsSection() {
         {claudeFolderPath && claudeFilesFound && (
           <div className="flex-1 min-h-0 flex flex-col gap-2 overflow-y-auto pr-1">
             {/* Folder info + toggles */}
-            <div className="shrink-0 flex flex-col gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3">
+            <div className="shrink-0 flex flex-col gap-2 surface-card rounded-lg p-3">
               <div className="flex items-center justify-between gap-2">
                 <div className="text-[11px] text-[var(--text-muted)] truncate max-w-[70%]">{claudeFolderPath}</div>
                 <div className="flex items-center gap-2">
@@ -2133,7 +2133,7 @@ export default function ImportSettingsSection() {
             )}
 
             {claudeIncludeProjects && claudeProjects.length > 0 && (
-              <div className={`flex flex-col gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3 ${projectsSectionOpen ? "flex-1 min-h-[400px]" : ""}`}>
+              <div className={`flex flex-col gap-2 surface-card rounded-lg p-3 ${projectsSectionOpen ? "flex-1 min-h-[400px]" : ""}`}>
                 <ImportSectionHeader
                   label="Projects"
                   detail={`${claudeSelectedFolders.size} of ${claudeProjects.length} selected`}
@@ -2153,7 +2153,7 @@ export default function ImportSettingsSection() {
 
                 {projectsSectionOpen && (<>
                 {/* Bulk action */}
-                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2">
+                <div className="flex flex-wrap items-center gap-2 surface-card rounded-lg px-3 py-2">
                   <span className="text-[11px] text-[var(--text-muted)]">Bulk:</span>
                   {([
                     { v: "new-workspace" as const, label: "New workspace" },
@@ -2193,7 +2193,7 @@ export default function ImportSettingsSection() {
                 {/* Master / detail / preview split */}
                 <div className="flex-1 min-h-0 flex flex-row gap-3 items-stretch">
                   {/* ── Master: project list ───────────────────────── */}
-                  <div className="flex-1 min-h-0 min-w-0 flex flex-col divide-y divide-[var(--border-color)] overflow-y-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] w-[28%] max-w-[28%]">
+                  <div className="flex-1 min-h-0 min-w-0 flex flex-col divide-y divide-[var(--border-color)] overflow-y-auto surface-card rounded-lg w-[28%] max-w-[28%]">
                     {claudeProjects.map((proj) => {
                       const checked = claudeSelectedFolders.has(proj.uuid);
                       const assignedCount = Object.values(chatAssignments).filter((p) => p === proj.uuid).length;
@@ -2264,7 +2264,7 @@ export default function ImportSettingsSection() {
                   </div>
 
                   {/* ── Detail: focused project ────────────────────── */}
-                  <div className="flex-1 min-h-0 min-w-0 flex flex-col gap-2 overflow-y-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3 w-[36%] max-w-[36%]">
+                  <div className="flex-1 min-h-0 min-w-0 flex flex-col gap-2 overflow-y-auto surface-card rounded-lg p-3 w-[36%] max-w-[36%]">
                     {(() => {
                       const proj = claudeProjects.find((p) => p.uuid === focusedProjectUuid);
                       if (!proj) {
@@ -2503,7 +2503,7 @@ export default function ImportSettingsSection() {
                   </div>
 
                   {/* ── Preview: focused conversation ──────────────── */}
-                  <div className="flex-1 min-h-0 min-w-0 flex flex-col gap-2 overflow-hidden rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3 w-[36%] max-w-[36%]">
+                  <div className="flex-1 min-h-0 min-w-0 flex flex-col gap-2 overflow-hidden surface-card rounded-lg p-3 w-[36%] max-w-[36%]">
                     {(() => {
                       if (!focusedConvUuid) {
                         return <div className="m-auto text-[11px] text-[var(--text-muted)]">Select a conversation to preview.</div>;
@@ -2546,7 +2546,7 @@ export default function ImportSettingsSection() {
 
             {/* ── Previously imported chats (merge automatically) ── */}
             {claudeIncludeConversations && Object.keys(claudeLinked).length > 0 && (
-              <div className="mt-4 rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2">
+              <div className="mt-4 surface-card rounded-lg px-3 py-2">
                 <button
                   type="button"
                   onClick={() => setLinkedListOpen((v) => !v)}
@@ -2590,7 +2590,7 @@ export default function ImportSettingsSection() {
             )}
 
             {claudeIncludeConversations && claudeOrphans.length > 0 && (
-              <div className="mt-4 flex flex-col gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3">
+              <div className="mt-4 flex flex-col gap-2 surface-card rounded-lg p-3">
                 {(() => {
                   const assignedTotal = Object.values(chatAssignments).filter((p) => !!p).length;
                   const unassignedTotal = claudeOrphans.length - assignedTotal;
@@ -2669,7 +2669,7 @@ export default function ImportSettingsSection() {
                                 </button>
                               </div>
                               {showMatchModelMenu && (
-                                <div className="absolute right-0 top-full z-50 mt-1 min-w-[200px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-lg py-1">
+                                <div className="absolute right-0 top-full z-50 mt-1 min-w-[200px] surface-floating rounded-lg py-1">
                                   <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Model</div>
                                   {[
                                     { label: "Configured chat model", value: "" },
@@ -2810,7 +2810,7 @@ export default function ImportSettingsSection() {
                           </button>
                         </div>
                       )}
-                      <div className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] p-3">
+                      <div className="surface-card rounded-lg p-3">
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] text-[var(--text-muted)]">
                             Assigned chats import to their pre-selected destination; the rest go to &ldquo;Unassigned Imports&rdquo;. Change any row that&rsquo;s wrong.
@@ -3067,7 +3067,7 @@ export default function ImportSettingsSection() {
             {/* ── Action row ───────────────────────────────────── */}
             {(claudeProjects.length > 0 || claudeOrphans.length > 0 || Object.keys(claudeLinked).length > 0) && (
               <div className="mt-4 flex flex-col gap-2">
-                <div className="flex flex-col gap-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2">
+                <div className="flex flex-col gap-1 surface-card rounded-lg px-3 py-2">
                   <label className="flex items-center gap-2 text-[11px] text-[var(--text-secondary)]">
                     <input
                       type="checkbox"
