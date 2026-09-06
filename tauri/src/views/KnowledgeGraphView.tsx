@@ -53,6 +53,7 @@ import { useSettingsStore } from "../stores/settingsStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
 import { CompactMenuSelect } from "../components/CompactMenuSelect";
+import { Card } from "../components/ui/Surface";
 import { groupModelsByFamily } from "../lib/modelFamilyGrouping";
 import { resolveModelDisplayName } from "../lib/modelDisplayName";
 
@@ -133,20 +134,6 @@ function Section({
         )}
       </div>
       {!collapsed && children}
-    </section>
-  );
-}
-
-function SidebarCard({
-  children,
-  className = "",
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <section className={`surface-card rounded-xl ${className}`}>
-      {children}
     </section>
   );
 }
@@ -1056,7 +1043,7 @@ export default function KnowledgeGraphView({
       {!hideSidebar && (
       <div className="w-72 flex-shrink-0 overflow-y-auto border-r border-[var(--border-color)] bg-[var(--bg-sidebar)]">
         <div className="flex flex-col gap-3 p-3">
-          <SidebarCard className="p-3">
+          <Card>
             <div className="mb-3 flex items-center gap-1.5">
               <Sparkles size={14} className="text-[var(--accent-color)]" />
               <span className="text-xs font-semibold text-[var(--text-primary)]">AI Analysis</span>
@@ -1143,9 +1130,9 @@ export default function KnowledgeGraphView({
             {analyzeError && (
               <p className="mt-2 break-words text-[10px] text-red-400">{analyzeError}</p>
             )}
-          </SidebarCard>
+          </Card>
 
-          <SidebarCard className="p-3">
+          <Card>
             <div className="grid grid-cols-3 gap-2">
               <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/60 p-2 text-center">
                 <div className="text-sm font-semibold text-[var(--text-primary)]">{overview?.topics ?? nodes.length}</div>
@@ -1160,9 +1147,9 @@ export default function KnowledgeGraphView({
                 <div className="mt-1 text-[10px] text-[var(--text-muted)]">Due</div>
               </div>
             </div>
-          </SidebarCard>
+          </Card>
 
-          <SidebarCard className="p-3">
+          <Card>
             <div className="mb-2 flex items-center justify-between">
               <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Topics</div>
               <button
@@ -1274,10 +1261,10 @@ export default function KnowledgeGraphView({
               <p className="px-2 py-3 text-[10px] text-[var(--text-muted)]">No topics match this filter yet.</p>
             )}
             </div>
-          </SidebarCard>
+          </Card>
 
           {selectedConcept && (
-            <SidebarCard className="p-3">
+            <Card>
               <div className="mb-2 flex items-center justify-between">
                 <span className="truncate text-sm font-semibold text-[var(--text-primary)]">{selectedConcept.name}</span>
                 <button onClick={() => setSelectedConcept(null)}>
@@ -1347,7 +1334,7 @@ export default function KnowledgeGraphView({
                 <Trash2 size={10} />
                 Delete
               </button>
-            </SidebarCard>
+            </Card>
           )}
 
           {!selectedConcept && (
