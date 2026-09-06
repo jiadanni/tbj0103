@@ -869,7 +869,7 @@ export default function KnowledgeGraphView({
   if (!activeWorkspaceId) {
     return (
       <div className="flex h-full items-center justify-center px-6">
-        <div className="max-w-lg rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-6 text-center">
+        <div className="max-w-lg surface-card rounded-2xl p-6 text-center">
           <h1 className="text-xl font-semibold text-[var(--text-primary)]">No workspace selected</h1>
           <p className="mt-2 text-sm text-[var(--text-secondary)]">
             Pick a workspace to see its knowledge overview and map.
@@ -1423,7 +1423,7 @@ export default function KnowledgeGraphView({
                             />
                             <div
                               role="menu"
-                              className="absolute right-0 top-full z-50 mt-1 w-60 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1 shadow-lg"
+                              className="absolute right-0 top-full z-50 mt-1 w-60 overflow-hidden surface-floating rounded-xl py-1"
                             >
                               <button
                                 type="button"
@@ -1519,7 +1519,7 @@ export default function KnowledgeGraphView({
                       {exportMenuOpen && (
                         <div
                           role="menu"
-                          className="absolute right-0 z-20 mt-1 w-56 overflow-hidden rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-lg"
+                          className="absolute right-0 z-20 mt-1 w-56 overflow-hidden surface-floating rounded-lg"
                         >
                           {[
                             { id: "markdown", label: "Markdown outline (.md)", desc: "AI-friendly hierarchy" },
@@ -1650,7 +1650,7 @@ export default function KnowledgeGraphView({
                               {exportMenuOpen && (
                                 <div
                                   role="menu"
-                                  className="absolute right-0 z-20 mt-1 w-56 overflow-hidden rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] shadow-lg"
+                                  className="absolute right-0 z-20 mt-1 w-56 overflow-hidden surface-floating rounded-lg"
                                 >
                                   {[
                                     { id: "markdown", label: "Markdown outline (.md)", desc: "AI-friendly hierarchy" },
@@ -1843,7 +1843,7 @@ export default function KnowledgeGraphView({
 
       {showCreateForm && (
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/30 backdrop-blur-sm">
-          <div className="flex w-72 flex-col gap-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-5 shadow-xl">
+          <div className="flex w-72 flex-col gap-3 surface-card rounded-xl p-5 shadow-xl">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-[var(--text-primary)]">New Topic</h3>
               <button onClick={() => setShowCreateForm(false)}>
@@ -1899,7 +1899,7 @@ export default function KnowledgeGraphView({
           aria-modal="true"
           aria-labelledby="refresh-progress-title"
         >
-          <div className="w-full max-w-md rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-5 shadow-xl">
+          <div className="w-full max-w-md surface-card rounded-2xl p-5 shadow-xl">
             <div className="mb-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 {isAnalyzing ? (
