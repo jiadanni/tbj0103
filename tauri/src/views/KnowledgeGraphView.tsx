@@ -869,6 +869,34 @@ export default function KnowledgeGraphView({
     }
   }
 
+  // The zoom dock is pinned bottom-right and the topic detail panel
+  // bottom-left; both float over the canvas. Feed their footprint to
+  // RoadmapGraph as a viewport inset so the fit transform frames the map into
+  // the space that is actually free, instead of laying nodes out underneath
+  // the chrome. Measured from the live panel so a long description (which
+  // makes it taller) still reserves the right amount.
+  const detailPanelRef = useRef<HTMLDivElement | null>(null);
+  const [detailPanelHeight, setDetailPanelHeight] = useState(0);
+  const showDetailOverlay = fillHeight && Boolean(selectedConcept);
+
+  useEffect(() => {
+    const node = detailPanelRef.current;
+    if (!showDetailOverlay || !node || typeof ResizeObserver === "undefined") {
+      setDetailPanelHeight(0);
+      return;
+    }
+    const observer = new ResizeObserver(([entry]) => {
+      setDetailPanelHeight(entry.contentRect.height);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [showDetailOverlay]);
+
+  const roadmapViewportInset = useMemo(() => ({
+    // 12px inset + 32px dock + 12px breathing room.
+    bottom: Math.max(56, showDetailOverlay ? detailPanelHeight + 24 : 0),
+  }), [showDetailOverlay, detailPanelHeight]);
+
   if (!activeWorkspaceId) {
     return (
       <div className="flex h-full items-center justify-center px-6">
@@ -1702,19 +1730,20 @@ export default function KnowledgeGraphView({
                           selectedConceptId={selectedConcept?.id ?? null}
                           onSelectConcept={setSelectedConcept}
                           searchFilter={graphSearch}
+                          viewportInset={roadmapViewportInset}
                         />
                         {/* Topic detail as a canvas overlay. The canvas has a
                             min-height floor so it cannot give room to a sibling
                             row below it; pinning the panel here keeps it inside
                             the map bounds instead of spilling past the bottom
                             edge of the surrounding overflow-hidden column.
-                            Top-left rather than bottom-left: the map is
-                            vertically centered and expanding a node grows its
-                            children downward, so a bottom-pinned panel covered
-                            the very node that was just expanded. Top-left also
-                            keeps it clear of the bottom-right zoom dock. */}
+                            The graph reserves this strip via viewportInset, so
+                            no node is laid out underneath it. */}
                         {fillHeight && selectedConcept && (
-                          <div className="surface-floating absolute top-3 left-3 z-10 w-[min(20rem,calc(100%-6.5rem))] max-h-[calc(100%-1.5rem)] overflow-y-auto rounded-xl p-2">
+                          <div
+                            ref={detailPanelRef}
+                            className="surface-floating absolute bottom-3 left-3 z-10 w-[min(20rem,calc(100%-6.5rem))] max-h-[calc(100%-1.5rem)] overflow-y-auto rounded-xl p-2"
+                          >
                             <div className="mb-1 px-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
                               Selected Topic
                             </div>
