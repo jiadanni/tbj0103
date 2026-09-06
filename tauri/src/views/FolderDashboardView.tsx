@@ -410,7 +410,7 @@ export default function FolderDashboardView() {
           can fill it (and keep its floating dock on screen). overflow-y-auto
           rather than -hidden so a short window scrolls instead of clipping. */}
       <div
-        className={`flex-1 min-h-0 overflow-y-auto bg-[var(--bg-primary)] ${
+        className={`flex-1 min-h-0 overflow-y-auto bg-[var(--bg-base)] ${
           showWorkspaceWarmupState ? "" : "flex flex-col"
         }`}
       >
