@@ -375,7 +375,7 @@ describe("KnowledgeGraphView", () => {
     });
   });
 
-  it("pins the topic detail inside the canvas in fillHeight mode so it cannot overlap the map", async () => {
+  it("keeps the canvas clear of detail chrome when a node is selected in fillHeight mode", async () => {
     render(
       <MemoryRouter initialEntries={[{ pathname: "/", state: null }]}>
         <RoadmapPane hideSidebar fillHeight />
@@ -387,14 +387,14 @@ describe("KnowledgeGraphView", () => {
     const graphNodeButton = await screen.findByRole("button", { name: "Select graph node" });
     fireEvent.click(graphNodeButton);
 
-    // The panel must live inside the canvas element. Rendered as a sibling
-    // below it, the canvas min-height floor pushes it past the bottom of the
-    // surrounding overflow-hidden column and it reads as floating on the map.
-    const heading = await screen.findByText("Selected Topic");
-    expect(canvas).toContainElement(heading);
+    // Selecting a node must not pin a detail panel over the map: the node
+    // label and its hover tooltip already carry this information, and the
+    // panel covered the canvas it described.
+    await waitFor(() => {
+      expect(screen.queryByText("Selected Topic")).not.toBeInTheDocument();
+    });
 
-    const panel = heading.parentElement as HTMLElement;
-    expect(panel.className).toContain("absolute");
-    expect(panel.className).toContain("overflow-y-auto");
+    // The canvas keeps its floating dock, so it still owns the bottom strip.
+    expect(canvas).toBeInTheDocument();
   }, 15000);
 });
