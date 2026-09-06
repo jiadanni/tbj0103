@@ -184,15 +184,15 @@ export default function GlobalMemoryView() {
             </div>
 
             <div className="grid grid-cols-3 gap-3 text-center lg:w-[360px]">
-              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3">
+              <div className="surface-card rounded-xl p-3">
                 <div className="text-lg font-semibold text-[var(--text-primary)]">{counts.total}</div>
                 <div className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Total</div>
               </div>
-              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3">
+              <div className="surface-card rounded-xl p-3">
                 <div className="text-lg font-semibold text-[var(--text-primary)]">{counts.active}</div>
                 <div className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Active</div>
               </div>
-              <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-3">
+              <div className="surface-card rounded-xl p-3">
                 <div className="text-lg font-semibold text-[var(--text-primary)]">{counts.pinned}</div>
                 <div className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Pinned</div>
               </div>
@@ -236,7 +236,7 @@ export default function GlobalMemoryView() {
             {/* Left Column: Add Memory & Facts */}
             <div className="space-y-6">
               {/* Add Memory Card */}
-              <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-5 space-y-4">
+              <div className="surface-card rounded-2xl p-5 space-y-4">
                 <h3 className="text-sm font-semibold text-[var(--text-primary)]">Add New Memory</h3>
                 <div className="flex flex-col gap-3">
                   <textarea
@@ -284,7 +284,7 @@ export default function GlobalMemoryView() {
             {/* Right Column: Summary & Preferences */}
             <div className="space-y-6">
               {/* Summary Section */}
-              <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-5">
+              <div className="surface-card rounded-2xl p-5">
                 <div className="mb-3 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-[var(--text-primary)]">Summary</h3>
                   <div className="flex items-center gap-2">
