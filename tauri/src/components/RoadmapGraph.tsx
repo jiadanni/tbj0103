@@ -6,6 +6,10 @@
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
 import * as d3 from "d3";
 import type { ConceptNode, ConceptLink } from "../lib/api";
+import {
+  computeRoadmapFit,
+  type RoadmapViewportInset,
+} from "../lib/roadmapFit";
 import { buildForest, pruneCollapsedSections, type RoadmapNode } from "../lib/conceptTree";
 import { formatTimestamp } from "../lib/dates";
 
@@ -116,6 +120,7 @@ interface RoadmapGraphProps {
   selectedConceptId?: string | null;
   onSelectConcept: (concept: ConceptNode | null) => void;
   searchFilter?: string;
+  viewportInset?: RoadmapViewportInset;
 }
 
 export interface RoadmapGraphHandle {
@@ -139,6 +144,7 @@ function RoadmapGraphInner(
     selectedConceptId,
     onSelectConcept,
     searchFilter,
+    viewportInset,
   }: RoadmapGraphProps,
   ref: Ref<RoadmapGraphHandle>,
 ) {
@@ -320,32 +326,25 @@ function RoadmapGraphInner(
   // Compute the transform that fits the current layout into the viewport.
   // Shared by the auto-fit effect and the "reset view" control so both land on
   // exactly the same framing.
+  // Depend on the four numbers, not the object: callers pass an inline literal,
+  // whose identity changes every render. Keying the fit callback (and therefore
+  // the auto-fit effect) off the object would re-fit the map on every render.
+  const insetTop = viewportInset?.top ?? 0;
+  const insetRight = viewportInset?.right ?? 0;
+  const insetBottom = viewportInset?.bottom ?? 0;
+  const insetLeft = viewportInset?.left ?? 0;
+
   const computeFitTransform = useCallback(() => {
-    if (!layout || dims.width === 0 || dims.height === 0) { return null; }
-
-    const w = layout.bbox.maxX - layout.bbox.minX;
-    const h = layout.bbox.maxY - layout.bbox.minY;
-    if (w === 0 || h === 0) { return null; }
-
-    // fitScale takes the *min* of both axes so the whole map stays visible; a
-    // wide-but-short canvas is therefore bound by height, not width.
-    //
-    // The upper clamp only bites on sparse maps. It is deliberately close to
-    // 1 so a map with a handful of nodes renders them at roughly their
-    // designed size, centered in the canvas, instead of being blown up to
-    // fill it -- at 2.2 a three-node map produced enormous boxes with huge
-    // labels. Zooming in past this is still available from the dock.
-    const fitScale = Math.min(dims.width / w, dims.height / h);
-    const scale = Math.min(Math.max(fitScale, 0.6), 1.15);
-    const tx = dims.width / 2 - ((layout.bbox.minX + layout.bbox.maxX) / 2) * scale;
-    // Center vertically when the map fits; otherwise pin the top edge in view.
-    const contentHeight = h * scale;
-    const ty = contentHeight <= dims.height
-      ? (dims.height - contentHeight) / 2 - layout.bbox.minY * scale
-      : -layout.bbox.minY * scale;
-
-    return d3.zoomIdentity.translate(tx, ty).scale(scale);
-  }, [layout, dims]);
+    if (!layout) { return null; }
+    const fit = computeRoadmapFit(layout.bbox, dims, {
+      top: insetTop,
+      right: insetRight,
+      bottom: insetBottom,
+      left: insetLeft,
+    });
+    if (!fit) { return null; }
+    return d3.zoomIdentity.translate(fit.tx, fit.ty).scale(fit.scale);
+  }, [layout, dims, insetTop, insetRight, insetBottom, insetLeft]);
 
   // Auto-fit when layout or dims change
   useEffect(() => {
