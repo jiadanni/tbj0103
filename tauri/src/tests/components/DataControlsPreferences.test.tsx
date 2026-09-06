@@ -1,15 +1,17 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { DataControlsPreferences } from "@/components/preferences/DataControlsPreferences";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
-import type { KnowledgeResetResult } from "@/lib/api";
+import type { DataDeletionPreview, DataDeletionResult, KnowledgeResetResult } from "@/lib/api";
 
 const apiMocks = vi.hoisted(() => ({
   resetKnowledgeState: vi.fn(),
   listModels: vi.fn(),
   listenBackgroundTask: vi.fn(),
+  previewDataDeletion: vi.fn(),
+  executeDataDeletion: vi.fn(),
 }));
 
 vi.mock("@/lib/api", async () => {
@@ -20,6 +22,10 @@ vi.mock("@/lib/api", async () => {
       ...actual.api,
       graph: { ...actual.api.graph, resetKnowledgeState: apiMocks.resetKnowledgeState },
       aiModel: { ...actual.api.aiModel, list: apiMocks.listModels },
+      dataDeletion: {
+        preview: apiMocks.previewDataDeletion,
+        execute: apiMocks.executeDataDeletion,
+      },
       listenBackgroundTask: apiMocks.listenBackgroundTask,
     },
   };
@@ -150,5 +156,128 @@ describe("DataControlsPreferences — reset scope", () => {
     await waitFor(() => expect(apiMocks.resetKnowledgeState).toHaveBeenCalledTimes(2));
     const calledIds = apiMocks.resetKnowledgeState.mock.calls.map((c) => c[0].workspaceId).sort();
     expect(calledIds).toEqual(["ws-1", "ws-2"]);
+  });
+});
+
+function mockDeletionPreview(overrides: Partial<DataDeletionPreview> = {}): DataDeletionPreview {
+  return {
+    workspace_count: 1,
+    categories: [
+      { id: "chats", label: "Chats & Messages", item_count: 5, total_rows: 25 },
+      { id: "notes", label: "Notes & Templates", item_count: 3, total_rows: 8 },
+    ],
+    total_items: 8,
+    total_rows: 33,
+    ...overrides,
+  };
+}
+
+function mockDeletionResult(overrides: Partial<DataDeletionResult> = {}): DataDeletionResult {
+  return {
+    workspace_count: 1,
+    total_deleted_items: 8,
+    total_deleted_rows: 33,
+    categories: [
+      { id: "chats", label: "Chats & messages", item_count: 5, total_rows: 25 },
+      { id: "notes", label: "Notes & templates", item_count: 3, total_rows: 8 },
+    ],
+    ...overrides,
+  };
+}
+
+describe("DataControlsPreferences — granular data deletion", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    apiMocks.previewDataDeletion.mockResolvedValue(mockDeletionPreview());
+    apiMocks.executeDataDeletion.mockResolvedValue(mockDeletionResult());
+    apiMocks.listModels.mockResolvedValue([]);
+    apiMocks.listenBackgroundTask.mockResolvedValue(() => {});
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "ws-1", name: "Alpha" },
+        { id: "ws-2", name: "Beta" },
+      ],
+      activeWorkspaceId: "ws-1",
+    } as never);
+  });
+
+  it("renders granular data deletion section with all categories and action button", () => {
+    render(<DataControlsPreferences />);
+    const heading = screen.getByRole("heading", { name: /Granular Data Deletion/i });
+    const card = heading.closest<HTMLElement>("div.rounded-xl");
+    if (!card) {
+      throw new Error("Granular Data Deletion card container not found");
+    }
+    expect(card).toBeTruthy();
+    const cardScope = within(card);
+    expect(cardScope.getByText(/Chats & messages/i)).toBeTruthy();
+    expect(cardScope.getByText(/Notes & templates/i)).toBeTruthy();
+    expect(cardScope.getByText(/Sources & documents/i)).toBeTruthy();
+    expect(cardScope.getByText(/Flashcards & goals/i)).toBeTruthy();
+    expect(cardScope.getByText(/Concepts & knowledge map/i)).toBeTruthy();
+    expect(cardScope.getByText("Memories")).toBeTruthy();
+    expect(cardScope.getByText(/Thought queue & alarms/i)).toBeTruthy();
+    expect(cardScope.getByRole("button", { name: /Delete Selected Data — Alpha/i })).toBeTruthy();
+  });
+
+  it("allows deselecting all and selecting all categories", () => {
+    render(<DataControlsPreferences />);
+    const heading = screen.getByRole("heading", { name: /Granular Data Deletion/i });
+    const card = heading.closest<HTMLElement>("div.rounded-xl");
+    if (!card) {
+      throw new Error("Granular Data Deletion card container not found");
+    }
+    const cardScope = within(card);
+
+    const clearAllBtn = cardScope.getByRole("button", { name: /Clear all/i });
+    fireEvent.click(clearAllBtn);
+
+    const deleteBtn = cardScope.getByRole("button", { name: /Delete Selected Data/i });
+    expect(deleteBtn).toBeDisabled();
+
+    const selectAllBtn = cardScope.getByRole("button", { name: /Select all/i });
+    fireEvent.click(selectAllBtn);
+    expect(cardScope.getByRole("button", { name: /Delete Selected Data — Alpha/i })).not.toBeDisabled();
+  });
+
+  it("allows switching time filter cutoffs", () => {
+    render(<DataControlsPreferences />);
+    const olderThan30d = screen.getByLabelText(/Older than 30 days/i) as HTMLInputElement;
+    expect(olderThan30d.checked).toBe(false);
+    fireEvent.click(olderThan30d);
+    expect(olderThan30d.checked).toBe(true);
+  });
+
+  it("opens deletion preview and executes deletion upon confirmation", async () => {
+    render(<DataControlsPreferences />);
+
+    const deleteBtn = screen.getByRole("button", { name: /Delete Selected Data — Alpha/i });
+    fireEvent.click(deleteBtn);
+
+    await waitFor(() => expect(apiMocks.previewDataDeletion).toHaveBeenCalledTimes(1));
+    expect(apiMocks.previewDataDeletion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: "current_workspace",
+        workspace_ids: ["ws-1"],
+        time_filter: "all",
+      }),
+    );
+
+    // Modal should be open showing preview counts
+    expect(await screen.findByRole("heading", { name: /Permanently Delete Workspace Data/i })).toBeTruthy();
+    expect(screen.getByText(/8 items · 33 total records/i)).toBeTruthy();
+
+    // Confirm deletion
+    const confirmBtn = screen.getByRole("button", { name: /Permanently Delete Data/i });
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => expect(apiMocks.executeDataDeletion).toHaveBeenCalledTimes(1));
+    expect(apiMocks.executeDataDeletion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: "current_workspace",
+        workspace_ids: ["ws-1"],
+        time_filter: "all",
+      }),
+    );
   });
 });

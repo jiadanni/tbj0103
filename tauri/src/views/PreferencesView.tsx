@@ -132,7 +132,11 @@ const TAB_KEYWORDS: Record<string, string[]> = {
     "Multi-device Sync", "Enable sync", "Remote URL", "Last synced", "Git",
   ],
   workspaces: ["Workspaces", "Workspace management"],
-  data: ["Data Controls", "Reset AI-Inferred Workspace Data", "Derived data", "Global maintenance"],
+  data: [
+    "Data Controls", "Data Deletion", "Granular Data Deletion", "Delete chats",
+    "Delete notes", "Delete sources", "Delete flashcards", "Delete memories",
+    "Reset AI-Inferred Workspace Data", "Derived data", "Global maintenance"
+  ],
   backup: ["Workspace Backup", "Global Backup", "Backup directory", "Schedule", "Boom Scroll"],
   import: ["Import", "Migrate"],
   mcp: ["Model Context Protocol", "MCP Server", "Server Name", "Command"],

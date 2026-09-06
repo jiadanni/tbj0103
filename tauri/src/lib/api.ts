@@ -1212,6 +1212,37 @@ export interface SelectiveImportResult {
 
 export type BackupImportMode = "merge" | "replace";
 
+export type DataDeletionScope = "current_workspace" | "selected_workspaces" | "all_workspaces" | "workspace";
+export type DataDeletionTimeFilter = "all" | "7d" | "30d" | "90d" | "365d";
+
+export interface DataDeletionCategoryCount {
+  id: string;
+  label: string;
+  item_count: number;
+  total_rows: number;
+}
+
+export interface DataDeletionPreview {
+  workspace_count: number;
+  total_items: number;
+  total_rows: number;
+  categories: DataDeletionCategoryCount[];
+}
+
+export interface DataDeletionResult {
+  workspace_count: number;
+  total_deleted_items: number;
+  total_deleted_rows: number;
+  categories: DataDeletionCategoryCount[];
+}
+
+export interface DataDeletionRequest {
+  scope: DataDeletionScope;
+  workspace_ids: string[];
+  categories: string[];
+  time_filter?: DataDeletionTimeFilter;
+}
+
 export interface LinkedImportInfo {
   session_id: string;
   source_conversation_uuid: string;
@@ -2273,6 +2304,13 @@ export const api = {
         categoryIds,
         mode,
       }),
+  },
+
+  dataDeletion: {
+    preview: (req: DataDeletionRequest) =>
+      invoke<DataDeletionPreview>("preview_data_deletion", { req }),
+    execute: (req: DataDeletionRequest) =>
+      invoke<DataDeletionResult>("execute_data_deletion", { req }),
   },
 
   settings: {

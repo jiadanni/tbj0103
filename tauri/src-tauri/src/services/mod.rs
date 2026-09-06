@@ -11,6 +11,7 @@ pub mod concept_extractor;
 pub mod concept_hierarchy;
 pub mod concept_hierarchy_service;
 pub mod context_assembler;
+pub mod data_deletion_service;
 pub mod db_encryption;
 pub mod dictionary_service;
 pub mod document_processor;
