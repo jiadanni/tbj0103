@@ -28,7 +28,11 @@ export default {
         "3xl": "var(--radius-dialog)",
       },
       fontFamily: {
-        sans: ["-apple-system", "BlinkMacSystemFont", "Segoe UI", "sans-serif"],
+        // Defer to --app-font-family so `font-sans` matches what <body> actually
+        // renders. globals.css swaps that token per platform (Noto Sans on
+        // Linux); hardcoding the Apple stack here meant the utility and the body
+        // could resolve to two different fonts on non-Apple platforms.
+        sans: ["var(--app-font-family)"],
         mono: ["JetBrains Mono", "Fira Code", "Menlo", "monospace"],
       },
     },

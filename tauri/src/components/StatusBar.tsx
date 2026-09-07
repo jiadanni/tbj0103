@@ -512,7 +512,7 @@ function ScheduledJobsPopover({
       aria-label="Scheduled jobs"
     >
       <div className="mb-1 flex items-center justify-between">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Scheduled Jobs</div>
+        <div className="label-chrome">Scheduled Jobs</div>
         <button
           type="button"
           onClick={onClose}

@@ -33,12 +33,6 @@ function colorFor(type: string) {
   return TYPE_COLORS[type.toLowerCase()] ?? TYPE_COLORS.other;
 }
 
-/** Gradient ids are keyed by the normalized type name so defs stay stable. */
-function gradientIdFor(type: string): string {
-  const key = type.toLowerCase();
-  return `rg-grad-${TYPE_COLORS[key] ? key : "other"}`;
-}
-
 function getResolvedColor(hexOrVar: string): string {
   if (hexOrVar.startsWith("var(")) {
     if (typeof window !== "undefined") {
@@ -477,15 +471,8 @@ function RoadmapGraphInner(
           {/* Two-part shadow: a tight contact shadow plus a wider ambient one,
               which reads as elevation rather than as a single soft blur. */}
           <filter id="rg-card-shadow" x="-40%" y="-40%" width="180%" height="180%">
-            <feDropShadow dx="0" dy="1" stdDeviation="1.5" floodColor="#000000" floodOpacity="0.35" />
-            <feDropShadow dx="0" dy="6" stdDeviation="9" floodColor="#000000" floodOpacity="0.30" />
+            <feDropShadow dx="0" dy="1" stdDeviation="1.5" floodColor="#000000" floodOpacity="0.22" />
           </filter>
-          {Object.entries(TYPE_COLORS).map(([type, color]) => (
-            <linearGradient key={type} id={`rg-grad-${type}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={hexToRgba(color, 0.35)} />
-              <stop offset="100%" stopColor={hexToRgba(color, 0.12)} />
-            </linearGradient>
-          ))}
         </defs>
 
         <g transform={`translate(${transform.x},${transform.y}) scale(${transform.k})`}>
@@ -558,16 +545,31 @@ function RoadmapGraphInner(
             // lifted off the canvas; concepts stay on the plain surface tier so
             // the hierarchy is legible by elevation alone.
             const fillColor = isChapter || isSection ? "var(--surface-raised)" : "var(--surface)";
-            const borderColor = isSelected
-              ? "var(--accent-color)"
-              : hexToRgba(typeColor, isChapter ? 0.75 : isSection ? 0.65 : 0.6);
-            const borderWidth = isSelected ? 2.5 : isChapter ? 1.5 : 1.25;
+            // Neutral hairline, not a type tint. concept_type is uniformly
+            // "topic" in practice, so tinting the border by type painted every
+            // node the same accent color and flattened the whole canvas. Type is
+            // carried by the dot below instead, where it can vary harmlessly.
+            const borderColor = isSelected ? "var(--accent-color)" : "var(--surface-border)";
+            const borderWidth = isSelected ? 2 : 1;
+            // Child count is the one substantive per-node fact available on the
+            // client (concept_description is empty for ~90% of rows), so it is
+            // what the sub-label shows. Collapsed sections have their children
+            // pruned into hiddenChildCount, so read both or the count vanishes
+            // precisely when the node is collapsed.
+            const childCount =
+              (d.data.children?.length ?? 0) + (d.data.hiddenChildCount ?? 0);
+            const metaLineHeight = 12;
             const maxLen = isChapter ? 26 : isSection ? 21 : 18;
             const lines = wrapLabel(d.data.name, maxLen);
             const fontSize = isChapter ? 13.5 : isSection ? 12 : 11;
             const lineHeight = isChapter ? 17 : isSection ? 15 : 13;
             const fontWeight = isChapter ? 700 : isSection ? 600 : 500;
-            const tintOpacity = isChapter ? 1 : isSection ? 0.85 : 0.65;
+            // Approximate half-width of the widest label line, used to park the
+            // type dot just left of centred text. SVG offers no cheap text
+            // metrics, so this uses the same character-width estimate the
+            // collapse badge already relies on.
+            const firstLineHalfWidth =
+              (Math.max(...lines.map((l) => l.length)) * fontSize * 0.5) / 2;
 
             const sourceNode = nodes.find((n) => n.id === d.data.id) ?? null;
 
@@ -581,6 +583,10 @@ function RoadmapGraphInner(
             const isExpanded = collapseKey !== undefined && expandedSections.has(collapseKey);
             const hiddenCount = d.data.hiddenChildCount ?? 0;
             const showBadge = collapseKey !== undefined && (hiddenCount > 0 || isExpanded);
+            // Only chapters carry the child-count line. Sections already state
+            // their count on the collapse badge ("Show 8") directly below, and a
+            // 46px section box has no room for a second line of text anyway.
+            const showMeta = isChapter && !showBadge && childCount > 0;
             const badgeText = isExpanded ? "Hide" : `Show ${hiddenCount}`;
             const badgeHeight = 20;
             const badgeWidth = Math.max(56, badgeText.length * 6.2 + 24);
@@ -604,38 +610,23 @@ function RoadmapGraphInner(
                 <rect
                   width={dim.width}
                   height={dim.height}
-                  rx={isChapter ? 14 : 10}
+                  rx={isChapter ? 12 : 8}
                   fill={fillColor}
-                  filter="url(#rg-card-shadow)"
-                />
-                <rect
-                  width={dim.width}
-                  height={dim.height}
-                  rx={isChapter ? 14 : 10}
-                  fill={`url(#${gradientIdFor(d.data.concept_type)})`}
-                  opacity={tintOpacity}
                   stroke={borderColor}
                   strokeWidth={borderWidth}
+                  filter="url(#rg-card-shadow)"
                 />
-                {/* Category accent along the top edge. Clipped to the card's
-                    rounded corners by reusing the same rx, then masked to a
-                    3px band so only the top stroke shows. */}
-                {!isSelected && (
-                  <path
-                    d={`M ${isChapter ? 14 : 10} 1
-                        L ${dim.width - (isChapter ? 14 : 10)} 1`}
-                    stroke={getResolvedColor(typeColor)}
-                    strokeWidth={2.5}
-                    strokeLinecap="round"
-                    fill="none"
-                    opacity={isChapter ? 0.95 : isSection ? 0.8 : 0.6}
-                  />
-                )}
+                {/* Label block. When a meta line is shown the whole block lifts
+                    by half a line so label + meta stay optically centred. */}
                 {lines.map((line, i) => (
                   <text
                     key={i}
                     x={dim.width / 2}
-                    y={dim.height / 2 + (i - (lines.length - 1) / 2) * lineHeight}
+                    y={
+                      dim.height / 2
+                      + (i - (lines.length - 1) / 2) * lineHeight
+                      - (showMeta ? metaLineHeight / 2 : 0)
+                    }
                     textAnchor="middle"
                     dominantBaseline="middle"
                     fontSize={fontSize}
@@ -646,6 +637,39 @@ function RoadmapGraphInner(
                     {line}
                   </text>
                 ))}
+                {/* Type indicator, tucked against the first label line. The only
+                    place concept_type is expressed now: a dot rather than a
+                    full-card tint, so one dominant type reads as calm instead of
+                    monotonous, and a future mix still colors meaningfully. */}
+                <circle
+                  cx={dim.width / 2 - firstLineHalfWidth - 8}
+                  cy={
+                    dim.height / 2
+                    - ((lines.length - 1) / 2) * lineHeight
+                    - (showMeta ? metaLineHeight / 2 : 0)
+                  }
+                  r={isChapter ? 3.5 : 3}
+                  fill={getResolvedColor(typeColor)}
+                  opacity={isSelected ? 1 : 0.8}
+                />
+                {showMeta && (
+                  <text
+                    x={dim.width / 2}
+                    y={
+                      dim.height / 2
+                      + ((lines.length - 1) / 2) * lineHeight
+                      + metaLineHeight / 2
+                    }
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize={isChapter ? 10 : 9.5}
+                    fontFamily='"JetBrains Mono", "Fira Code", Menlo, monospace'
+                    fill="var(--text-muted)"
+                    style={{ pointerEvents: "none", userSelect: "none" }}
+                  >
+                    {childCount === 1 ? "1 node" : `${childCount} nodes`}
+                  </text>
+                )}
                 {showBadge && (
                   <g
                     onClick={(event) => {

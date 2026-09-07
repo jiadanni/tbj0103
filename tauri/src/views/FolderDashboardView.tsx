@@ -55,27 +55,38 @@ function MetricStat({
   const content = (
     <>
       <span
-        className={`text-sm font-semibold tabular-nums ${
+        aria-hidden
+        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+          isZero ? "bg-[var(--text-muted)] opacity-40" : "bg-[var(--text-secondary)]"
+        }`}
+      />
+      <span
+        className={`font-mono text-[11px] font-medium tabular-nums ${
           isZero ? "text-[var(--text-muted)]" : "text-[var(--text-primary)]"
         }`}
       >
         {value}
       </span>
-      <span className="text-[11px] text-[var(--text-muted)]">{label}</span>
+      <span className="font-mono text-[11px] text-[var(--text-muted)]">{label}</span>
     </>
   );
+  // Discrete chips rather than a dot-separated run: each metric reads as its own
+  // object, and the leading dot matches the status-dot language used on graph
+  // nodes and in the status bar.
+  const chipClass =
+    "flex items-center gap-1.5 rounded-md border border-[var(--surface-border)] bg-[var(--surface-hover)] px-2 py-1";
   if (onClick) {
     return (
       <button
         type="button"
         onClick={onClick}
-        className="flex items-baseline gap-1.5 rounded-md px-1.5 py-0.5 transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+        className={`${chipClass} transition-colors hover:border-[rgba(var(--accent-color-rgb),0.35)] hover:bg-[var(--surface-raised)]`}
       >
         {content}
       </button>
     );
   }
-  return <span className="flex items-baseline gap-1.5 px-1.5 py-0.5">{content}</span>;
+  return <span className={chipClass}>{content}</span>;
 }
 
 /**
@@ -99,13 +110,10 @@ function MetricSummaryStrip({
   onDueReview?: () => void;
 }) {
   return (
-    <div className="surface-card flex flex-wrap items-center gap-x-1 gap-y-1 rounded-xl px-2 py-1.5">
+    <div className="flex flex-wrap items-center gap-2">
       <MetricStat label="Topics" value={topics} onClick={onTopics} />
-      <span aria-hidden className="text-[var(--text-muted)] opacity-40">·</span>
       <MetricStat label="Sources" value={sources} />
-      <span aria-hidden className="text-[var(--text-muted)] opacity-40">·</span>
       <MetricStat label="Due" value={dueReview} onClick={onDueReview} />
-      <span aria-hidden className="text-[var(--text-muted)] opacity-40">·</span>
       <MetricStat label="Goals" value={activeGoals} />
     </div>
   );
@@ -131,7 +139,7 @@ function QuickActionsCard({
   return (
     <section className="surface-card rounded-xl p-3">
       <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
+        <h2 className="label-chrome">
           Quick Actions
         </h2>
       </div>
@@ -295,7 +303,7 @@ export default function FolderDashboardView() {
       <header className="border-b border-[var(--surface-border)] bg-[linear-gradient(135deg,rgba(var(--accent-color-rgb),0.10),rgba(255,255,255,0)_50%),var(--surface)] px-4 py-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0 flex-1">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+            <div className="label-chrome">
               Dashboard
             </div>
             <h1 className="mt-0.5 text-xl font-semibold text-[var(--text-primary)]">
@@ -344,7 +352,7 @@ export default function FolderDashboardView() {
 
           <section className="surface-card rounded-xl p-3">
             <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
+              <h2 className="label-chrome">
                 Continue Learning
               </h2>
               <button
@@ -419,7 +427,7 @@ export default function FolderDashboardView() {
             <section className="surface-card rounded-2xl bg-[linear-gradient(145deg,rgba(var(--accent-color-rgb),0.10),rgba(255,255,255,0)_45%),var(--surface)] p-5 sm:p-6">
               <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
                 <div className="max-w-2xl">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                  <div className="label-chrome">
                     Workspace Warm-Up
                   </div>
                   <h2 className="mt-1 text-2xl font-semibold text-[var(--text-primary)]">
@@ -434,15 +442,15 @@ export default function FolderDashboardView() {
 
                 <div className="surface-card grid gap-2 rounded-xl p-3 text-sm text-[var(--text-secondary)] sm:grid-cols-3 xl:min-w-[360px] xl:grid-cols-1">
                   <div>
-                    <div className="text-[10px] uppercase tracking-[0.12em] text-[var(--text-muted)]">Chats</div>
+                    <div className="label-chrome">Chats</div>
                     <div className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{summary.overview.chat_sessions}</div>
                   </div>
                   <div>
-                    <div className="text-[10px] uppercase tracking-[0.12em] text-[var(--text-muted)]">Notes</div>
+                    <div className="label-chrome">Notes</div>
                     <div className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{summary.overview.notes}</div>
                   </div>
                   <div>
-                    <div className="text-[10px] uppercase tracking-[0.12em] text-[var(--text-muted)]">Sources</div>
+                    <div className="label-chrome">Sources</div>
                     <div className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{summary.overview.sources}</div>
                   </div>
                 </div>
@@ -546,7 +554,7 @@ function GoalsCard({
   return (
     <section className="flex min-h-0 flex-col surface-card rounded-xl">
       <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--surface-border)]">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
+        <div className="label-chrome">
           Workspace goals
         </div>
         <button
