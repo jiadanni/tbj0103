@@ -138,6 +138,69 @@ function Section({
   );
 }
 
+/** Search filter that sits collapsed as a magnifier button and expands to a
+ *  text field on click. Collapses again on blur when the query is empty, so a
+ *  live filter is never hidden behind the icon. */
+function CollapsibleFilter({
+  value,
+  onChange,
+  placeholder,
+  inputClassName,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  placeholder: string;
+  /** Background/border classes differ between the inline and fullscreen headers. */
+  inputClassName: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  if (!expanded && !value) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setExpanded(true);
+          // Focus after the input has mounted.
+          requestAnimationFrame(() => inputRef.current?.focus());
+        }}
+        title={placeholder}
+        aria-label={placeholder}
+        aria-expanded={false}
+        className="inline-flex items-center justify-center rounded-lg border border-[var(--border-color)] px-2.5 py-1.5 text-[var(--text-muted)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+      >
+        <Search size={13} />
+      </button>
+    );
+  }
+
+  return (
+    <div className="relative min-w-0 w-48 sm:w-64">
+      <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onBlur={() => {
+          if (!value) {
+            setExpanded(false);
+          }
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            onChange("");
+            setExpanded(false);
+          }
+        }}
+        placeholder={placeholder}
+        aria-label={placeholder}
+        className={`w-full rounded-lg border border-[var(--border-color)] px-3 py-1.5 pl-8 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none ${inputClassName}`}
+      />
+    </div>
+  );
+}
+
 function makeDemoAnalysisResult(nodeCount: number, linkCount: number): AnalysisResult {
   return {
     chapters_created: Math.min(1, nodeCount > 0 ? 1 : 0),
@@ -1492,15 +1555,12 @@ export default function KnowledgeGraphView({
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
-                    <div className="relative w-48 sm:w-64">
-                      <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-                      <input
-                        value={graphSearch}
-                        onChange={(event) => setGraphSearch(event.target.value)}
-                        placeholder="Filter roadmap..."
-                        className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-1.5 pl-8 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
-                      />
-                    </div>
+                    <CollapsibleFilter
+                      value={graphSearch}
+                      onChange={setGraphSearch}
+                      placeholder="Filter roadmap..."
+                      inputClassName="bg-[var(--bg-primary)]"
+                    />
                     <div className="relative">
                       <button
                         type="button"
@@ -1624,15 +1684,12 @@ export default function KnowledgeGraphView({
                             <h2 className="text-xl font-semibold text-[var(--text-primary)]">Knowledge Map</h2>
                           </div>
                           <div className="flex items-center gap-3 shrink-0">
-                            <div className="relative min-w-0 w-64">
-                              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-                              <input
-                                value={graphSearch}
-                                onChange={(event) => setGraphSearch(event.target.value)}
-                                placeholder="Filter roadmap..."
-                                className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-1.5 pl-8 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
-                              />
-                            </div>
+                            <CollapsibleFilter
+                              value={graphSearch}
+                              onChange={setGraphSearch}
+                              placeholder="Filter roadmap..."
+                              inputClassName="bg-[var(--bg-elevated)]"
+                            />
                             <div className="relative">
                               <button
                                 type="button"
