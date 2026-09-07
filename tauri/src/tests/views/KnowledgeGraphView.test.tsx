@@ -397,4 +397,36 @@ describe("KnowledgeGraphView", () => {
     // The canvas keeps its floating dock, so it still owns the bottom strip.
     expect(canvas).toBeInTheDocument();
   }, 15000);
+  it("collapses the roadmap filter to an icon and expands it on click", async () => {
+    render(
+      <MemoryRouter initialEntries={[{ pathname: "/", state: null }]}>
+        <RoadmapPane hideSidebar fillHeight />
+      </MemoryRouter>,
+    );
+
+    await screen.findByTestId("knowledge-map");
+
+    // Collapsed: the toolbar shows only the magnifier button, no text field.
+    const filterButton = await screen.findByRole("button", { name: "Filter roadmap..." });
+    expect(screen.queryByPlaceholderText("Filter roadmap...")).not.toBeInTheDocument();
+
+    fireEvent.click(filterButton);
+
+    const input = await screen.findByPlaceholderText("Filter roadmap...");
+    fireEvent.change(input, { target: { value: "kernel" } });
+    expect(input).toHaveValue("kernel");
+
+    // A non-empty query must survive blur, otherwise an active filter would be
+    // hidden behind the icon with no sign it is still applied.
+    fireEvent.blur(input);
+    expect(screen.getByPlaceholderText("Filter roadmap...")).toHaveValue("kernel");
+
+    // Emptied and blurred, it collapses back to the icon.
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.blur(input);
+    await waitFor(() => {
+      expect(screen.queryByPlaceholderText("Filter roadmap...")).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "Filter roadmap..." })).toBeInTheDocument();
+  }, 15000);
 });
