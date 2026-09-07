@@ -1397,10 +1397,10 @@ export default function KnowledgeGraphView({
                           onClick={() => { void handleRefresh("async"); }}
                           disabled={isAnalyzing || !activeWorkspaceId}
                           title={refreshButtonTooltip}
-                          className="inline-flex items-center gap-2 rounded-l-xl border border-r-0 border-[rgba(var(--accent-color-rgb),0.35)] bg-[var(--accent-color)] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[var(--accent-color)]/90 disabled:cursor-not-allowed disabled:opacity-50"
+                          aria-label={refreshButtonLabel}
+                          className="inline-flex w-9 items-center justify-center rounded-l-xl border border-r-0 border-[rgba(var(--accent-color-rgb),0.35)] bg-[var(--accent-color)] py-1.5 text-sm font-medium text-white transition-colors hover:bg-[var(--accent-color)]/90 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {isAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                          {refreshButtonLabel}
                         </button>
                         <button
                           type="button"
@@ -1506,14 +1506,15 @@ export default function KnowledgeGraphView({
                         type="button"
                         onClick={() => setExportMenuOpen((open) => !open)}
                         disabled={nodes.length === 0 || exportingFormat !== null}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-1.5 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)] disabled:opacity-50"
+                        title="Export"
+                        aria-label="Export"
+                        className="inline-flex items-center gap-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)] disabled:opacity-50"
                       >
                         {exportingFormat ? (
                           <Loader2 size={13} className="animate-spin" />
                         ) : (
                           <Download size={13} />
                         )}
-                        Export
                         <ChevronDown size={13} />
                       </button>
                       {exportMenuOpen && (
@@ -1637,14 +1638,15 @@ export default function KnowledgeGraphView({
                                 type="button"
                                 onClick={() => setExportMenuOpen((open) => !open)}
                                 disabled={nodes.length === 0 || exportingFormat !== null}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-1.5 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)] disabled:opacity-50"
+                                title="Export"
+                                aria-label="Export"
+                                className="inline-flex items-center gap-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)] disabled:opacity-50"
                               >
                                 {exportingFormat ? (
                                   <Loader2 size={13} className="animate-spin" />
                                 ) : (
                                   <Download size={13} />
                                 )}
-                                Export
                                 <ChevronDown size={13} />
                               </button>
                               {exportMenuOpen && (
