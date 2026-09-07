@@ -8,7 +8,7 @@ use crate::services::spaced_repetition;
 use crate::services::workspace_hierarchy::workspace_filter_sql;
 use tauri::State;
 
-fn row_to_card(row: &rusqlite::Row) -> rusqlite::Result<LearningCard> {
+pub(crate) fn row_to_card(row: &rusqlite::Row) -> rusqlite::Result<LearningCard> {
     Ok(LearningCard {
         id: row.get(0)?,
         workspace_id: row.get(1)?,
@@ -24,8 +24,18 @@ fn row_to_card(row: &rusqlite::Row) -> rusqlite::Result<LearningCard> {
         last_reviewed_at: row.get(11)?,
         created_at: row.get(12)?,
         generated_by_model: row.get(13)?,
+        kind: row.get::<_, Option<String>>(14)?.unwrap_or_else(|| "flashcard".to_string()),
+        difficulty: row.get(15)?,
+        difficulty_preset: row.get(16)?,
+        difficulty_label: row.get(17)?,
+        suspended_at: row.get(18)?,
     })
 }
+
+/// Every column `row_to_card` reads, in its exact positional order. Selects
+/// that feed `row_to_card` must use this rather than spelling the list out,
+/// so adding a column can't silently desync one query from the mapper.
+pub(crate) const CARD_COLUMNS: &str = "id, workspace_id, front, back, source_type, source_id, topic_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at, generated_by_model, kind, difficulty, difficulty_preset, difficulty_label, suspended_at";
 
 pub(crate) const INSERT_CARD_SQL: &str = "INSERT INTO learning_cards (id, workspace_id, front, back, source_type, source_id, topic_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at, generated_by_model)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)";
@@ -183,7 +193,7 @@ pub fn list_flashcards_due(
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let (cte, ws_cond) = workspace_filter_sql(include_descendants.unwrap_or(false));
     let sql = format!(
-        "{cte}SELECT id, workspace_id, front, back, source_type, source_id, topic_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at, generated_by_model
+        "{cte}SELECT {CARD_COLUMNS}
          FROM learning_cards WHERE workspace_id {ws_cond}
            AND next_review_date <= ?2
            AND (?5 IS NULL OR (source_type = 'concept' AND source_id = ?5))
@@ -207,8 +217,10 @@ pub fn review_flashcard(state: State<DbState>, req: ReviewRequest) -> Result<Lea
     let conn = state.0.get().map_err(|e| e.to_string())?;
     // Fetch current card
     let card = conn.query_row(
-        "SELECT id, workspace_id, front, back, source_type, source_id, topic_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at, generated_by_model
-         FROM learning_cards WHERE id = ?1",
+        &format!(
+            "SELECT {CARD_COLUMNS}
+             FROM learning_cards WHERE id = ?1"
+        ),
         rusqlite::params![req.card_id],
         row_to_card,
     ).map_err(|e| e.to_string())?;
@@ -464,8 +476,10 @@ pub fn list_flashcards_by_concept(
 ) -> Result<Vec<LearningCard>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT id, workspace_id, front, back, source_type, source_id, topic_id, ease_factor, interval, repetitions, next_review_date, last_reviewed_at, created_at, generated_by_model
-         FROM learning_cards WHERE source_type = 'concept' AND source_id = ?1 ORDER BY created_at DESC"
+        &format!(
+            "SELECT {CARD_COLUMNS}
+             FROM learning_cards WHERE source_type = 'concept' AND source_id = ?1 ORDER BY created_at DESC"
+        )
     ).map_err(|e| e.to_string())?;
     let items = stmt
         .query_map(rusqlite::params![concept_id], row_to_card)

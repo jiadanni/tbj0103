@@ -21,6 +21,23 @@ pub struct LearningCard {
     /// created before provenance tracking).
     #[serde(default)]
     pub generated_by_model: Option<String>,
+    /// Card kind: "flashcard" (question/answer) or "info" (long-form
+    /// explanation). Drives the feed's Study/Test split.
+    #[serde(default)]
+    pub kind: String,
+    /// 1-5 difficulty, or None when the card is unlevelled. Unlevelled cards
+    /// are never filtered out by a level selection.
+    #[serde(default)]
+    pub difficulty: Option<i64>,
+    /// Domain preset naming this card's levels; falls back to the workspace's.
+    #[serde(default)]
+    pub difficulty_preset: Option<String>,
+    /// Overrides the preset's label for this card's level when set.
+    #[serde(default)]
+    pub difficulty_label: Option<String>,
+    /// When set, the card is quarantined out of the feed but not deleted.
+    #[serde(default)]
+    pub suspended_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -119,6 +136,11 @@ impl LearningCard {
             last_reviewed_at: None,
             created_at: now,
             generated_by_model: None,
+            kind: "flashcard".to_string(),
+            difficulty: None,
+            difficulty_preset: None,
+            difficulty_label: None,
+            suspended_at: None,
         }
     }
 }

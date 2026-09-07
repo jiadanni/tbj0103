@@ -1,5 +1,6 @@
 import { lazy, Suspense, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useWorkspaceStore } from "../stores/workspaceStore";
 
 const ReviewPane = lazy(() =>
   import("./FlashcardReviewView").then((m) => ({ default: m.ReviewPane })),
@@ -7,16 +8,25 @@ const ReviewPane = lazy(() =>
 const QuizzesPane = lazy(() =>
   import("./QuizzesPane").then((m) => ({ default: m.QuizzesPane })),
 );
+const FeedPane = lazy(() => import("./FeedPane"));
 
-type PracticeMode = "review" | "quiz";
+type PracticeMode = "review" | "quiz" | "feed";
 
 function parseInitialPracticeMode(value: string | null): PracticeMode {
   if (value === "quizzes" || value === "quiz") { return "quiz"; }
+  if (value === "feed") { return "feed"; }
   return "review";
 }
 
 export default function PracticeView() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  // The feed spans a workspace and its children, so a parent workspace scrolls
+  // everything beneath it rather than only its own directly-attached cards.
+  const feedWorkspaceIds = useMemo(
+    () => (activeWorkspaceId ? [activeWorkspaceId] : []),
+    [activeWorkspaceId],
+  );
   const practiceMode = useMemo(() => parseInitialPracticeMode(searchParams.get("tab")), [searchParams]);
 
   const initialQuizTopic = useMemo(() => searchParams.get("topic") ?? undefined, [searchParams]);
@@ -64,6 +74,16 @@ export default function PracticeView() {
         >
           Take a quiz
         </button>
+        <button
+          onClick={() => setMode("feed")}
+          className={`flex-1 rounded-xl border px-4 py-3 text-sm font-medium transition-colors ${
+            practiceMode === "feed"
+              ? "border-[var(--accent-color)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
+              : "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:border-[var(--accent-color)]"
+          }`}
+        >
+          Boom Scroll
+        </button>
       </div>
 
       <div className="flex-1 min-h-0 overflow-hidden">
@@ -75,6 +95,9 @@ export default function PracticeView() {
               initialTopicId={initialQuizTopic}
               initialKind={initialQuizKind}
             />
+          )}
+          {practiceMode === "feed" && (
+            <FeedPane workspaceIds={feedWorkspaceIds} includeDescendants />
           )}
         </Suspense>
       </div>

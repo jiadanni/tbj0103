@@ -221,10 +221,11 @@ pub(crate) fn build_feed_deck(
 
     let mut card_stmt = conn
         .prepare(
-            "SELECT lc.id, lc.front, lc.back, ft.topic, lc.kind, lc.ease_factor, lc.repetitions
+            "SELECT lc.id, lc.front, lc.back, ft.topic, lc.kind, lc.ease_factor, lc.repetitions,
+                    lc.difficulty, lc.difficulty_preset, lc.difficulty_label
              FROM learning_cards lc
              LEFT JOIN flashcard_topics ft ON ft.id = lc.topic_id
-             WHERE lc.workspace_id = ?1
+             WHERE lc.workspace_id = ?1 AND lc.suspended_at IS NULL
              ORDER BY lc.created_at",
         )
         .map_err(|e| e.to_string())?;
@@ -232,14 +233,20 @@ pub(crate) fn build_feed_deck(
     for workspace_id in workspace_ids {
         let ws_info = conn
             .query_row(
-                "SELECT id, name FROM workspaces WHERE id = ?1",
+                "SELECT id, name, difficulty_preset FROM workspaces WHERE id = ?1",
                 rusqlite::params![workspace_id],
-                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+                |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, Option<String>>(2)?,
+                    ))
+                },
             )
             .optional()
             .map_err(|e| e.to_string())?;
 
-        let Some((ws_id, ws_name)) = ws_info else {
+        let Some((ws_id, ws_name, ws_preset)) = ws_info else {
             continue;
         };
 
@@ -247,19 +254,24 @@ pub(crate) fn build_feed_deck(
             .query_map(rusqlite::params![workspace_id], |r| {
                 let ease: f64 = r.get(5).unwrap_or(2.5);
                 let reps: i32 = r.get(6).unwrap_or(0);
-                
-                // Map ease_factor (typically 1.3 - 2.5+) and repetitions into 1-5 difficulty
-                let difficulty = if reps == 0 && ease >= 2.5 {
-                    1
-                } else if ease >= 2.4 {
-                    2
-                } else if ease >= 2.0 {
-                    3
-                } else if ease >= 1.7 {
-                    4
-                } else {
-                    5
-                };
+
+                // A level the user actually set wins. Only fall back to
+                // inferring one from the SM-2 schedule for cards that have
+                // never been levelled, so an explicit choice is never
+                // overwritten by review history.
+                let difficulty = r.get::<_, Option<i64>>(7).ok().flatten().unwrap_or({
+                    if reps == 0 && ease >= 2.5 {
+                        1
+                    } else if ease >= 2.4 {
+                        2
+                    } else if ease >= 2.0 {
+                        3
+                    } else if ease >= 1.7 {
+                        4
+                    } else {
+                        5
+                    }
+                });
 
                 Ok(serde_json::json!({
                     "id": r.get::<_, String>(0)?,
@@ -269,6 +281,8 @@ pub(crate) fn build_feed_deck(
                     "kind": r.get::<_, String>(4)?,
                     "workspace_id": ws_id,
                     "difficulty": difficulty,
+                    "difficulty_preset": r.get::<_, Option<String>>(8)?,
+                    "difficulty_label": r.get::<_, Option<String>>(9)?,
                 }))
             })
             .map_err(|e| e.to_string())?
@@ -279,6 +293,7 @@ pub(crate) fn build_feed_deck(
             "id": ws_id,
             "name": ws_name,
             "card_count": ws_cards.len(),
+            "preset": ws_preset,
         }));
         cards.extend(ws_cards);
     }
