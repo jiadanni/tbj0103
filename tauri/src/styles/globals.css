@@ -583,6 +583,24 @@ select optgroup {
     color: var(--text-muted);
   }
 
+  /* Ambient canvas: a faint dot grid plus a soft centre wash. Mirrors the
+     roadmap canvas's own grid (26px, same tint) so the two read as one
+     surface language. Its real job is to give translucent, backdrop-blurred
+     chrome something to refract — frosted glass over a flat void just renders
+     as flat grey, which is what made the empty-state prompt cards look like
+     plain rectangles. */
+  .ambient-canvas {
+    background-image:
+      radial-gradient(
+        60% 50% at 50% 45%,
+        rgba(var(--accent-color-rgb), 0.07),
+        transparent 70%
+      ),
+      radial-gradient(rgba(148, 163, 184, 0.16) 1.2px, transparent 1.2px);
+    background-size: 100% 100%, 26px 26px;
+    background-position: center, 0 0;
+  }
+
   /* Elevation helpers. Prefer these over re-deriving
      border + background + shadow at each call site. */
   .surface-card {

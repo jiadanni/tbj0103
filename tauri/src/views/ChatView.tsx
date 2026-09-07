@@ -3057,7 +3057,7 @@ export default function ChatView() {
           {!isComparePanelOpen ? (
             <div className="flex-1 min-w-0 flex min-h-0 flex-col overflow-hidden">
               {!activeChatId ? (
-                <div className="relative flex-1 min-w-0 flex flex-col items-center justify-center gap-6 text-center overflow-hidden">
+                <div className="ambient-canvas relative flex-1 min-w-0 flex flex-col items-center justify-center gap-6 text-center overflow-hidden">
                   <WaterfallSuggestions
                     suggestions={waterfallSuggestions}
                     onSelect={(suggestion) => void handleComposerSuggestion(suggestion, true)}
@@ -3068,11 +3068,12 @@ export default function ChatView() {
                       ref={emptyStatePrivacyMenuRef}
                       className="relative flex flex-wrap justify-center gap-3"
                     >
-                      <span
-                        aria-hidden
-                        className="pointer-events-none absolute left-1/2 top-1/2 -z-10 h-20 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(255,255,255,0.35),rgba(var(--accent-color-rgb),0.25),transparent)] blur-2xl"
-                      />
-                      <div className="flex overflow-hidden rounded-xl border border-[rgba(var(--accent-color-rgb),0.38)] bg-[var(--accent-color)] text-white shadow-[0_18px_44px_-24px_rgba(var(--accent-color-rgb),0.9)] ring-1 ring-white/10 transition-transform hover:-translate-y-0.5">
+                      {/* The blue radial bloom that used to sit behind this
+                          button is gone: it was the loudest thing on an
+                          otherwise calm screen, and it washed out the prompt
+                          cards arranged around it. The accent fill alone is
+                          enough to mark the primary action. */}
+                      <div className="flex overflow-hidden rounded-lg border border-[rgba(var(--accent-color-rgb),0.45)] bg-[var(--accent-color)] text-white shadow-[0_2px_8px_-2px_rgba(var(--accent-color-rgb),0.45)] ring-1 ring-inset ring-white/15 transition-transform hover:-translate-y-0.5">
                         <button
                           type="button"
                           onClick={() => {

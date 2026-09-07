@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Atom, Braces, Code, FileText, Hash, X, type LucideIcon } from "lucide-react";
+import { X } from "lucide-react";
 import type { ComposerSuggestion } from "../lib/composerSuggestions";
 
 interface WaterfallSuggestionsProps {
@@ -9,14 +9,14 @@ interface WaterfallSuggestionsProps {
   onDismiss?: (suggestion: ComposerSuggestion) => void;
 }
 
-function iconFor(label: string): LucideIcon {
-  const text = label.toLowerCase();
-  if (/\breact\b|\bhook\b|\buse[a-z]/.test(text)) { return Atom; }
-  if (/\bcss\b|\bhtml\b|flexbox|\bstyle\b/.test(text)) { return Code; }
-  if (/javascript|\bjs\b|function|require|\btype\b|[{}]/.test(text)) { return Braces; }
-  if (/count|number|sort/.test(text)) { return Hash; }
-  return FileText;
-}
+// The per-card leading icon was removed rather than re-keyed. It used to
+// regex-match prompt text for web-dev terms (react/css/js/count) with a generic
+// document fallback, so outside a front-end workspace every card showed the same
+// fallback glyph. Keying it off suggestion provenance instead does not help:
+// buildWorkspaceSuggestionRow returns prompt-bank OR AI OR keyword prompts, never
+// a mix, so every card visible at once comes from one source and would still
+// carry one identical icon. A glyph that is the same on all six cards is not a
+// signal, so the prompt text now starts at the card edge.
 
 // Six slots (3 per side) that bow the prompt cards into an arc around the centered
 // button. Each card anchors to its near edge (`side`) by `inset` at vertical center
@@ -82,7 +82,6 @@ export function WaterfallSuggestions({ suggestions, onSelect, onDismiss }: Water
   return (
     <div className="pointer-events-none absolute inset-0 select-none overflow-hidden [container-type:inline-size]">
       {arranged.map(({ slot, suggestion, slotIndex }) => {
-        const Icon = iconFor(suggestion.label);
         // Anchor to the near edge by `inset`; width fills the gap from there to the
         // reserved center gutter, capped at a comfortable max. On narrow panes the
         // gap shrinks so cards stay out of the center instead of overlapping it.
@@ -103,12 +102,19 @@ export function WaterfallSuggestions({ suggestions, onSelect, onDismiss }: Water
             style={positionStyle}
             className="group pointer-events-auto absolute transition-opacity ease-in-out"
           >
+            {/* Frosted control. The translucent fill + backdrop-blur only read
+                as glass because the empty state behind it carries the ambient
+                dot grid and centre wash (.ambient-canvas) — over a flat void
+                the same treatment resolves to a uniform grey rectangle.
+                Corners are control-scale (rounded-lg -> --radius-control), not
+                the panel-scale rounded-2xl this used before: panel radii on a
+                small control are a large part of why these read as generic
+                rounded rectangles rather than buttons. */}
             <button
               type="button"
-              className="flex w-full cursor-pointer items-start gap-2.5 rounded-2xl border border-[rgba(255,255,255,0.22)] bg-[rgba(255,255,255,0.10)] px-4 py-2.5 text-left text-[13px] font-medium leading-5 text-[var(--text-secondary)] shadow-[0_12px_32px_-16px_rgba(0,0,0,0.85)] ring-1 ring-inset ring-white/10 backdrop-blur-md transition-[color,background-color,border-color] duration-200 hover:border-[rgba(var(--accent-color-rgb),0.55)] hover:bg-[rgba(var(--accent-color-rgb),0.16)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-color)]"
+              className="flex w-full cursor-pointer items-start rounded-lg border border-[var(--surface-border)] bg-[color-mix(in_srgb,var(--surface-raised)_72%,transparent)] px-3.5 py-2.5 text-left text-[13px] font-medium leading-5 text-[var(--text-secondary)] shadow-[0_1px_2px_rgba(0,0,0,0.25)] ring-1 ring-inset ring-white/[0.06] backdrop-blur-md transition-[color,background-color,border-color,transform] duration-200 hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.45)] hover:bg-[color-mix(in_srgb,var(--surface-hover)_85%,transparent)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-color)]"
               onClick={() => onSelect(suggestion)}
             >
-              <Icon size={14} className="mt-0.5 shrink-0 opacity-70" />
               <span className="min-w-0">{suggestion.label}</span>
             </button>
             {onDismiss && (
@@ -117,7 +123,7 @@ export function WaterfallSuggestions({ suggestions, onSelect, onDismiss }: Water
                 aria-label="Dismiss this suggestion"
                 title="Don't suggest this again"
                 onClick={() => onDismiss(suggestion)}
-                className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-[rgba(255,255,255,0.18)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] opacity-0 shadow-sm transition-opacity duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-color)] group-hover:opacity-100"
+                className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-[var(--surface-border)] bg-[var(--surface-raised)] text-[var(--text-secondary)] opacity-0 shadow-sm transition-opacity duration-150 hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-color)] group-hover:opacity-100"
               >
                 <X size={12} />
               </button>
