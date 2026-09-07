@@ -6,6 +6,7 @@ use crate::services::model_settings::{
     get_embedding_model, get_model_for_job, get_ollama_base_url,
 };
 use crate::services::vector_index::{bytes_to_f32_vec, f32_vec_to_bytes};
+use crate::services::workspace_hierarchy::DESCENDANTS_CTE_PREFIX;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -25,6 +26,12 @@ pub struct PromptSuggestion {
     pub prompt: String,
     pub tags: Vec<String>,
     pub score: f64,
+    /// Workspace the prompt belongs to. A parent workspace's suggestions are
+    /// drawn from its children as well as itself, so this is not necessarily
+    /// the workspace that was queried — the caller uses it to label the prompt
+    /// and to open the resulting chat in the right place.
+    pub workspace_id: String,
+    pub workspace_name: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -126,7 +133,56 @@ fn load_context(conn: &Connection, workspace_id: &str) -> Result<WorkspacePrompt
         )
         .map_err(|e| e.to_string())?;
     let sig: TopicSignature = serde_json::from_str(&sig_json).unwrap_or_default();
-    let (topic_text, tags) = topic_context(&sig, &name, survey_data.as_deref());
+    let (mut topic_text, mut tags) = topic_context(&sig, &name, survey_data.as_deref());
+
+    // A parent workspace usually carries little of its own subject matter — the
+    // material lives in its children. Generating from the parent row alone gave
+    // the model nothing but a name and a one-line description, which produced
+    // generic small-talk prompts for workspaces holding hundreds of technical
+    // sessions. Fold in the children's names and topic tags so the prompts
+    // reflect what the workspace actually contains.
+    let child_rows = {
+        let sql = format!(
+            "{DESCENDANTS_CTE_PREFIX}\
+             SELECT name, topic_signature FROM workspaces
+             WHERE id IN (SELECT id FROM ws_tree)
+               AND id <> ?1
+               AND is_hidden = 0
+             ORDER BY order_index, name"
+        );
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![workspace_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+        rows
+    };
+
+    if !child_rows.is_empty() {
+        let mut child_names: Vec<String> = Vec::new();
+        for (child_name, child_sig_json) in &child_rows {
+            child_names.push(child_name.clone());
+            let child_sig: TopicSignature =
+                serde_json::from_str(child_sig_json).unwrap_or_default();
+            for tag in child_sig
+                .auto_detected_tags
+                .iter()
+                .filter(|tag| !child_sig.excluded_tags.contains(&tag.tag))
+                .map(|tag| tag.tag.clone())
+                .chain(child_sig.custom_tags.iter().cloned())
+            {
+                if !tags.contains(&tag) {
+                    tags.push(tag);
+                }
+            }
+        }
+        topic_text.push_str("\nAreas: ");
+        topic_text.push_str(&child_names.join(", "));
+    }
+
     let model = get_model_for_job(conn, "topic_signature_model")
         .ok_or_else(|| "No background model configured".to_string())?;
     let ollama_url =
@@ -204,13 +260,24 @@ pub async fn list_suggestions(
     let (context, rows) = {
         let conn = db.0.get().map_err(|e| e.to_string())?;
         let context = load_context(&conn, workspace_id)?;
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, prompt, tags_json, embedding, quality_score, used_count
-                 FROM workspace_prompt_bank
-                 WHERE workspace_id = ?1 AND dismissed_at IS NULL",
-            )
-            .map_err(|e| e.to_string())?;
+        // Draw from the workspace and every descendant, using the same
+        // bubble-up CTE the rest of the app uses for ancestor-visible content.
+        // A parent workspace typically holds little of its own material — it
+        // lives further down the tree — so scoping to the parent alone left its
+        // empty state showing prompts generated from just a name and a
+        // one-line description. Each row carries its owning workspace so the
+        // caller can label it and open the chat in the right place.
+        let sql = format!(
+            "{DESCENDANTS_CTE_PREFIX}\
+             SELECT b.id, b.prompt, b.tags_json, b.embedding, b.quality_score,
+                    b.used_count, w.id, w.name
+             FROM workspace_prompt_bank b
+             JOIN workspaces w ON w.id = b.workspace_id
+             WHERE b.workspace_id IN (SELECT id FROM ws_tree)
+               AND b.dismissed_at IS NULL
+               AND w.is_hidden = 0"
+        );
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map(params![workspace_id], |row| {
                 Ok((
@@ -220,6 +287,8 @@ pub async fn list_suggestions(
                     row.get::<_, Option<Vec<u8>>>(3)?,
                     row.get::<_, f64>(4)?,
                     row.get::<_, i64>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
                 ))
             })
             .map_err(|e| e.to_string())?
@@ -256,7 +325,16 @@ pub async fn list_suggestions(
     let mut scored = rows
         .into_iter()
         .map(
-            |(id, prompt, tags_json, embedding, quality_score, used_count)| {
+            |(
+                id,
+                prompt,
+                tags_json,
+                embedding,
+                quality_score,
+                used_count,
+                row_workspace_id,
+                row_workspace_name,
+            )| {
                 let tags = parse_tags(&tags_json);
                 let embedding_score = query_embedding.as_ref().and_then(|query| {
                     embedding
@@ -279,6 +357,8 @@ pub async fn list_suggestions(
                     prompt,
                     tags,
                     score,
+                    workspace_id: row_workspace_id,
+                    workspace_name: row_workspace_name,
                 }
             },
         )

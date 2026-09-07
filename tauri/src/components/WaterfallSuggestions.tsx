@@ -115,7 +115,15 @@ export function WaterfallSuggestions({ suggestions, onSelect, onDismiss }: Water
               className="flex w-full cursor-pointer items-start rounded-lg border border-[var(--surface-border)] bg-[color-mix(in_srgb,var(--surface-raised)_72%,transparent)] px-3.5 py-2.5 text-left text-[13px] font-medium leading-5 text-[var(--text-secondary)] shadow-[0_1px_2px_rgba(0,0,0,0.25)] ring-1 ring-inset ring-white/[0.06] backdrop-blur-md transition-[color,background-color,border-color,transform] duration-200 hover:-translate-y-px hover:border-[rgba(var(--accent-color-rgb),0.45)] hover:bg-[color-mix(in_srgb,var(--surface-hover)_85%,transparent)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-color)]"
               onClick={() => onSelect(suggestion)}
             >
-              <span className="min-w-0">{suggestion.label}</span>
+              <span className="flex min-w-0 flex-col gap-1.5">
+                <span className="min-w-0">{suggestion.label}</span>
+                {suggestion.workspaceName && (
+                  // Shown only for prompts belonging to another workspace —
+                  // selecting one opens its chat there, so the origin has to be
+                  // visible before the click, not a surprise after it.
+                  <span className="label-chrome truncate">{suggestion.workspaceName}</span>
+                )}
+              </span>
             </button>
             {onDismiss && (
               <button
