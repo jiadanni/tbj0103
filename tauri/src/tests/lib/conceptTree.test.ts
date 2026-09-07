@@ -277,3 +277,59 @@ describe("pruneCollapsedSections", () => {
     expect(expanded.children?.[0].children?.map((c) => c.id)).toEqual(["concept-llm"]);
   });
 });
+
+describe("child count available for node meta line", () => {
+  // Regression: RoadmapGraph renders a "N nodes" line on chapters/sections.
+  // Two ways this silently rendered on nothing:
+  //   1. Reading only `children` — collapsed nodes have them pruned away.
+  //   2. Gating on `!showBadge` — every chapter absorbs a same-named section
+  //      and so inherits a collapseId, which gives it a badge. That gate
+  //      therefore excluded every node the line was written for.
+  // The count must be children.length + hiddenChildCount, and must survive
+  // collapse, so assert it is non-zero in BOTH states.
+  const childCountOf = (n: { children?: unknown[]; hiddenChildCount?: number }) =>
+    (n.children?.length ?? 0) + (n.hiddenChildCount ?? 0);
+
+  it("reports a stable child count whether collapsed or expanded", () => {
+    const nodes = [
+      makeNode("chapter-ai", "AI & Machine Learning", "chapter"),
+      makeNode("section-ai", "AI & Machine Learning", "section"),
+      makeNode("concept-llm", "large language models", "concept"),
+      makeNode("concept-rag", "retrieval augmented generation", "concept"),
+    ];
+    const links = [
+      makePartOf("l1", "section-ai", "chapter-ai"),
+      makePartOf("l2", "concept-llm", "section-ai"),
+      makePartOf("l3", "concept-rag", "section-ai"),
+    ];
+    const forest = buildForest(nodes, links);
+
+    const collapsed = pruneCollapsedSections(forest, new Set());
+    const collapsedChapter = collapsed.children?.[0];
+    expect(collapsedChapter).toBeDefined();
+    expect(collapsedChapter?.children).toHaveLength(0);
+    expect(childCountOf(collapsedChapter ?? {})).toBe(2);
+
+    const expanded = pruneCollapsedSections(forest, new Set(["section-ai"]));
+    const expandedChapter = expanded.children?.[0];
+    expect(expandedChapter).toBeDefined();
+    expect(childCountOf(expandedChapter ?? {})).toBe(2);
+  });
+
+  it("gives merged chapters a collapseId, so meta must not be gated on its absence", () => {
+    const nodes = [
+      makeNode("chapter-ai", "AI & Machine Learning", "chapter"),
+      makeNode("section-ai", "AI & Machine Learning", "section"),
+      makeNode("concept-llm", "large language models", "concept"),
+    ];
+    const links = [
+      makePartOf("l1", "section-ai", "chapter-ai"),
+      makePartOf("l2", "concept-llm", "section-ai"),
+    ];
+    const chapter = buildForest(nodes, links).children?.[0];
+
+    // If this holds, `isChapter && !hasBadge` can never be true for a merged
+    // chapter — which is precisely how the count line got gated out of existence.
+    expect(chapter?.collapseId).toBeDefined();
+  });
+});
