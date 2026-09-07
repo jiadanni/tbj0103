@@ -429,4 +429,65 @@ describe("KnowledgeGraphView", () => {
     });
     expect(screen.getByRole("button", { name: "Filter roadmap..." })).toBeInTheDocument();
   }, 15000);
+  it("folds per-workspace Uncategorized chapters into one sidebar row", async () => {
+    // With includeDescendants, a parent workspace pulls back the sweep bucket
+    // from every descendant: two workspaces here, each with its own
+    // "Uncategorized" chapter and "Topics" section holding one concept.
+    const node = (id: string, name: string, level: string, ws: string) => ({
+      id,
+      workspace_id: ws,
+      name,
+      concept_type: "topic",
+      concept_description: "",
+      aliases: [],
+      source_count: 1,
+      hierarchy_level: level,
+      created_at: "2026-04-06T10:00:00Z",
+      updated_at: "2026-04-06T10:00:00Z",
+    });
+    mocks.listConcepts.mockResolvedValue([
+      node("chap-a", "Uncategorized", "chapter", "ws-a"),
+      node("sec-a", "Topics", "section", "ws-a"),
+      node("con-a", "Cgroups", "concept", "ws-a"),
+      node("chap-b", "Uncategorized", "chapter", "ws-b"),
+      node("sec-b", "Topics", "section", "ws-b"),
+      node("con-b", "Namespaces", "concept", "ws-b"),
+    ]);
+    const link = (id: string, source: string, target: string) => ({
+      id,
+      source_id: source,
+      target_id: target,
+      link_type: "part_of",
+      strength: 1,
+      created_at: "2026-04-06T10:00:00Z",
+    });
+    mocks.listLinks.mockResolvedValue([
+      link("l1", "sec-a", "chap-a"),
+      link("l2", "con-a", "sec-a"),
+      link("l3", "sec-b", "chap-b"),
+      link("l4", "con-b", "sec-b"),
+    ]);
+
+    render(
+      <MemoryRouter initialEntries={[{ pathname: "/", state: null }]}>
+        <KnowledgeGraphView />
+      </MemoryRouter>,
+    );
+
+    // Exactly one "Uncategorized" chapter row, not one per workspace.
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: /Uncategorized/ })).toHaveLength(1);
+    });
+
+    // Expanding it shows a single merged "Topics" section, not one per
+    // workspace, and that section carries concepts from both.
+    fireEvent.click(screen.getByRole("button", { name: /Uncategorized/ }));
+    // Exact name, since the overview stat tile also reads "<n> Topics".
+    const sections = await screen.findAllByRole("button", { name: "Topics" });
+    expect(sections).toHaveLength(1);
+
+    fireEvent.click(sections[0]);
+    expect(await screen.findByText("Cgroups")).toBeInTheDocument();
+    expect(screen.getByText("Namespaces")).toBeInTheDocument();
+  }, 15000);
 });

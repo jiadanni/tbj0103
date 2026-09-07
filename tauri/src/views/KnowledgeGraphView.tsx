@@ -259,6 +259,26 @@ function makeDemoCards(concept: ConceptNode, workspaceId: string): LearningCard[
   ];
 }
 
+/** Fold same-named sections into the first occurrence, concatenating their
+ *  concepts. Used when chapters from sibling workspaces merge: each workspace
+ *  contributes its own "Topics" section, and showing them separately would
+ *  just move the duplication down one level. */
+function mergeSectionsByName<S extends { name: string; concepts: ConceptNode[] }>(sections: S[]): S[] {
+  const out: S[] = [];
+  const byName = new Map<string, S>();
+  for (const section of sections) {
+    const key = section.name.trim().toLowerCase();
+    const existing = byName.get(key);
+    if (!existing) {
+      byName.set(key, section);
+      out.push(section);
+      continue;
+    }
+    existing.concepts = [...existing.concepts, ...section.concepts];
+  }
+  return out;
+}
+
 export default function KnowledgeGraphView({
   hideSidebar = false,
   fillHeight = false,
@@ -585,16 +605,37 @@ export default function KnowledgeGraphView({
     const chapters = nodes.filter((n) => n.hierarchy_level === 'chapter');
     const sections = nodes.filter((n) => n.hierarchy_level === 'section');
     const concepts = nodes.filter((n) => n.hierarchy_level === 'concept');
+    const builtChapters = chapters.map((ch) => ({
+      ...ch,
+      sections: sections
+        .filter((s) => parentOf.get(s.id) === ch.id)
+        .map((s) => ({
+          ...s,
+          concepts: concepts.filter((c) => parentOf.get(c.id) === s.id),
+        })),
+    }));
+
+    // Every workspace owns its own "Uncategorized" sweep bucket, so browsing a
+    // parent workspace with `includeDescendants` pulls back one identically
+    // named chapter per descendant. Fold same-named chapters into the first
+    // occurrence — keeping its id, which drives expand/collapse state — so the
+    // sidebar shows one row per topic group rather than one per workspace.
+    // The roadmap forest already does this via `mergeDuplicateSiblings`.
+    const mergedChapters: typeof builtChapters = [];
+    const chapterByName = new Map<string, (typeof builtChapters)[number]>();
+    for (const chapter of builtChapters) {
+      const key = chapter.name.trim().toLowerCase();
+      const existing = chapterByName.get(key);
+      if (!existing) {
+        chapterByName.set(key, chapter);
+        mergedChapters.push(chapter);
+        continue;
+      }
+      existing.sections = mergeSectionsByName([...existing.sections, ...chapter.sections]);
+    }
+
     return {
-      chapters: chapters.map((ch) => ({
-        ...ch,
-        sections: sections
-          .filter((s) => parentOf.get(s.id) === ch.id)
-          .map((s) => ({
-            ...s,
-            concepts: concepts.filter((c) => parentOf.get(c.id) === s.id),
-          })),
-      })),
+      chapters: mergedChapters,
       orphans: concepts.filter((c) => !parentOf.has(c.id)),
     };
   }, [nodes, links]);
