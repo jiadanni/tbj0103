@@ -1190,11 +1190,22 @@ export interface BackupCategoryCount {
   row_count: number;
 }
 
+export interface BackupChatPreview {
+  id: string;
+  title: string;
+  workspace_id: string;
+  folder_id: string | null;
+  folder_name: string | null;
+  message_count: number;
+  updated_at: string | null;
+}
+
 export interface BackupWorkspacePreview {
   id: string;
   name: string;
   exists_locally: boolean;
   categories: BackupCategoryCount[];
+  chats?: BackupChatPreview[];
 }
 
 export interface BackupPreview {
@@ -2297,12 +2308,14 @@ export const api = {
       workspaceIds: string[],
       categoryIds: string[],
       mode: BackupImportMode,
+      chatIds?: string[],
     ) =>
       invoke<SelectiveImportResult>("import_backup_selective", {
         backupJson,
         workspaceIds,
         categoryIds,
         mode,
+        chatIds: chatIds ?? null,
       }),
   },
 
