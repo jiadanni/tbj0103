@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   setLayout: vi.fn(),
   resetLayout: vi.fn(),
   listGoals: vi.fn(() => Promise.resolve([])),
+  getLearningPath: vi.fn((): Promise<unknown[]> => Promise.resolve([])),
   createGoal: vi.fn(),
   updateGoal: vi.fn(),
   deleteGoal: vi.fn(),
@@ -49,6 +50,9 @@ vi.mock("@/lib/api", () => ({
     },
     workspace: {
       list: mocks.listWorkspaces,
+    },
+    graph: {
+      getLearningPath: mocks.getLearningPath,
     },
   },
 }));
@@ -281,5 +285,95 @@ describe("FolderDashboardView", () => {
     expect(screen.getByRole("button", { name: /Open chat/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Open library/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Open knowledge view/i })).toBeInTheDocument();
+  });
+
+  describe("Learn Next", () => {
+    function pathItem(overrides: Record<string, unknown>) {
+      return {
+        concept_id: "c-1",
+        concept_name: "Backpropagation",
+        concept_description: "",
+        hierarchy_path: "Neural Nets > Training",
+        met_prereqs: 0,
+        unmet_prereqs: 0,
+        due_cards: 0,
+        total_cards: 3,
+        unlocks: 0,
+        readiness: 100,
+        ...overrides,
+      };
+    }
+
+    it("lists the concepts the graph says to learn next", async () => {
+      mocks.getLearningPath.mockResolvedValue([
+        pathItem({ concept_id: "c-1", concept_name: "Backpropagation" }),
+        pathItem({ concept_id: "c-2", concept_name: "Attention", unmet_prereqs: 1 }),
+      ]);
+
+      render(
+        <MemoryRouter>
+          <FolderDashboardView />
+        </MemoryRouter>,
+      );
+
+      expect(await screen.findByText("Backpropagation")).toBeInTheDocument();
+      expect(screen.getByText("Attention")).toBeInTheDocument();
+    });
+
+    it("says why a concept is blocked rather than just ranking it lower", async () => {
+      mocks.getLearningPath.mockResolvedValue([
+        pathItem({ concept_name: "Attention", unmet_prereqs: 2 }),
+      ]);
+
+      render(
+        <MemoryRouter>
+          <FolderDashboardView />
+        </MemoryRouter>,
+      );
+
+      expect(await screen.findByText(/2 prerequisites first/)).toBeInTheDocument();
+    });
+
+    it("reports due cards on a ready concept", async () => {
+      mocks.getLearningPath.mockResolvedValue([
+        pathItem({ due_cards: 4 }),
+      ]);
+
+      render(
+        <MemoryRouter>
+          <FolderDashboardView />
+        </MemoryRouter>,
+      );
+
+      expect(await screen.findByText(/Ready — 4 cards due/)).toBeInTheDocument();
+    });
+
+    it("starts a review session scoped to the chosen concept", async () => {
+      // The concept id must reach /practice as a param, or the user lands on
+      // an unfiltered review and the recommendation is lost.
+      mocks.getLearningPath.mockResolvedValue([pathItem({ concept_id: "c-42" })]);
+
+      render(
+        <MemoryRouter>
+          <FolderDashboardView />
+        </MemoryRouter>,
+      );
+
+      fireEvent.click(await screen.findByRole("button", { name: /Backpropagation/ }));
+      expect(mockNavigate).toHaveBeenCalledWith("/practice?tab=review&concept=c-42");
+    });
+
+    it("degrades to an empty state when the graph has not been analysed", async () => {
+      // A workspace with no concept map must not break the dashboard.
+      mocks.getLearningPath.mockRejectedValue(new Error("no concepts"));
+
+      render(
+        <MemoryRouter>
+          <FolderDashboardView />
+        </MemoryRouter>,
+      );
+
+      expect(await screen.findByText(/Nothing to suggest yet/)).toBeInTheDocument();
+    });
   });
 });

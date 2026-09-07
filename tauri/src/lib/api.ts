@@ -1084,6 +1084,14 @@ export interface LearningPathItem {
   hierarchy_path: string;
   met_prereqs: number;
   unmet_prereqs: number;
+  /** Cards on this concept due today or overdue. */
+  due_cards: number;
+  /** Cards on this concept in total; 0 means it can be read but not drilled. */
+  total_cards: number;
+  /** How many other concepts list this one as a prerequisite. */
+  unlocks: number;
+  /** Ranking score, highest first. */
+  readiness: number;
 }
 
 export interface AiModel {

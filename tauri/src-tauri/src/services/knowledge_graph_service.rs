@@ -832,6 +832,54 @@ pub struct LearningPathItem {
     pub hierarchy_path: String,
     pub met_prereqs: usize,
     pub unmet_prereqs: usize,
+    /// Cards attached to this concept that are due today or overdue.
+    pub due_cards: i64,
+    /// Cards attached to this concept, whether due or not. A concept with no
+    /// cards can be read about but not practised, so it ranks below one that
+    /// can actually be studied.
+    pub total_cards: i64,
+    /// How many other concepts list this one as a prerequisite. Learning a
+    /// concept that unblocks several others is worth more than a leaf.
+    pub unlocks: usize,
+    /// Ranking score; higher sorts first. Surfaced so the UI can explain the
+    /// ordering rather than presenting it as an opaque list.
+    pub readiness: f64,
+}
+
+/// Rank a candidate concept for "what to learn next".
+///
+/// Ordering intent, strongest signal first:
+/// 1. **Unmet prerequisites dominate.** Something you are not ready for should
+///    not be recommended, however attractive it looks on other axes, so this
+///    is a steep penalty rather than one term among equals.
+/// 2. **Being studiable matters.** A concept with no cards can be read about
+///    but not practised, so it ranks below one you can actually drill.
+/// 3. **Due cards are a nudge**, not a takeover — `suggest_next_concept`
+///    already covers pure review; this list is about moving forward.
+/// 4. **Unlocking others breaks ties**, damped so a hub with unmet
+///    prerequisites can't outrank a concept that is ready now.
+///
+/// The weights are deliberately coarse. AGENTS.md asks for heuristics to be
+/// swept against a real corpus rather than tuned by feel, and that sweep has
+/// not been run — these are a starting point to be measured, not a result.
+fn readiness_score(
+    unmet: usize,
+    met: usize,
+    due_cards: i64,
+    total_cards: i64,
+    unlocks: usize,
+) -> f64 {
+    let mut score = 100.0;
+    score -= 40.0 * unmet as f64;
+    // Having satisfied prerequisites is mild positive evidence that this sits
+    // at the frontier of what you know, rather than off on its own.
+    score += 3.0 * met.min(3) as f64;
+    if total_cards == 0 {
+        score -= 15.0;
+    }
+    score += 2.0 * (due_cards.min(5) as f64);
+    score += 4.0 * (unlocks.min(4) as f64);
+    score
 }
 
 pub fn compute_learning_path(
@@ -880,6 +928,47 @@ pub fn compute_learning_path(
             .map_err(|e| e.to_string())?;
         for row in rows.flatten() {
             links.push(row);
+        }
+    }
+
+    // Card counts per concept, in one grouped query rather than a lookup per
+    // node — this list is rebuilt on every dashboard load.
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let mut card_stats: std::collections::HashMap<String, (i64, i64)> =
+        std::collections::HashMap::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT c.source_id, \
+                        COUNT(*), \
+                        COUNT(*) FILTER (WHERE c.next_review_date <= ?2) \
+                 FROM learning_cards c \
+                 JOIN concept_nodes cn ON cn.id = c.source_id \
+                 WHERE cn.workspace_id = ?1 AND c.source_type = 'concept' \
+                   AND c.suspended_at IS NULL \
+                 GROUP BY c.source_id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![workspace_id, today], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        for (id, total, due) in rows.flatten() {
+            card_stats.insert(id, (total, due));
+        }
+    }
+
+    // How many concepts each node unblocks (it is their prerequisite).
+    let mut unlocks_count: std::collections::HashMap<&str, usize> =
+        std::collections::HashMap::new();
+    for (src, _tgt, ltype) in &links {
+        if ltype == "prerequisite" {
+            *unlocks_count.entry(src.as_str()).or_insert(0) += 1;
         }
     }
 
@@ -933,6 +1022,9 @@ pub fn compute_learning_path(
         path_parts.reverse();
         let hierarchy_path = path_parts.join(" > ");
 
+        let (total_cards, due_cards) = card_stats.get(id).copied().unwrap_or((0, 0));
+        let unlocks = unlocks_count.get(id.as_str()).copied().unwrap_or(0);
+
         items.push(LearningPathItem {
             concept_id: id.clone(),
             concept_name: node.name.clone(),
@@ -940,13 +1032,19 @@ pub fn compute_learning_path(
             hierarchy_path,
             met_prereqs: met,
             unmet_prereqs: unmet,
+            due_cards,
+            total_cards,
+            unlocks,
+            readiness: readiness_score(unmet, met, due_cards, total_cards, unlocks),
         });
     }
 
-    // Sort by fewest unmet prereqs, then by name
+    // Highest readiness first; name breaks ties so the order is stable between
+    // loads rather than following HashMap iteration order.
     items.sort_by(|a, b| {
-        a.unmet_prereqs
-            .cmp(&b.unmet_prereqs)
+        b.readiness
+            .partial_cmp(&a.readiness)
+            .unwrap_or(std::cmp::Ordering::Equal)
             .then(a.concept_name.cmp(&b.concept_name))
     });
     items.truncate(5);
@@ -2519,6 +2617,61 @@ mod knowledge_reset_tests {
                 "SELECT COUNT(*) FROM graph_statistics WHERE workspace_id = 'ws-1'"
             ),
             1
+        );
+    }
+}
+
+#[cfg(test)]
+mod readiness_tests {
+    use super::readiness_score;
+
+    /// The ordering property that matters most: a concept you are ready for
+    /// must outrank one you are not, even when the blocked concept looks
+    /// better on every other axis (cards to drill, concepts it unlocks).
+    #[test]
+    fn unmet_prerequisites_outweigh_every_other_signal() {
+        let ready = readiness_score(0, 0, 0, 1, 0);
+        let blocked_but_attractive = readiness_score(1, 5, 5, 50, 4);
+        assert!(
+            ready > blocked_but_attractive,
+            "ready {ready} should outrank blocked {blocked_but_attractive}"
+        );
+    }
+
+    #[test]
+    fn each_unmet_prerequisite_lowers_the_score() {
+        assert!(readiness_score(0, 0, 0, 1, 0) > readiness_score(1, 0, 0, 1, 0));
+        assert!(readiness_score(1, 0, 0, 1, 0) > readiness_score(2, 0, 0, 1, 0));
+    }
+
+    /// A concept with no cards can be read about but not practised.
+    #[test]
+    fn a_concept_with_cards_outranks_one_without() {
+        assert!(readiness_score(0, 0, 0, 3, 0) > readiness_score(0, 0, 0, 0, 0));
+    }
+
+    #[test]
+    fn unlocking_other_concepts_breaks_ties() {
+        assert!(readiness_score(0, 0, 0, 1, 3) > readiness_score(0, 0, 0, 1, 0));
+    }
+
+    #[test]
+    fn due_cards_nudge_but_do_not_dominate_readiness() {
+        // Review pressure should not promote a blocked concept over a ready one;
+        // `suggest_next_concept` is the surface that handles pure review.
+        let ready_no_due = readiness_score(0, 0, 0, 1, 0);
+        let blocked_many_due = readiness_score(1, 0, 5, 20, 0);
+        assert!(ready_no_due > blocked_many_due);
+        // ...but among equally-ready concepts, due cards do promote.
+        assert!(readiness_score(0, 0, 4, 5, 0) > readiness_score(0, 0, 0, 5, 0));
+    }
+
+    /// Bounded terms keep one lopsided concept from dominating the list.
+    #[test]
+    fn secondary_signals_saturate() {
+        assert_eq!(
+            readiness_score(0, 0, 99, 5, 99),
+            readiness_score(0, 0, 5, 5, 4)
         );
     }
 }
