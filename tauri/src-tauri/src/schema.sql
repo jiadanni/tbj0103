@@ -16,7 +16,9 @@ CREATE TABLE IF NOT EXISTS workspaces (
     order_index INTEGER NOT NULL DEFAULT 0,
     last_message_at TEXT,
     survey_data TEXT,
-    about_you TEXT NOT NULL DEFAULT ''
+    about_you TEXT NOT NULL DEFAULT '',
+    -- Domain vocabulary used to label 1-5 card difficulty in the feed.
+    difficulty_preset TEXT
 );
 
 CREATE TABLE IF NOT EXISTS folders (
@@ -311,7 +313,14 @@ CREATE TABLE IF NOT EXISTS learning_cards (
     last_reviewed_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     generated_by_model TEXT,
-    kind TEXT NOT NULL DEFAULT 'flashcard'
+    kind TEXT NOT NULL DEFAULT 'flashcard',
+    -- Boom Scroll feed: 1-5 difficulty, labelled by a domain preset.
+    -- NULL difficulty means "unlevelled" and is never filtered out.
+    difficulty INTEGER CHECK (difficulty IS NULL OR difficulty BETWEEN 1 AND 5),
+    difficulty_preset TEXT,
+    difficulty_label TEXT,
+    -- Quarantine ("banish"): held out of the feed, never deleted.
+    suspended_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS flashcard_topics (
@@ -1282,6 +1291,9 @@ CREATE INDEX IF NOT EXISTS idx_roadmap_snapshots_workspace_created ON roadmap_sn
 CREATE INDEX IF NOT EXISTS idx_learning_goals_workspace ON learning_goals(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_learning_cards_review ON learning_cards(next_review_date);
 CREATE INDEX IF NOT EXISTS idx_learning_cards_workspace_review ON learning_cards(workspace_id, next_review_date);
+-- Partial: the feed filters banished cards out on its hot path, and in a
+-- healthy library almost every row is NULL here.
+CREATE INDEX IF NOT EXISTS idx_learning_cards_suspended ON learning_cards(workspace_id) WHERE suspended_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_daily_notes_workspace_date ON daily_notes(workspace_id, date);
 CREATE INDEX IF NOT EXISTS idx_uploaded_docs_workspace ON uploaded_documents(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_doc_chunks_document ON document_chunks(document_id);

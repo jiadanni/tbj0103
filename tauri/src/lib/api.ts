@@ -347,6 +347,33 @@ export interface LearningCard {
   ease_factor: number; interval: number;
   repetitions: number; next_review_date: string; last_reviewed_at?: string;
   created_at: string;
+  /** "flashcard" (question/answer) or "info" (long-form explanation). */
+  kind?: string;
+  /** 1-5, or absent when the card is unlevelled. */
+  difficulty?: number | null;
+  difficulty_preset?: string | null;
+  difficulty_label?: string | null;
+  /** Set when the card is banished from the feed (reversible, not a delete). */
+  suspended_at?: string | null;
+}
+
+/** A workspace offered as a filter row in the Boom Scroll feed. */
+export interface FeedWorkspace {
+  id: string;
+  name: string;
+  card_count: number;
+  difficulty_preset?: string | null;
+}
+
+/** A feed card: the stored card plus its resolved topic and workspace names. */
+export interface FeedCard extends LearningCard {
+  topic?: string | null;
+  workspace_name: string;
+}
+
+export interface FeedDeck {
+  workspaces: FeedWorkspace[];
+  cards: FeedCard[];
 }
 
 export interface ReviewStats {
@@ -1886,6 +1913,24 @@ export const api = {
     update: (id: string, fields: Partial<LearningGoal>) =>
       invoke<void>("update_learning_goal", { req: { id, ...fields } }),
     delete: (id: string) => invoke<void>("delete_learning_goal", { id }),
+  },
+
+  /**
+   * Boom Scroll feed — the swipeable study feed. Reads cards straight from
+   * SQLite rather than from an exported deck file, so levelling and banishing
+   * are durable and carry into the next export.
+   */
+  feed: {
+    load: (workspaceIds: string[], includeDescendants?: boolean) =>
+      invoke<FeedDeck>("load_feed_deck", { workspaceIds, includeDescendants }),
+    setSuspended: (cardId: string, suspended: boolean) =>
+      invoke<void>("set_card_suspended", { cardId, suspended }),
+    restoreAll: (workspaceIds: string[]) =>
+      invoke<number>("restore_all_suspended", { workspaceIds }),
+    setDifficulty: (cardId: string, difficulty: number | null) =>
+      invoke<void>("set_card_difficulty", { cardId, difficulty }),
+    setWorkspacePreset: (workspaceId: string, preset: string | null) =>
+      invoke<void>("set_workspace_difficulty_preset", { workspaceId, preset }),
   },
 
   flashcard: {

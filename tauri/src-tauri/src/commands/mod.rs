@@ -14,6 +14,7 @@ pub mod data_deletion;
 pub mod demo;
 pub mod document;
 pub mod export;
+pub mod feed;
 pub mod flashcard;
 pub mod folder;
 pub mod git_sync;

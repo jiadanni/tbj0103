@@ -107,6 +107,11 @@ mod tests {
             last_reviewed_at: None,
             created_at: "2026-03-16T00:00:00Z".to_string(),
             generated_by_model: None,
+            kind: "flashcard".to_string(),
+            difficulty: None,
+            difficulty_preset: None,
+            difficulty_label: None,
+            suspended_at: None,
         }
     }
 

@@ -97,6 +97,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v81_search_session_workspace",
     "v82_chat_file_sync_outbox",
     "v83_chat_file_delete_outbox",
+    "v84_feed_difficulty_and_suspension",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -2566,7 +2567,63 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         tx.commit()?;
     }
 
+    // v84: Boom Scroll feed support — per-card difficulty levelling, the domain
+    // preset that names those levels, and quarantine ("banish") state. Before
+    // this, difficulty was fabricated from ease_factor at export time and
+    // nothing was persisted, so a level set on the phone could not round-trip.
+    let applied_v84: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v84_feed_difficulty_and_suspension'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v84 == 0 {
+        let tx = conn.unchecked_transaction()?;
+        // Additive columns only; each guarded so a re-run (or a fresh install
+        // that already got them from schema.sql) is a no-op.
+        for (table, column, decl) in [
+            (
+                "learning_cards",
+                "difficulty",
+                "INTEGER CHECK (difficulty IS NULL OR difficulty BETWEEN 1 AND 5)",
+            ),
+            ("learning_cards", "difficulty_preset", "TEXT"),
+            ("learning_cards", "difficulty_label", "TEXT"),
+            ("learning_cards", "suspended_at", "TEXT"),
+            ("workspaces", "difficulty_preset", "TEXT"),
+        ] {
+            if !column_exists(&tx, table, column)? {
+                tx.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {column} {decl};"))?;
+            }
+        }
+        // Partial index: the feed's hot path filters suspended cards out, and
+        // in a healthy library almost every row is NULL here.
+        tx.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_learning_cards_suspended
+                 ON learning_cards(workspace_id) WHERE suspended_at IS NOT NULL;",
+        )?;
+        tx.execute(
+            "INSERT INTO _migrations(name) VALUES('v84_feed_difficulty_and_suspension')",
+            [],
+        )?;
+        tx.commit()?;
+    }
+
     Ok(())
+}
+
+/// Whether `table` already has `column`. Used by additive migrations so they
+/// stay idempotent against databases that received the column from
+/// `schema.sql` on a fresh install.
+fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table});"))?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        if row.get::<_, String>(1)? == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// Recover the five nontransactional rebuilds before schema bootstrap can
