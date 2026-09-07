@@ -8,6 +8,14 @@ export interface ComposerSuggestion {
   label: string;
   prompt: string;
   action: ComposerSuggestionAction;
+  /**
+   * Workspace this prompt came from, when it is not the active one. Set for
+   * prompt-bank suggestions, which a parent workspace draws from its children:
+   * the card shows the name, and selecting it opens the chat there rather than
+   * in whichever workspace happens to be active.
+   */
+  workspaceId?: string;
+  workspaceName?: string;
 }
 
 export interface ComposerSuggestionRow {
@@ -18,10 +26,25 @@ export interface ComposerSuggestionRow {
   suggestions: ComposerSuggestion[];
 }
 
+/** A prompt-bank entry plus the workspace it belongs to. */
+export interface PromptBankEntry {
+  prompt: string;
+  workspaceId: string;
+  workspaceName: string;
+}
+
 export interface ComposerSuggestionContext {
   folderName?: string | null;
   topicSignature?: TopicSignature | null;
   promptBankPrompts?: string[];
+  /**
+   * Prompt-bank entries with their owning workspace. Preferred over
+   * `promptBankPrompts` when present; the plain string form is retained for
+   * callers that have no workspace attribution to pass.
+   */
+  promptBankEntries?: PromptBankEntry[];
+  /** Workspace the composer is currently in, used to tell "elsewhere" apart. */
+  activeWorkspaceId?: string | null;
   processedDocCount: number;
   activeMessages: Message[];
   followUps: string[];
@@ -112,6 +135,31 @@ export function buildWorkspaceSuggestionRow(context: ComposerSuggestionContext):
   // exchange exists, follow-ups derived from the actual reply take over.
   if (context.activeMessages.length > 0) {
     return null;
+  }
+
+  if (context.promptBankEntries && context.promptBankEntries.length > 0) {
+    return {
+      id: "workspace",
+      label: "Workspace suggestions",
+      collapsible: true,
+      defaultExpanded: true,
+      suggestions: context.promptBankEntries.map((entry, index) => {
+        // Only attribute prompts that belong somewhere other than the active
+        // workspace — labelling a prompt with the workspace you are already in
+        // is noise.
+        const isForeign =
+          !!context.activeWorkspaceId && entry.workspaceId !== context.activeWorkspaceId;
+        return {
+          id: `workspace-bank-${index}`,
+          label: entry.prompt,
+          prompt: entry.prompt,
+          action: "append" as const,
+          ...(isForeign
+            ? { workspaceId: entry.workspaceId, workspaceName: entry.workspaceName }
+            : {}),
+        };
+      }),
+    };
   }
 
   if (context.promptBankPrompts && context.promptBankPrompts.length > 0) {

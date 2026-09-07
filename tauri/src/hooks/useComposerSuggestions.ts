@@ -4,6 +4,7 @@ import {
   buildWorkspaceSuggestionRow,
   type ComposerSuggestion,
   type ComposerSuggestionRow,
+  type PromptBankEntry,
 } from "../lib/composerSuggestions";
 import { api, type TopicSignature } from "../lib/api";
 import type { Message } from "../stores/chatStore";
@@ -14,6 +15,7 @@ export interface UseComposerSuggestionsArgs {
   activeFolder: Folder | null;
   activeTopicSignature: TopicSignature | null | undefined;
   promptBankPrompts: string[];
+  promptBankEntries?: PromptBankEntry[];
   attachedSourcesCount: number;
   activeMessages: Message[];
   followUps: string[];
@@ -40,6 +42,7 @@ export function useComposerSuggestions({
   activeFolder,
   activeTopicSignature,
   promptBankPrompts,
+  promptBankEntries,
   attachedSourcesCount,
   activeMessages,
   followUps,
@@ -53,6 +56,8 @@ export function useComposerSuggestions({
     folderName: activeFolder?.name ?? null,
     topicSignature: activeTopicSignature,
     promptBankPrompts,
+    promptBankEntries,
+    activeWorkspaceId: effectiveWorkspaceId ?? null,
     processedDocCount: attachedSourcesCount,
     activeMessages,
     followUps,
@@ -61,6 +66,8 @@ export function useComposerSuggestions({
     activeFolder,
     activeTopicSignature,
     promptBankPrompts,
+    promptBankEntries,
+    effectiveWorkspaceId,
     attachedSourcesCount,
     activeMessages,
     followUps,

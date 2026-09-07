@@ -208,6 +208,14 @@ export interface PromptSuggestion {
   prompt: string;
   tags: string[];
   score: number;
+  /**
+   * Workspace the prompt belongs to. Suggestions for a parent workspace are
+   * drawn from its children too, so this is not necessarily the workspace that
+   * was queried — use it to label the prompt and to open the chat in the right
+   * place.
+   */
+  workspace_id: string;
+  workspace_name: string;
 }
 
 export interface PromptBankJob {

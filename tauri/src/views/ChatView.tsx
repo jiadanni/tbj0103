@@ -23,6 +23,7 @@ import { useScopedChat, useScopedFolders, useScopedWorkspace, useWorkspacePane, 
 import {
   mergeComposerInput,
   type ComposerSuggestion,
+  type PromptBankEntry,
 } from "../lib/composerSuggestions";
 import { useComposerSuggestions } from "../hooks/useComposerSuggestions";
 import { useDueThoughts } from "../hooks/useDueThoughts";
@@ -773,6 +774,10 @@ export default function ChatView() {
   const [expandedSources, setExpandedSources] = useState<string | null>(null);
   const [followUps, setFollowUps] = useState<string[]>([]);
   const [promptBankPrompts, setPromptBankPrompts] = useState<string[]>([]);
+  // Same suggestions, retaining which workspace each came from. A parent
+  // workspace's bank includes its children's prompts, so a card can be labelled
+  // with its origin and open the chat there.
+  const [promptBankEntries, setPromptBankEntries] = useState<PromptBankEntry[]>([]);
   const followUpsGenRef = useRef(0);
 
   // Per-message metadata (tok/s and duration) persisted on the Message itself;
@@ -1314,6 +1319,7 @@ export default function ChatView() {
   useEffect(() => {
     if (!effectiveWorkspaceId || activeChatMessages.length > 0) {
       setPromptBankPrompts([]);
+      setPromptBankEntries([]);
       return;
     }
 
@@ -1322,11 +1328,17 @@ export default function ChatView() {
       .then((suggestions) => {
         if (!cancelled) {
           setPromptBankPrompts(suggestions.map((suggestion) => suggestion.prompt));
+          setPromptBankEntries(suggestions.map((suggestion) => ({
+            prompt: suggestion.prompt,
+            workspaceId: suggestion.workspace_id,
+            workspaceName: suggestion.workspace_name,
+          })));
         }
       })
       .catch(() => {
         if (!cancelled) {
           setPromptBankPrompts([]);
+          setPromptBankEntries([]);
         }
       });
 
@@ -1646,8 +1658,16 @@ export default function ChatView() {
     }
   }, [currentSessionId, sessions, effectiveWorkspaceId, activateSession]);
 
-  const findOrCreateEmptySession = useCallback(async (options?: { isIncognito?: boolean; excludeFromAnalytics?: boolean }) => {
-    if (!effectiveWorkspaceId) { return null; }
+  // `workspaceId` overrides the active workspace. Needed when a prompt drawn
+  // from another workspace opens its chat there: the scoped-workspace setState
+  // has not been applied yet on this tick, so relying on effectiveWorkspaceId
+  // would create the session in the workspace being navigated away from.
+  const findOrCreateEmptySession = useCallback(async (options?: { isIncognito?: boolean; excludeFromAnalytics?: boolean; workspaceId?: string }) => {
+    const targetWorkspaceId = options?.workspaceId ?? effectiveWorkspaceId;
+    if (!targetWorkspaceId) { return null; }
+    // A session created in another workspace must not inherit this workspace's
+    // folder filter.
+    const targetFolderId = options?.workspaceId ? null : effectiveFolderId;
 
     const privacy = {
       isIncognito: options?.isIncognito ?? false,
@@ -1656,25 +1676,25 @@ export default function ChatView() {
     const localUnusedSession = findUnusedSession(
       sessions,
       useChatStore.getState().messages,
-      effectiveWorkspaceId,
+      targetWorkspaceId,
       privacy,
     );
     if (localUnusedSession) {
       return localUnusedSession;
     }
 
-    const workspaceSessions = await api.chat.listSessions(effectiveWorkspaceId, null, { limit: 200, offset: 0 });
+    const workspaceSessions = await api.chat.listSessions(targetWorkspaceId, null, { limit: 200, offset: 0 });
     const unusedSession = findUnusedSession(
       workspaceSessions,
       useChatStore.getState().messages,
-      effectiveWorkspaceId,
+      targetWorkspaceId,
       privacy,
     );
     if (unusedSession) {
       return unusedSession;
     }
 
-    return api.chat.createSession(effectiveWorkspaceId, effectiveFolderId, {
+    return api.chat.createSession(targetWorkspaceId, targetFolderId, {
       modelName: selectedModel,
       is_incognito: privacy.isIncognito,
       exclude_from_analytics: privacy.excludeFromAnalytics,
@@ -2246,6 +2266,26 @@ export default function ChatView() {
     const modelForSend = composerMode === "family"
       ? (activeFamilyDefaultModelId ?? selectedModel)
       : selectedModel;
+
+    // A prompt drawn from another workspace opens its chat there. Without this
+    // the prompt's subject and the chat's workspace disagree from the first
+    // message — the chat is filed under whichever workspace happened to be
+    // active, and its context comes from the wrong place.
+    if (suggestion.workspaceId && suggestion.workspaceId !== effectiveWorkspaceId) {
+      setScopedWorkspaceId(suggestion.workspaceId);
+      setScopedFolderId(null);
+      setActiveChatId(null);
+      await refreshFolderTree(suggestion.workspaceId);
+      const session = await findOrCreateEmptySession({
+        workspaceId: suggestion.workspaceId,
+      });
+      if (session) {
+        activateSession(session);
+      }
+      setInput((prev) => mergeComposerInput(prev, suggestion.prompt));
+      requestAnimationFrame(() => resizeAndFocusComposer(suggestion.prompt.length));
+      return;
+    }
 
     if (suggestion.action === "send_immediately" || sendImmediately) {
       await sendMessageWithModel(modelForSend, suggestion.prompt);
@@ -2920,6 +2960,7 @@ export default function ChatView() {
     activeFolder,
     activeTopicSignature,
     promptBankPrompts,
+    promptBankEntries,
     attachedSourcesCount: attachedSources.length,
     activeMessages,
     followUps,
