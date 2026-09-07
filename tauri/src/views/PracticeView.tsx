@@ -29,6 +29,10 @@ export default function PracticeView() {
   );
   const practiceMode = useMemo(() => parseInitialPracticeMode(searchParams.get("tab")), [searchParams]);
 
+  // A `concept` param narrows review to one concept's cards — this is how the
+  // dashboard's "what to learn next" panel starts a focused session.
+  const reviewConceptId = useMemo(() => searchParams.get("concept") ?? undefined, [searchParams]);
+
   const initialQuizTopic = useMemo(() => searchParams.get("topic") ?? undefined, [searchParams]);
   const initialQuizKindRaw = useMemo(() => searchParams.get("kind"), [searchParams]);
   const initialQuizKind = initialQuizKindRaw === "pop" || initialQuizKindRaw === "exam"
@@ -88,7 +92,7 @@ export default function PracticeView() {
 
       <div className="flex-1 min-h-0 overflow-hidden">
         <Suspense fallback={<div className="p-4 text-sm text-[var(--text-muted)]">Loading…</div>}>
-          {practiceMode === "review" && <ReviewPane />}
+          {practiceMode === "review" && <ReviewPane conceptId={reviewConceptId} />}
           {practiceMode === "quiz" && (
             <QuizzesPane
               hideSidebar

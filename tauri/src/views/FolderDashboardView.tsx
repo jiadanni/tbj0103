@@ -4,6 +4,7 @@ import {
   ArrowRight,
   Check,
   FileText,
+  Lock,
   MessageSquare,
   Plus,
   RefreshCw,
@@ -15,6 +16,7 @@ import {
   api,
   type DashboardSummary,
   type LearningGoal,
+  type LearningPathItem,
 } from "../lib/api";
 import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
 import DashboardOmnibox from "../components/DashboardOmnibox";
@@ -337,7 +339,9 @@ export default function FolderDashboardView() {
 
         {/* items-start (not stretch) so a card with one goal stays short instead
             of matching Continue Learning's height in dead space. */}
-        <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(16rem,1fr)_minmax(16rem,1fr)_minmax(20rem,1.3fr)] xl:items-start">
+        <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(16rem,1fr)_minmax(16rem,1fr)_minmax(16rem,1fr)_minmax(20rem,1.3fr)] xl:items-start">
+          <NextUpCard workspaceId={activeWorkspaceId} />
+
           <GoalsCard
             workspaceId={activeWorkspaceId}
             includeDescendants={includeDescendants}
@@ -490,6 +494,123 @@ export default function FolderDashboardView() {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * "What to learn next" — the readiness-ranked concept list.
+ *
+ * The knowledge graph already knew which concepts are unblocked (their
+ * prerequisites are reviewed) and which are not; until now nothing rendered
+ * that, so the graph was a map you looked at rather than something that told
+ * you where to go. This turns it into an answer with a way to act on it.
+ */
+function NextUpCard({ workspaceId }: { workspaceId: string }) {
+  const navigate = useNavigate();
+  // `null` means "not answered yet", which is the state on first paint and
+  // again whenever the workspace changes. Deriving loading from the data
+  // instead of a separate flag keeps the effect free of a synchronous
+  // setState, and avoids flashing the empty state before the call returns.
+  const [items, setItems] = useState<LearningPathItem[] | null>(null);
+
+  useEffect(() => {
+    if (!workspaceId) { return; }
+    let cancelled = false;
+    api.graph
+      .getLearningPath(workspaceId)
+      .then((list) => { if (!cancelled) { setItems(list); } })
+      // The panel is additive: a graph that has not been analysed yet should
+      // render as "nothing to suggest", never as a broken dashboard.
+      .catch(() => { if (!cancelled) { setItems([]); } });
+    return () => {
+      cancelled = true;
+      // A pending response for the previous workspace must not land as this
+      // one's answer.
+      setItems(null);
+    };
+  }, [workspaceId]);
+
+  /** Why this concept is where it is, in the user's terms. */
+  function reasonFor(item: LearningPathItem): string {
+    if (item.unmet_prereqs > 0) {
+      return `${item.unmet_prereqs} prerequisite${item.unmet_prereqs === 1 ? "" : "s"} first`;
+    }
+    if (item.due_cards > 0) {
+      return `Ready — ${item.due_cards} card${item.due_cards === 1 ? "" : "s"} due`;
+    }
+    if (item.total_cards === 0) {
+      return "Ready — no cards yet";
+    }
+    if (item.unlocks > 0) {
+      return `Ready — unlocks ${item.unlocks}`;
+    }
+    return "Ready to learn";
+  }
+
+  return (
+    <section className="surface-card rounded-xl p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="label-chrome">Learn Next</h2>
+        <button
+          onClick={() => navigate("/topics")}
+          className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-secondary)]"
+        >
+          All
+          <ArrowRight size={11} />
+        </button>
+      </div>
+
+      {items === null ? (
+        <p className="px-1 py-3 text-[11px] text-[var(--text-muted)]">Loading…</p>
+      ) : items.length === 0 ? (
+        <p className="px-1 py-3 text-[11px] leading-relaxed text-[var(--text-muted)]">
+          Nothing to suggest yet. Analyse a workspace to build its concept map,
+          and the next thing to learn shows up here.
+        </p>
+      ) : (
+        <ul className="space-y-1.5">
+          {items.map((item) => {
+            const blocked = item.unmet_prereqs > 0;
+            return (
+              <li key={item.concept_id}>
+                <button
+                  type="button"
+                  // A blocked concept still navigates — seeing why it is
+                  // blocked is useful; it just is not presented as the next step.
+                  onClick={() =>
+                    navigate(`/practice?tab=review&concept=${encodeURIComponent(item.concept_id)}`)
+                  }
+                  className="surface-card surface-card-interactive group flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left"
+                >
+                  <span
+                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
+                      blocked
+                        ? "bg-[var(--bg-hover)] text-[var(--text-muted)]"
+                        : "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
+                    }`}
+                  >
+                    {blocked ? <Lock size={13} /> : <Sparkles size={13} />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs font-medium text-[var(--text-primary)]">
+                      {item.concept_name}
+                    </span>
+                    <span className="block truncate text-[10px] text-[var(--text-muted)]">
+                      {reasonFor(item)}
+                      {item.hierarchy_path ? ` · ${item.hierarchy_path}` : ""}
+                    </span>
+                  </span>
+                  <ArrowRight
+                    size={12}
+                    className="shrink-0 text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100"
+                  />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }
 
