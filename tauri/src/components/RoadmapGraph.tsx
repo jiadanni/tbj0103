@@ -45,36 +45,17 @@ function getResolvedColor(hexOrVar: string): string {
   return hexOrVar;
 }
 
-function hexToRgba(rawColor: string, alpha: number): string {
-  const color = getResolvedColor(rawColor);
-  if (color.startsWith("#")) {
-    const hex = color.length === 4 
-      ? `#${color[1]}${color[1]}${color[2]}${color[2]}${color[3]}${color[3]}` 
-      : color;
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    if (!isNaN(r) && !isNaN(g) && !isNaN(b)) {
-      return `rgba(${r},${g},${b},${alpha})`;
-    }
-  } else if (color.startsWith("rgb")) {
-    const parts = color.match(/\d+/g);
-    if (parts && parts.length >= 3) {
-      return `rgba(${parts[0]},${parts[1]},${parts[2]},${alpha})`;
-    }
-  }
-  return `rgba(99,102,241,${alpha})`;
-}
-
 interface BoxDims {
   width: number;
   height: number;
 }
 
 function dimsFor(level: string): BoxDims {
-  if (level === "chapter") { return { width: 230, height: 64 }; }
-  if (level === "section") { return { width: 180, height: 46 }; }
-  return { width: 150, height: 36 };
+  // Heights allow a wrapped label plus the child-count line, with clearance at
+  // the bottom for the collapse badge that hangs off chapters and sections.
+  if (level === "chapter") { return { width: 236, height: 74 }; }
+  if (level === "section") { return { width: 192, height: 62 }; }
+  return { width: 158, height: 38 };
 }
 
 function truncate(s: string, max: number): string {
@@ -204,8 +185,9 @@ function RoadmapGraphInner(
     type PositionedLink = d3.HierarchyPointLink<RoadmapNode>;
 
     // node size: [horizontal between siblings, vertical between levels]
-    // Chapter boxes are 230 wide; add a 40px gutter so siblings cannot overlap.
-    const treeLayout = d3.tree<RoadmapNode>().nodeSize([270, 120]);
+    // Chapter boxes are 236 wide and 74 tall; the gutters here keep siblings
+    // clear horizontally and leave room for the connector curves vertically.
+    const treeLayout = d3.tree<RoadmapNode>().nodeSize([276, 132]);
 
     interface LaidTree {
       treeNodes: PositionedNode[];
@@ -536,6 +518,7 @@ function RoadmapGraphInner(
             const dim = dimsFor(d.data.hierarchy_level);
             const isChapter = d.data.hierarchy_level === "chapter";
             const isSection = d.data.hierarchy_level === "section";
+            const isConcept = !isChapter && !isSection;
             const isSelected = d.data.id === selectedConceptId;
             const matchesFilter = !filter || d.data.name.toLowerCase().includes(filter);
             const opacity = matchesFilter ? 1 : 0.2;
@@ -559,17 +542,18 @@ function RoadmapGraphInner(
             const childCount =
               (d.data.children?.length ?? 0) + (d.data.hiddenChildCount ?? 0);
             const metaLineHeight = 12;
-            const maxLen = isChapter ? 26 : isSection ? 21 : 18;
+            // Slightly tighter than the box would allow: text starts after the
+            // dot inset, so the usable width is less than the full node width.
+            const maxLen = isChapter ? 24 : isSection ? 19 : 16;
             const lines = wrapLabel(d.data.name, maxLen);
             const fontSize = isChapter ? 13.5 : isSection ? 12 : 11;
             const lineHeight = isChapter ? 17 : isSection ? 15 : 13;
-            const fontWeight = isChapter ? 700 : isSection ? 600 : 500;
-            // Approximate half-width of the widest label line, used to park the
-            // type dot just left of centred text. SVG offers no cheap text
-            // metrics, so this uses the same character-width estimate the
-            // collapse badge already relies on.
-            const firstLineHalfWidth =
-              (Math.max(...lines.map((l) => l.length)) * fontSize * 0.5) / 2;
+            const fontWeight = isChapter ? "600" : isSection ? "550" : "500";
+            // Left-anchored internal layout: dot, then label, then an optional
+            // count line. Fixed insets mean nothing depends on measuring text.
+            const padX = isChapter ? 14 : 11;
+            const dotR = isChapter ? 3.5 : 3;
+            const labelX = padX + dotR * 2 + 7;
 
             const sourceNode = nodes.find((n) => n.id === d.data.id) ?? null;
 
@@ -583,15 +567,27 @@ function RoadmapGraphInner(
             const isExpanded = collapseKey !== undefined && expandedSections.has(collapseKey);
             const hiddenCount = d.data.hiddenChildCount ?? 0;
             const showBadge = collapseKey !== undefined && (hiddenCount > 0 || isExpanded);
-            // Only chapters carry the child-count line. Sections already state
-            // their count on the collapse badge ("Show 8") directly below, and a
-            // 46px section box has no room for a second line of text anyway.
-            const showMeta = isChapter && !showBadge && childCount > 0;
+            // Chapters and sections carry a child-count line; leaf concepts have
+            // no children to count. Note this must NOT be gated on !showBadge:
+            // every chapter absorbs a same-named section and so inherits a
+            // collapseId, which means such a gate silently excluded every node
+            // the line was written for.
+            const showMeta = !isConcept && childCount > 0;
+            // Vertical origin of the text block. Sits above the collapse badge
+            // when there is one so the two never overlap.
+            const contentHeight =
+              lines.length * lineHeight + (showMeta ? metaLineHeight : 0);
+            const textTop = (dim.height - contentHeight) / 2 + lineHeight / 2;
             const badgeText = isExpanded ? "Hide" : `Show ${hiddenCount}`;
-            const badgeHeight = 20;
-            const badgeWidth = Math.max(56, badgeText.length * 6.2 + 24);
-            const badgeX = (dim.width - badgeWidth) / 2;
-            const badgeY = dim.height - badgeHeight / 2;
+            const badgeHeight = 18;
+            const badgeWidth = Math.max(50, badgeText.length * 6.2 + 22);
+            // Right-aligned inside the card, on the count line's row, rather
+            // than hanging off the bottom edge: with the label left-aligned, a
+            // centred badge below would collide with the count line.
+            const badgeX = dim.width - badgeWidth - padX;
+            const badgeY = showMeta
+              ? textTop + lines.length * lineHeight - badgeHeight / 2 - 1
+              : dim.height - badgeHeight / 2;
             const chevronD = isExpanded
               ? "M -4 2 L 0 -2 L 4 2"
               : "M -4 -2 L 0 2 L 4 -2";
@@ -616,18 +612,23 @@ function RoadmapGraphInner(
                   strokeWidth={borderWidth}
                   filter="url(#rg-card-shadow)"
                 />
-                {/* Label block. When a meta line is shown the whole block lifts
-                    by half a line so label + meta stay optically centred. */}
+                {/* Type indicator, parked at a fixed inset. Left-anchored so it
+                    never has to be positioned relative to measured text — SVG
+                    has no cheap text metrics, and estimating label width put the
+                    dot on top of the first letter for longer names. */}
+                <circle
+                  cx={padX + dotR}
+                  cy={textTop}
+                  r={dotR}
+                  fill={getResolvedColor(typeColor)}
+                  opacity={isSelected ? 1 : 0.8}
+                />
+                {/* Label block, left-aligned beside the dot. */}
                 {lines.map((line, i) => (
                   <text
                     key={i}
-                    x={dim.width / 2}
-                    y={
-                      dim.height / 2
-                      + (i - (lines.length - 1) / 2) * lineHeight
-                      - (showMeta ? metaLineHeight / 2 : 0)
-                    }
-                    textAnchor="middle"
+                    x={labelX}
+                    y={textTop + i * lineHeight}
                     dominantBaseline="middle"
                     fontSize={fontSize}
                     fontWeight={fontWeight}
@@ -637,30 +638,10 @@ function RoadmapGraphInner(
                     {line}
                   </text>
                 ))}
-                {/* Type indicator, tucked against the first label line. The only
-                    place concept_type is expressed now: a dot rather than a
-                    full-card tint, so one dominant type reads as calm instead of
-                    monotonous, and a future mix still colors meaningfully. */}
-                <circle
-                  cx={dim.width / 2 - firstLineHalfWidth - 8}
-                  cy={
-                    dim.height / 2
-                    - ((lines.length - 1) / 2) * lineHeight
-                    - (showMeta ? metaLineHeight / 2 : 0)
-                  }
-                  r={isChapter ? 3.5 : 3}
-                  fill={getResolvedColor(typeColor)}
-                  opacity={isSelected ? 1 : 0.8}
-                />
                 {showMeta && (
                   <text
-                    x={dim.width / 2}
-                    y={
-                      dim.height / 2
-                      + ((lines.length - 1) / 2) * lineHeight
-                      + metaLineHeight / 2
-                    }
-                    textAnchor="middle"
+                    x={labelX}
+                    y={textTop + lines.length * lineHeight - 1}
                     dominantBaseline="middle"
                     fontSize={isChapter ? 10 : 9.5}
                     fontFamily='"JetBrains Mono", "Fira Code", Menlo, monospace'
@@ -684,17 +665,16 @@ function RoadmapGraphInner(
                       width={badgeWidth}
                       height={badgeHeight}
                       rx={badgeHeight / 2}
-                      fill="var(--bg-elevated)"
-                      stroke={hexToRgba(typeColor, 0.65)}
-                      strokeWidth={1.25}
-                      filter="url(#rg-card-shadow)"
+                      fill="var(--surface-hover)"
+                      stroke="var(--surface-border)"
+                      strokeWidth={1}
                     />
                     <g transform={`translate(${badgeX + 13},${badgeY + badgeHeight / 2})`}>
                       <path
                         d={chevronD}
                         fill="none"
-                        stroke={getResolvedColor(typeColor)}
-                        strokeWidth={1.8}
+                        stroke="var(--text-secondary)"
+                        strokeWidth={1.6}
                         strokeLinecap="round"
                         strokeLinejoin="round"
                       />
@@ -704,9 +684,9 @@ function RoadmapGraphInner(
                       y={badgeY + badgeHeight / 2 + 0.5}
                       textAnchor="middle"
                       dominantBaseline="middle"
-                      fontSize={10.5}
-                      fontWeight={600}
-                      fill="var(--text-primary)"
+                      fontSize={10}
+                      fontFamily='"JetBrains Mono", "Fira Code", Menlo, monospace'
+                      fill="var(--text-secondary)"
                       style={{ pointerEvents: "none", userSelect: "none" }}
                     >
                       {badgeText}
