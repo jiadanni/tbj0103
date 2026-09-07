@@ -103,11 +103,24 @@ pub struct BackupCategoryCount {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackupChatPreview {
+    pub id: String,
+    pub title: String,
+    pub workspace_id: String,
+    pub folder_id: Option<String>,
+    pub folder_name: Option<String>,
+    pub message_count: usize,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackupWorkspacePreview {
     pub id: String,
     pub name: String,
     pub exists_locally: bool,
     pub categories: Vec<BackupCategoryCount>,
+    #[serde(default)]
+    pub chats: Vec<BackupChatPreview>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1023,11 +1036,68 @@ pub async fn preview_backup(
                 })
                 .collect();
 
+            let mut folder_names = std::collections::HashMap::new();
+            if let Some(folders) = data.get("folders").and_then(serde_json::Value::as_array) {
+                for folder in folders {
+                    if let (Some(fid), Some(fname)) = (
+                        folder.get("id").and_then(serde_json::Value::as_str),
+                        folder.get("name").and_then(serde_json::Value::as_str),
+                    ) {
+                        folder_names.insert(fid.to_string(), fname.to_string());
+                    }
+                }
+            }
+
+            let mut message_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+            if let Some(messages) = data.get("messages").and_then(serde_json::Value::as_array) {
+                for message in messages {
+                    if let Some(sid) = message.get("session_id").and_then(serde_json::Value::as_str) {
+                        *message_counts.entry(sid).or_default() += 1;
+                    }
+                }
+            }
+
+            let mut chats = Vec::new();
+            if let Some(sessions) = data.get("chat_sessions").and_then(serde_json::Value::as_array) {
+                for session in sessions {
+                    if let Some(chat_id) = session.get("id").and_then(serde_json::Value::as_str) {
+                        let title = session
+                            .get("title")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or("Untitled Chat")
+                            .to_string();
+                        let folder_id = session
+                            .get("folder_id")
+                            .and_then(serde_json::Value::as_str)
+                            .filter(|s| !s.is_empty())
+                            .map(str::to_string);
+                        let folder_name = folder_id.as_ref().and_then(|fid| folder_names.get(fid).cloned());
+                        let message_count = message_counts.get(chat_id).copied().unwrap_or(0);
+                        let updated_at = session
+                            .get("updated_at")
+                            .or_else(|| session.get("created_at"))
+                            .and_then(serde_json::Value::as_str)
+                            .map(str::to_string);
+
+                        chats.push(BackupChatPreview {
+                            id: chat_id.to_string(),
+                            title,
+                            workspace_id: id.clone(),
+                            folder_id,
+                            folder_name,
+                            message_count,
+                            updated_at,
+                        });
+                    }
+                }
+            }
+
             workspaces.push(BackupWorkspacePreview {
                 id,
                 name,
                 exists_locally,
                 categories,
+                chats,
             });
         }
 
@@ -1049,6 +1119,113 @@ pub async fn preview_backup(
     .map_err(|e| e.to_string())?
 }
 
+fn filter_table_rows<'a>(
+    table: &str,
+    rows: &'a serde_json::Value,
+    chat_set: Option<&std::collections::HashSet<&str>>,
+    msg_set: Option<&std::collections::HashSet<&str>>,
+) -> std::borrow::Cow<'a, serde_json::Value> {
+    use std::borrow::Cow;
+    match (table, chat_set, msg_set) {
+        ("chat_sessions", Some(chat_set), _) => {
+            if let Some(arr) = rows.as_array() {
+                Cow::Owned(serde_json::Value::Array(
+                    arr.iter()
+                        .filter(|row| {
+                            row.get("id")
+                                .and_then(serde_json::Value::as_str)
+                                .is_some_and(|id| chat_set.contains(id))
+                        })
+                        .cloned()
+                        .collect(),
+                ))
+            } else {
+                Cow::Borrowed(rows)
+            }
+        }
+        ("messages", Some(chat_set), _) => {
+            if let Some(arr) = rows.as_array() {
+                Cow::Owned(serde_json::Value::Array(
+                    arr.iter()
+                        .filter(|row| {
+                            row.get("session_id")
+                                .and_then(serde_json::Value::as_str)
+                                .is_some_and(|sid| chat_set.contains(sid))
+                        })
+                        .cloned()
+                        .collect(),
+                ))
+            } else {
+                Cow::Borrowed(rows)
+            }
+        }
+        ("citations", _, Some(msg_set)) => {
+            if let Some(arr) = rows.as_array() {
+                Cow::Owned(serde_json::Value::Array(
+                    arr.iter()
+                        .filter(|row| {
+                            row.get("message_id")
+                                .and_then(serde_json::Value::as_str)
+                                .is_some_and(|mid| msg_set.contains(mid))
+                        })
+                        .cloned()
+                        .collect(),
+                ))
+            } else {
+                Cow::Borrowed(rows)
+            }
+        }
+        ("context_snapshots", Some(chat_set), _) => {
+            if let Some(arr) = rows.as_array() {
+                Cow::Owned(serde_json::Value::Array(
+                    arr.iter()
+                        .filter(|row| {
+                            row.get("session_id")
+                                .and_then(serde_json::Value::as_str)
+                                .is_some_and(|sid| chat_set.contains(sid))
+                        })
+                        .cloned()
+                        .collect(),
+                ))
+            } else {
+                Cow::Borrowed(rows)
+            }
+        }
+        ("conversation_summaries", Some(chat_set), _) => {
+            if let Some(arr) = rows.as_array() {
+                Cow::Owned(serde_json::Value::Array(
+                    arr.iter()
+                        .filter(|row| {
+                            row.get("session_id")
+                                .and_then(serde_json::Value::as_str)
+                                .is_some_and(|sid| chat_set.contains(sid))
+                        })
+                        .cloned()
+                        .collect(),
+                ))
+            } else {
+                Cow::Borrowed(rows)
+            }
+        }
+        ("artifacts", Some(chat_set), _) => {
+            if let Some(arr) = rows.as_array() {
+                Cow::Owned(serde_json::Value::Array(
+                    arr.iter()
+                        .filter(|row| match row.get("session_id").and_then(serde_json::Value::as_str) {
+                            Some(sid) => chat_set.contains(sid),
+                            None => true,
+                        })
+                        .cloned()
+                        .collect(),
+                ))
+            } else {
+                Cow::Borrowed(rows)
+            }
+        }
+        _ => Cow::Borrowed(rows),
+    }
+}
+
 /// Import only the selected workspaces and data categories from a backup.
 ///
 /// `mode` is `"merge"` (default, never deletes — local rows win) or
@@ -1061,12 +1238,20 @@ pub async fn import_backup_selective(
     workspace_ids: Vec<String>,
     category_ids: Vec<String>,
     mode: String,
+    chat_ids: Option<Vec<String>>,
 ) -> Result<SelectiveImportResult, String> {
     require_auth_for_destructive_ops(&auth, &state)?;
     let pool = state.0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        import_selective_data(&mut conn, &backup_json, &workspace_ids, &category_ids, &mode)
+        import_selective_data(
+            &mut conn,
+            &backup_json,
+            &workspace_ids,
+            &category_ids,
+            &mode,
+            chat_ids.as_deref(),
+        )
     })
     .await
     .map_err(|e| e.to_string())?
@@ -1078,6 +1263,7 @@ fn import_selective_data(
     workspace_ids: &[String],
     category_ids: &[String],
     mode: &str,
+    chat_ids: Option<&[String]>,
 ) -> Result<SelectiveImportResult, String> {
     let _relocation = crate::services::chat_move_sync::lock_relocations()?;
     let backup: serde_json::Value =
@@ -1123,6 +1309,28 @@ fn import_selective_data(
         }
     }
 
+    if let Some(filter_chats) = chat_ids {
+        if category_ids.iter().any(|c| c == "chats") {
+            let mut available_chat_ids = std::collections::HashSet::new();
+            for (_, _, data) in &selected {
+                if let Some(sessions) = data.get("chat_sessions").and_then(serde_json::Value::as_array) {
+                    for s in sessions {
+                        if let Some(id) = s.get("id").and_then(serde_json::Value::as_str) {
+                            available_chat_ids.insert(id);
+                        }
+                    }
+                }
+            }
+            for requested in filter_chats {
+                if !available_chat_ids.contains(requested.as_str()) {
+                    return Err(format!(
+                        "Chat '{requested}' is not present in the selected workspaces"
+                    ));
+                }
+            }
+        }
+    }
+
     // Only restore tables belonging to a selected category, but keep the
     // canonical RESTORE_TABLE_ORDER so foreign keys always land in order.
     let tables: Vec<&str> = RESTORE_TABLE_ORDER
@@ -1154,9 +1362,39 @@ fn import_selective_data(
             on_conflict,
         )?;
 
+        let target_chat_ids: Option<std::collections::HashSet<&str>> = chat_ids
+            .filter(|_| category_ids.iter().any(|c| c == "chats"))
+            .map(|ids| ids.iter().map(String::as_str).collect());
+
+        let target_message_ids: Option<std::collections::HashSet<&str>> =
+            if let Some(ref chat_set) = target_chat_ids {
+                let mut msg_set = std::collections::HashSet::new();
+                if let Some(messages) = data.get("messages").and_then(serde_json::Value::as_array) {
+                    for msg in messages {
+                        if let (Some(mid), Some(sid)) = (
+                            msg.get("id").and_then(serde_json::Value::as_str),
+                            msg.get("session_id").and_then(serde_json::Value::as_str),
+                        ) {
+                            if chat_set.contains(sid) {
+                                msg_set.insert(mid);
+                            }
+                        }
+                    }
+                }
+                Some(msg_set)
+            } else {
+                None
+            };
+
         for table in &tables {
             if let Some(rows) = data.get(*table) {
-                let inserted = insert_json_rows(&tx, table, rows, on_conflict)?;
+                let filtered = filter_table_rows(
+                    table,
+                    rows,
+                    target_chat_ids.as_ref(),
+                    target_message_ids.as_ref(),
+                );
+                let inserted = insert_json_rows(&tx, table, &filtered, on_conflict)?;
                 rows_imported += inserted;
                 if let Some(category) = category_for_table(table) {
                     *per_category.entry(category).or_default() += inserted;
@@ -1390,6 +1628,7 @@ mod selective_import_tests {
             &["ws".to_string()],
             &["chats".to_string(), "notes".to_string()],
             "merge",
+            None,
         )
         .unwrap();
 
@@ -1432,6 +1671,7 @@ mod selective_import_tests {
             &["ws".to_string()],
             &["chats".to_string()],
             "merge",
+            None,
         )
         .unwrap();
 
@@ -1465,6 +1705,7 @@ mod selective_import_tests {
             &["ws".to_string()],
             &["chats".to_string()],
             "replace",
+            None,
         )
         .unwrap();
 
@@ -1492,6 +1733,7 @@ mod selective_import_tests {
             &["ws".to_string()],
             &["notes".to_string()],
             "merge",
+            None,
         )
         .unwrap();
 
@@ -1531,6 +1773,7 @@ mod selective_import_tests {
             &["ws-a".to_string()],
             &["chats".to_string()],
             "merge",
+            None,
         )
         .unwrap();
 
@@ -1540,30 +1783,103 @@ mod selective_import_tests {
     }
 
     #[test]
+    fn selective_import_filters_individual_chats() {
+        let (_dir, mut conn) = test_conn();
+        let backup = serde_json::json!({
+            "version": "2.0",
+            "created_at": "2026-01-01T00:00:00Z",
+            "workspace": {"id": "ws", "name": "Workspace"},
+            "data": {
+                "folders": [
+                    {"id": "folder-1", "workspace_id": "ws", "name": "Project Alpha"}
+                ],
+                "chat_sessions": [
+                    {"id": "chat-keep", "workspace_id": "ws", "folder_id": "folder-1", "title": "Keep Me"},
+                    {"id": "chat-skip", "workspace_id": "ws", "folder_id": "", "title": "Skip Me"}
+                ],
+                "messages": [
+                    {"id": "msg-keep-1", "session_id": "chat-keep", "role": "user", "content": "hello"},
+                    {"id": "msg-keep-2", "session_id": "chat-keep", "role": "assistant", "content": "hi"},
+                    {"id": "msg-skip", "session_id": "chat-skip", "role": "user", "content": "bye"}
+                ],
+                "citations": [
+                    {"id": "cit-keep", "message_id": "msg-keep-2", "source_id": "src-1", "source_type": "note", "excerpt": "ref"}
+                ],
+                "project_notes": [
+                    {"id": "note-1", "workspace_id": "ws", "title": "Note 1", "content": "c"}
+                ]
+            }
+        })
+        .to_string();
+
+        let result = import_selective_data(
+            &mut conn,
+            &backup,
+            &["ws".to_string()],
+            &["chats".to_string(), "notes".to_string()],
+            "merge",
+            Some(&["chat-keep".to_string()]),
+        )
+        .unwrap();
+
+        // chat-keep and its messages and citation are imported
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM chat_sessions WHERE id = 'chat-keep'"), 1);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM chat_sessions WHERE id = 'chat-skip'"), 0);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM messages WHERE session_id = 'chat-keep'"), 2);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM messages WHERE session_id = 'chat-skip'"), 0);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM citations WHERE message_id = 'msg-keep-2'"), 1);
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM project_notes"), 1);
+        // folders should be preserved
+        assert_eq!(count(&conn, "SELECT COUNT(*) FROM folders WHERE id = 'folder-1'"), 1);
+
+        let chat_cat = result.per_category.iter().find(|c| c.id == "chats").unwrap();
+        // folders (1) + chat_session (1) + messages (2) + citation (1) = 5
+        assert_eq!(chat_cat.row_count, 5);
+    }
+
+    #[test]
+    fn selective_import_rejects_missing_chat_id() {
+        let (_dir, mut conn) = test_conn();
+        let backup = sample_backup();
+
+        let err = import_selective_data(
+            &mut conn,
+            &backup,
+            &["ws".to_string()],
+            &["chats".to_string()],
+            "merge",
+            Some(&["nonexistent-chat".to_string()]),
+        )
+        .unwrap_err();
+
+        assert!(err.contains("Chat 'nonexistent-chat' is not present"));
+    }
+
+    #[test]
     fn selective_import_rejects_bad_input() {
         let (_dir, mut conn) = test_conn();
         let backup = sample_backup();
 
         let empty_workspaces =
-            import_selective_data(&mut conn, &backup, &[], &["chats".into()], "merge").unwrap_err();
+            import_selective_data(&mut conn, &backup, &[], &["chats".into()], "merge", None).unwrap_err();
         assert!(empty_workspaces.contains("at least one workspace"));
 
         let empty_categories =
-            import_selective_data(&mut conn, &backup, &["ws".into()], &[], "merge").unwrap_err();
+            import_selective_data(&mut conn, &backup, &["ws".into()], &[], "merge", None).unwrap_err();
         assert!(empty_categories.contains("at least one data category"));
 
         let bad_mode =
-            import_selective_data(&mut conn, &backup, &["ws".into()], &["chats".into()], "wipe")
+            import_selective_data(&mut conn, &backup, &["ws".into()], &["chats".into()], "wipe", None)
                 .unwrap_err();
         assert!(bad_mode.contains("Unknown import mode"));
 
         let bad_category =
-            import_selective_data(&mut conn, &backup, &["ws".into()], &["nope".into()], "merge")
+            import_selective_data(&mut conn, &backup, &["ws".into()], &["nope".into()], "merge", None)
                 .unwrap_err();
         assert!(bad_category.contains("Unknown import category"));
 
         let missing_workspace =
-            import_selective_data(&mut conn, &backup, &["ghost".into()], &["chats".into()], "merge")
+            import_selective_data(&mut conn, &backup, &["ghost".into()], &["chats".into()], "merge", None)
                 .unwrap_err();
         assert!(missing_workspace.contains("not present in this backup"));
     }
@@ -1583,6 +1899,7 @@ mod selective_import_tests {
             &["ws".into()],
             &["chats".into()],
             "merge",
+            None,
         )
         .is_err());
     }
@@ -1605,5 +1922,104 @@ mod selective_import_tests {
         let entries = backup_workspace_entries(&global).unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(workspace_id_of(&entries[1].0).unwrap(), "ws-b");
+    }
+
+    #[test]
+    fn preview_extracts_chat_previews_with_counts_and_folder() {
+        let (_dir, _conn) = test_conn();
+        let backup = serde_json::json!({
+            "version": "2.0",
+            "created_at": "2026-01-01T00:00:00Z",
+            "workspace": {"id": "ws", "name": "Workspace"},
+            "data": {
+                "folders": [
+                    {"id": "f-1", "workspace_id": "ws", "name": "Deep Learning"}
+                ],
+                "chat_sessions": [
+                    {"id": "chat-dl", "workspace_id": "ws", "folder_id": "f-1", "title": "Transformers", "updated_at": "2026-01-02T00:00:00Z"}
+                ],
+                "messages": [
+                    {"id": "m-1", "session_id": "chat-dl", "role": "user", "content": "attention"},
+                    {"id": "m-2", "session_id": "chat-dl", "role": "assistant", "content": "is all you need"}
+                ]
+            }
+        });
+
+        let mut workspaces = Vec::new();
+        for (workspace, data) in backup_workspace_entries(&backup).unwrap() {
+            let id = workspace_id_of(&workspace).unwrap();
+            let mut folder_names = std::collections::HashMap::new();
+            if let Some(folders) = data.get("folders").and_then(serde_json::Value::as_array) {
+                for folder in folders {
+                    if let (Some(fid), Some(fname)) = (
+                        folder.get("id").and_then(serde_json::Value::as_str),
+                        folder.get("name").and_then(serde_json::Value::as_str),
+                    ) {
+                        folder_names.insert(fid.to_string(), fname.to_string());
+                    }
+                }
+            }
+
+            let mut message_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+            if let Some(messages) = data.get("messages").and_then(serde_json::Value::as_array) {
+                for message in messages {
+                    if let Some(sid) = message.get("session_id").and_then(serde_json::Value::as_str) {
+                        *message_counts.entry(sid).or_default() += 1;
+                    }
+                }
+            }
+
+            let mut chats = Vec::new();
+            if let Some(sessions) = data.get("chat_sessions").and_then(serde_json::Value::as_array) {
+                for session in sessions {
+                    if let Some(chat_id) = session.get("id").and_then(serde_json::Value::as_str) {
+                        let title = session
+                            .get("title")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or("Untitled Chat")
+                            .to_string();
+                        let folder_id = session
+                            .get("folder_id")
+                            .and_then(serde_json::Value::as_str)
+                            .filter(|s| !s.is_empty())
+                            .map(str::to_string);
+                        let folder_name = folder_id.as_ref().and_then(|fid| folder_names.get(fid).cloned());
+                        let message_count = message_counts.get(chat_id).copied().unwrap_or(0);
+                        let updated_at = session
+                            .get("updated_at")
+                            .or_else(|| session.get("created_at"))
+                            .and_then(serde_json::Value::as_str)
+                            .map(str::to_string);
+
+                        chats.push(BackupChatPreview {
+                            id: chat_id.to_string(),
+                            title,
+                            workspace_id: id.clone(),
+                            folder_id,
+                            folder_name,
+                            message_count,
+                            updated_at,
+                        });
+                    }
+                }
+            }
+
+            workspaces.push(BackupWorkspacePreview {
+                id,
+                name: "Workspace".into(),
+                exists_locally: false,
+                categories: vec![],
+                chats,
+            });
+        }
+
+        assert_eq!(workspaces.len(), 1);
+        let preview = &workspaces[0];
+        assert_eq!(preview.chats.len(), 1);
+        let chat = &preview.chats[0];
+        assert_eq!(chat.id, "chat-dl");
+        assert_eq!(chat.title, "Transformers");
+        assert_eq!(chat.folder_name.as_deref(), Some("Deep Learning"));
+        assert_eq!(chat.message_count, 2);
     }
 }

@@ -3,7 +3,7 @@
  * out of an Aetherium backup, instead of the all-or-nothing restore.
  */
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckSquare, RefreshCw, Square, Upload, X } from "lucide-react";
+import { AlertTriangle, CheckSquare, ChevronDown, ChevronRight, Folder, RefreshCw, Search, Square, Upload, X } from "lucide-react";
 import { api } from "../lib/api";
 import type { BackupImportMode, BackupPreview, SelectiveImportResult } from "../lib/api";
 
@@ -39,6 +39,19 @@ export default function SelectiveImportDialog({
     }
     return withRows;
   });
+
+  const [selectedChatIds, setSelectedChatIds] = useState<Set<string>>(() => {
+    const allIds = new Set<string>();
+    for (const w of preview.workspaces) {
+      for (const c of w.chats ?? []) {
+        allIds.add(c.id);
+      }
+    }
+    return allIds;
+  });
+
+  const [isChatsExpanded, setIsChatsExpanded] = useState(false);
+  const [chatSearchQuery, setChatSearchQuery] = useState("");
   const [mode, setMode] = useState<BackupImportMode>("merge");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +67,27 @@ export default function SelectiveImportDialog({
       document.removeEventListener("keydown", handleEscape);
     };
   }, [busy, onCancel]);
+
+  const availableChats = useMemo(() => {
+    return preview.workspaces
+      .filter((w) => selectedWorkspaces.has(w.id))
+      .flatMap((w) => (w.chats ?? []).map((c) => ({ ...c, workspaceName: w.name })));
+  }, [preview.workspaces, selectedWorkspaces]);
+
+  const selectedChatCount = useMemo(() => {
+    return availableChats.filter((c) => selectedChatIds.has(c.id)).length;
+  }, [availableChats, selectedChatIds]);
+
+  const filteredChats = useMemo(() => {
+    const query = chatSearchQuery.trim().toLowerCase();
+    if (!query) {return availableChats;}
+    return availableChats.filter(
+      (c) =>
+        c.title.toLowerCase().includes(query) ||
+        (c.folder_name && c.folder_name.toLowerCase().includes(query)) ||
+        c.workspaceName.toLowerCase().includes(query),
+    );
+  }, [availableChats, chatSearchQuery]);
 
   // Category rows are summed across only the workspaces that are ticked, so the
   // counts track the workspace selection.
@@ -86,7 +120,16 @@ export default function SelectiveImportDialog({
     [categories, selectedCategories],
   );
 
-  const canImport = selectedWorkspaces.size > 0 && effectiveCategories.length > 0 && !busy;
+  const hasItemsToImport = useMemo(() => {
+    return effectiveCategories.some((c) => {
+      if (c.id === "chats") {
+        return availableChats.length === 0 || selectedChatCount > 0;
+      }
+      return c.rowCount > 0;
+    });
+  }, [effectiveCategories, availableChats.length, selectedChatCount]);
+
+  const canImport = selectedWorkspaces.size > 0 && hasItemsToImport && !busy;
 
   function toggleWorkspace(id: string) {
     const next = new Set(selectedWorkspaces);
@@ -102,16 +145,53 @@ export default function SelectiveImportDialog({
     setSelectedCategories(next);
   }
 
+  function toggleChat(id: string) {
+    const next = new Set(selectedChatIds);
+    if (next.has(id)) {next.delete(id);}
+    else {next.add(id);}
+    setSelectedChatIds(next);
+  }
+
+  function selectAllChats() {
+    const next = new Set(selectedChatIds);
+    for (const chat of availableChats) {
+      next.add(chat.id);
+    }
+    setSelectedChatIds(next);
+  }
+
+  function deselectAllChats() {
+    const next = new Set(selectedChatIds);
+    for (const chat of availableChats) {
+      next.delete(chat.id);
+    }
+    setSelectedChatIds(next);
+  }
+
   async function runImport() {
     setBusy(true);
     setError(null);
     try {
-      const result = await api.backup.importSelective(
-        backupJson,
-        Array.from(selectedWorkspaces),
-        effectiveCategories.map((c) => c.id),
-        mode,
-      );
+      const chatIdsToPass =
+        availableChats.length > 0 && selectedCategories.has("chats")
+          ? availableChats.filter((c) => selectedChatIds.has(c.id)).map((c) => c.id)
+          : undefined;
+
+      const result =
+        chatIdsToPass !== undefined
+          ? await api.backup.importSelective(
+              backupJson,
+              Array.from(selectedWorkspaces),
+              effectiveCategories.map((c) => c.id),
+              mode,
+              chatIdsToPass,
+            )
+          : await api.backup.importSelective(
+              backupJson,
+              Array.from(selectedWorkspaces),
+              effectiveCategories.map((c) => c.id),
+              mode,
+            );
       onImported(result);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -237,12 +317,131 @@ export default function SelectiveImportDialog({
                     <span className="min-w-0 flex-1 truncate text-xs text-[var(--text-primary)]">
                       {category.label}
                     </span>
-                    <span className="shrink-0 text-[10px] text-[var(--text-muted)]">{category.rowCount}</span>
+                    <span className="shrink-0 text-[10px] text-[var(--text-muted)]">
+                      {category.id === "chats" && availableChats.length > 0 && checked
+                        ? `${selectedChatCount}/${availableChats.length} chats`
+                        : category.rowCount}
+                    </span>
                   </button>
                 );
               })}
             </div>
           </div>
+
+          {/* ── Individual Chats Picker ── */}
+          {selectedCategories.has("chats") && availableChats.length > 0 && (
+            <div className="flex flex-col gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-3.5">
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsChatsExpanded(!isChatsExpanded)}
+                  className="flex items-center gap-1.5 text-xs font-medium text-[var(--text-primary)] hover:text-[var(--accent-color)]"
+                >
+                  {isChatsExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  <span>Individual chats ({selectedChatCount}/{availableChats.length} selected)</span>
+                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={selectAllChats}
+                    className="text-xs text-[var(--accent-color)] hover:underline"
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={deselectAllChats}
+                    className="text-xs text-[var(--text-muted)] hover:underline"
+                  >
+                    None
+                  </button>
+                </div>
+              </div>
+
+              {isChatsExpanded && (
+                <div className="mt-1 flex flex-col gap-2">
+                  <div className="relative">
+                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                    <input
+                      type="text"
+                      placeholder="Filter chats by title, folder, or workspace..."
+                      value={chatSearchQuery}
+                      onChange={(e) => setChatSearchQuery(e.target.value)}
+                      className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] py-1.5 pl-8 pr-7 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-color)] focus:outline-none"
+                    />
+                    {chatSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setChatSearchQuery("")}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="max-h-52 overflow-y-auto rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)]">
+                    {filteredChats.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-[var(--text-muted)]">
+                        No chats match your filter.
+                      </div>
+                    ) : (
+                      filteredChats.map((chat) => {
+                        const checked = selectedChatIds.has(chat.id);
+                        return (
+                          <div
+                            key={chat.id}
+                            onClick={() => toggleChat(chat.id)}
+                            className="flex cursor-pointer items-center gap-2.5 border-b border-[var(--border-color)] px-3 py-2 last:border-b-0 hover:bg-[var(--bg-hover)]"
+                          >
+                            <button
+                              type="button"
+                              role="checkbox"
+                              aria-checked={checked}
+                              aria-label={chat.title}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleChat(chat.id);
+                              }}
+                              className="shrink-0 text-[var(--accent-color)]"
+                            >
+                              {checked ? (
+                                <CheckSquare size={15} />
+                              ) : (
+                                <Square size={15} className="text-[var(--text-muted)]" />
+                              )}
+                            </button>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-medium text-[var(--text-primary)]">
+                                {chat.title}
+                              </p>
+                              <div className="flex flex-wrap items-center gap-2 text-[10px] text-[var(--text-muted)]">
+                                <span>{chat.message_count} {chat.message_count === 1 ? "message" : "messages"}</span>
+                                {chat.folder_name && (
+                                  <span className="flex items-center gap-1">
+                                    <Folder size={10} />
+                                    <span>{chat.folder_name}</span>
+                                  </span>
+                                )}
+                                {preview.workspaces.length > 1 && (
+                                  <span className="rounded bg-[var(--bg-primary)] px-1.5 py-0.5 text-[var(--text-secondary)]">
+                                    {chat.workspaceName}
+                                  </span>
+                                )}
+                                {chat.updated_at && (
+                                  <span>{formatCreatedAt(chat.updated_at)}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ── Conflict handling (only when something would collide) ── */}
           {anyExistsLocally && (
