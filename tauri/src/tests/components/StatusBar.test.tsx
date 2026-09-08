@@ -483,7 +483,7 @@ describe("StatusBar", () => {
     expect(screen.queryByText("Idle")).not.toBeInTheDocument();
   });
 
-  it("renders Ollama status text badge according to settingsStore state", async () => {
+  it("renders Ollama status in the scheduled jobs popover according to settingsStore state", async () => {
     vi.mocked(api.ollama.listModelsFresh).mockRejectedValue(new Error("Ollama down"));
     act(() => {
       useSettingsStore.setState({ ollamaStatus: "offline" });
@@ -491,8 +491,19 @@ describe("StatusBar", () => {
 
     render(<StatusBar />);
 
+    act(() => {
+      screen.getByRole("button", { name: "Show scheduled jobs" }).click();
+    });
+
     await waitFor(() => {
       expect(screen.getByText("Ollama Offline")).toBeInTheDocument();
     });
+
+    const startBtn = screen.getByRole("button", { name: "Start Ollama" });
+    expect(startBtn).toBeInTheDocument();
+    act(() => {
+      startBtn.click();
+    });
+    expect(api.ollama.ensureRunning).toHaveBeenCalled();
   });
 });
