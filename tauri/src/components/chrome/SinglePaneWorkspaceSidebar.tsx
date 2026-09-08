@@ -139,7 +139,7 @@ export function SinglePaneWorkspaceSidebar({
 
   return (
     <div
-      className={`flex h-full shrink-0 flex-col border-r border-[var(--border-color)] bg-[var(--bg-sidebar)] ${sizes.container}`}
+      className={`flex h-full shrink-0 flex-col border-r border-[var(--surface-border)] bg-[var(--bg-base)] ${sizes.container}`}
       data-testid={testId}
     >
       <div className={`flex items-center justify-between ${sizes.header}`}>

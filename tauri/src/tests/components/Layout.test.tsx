@@ -684,7 +684,7 @@ describe("Layout", () => {
 
     expect(splitAgenticTabs.some((button) => button.className.includes("rounded-t-xl"))).toBe(true);
     expect(splitAgenticTabs.some((button) => button.className.includes("h-[34px]"))).toBe(true);
-    expect(splitAgenticTabs.some((button) => button.className.includes("bg-[var(--bg-primary)]"))).toBe(true);
+    expect(splitAgenticTabs.some((button) => button.className.includes("bg-[var(--surface)]"))).toBe(true);
     expect(splitRustTabs.some((button) => button.className.includes("rounded-t-xl"))).toBe(true);
     expect(splitRustTabs.some((button) => button.className.includes("text-[var(--text-secondary)]"))).toBe(true);
   });

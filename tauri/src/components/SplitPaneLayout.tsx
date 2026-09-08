@@ -62,7 +62,7 @@ function PaneWorkspaceSidebar({ paneId }: { paneId: PaneId }) {
 
   return (
     <div
-      className="flex h-full w-[160px] shrink-0 flex-col gap-0.5 border-r border-[var(--border-color)] bg-[var(--bg-sidebar)] py-2 px-2 overflow-y-auto"
+      className="flex h-full w-[160px] shrink-0 flex-col gap-0.5 border-r border-[var(--surface-border)] bg-[var(--bg-base)] py-2 px-2 overflow-y-auto"
       data-testid={`pane-workspace-sidebar-${paneId}`}
     >
       <div className="px-1 pb-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">Workspaces</div>
@@ -201,11 +201,11 @@ function PaneSubWorkspaceTabs({ paneId }: { paneId: PaneId }) {
   }
 
   if (!parent) {
-    return <div className="h-8 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]/80 shrink-0" />;
+    return <div className="h-8 border-b border-[var(--surface-border)] bg-[var(--bg-base)]/80 shrink-0" />;
   }
 
   return (
-    <div className="flex items-center h-8 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]/80 px-2 shrink-0 select-none">
+    <div className="flex items-center h-8 border-b border-[var(--surface-border)] bg-[var(--bg-base)]/80 px-2 shrink-0 select-none">
       <div className="flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none">
         {/* Pinned overview dot — navigates to the parent (overview) workspace */}
         <Tooltip content={parent.name} position="top">
@@ -250,11 +250,11 @@ function PaneSubWorkspaceTabs({ paneId }: { paneId: PaneId }) {
                 }
               } catch { /* ignore malformed data */ }
             }}
-            className={`relative mt-0.5 flex h-[26px] w-[26px] items-center justify-center self-end rounded-t-lg border border-b-0 transition-all select-none border-r-2 border-r-[var(--accent-color)]/60 ${
+            className={`relative mt-0.5 flex h-[26px] w-[26px] items-center justify-center self-end rounded-t-xl border border-b-0 transition-all select-none border-r-2 border-r-[var(--accent-color)]/60 ${
               dragOverWorkspaceId === parent.id
-                ? "border-[var(--border-color)] bg-[var(--accent-color)]/20 text-[var(--accent-color)]"
+                ? "border-[var(--surface-border)] bg-[var(--accent-color)]/20 text-[var(--accent-color)]"
                 : paneWorkspaceId === parent.id
-                  ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--accent-color)]"
+                  ? "border-[var(--surface-border)] bg-[var(--surface)] text-[var(--accent-color)]"
                   : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
             }`}
           >
@@ -303,11 +303,11 @@ function PaneSubWorkspaceTabs({ paneId }: { paneId: PaneId }) {
                 }
               } catch { /* ignore malformed data */ }
             }}
-            className={`relative mt-0.5 flex h-[26px] items-center gap-1.5 self-end rounded-t-lg border border-b-0 px-3 text-xs font-medium whitespace-nowrap transition-all select-none ${
+            className={`relative mt-0.5 flex h-[26px] items-center gap-1.5 self-end rounded-t-xl border border-b-0 px-3 text-xs font-medium whitespace-nowrap transition-all select-none ${
               dragOverWorkspaceId === workspace.id
-                ? "border-[var(--border-color)] bg-[var(--accent-color)]/20 text-[var(--text-primary)]"
+                ? "border-[var(--surface-border)] bg-[var(--accent-color)]/20 text-[var(--text-primary)]"
                 : paneWorkspaceId === workspace.id
-                  ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)]"
+                  ? "border-[var(--surface-border)] bg-[var(--surface)] text-[var(--text-primary)]"
                   : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
             }`}
           >
@@ -327,7 +327,7 @@ function SplitSectionSidebar({ paneId }: { paneId: PaneId }) {
   const { activeView } = useScopedWorkspace();
   return (
     <div
-      className="flex h-full w-[140px] shrink-0 flex-col gap-0.5 border-r border-[var(--border-color)] bg-[var(--bg-sidebar)] py-2 px-2"
+      className="flex h-full w-[140px] shrink-0 flex-col gap-0.5 border-r border-[var(--surface-border)] bg-[var(--bg-base)] py-2 px-2"
       data-testid={`pane-section-sidebar-${paneId}`}
     >
       {PANE_NAV_ITEMS.map(({ view, icon: Icon, label }) => (
@@ -373,7 +373,7 @@ function WorkspacePaneChrome({ paneId }: { paneId: PaneId }) {
     >
       {resolvedSplitWorkspaceNavigation === "sidebar" && <PaneWorkspaceSidebar paneId={paneId} />}
       <div className="flex h-full flex-1 flex-col min-w-0 min-h-0">
-      <div className="flex flex-col shrink-0 bg-[var(--bg-sidebar)]">
+      <div className="flex flex-col shrink-0 bg-[var(--bg-base)]">
         <PaneSubWorkspaceTabs paneId={paneId} />
         {resolvedSplitSectionNavigation === "dropdown" ? (
           <SplitSectionDropdown paneId={paneId} />

@@ -31,7 +31,7 @@ const SIZES = {
       "flex items-center justify-center w-10 h-10 rounded-xl transition-colors select-none",
     active: "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]",
     inactive:
-      "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]",
+      "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]",
     iconSize: 20,
     iconClass: "",
     showLabel: false,

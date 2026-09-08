@@ -320,7 +320,7 @@ export default function FolderDashboardView() {
       </header>
 
       {/* Top strip: metrics + goals + continue learning side-by-side */}
-      <div className="border-b border-[var(--border-color)] bg-[var(--bg-base)] px-4 py-3">
+      <div className="border-b border-[var(--surface-border)] bg-[var(--bg-base)] px-4 py-3">
         <MetricSummaryStrip
           topics={summary.overview.topics}
           sources={summary.overview.sources}
@@ -377,7 +377,7 @@ export default function FolderDashboardView() {
                     onMouseLeave={() => setActiveContinueThreadId((current) => current === item.session_id ? null : current)}
                     onFocus={() => setActiveContinueThreadId(item.session_id)}
                     onBlur={() => setActiveContinueThreadId((current) => current === item.session_id ? null : current)}
-                    className="group flex w-full items-start gap-2 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-[var(--bg-primary)]"
+                    className="group flex w-full items-start gap-2 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-[var(--surface-hover)]"
                   >
                     <MessageSquare size={12} className="mt-[3px] shrink-0 text-[var(--text-muted)]" />
                     <div className="min-w-0 flex-1">

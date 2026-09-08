@@ -34,13 +34,13 @@ function SubWorkspaceTabBar({
     <div
       data-tauri-drag-region
       onMouseDown={onDragRegionMouseDown}
-      className={`relative flex items-center h-10 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2 shrink-0 select-none ${isMac ? "pl-[72px]" : ""} ${!isMac ? "pr-[112px]" : ""}`}
+      className={`relative flex items-center h-10 border-b border-[var(--surface-border)] bg-[var(--bg-base)] px-2 shrink-0 select-none ${isMac ? "pl-[72px]" : ""} ${!isMac ? "pr-[112px]" : ""}`}
     >
       {/* Fade the right edge so a long, horizontally-scrollable tab list reads
           as continuing off-screen instead of being clipped mid-label. */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-y-0 right-0 z-10 w-10 bg-[linear-gradient(to_right,transparent,var(--bg-sidebar))]"
+        className="pointer-events-none absolute inset-y-0 right-0 z-10 w-10 bg-[linear-gradient(to_right,transparent,var(--bg-base))]"
       />
       <div
         className="flex h-full min-w-0 flex-1 items-center gap-0.5 overflow-x-auto scrollbar-none"
@@ -59,9 +59,9 @@ function SubWorkspaceTabBar({
                   onContextMenu(parent, event.clientX, event.clientY);
                 }
               }}
-              className={`relative mt-0.5 flex h-[34px] w-8 items-center justify-center self-end rounded-t-lg border border-b-0 transition-all select-none border-r-2 border-r-[var(--accent-color)]/60 ${
+              className={`relative mt-0.5 flex h-[34px] w-8 items-center justify-center self-end rounded-t-xl border border-b-0 transition-all select-none border-r-2 border-r-[var(--accent-color)]/60 ${
                 activeWorkspaceId === parent.id
-                  ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--accent-color)]"
+                  ? "border-[var(--surface-border)] bg-[var(--surface)] text-[var(--accent-color)]"
                   : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
               }`}
             >
@@ -80,9 +80,9 @@ function SubWorkspaceTabBar({
                 onContextMenu(workspace, event.clientX, event.clientY);
               }
             }}
-            className={`relative mt-0.5 flex h-[34px] items-center gap-1.5 self-end rounded-t-lg border border-b-0 px-2.5 text-[13px] whitespace-nowrap transition-all select-none ${
+            className={`relative mt-0.5 flex h-[34px] items-center gap-1.5 self-end rounded-t-xl border border-b-0 px-2.5 text-[13px] whitespace-nowrap transition-all select-none ${
               activeWorkspaceId === workspace.id
-                ? "border-[var(--surface-border)] bg-[var(--bg-primary)] font-semibold text-[var(--text-primary)]"
+                ? "border-[var(--surface-border)] bg-[var(--surface)] font-semibold text-[var(--text-primary)]"
                 : "border-transparent font-normal text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
             }`}
           >
