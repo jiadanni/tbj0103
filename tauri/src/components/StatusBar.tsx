@@ -8,7 +8,7 @@ import {
   type InferenceJobStatus,
 } from "../lib/api";
 import { useChatStore } from "../stores/chatStore";
-import { useSettingsStore } from "../stores/settingsStore";
+import { useSettingsStore, type OllamaStatus } from "../stores/settingsStore";
 import { useBackgroundJobsStore } from "../stores/backgroundJobs";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { Tooltip } from "./Tooltip";
@@ -471,11 +471,17 @@ function ScheduledJobsPopover({
   anchorRect,
   jobs,
   loading,
+  ollamaStatus,
+  startingOllama,
+  onStartOllama,
   onClose,
 }: {
   anchorRect: DOMRect;
   jobs: InferenceJobStatus[];
   loading: boolean;
+  ollamaStatus: OllamaStatus;
+  startingOllama: boolean;
+  onStartOllama: () => void;
   onClose: () => void;
 }) {
   const navigate = useNavigate();
@@ -506,12 +512,12 @@ function ScheduledJobsPopover({
   return createPortal(
     <div
       data-scheduled-jobs-popover
-      className="fixed z-[9999] rounded-md border border-[var(--border-color)] bg-[var(--bg-sidebar)] p-2 shadow-xl"
+      className="fixed z-[9999] rounded-md border border-[var(--border-color)] bg-[var(--bg-sidebar)] p-2.5 shadow-xl"
       style={{ left, bottom, width }}
       role="dialog"
       aria-label="Scheduled jobs"
     >
-      <div className="mb-1 flex items-center justify-between">
+      <div className="mb-2 flex items-center justify-between border-b border-[var(--border-color)]/60 pb-1.5">
         <div className="label-chrome">Scheduled Jobs</div>
         <button
           type="button"
@@ -522,6 +528,55 @@ function ScheduledJobsPopover({
           ×
         </button>
       </div>
+
+      {/* Ollama inference engine status */}
+      <div className="mb-2.5 flex items-center justify-between rounded-md border border-[var(--border-color)]/60 bg-[var(--bg-card)] px-2.5 py-1.5 text-xs">
+        <div className="flex items-center gap-2 min-w-0">
+          <span
+            className={`h-2 w-2 shrink-0 rounded-full ${
+              startingOllama
+                ? "bg-amber-400 animate-pulse"
+                : ollamaStatus === "online"
+                ? "bg-emerald-500"
+                : ollamaStatus === "offline"
+                ? "bg-rose-500"
+                : "bg-[var(--text-muted)]"
+            }`}
+            aria-hidden="true"
+          />
+          <div className="min-w-0">
+            <div className="font-medium text-[var(--text-primary)] leading-tight truncate">
+              {startingOllama
+                ? "Starting Ollama…"
+                : ollamaStatus === "offline"
+                ? "Ollama Offline"
+                : ollamaStatus === "online"
+                ? "Ollama Online"
+                : "Ollama Checking…"}
+            </div>
+            <div className="mt-0.5 text-[10px] text-[var(--text-muted)] leading-tight truncate">
+              {startingOllama
+                ? "Launching local inference server"
+                : ollamaStatus === "offline"
+                ? "Local inference engine unreachable"
+                : ollamaStatus === "online"
+                ? "Local inference engine connected"
+                : "Checking connection…"}
+            </div>
+          </div>
+        </div>
+        {ollamaStatus === "offline" && !startingOllama && (
+          <button
+            type="button"
+            onClick={onStartOllama}
+            aria-label="Start Ollama"
+            className="shrink-0 rounded bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border border-rose-500/30 px-2 py-0.5 text-[11px] font-medium transition-colors"
+          >
+            Start
+          </button>
+        )}
+      </div>
+
       {loading && <div className="py-4 text-xs text-[var(--text-muted)]">Loading…</div>}
       {!loading && jobs.length === 0 && (
         <div className="py-4 text-xs text-[var(--text-muted)]">No scheduled jobs found.</div>
@@ -541,7 +596,17 @@ function ScheduledJobsPopover({
           ))}
         </div>
       )}
-      <div className="mt-2 pt-2 border-t border-[var(--border-color)]/60 flex justify-end">
+      <div className="mt-2 pt-2 border-t border-[var(--border-color)]/60 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => {
+            navigate("/preferences", { state: { settingsTab: "inference" } });
+            onClose();
+          }}
+          className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:underline font-medium"
+        >
+          Inference Settings →
+        </button>
         <button
           type="button"
           onClick={() => {
@@ -917,48 +982,23 @@ export default function StatusBar() {
       {/* Left — pending confirmations, active tasks, AI streaming */}
       <div className="flex min-w-0 items-center gap-3 overflow-x-auto overflow-y-hidden">
         {/* Scheduled Jobs Trigger */}
-        <button
-          type="button"
-          data-scheduled-jobs-trigger
-          onClick={toggleScheduledJobsPopover}
-          className="flex shrink-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors"
-          aria-label="Show scheduled jobs"
-        >
-          <span className={`h-1.5 w-1.5 rounded-full ${totalActiveCount > 0 ? "bg-emerald-500 animate-pulse" : "bg-[var(--text-muted)]"}`} aria-hidden="true" />
-          Jobs
-          {totalActiveCount > 0 && (
-            <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.2 text-[10px] text-emerald-400 font-semibold leading-none">
-              {totalActiveCount}
-            </span>
-          )}
-        </button>
-
-        {startingOllama ? (
-          <div className="flex shrink-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-xs font-medium text-amber-400 bg-amber-500/10">
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" aria-hidden="true" />
-            <span>Starting Ollama...</span>
-          </div>
-        ) : ollamaStatus === "offline" ? (
-          <Tooltip content="Ollama is unreachable at configured URL. Click to start server.">
-            <button
-              type="button"
-              onClick={handleStartOllama}
-              className="flex shrink-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-xs font-medium text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 transition-colors cursor-pointer"
-              aria-label="Ollama offline. Click to start Ollama."
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-rose-500" aria-hidden="true" />
-              <span>Ollama Offline</span>
-              <span className="text-[10px] font-semibold underline underline-offset-2 ml-0.5">Start</span>
-            </button>
-          </Tooltip>
-        ) : ollamaStatus === "online" ? (
-          <Tooltip content="Ollama local inference engine connected">
-            <div className="flex shrink-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-xs font-medium text-[var(--text-secondary)]">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
-              <span>Ollama</span>
-            </div>
-          </Tooltip>
-        ) : null}
+        <Tooltip content={ollamaStatus === "offline" ? "Ollama offline · Scheduled jobs" : "Scheduled jobs & inference engine"}>
+          <button
+            type="button"
+            data-scheduled-jobs-trigger
+            onClick={toggleScheduledJobsPopover}
+            className="flex shrink-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors"
+            aria-label="Show scheduled jobs"
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${totalActiveCount > 0 ? "bg-emerald-500 animate-pulse" : "bg-[var(--text-muted)]"}`} aria-hidden="true" />
+            Jobs
+            {totalActiveCount > 0 && (
+              <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.2 text-[10px] text-emerald-400 font-semibold leading-none">
+                {totalActiveCount}
+              </span>
+            )}
+          </button>
+        </Tooltip>
 
         {promptList.map(([type, meta]) => (
           <JobPromptPill
@@ -1011,6 +1051,9 @@ export default function StatusBar() {
           anchorRect={scheduledPopoverRect}
           jobs={scheduledJobs}
           loading={scheduledJobsLoading}
+          ollamaStatus={ollamaStatus}
+          startingOllama={startingOllama}
+          onStartOllama={handleStartOllama}
           onClose={() => setScheduledPopoverRect(null)}
         />
       )}
