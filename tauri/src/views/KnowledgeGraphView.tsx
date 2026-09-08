@@ -1515,9 +1515,9 @@ export default function KnowledgeGraphView({
                     )}
                   </div>
 
-                  <div className="flex flex-col items-end gap-2 xl:ml-auto">
-                    <div className="flex flex-wrap items-end gap-2 xl:justify-end">
-                      <div className="relative inline-flex overflow-visible rounded-xl shadow-sm">
+                  <div className="flex flex-col items-end gap-2 xl:ml-auto xl:self-start">
+                    <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+                      <div className="relative inline-flex overflow-visible rounded-lg shadow-sm">
                         <button
                           type="button"
                           onClick={() => { void handleRefresh("async"); }}
@@ -1617,7 +1617,7 @@ export default function KnowledgeGraphView({
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0 self-start">
                     <CollapsibleFilter
                       value={graphSearch}
                       onChange={setGraphSearch}
