@@ -39,6 +39,14 @@ pub struct DueConceptRow {
 const DEFAULT_TARGET_CARDS_PER_TOPIC: i64 = 20;
 const DEFAULT_MIN_INTERVAL_MINUTES: i64 = 60;
 const DEFAULT_BATCH_SIZE: u32 = 3;
+/// How many concept batches one *scheduled* tick may generate. The tick fires
+/// every ~30 min (`FLASHCARD_TICK_INTERVAL`), so this is also the per-half-hour
+/// ceiling across every workspace. It was `1`, which could not keep up with a
+/// library of 20+ workspaces each seeding fresh cardless concepts: at one
+/// batch per tick the active workspace absorbed the entire budget (see the
+/// `cn.workspace_id = ?1` tiebreak in `next_due_concept`) and every other
+/// workspace stayed permanently at zero cards.
+const SCHEDULED_TICK_BUDGET: usize = 12;
 
 /// Hours between duplicate-cleanup sweeps. Overridable via the
 /// `flashcard_cleanup_interval_hours` setting.
@@ -595,12 +603,35 @@ pub(crate) fn next_due_topic(
 /// function's doc comment) instead of the frozen `flashcard_topics` table.
 /// Only leaf concepts are eligible; `chapter`/`section` nodes are structural
 /// groupings, not quizzable topics.
+///
+/// `exclude_workspaces` holds workspace ids that already received a batch
+/// earlier in the current tick. The scheduled path passes it so one workspace
+/// cannot consume the whole per-tick budget; callers that want the plain
+/// most-starved pick pass an empty slice.
 pub(crate) fn next_due_concept(
     conn: &Connection,
     workspace_filter: Option<&[String]>,
     target_cards: i64,
     min_interval_minutes: i64,
     current_workspace: Option<&str>,
+) -> Option<DueConceptRow> {
+    next_due_concept_excluding(
+        conn,
+        workspace_filter,
+        target_cards,
+        min_interval_minutes,
+        current_workspace,
+        &[],
+    )
+}
+
+pub(crate) fn next_due_concept_excluding(
+    conn: &Connection,
+    workspace_filter: Option<&[String]>,
+    target_cards: i64,
+    min_interval_minutes: i64,
+    current_workspace: Option<&str>,
+    exclude_workspaces: &[String],
 ) -> Option<DueConceptRow> {
     let cooldown = format!("-{min_interval_minutes} minutes");
     let mut sql = String::from(
@@ -632,6 +663,20 @@ pub(crate) fn next_due_concept(
             placeholders.join(", ")
         ));
         for ws in filter {
+            values.push(rusqlite::types::Value::Text(ws.clone()));
+        }
+    }
+    if !exclude_workspaces.is_empty() {
+        let placeholders: Vec<String> = exclude_workspaces
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", values.len() + 1 + i))
+            .collect();
+        sql.push_str(&format!(
+            " AND cn.workspace_id NOT IN ({})",
+            placeholders.join(", ")
+        ));
+        for ws in exclude_workspaces {
             values.push(rusqlite::types::Value::Text(ws.clone()));
         }
     }
@@ -733,24 +778,51 @@ async fn tick_for_workspaces_inner(
         let _ = sync_concepts_from_signatures(&conn, ws_id);
     }
 
-    let max_iterations = if workspace_filter.is_some() { 50 } else { 1 };
+    // Manual/filtered runs drain the given workspaces hard (up to 50 batches);
+    // the scheduled sweep works a fixed budget and rotates workspaces so a
+    // single workspace — the active one especially — cannot take every batch.
+    let max_iterations = if workspace_filter.is_some() {
+        50
+    } else {
+        SCHEDULED_TICK_BUDGET
+    };
+    let rotate_workspaces = workspace_filter.is_none();
+    let mut served_this_round: Vec<String> = Vec::new();
     for _ in 0..max_iterations {
         check_cancelled("flashcard_generation")?;
         let due = {
             let conn = state.0.get().map_err(|e| e.to_string())?;
             let current = crate::services::model_settings::get_current_workspace_id(&conn);
-            next_due_concept(
+            let mut pick = next_due_concept_excluding(
                 &conn,
                 workspace_filter,
                 target_cards,
                 min_interval,
                 current.as_deref(),
-            )
+                if rotate_workspaces { &served_this_round } else { &[] },
+            );
+            // Every workspace with pending work has had a turn this round —
+            // start a fresh round rather than stopping with budget to spare.
+            if pick.is_none() && rotate_workspaces && !served_this_round.is_empty() {
+                served_this_round.clear();
+                pick = next_due_concept(
+                    &conn,
+                    workspace_filter,
+                    target_cards,
+                    min_interval,
+                    current.as_deref(),
+                );
+            }
+            pick
         };
 
         let Some(concept) = due else {
             break;
         };
+
+        if rotate_workspaces {
+            served_this_round.push(concept.workspace_id.clone());
+        }
 
         generate_for_concept(
             state,
@@ -1487,6 +1559,25 @@ mod next_due_concept_tests {
         // A workspace filter excludes concepts outside it entirely.
         let filter = vec!["ws_a".to_string()];
         assert!(next_due_concept(&conn, Some(&filter), 20, 60, None).is_none());
+    }
+
+    #[test]
+    fn excluding_workspaces_skips_them_for_this_pick() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        insert_ws(&conn, "ws_a");
+        insert_ws(&conn, "ws_b");
+        insert_concept(&conn, "c_a", "ws_a");
+        insert_concept(&conn, "c_b", "ws_b");
+        // Both cardless, so the active-workspace tiebreak would keep picking
+        // ws_a every time. Excluding ws_a forces the rotation onto ws_b.
+        let excl = vec!["ws_a".to_string()];
+        let due = next_due_concept_excluding(&conn, None, 20, 60, Some("ws_a"), &excl).unwrap();
+        assert_eq!(due.workspace_id, "ws_b");
+
+        // With ws_a and ws_b both excluded there is nothing left to serve.
+        let excl_both = vec!["ws_a".to_string(), "ws_b".to_string()];
+        assert!(next_due_concept_excluding(&conn, None, 20, 60, Some("ws_a"), &excl_both).is_none());
     }
 
     #[test]
