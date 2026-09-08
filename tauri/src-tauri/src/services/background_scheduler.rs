@@ -1014,16 +1014,30 @@ fn has_auto_work(conn: &rusqlite::Connection, job_key: &str) -> bool {
                 .unwrap_or(60);
             let target_cards =
                 crate::services::flashcard_topic_service::topic_target_cards(conn);
+            // Mirror `flashcard_topic_service::next_due_concept`: the job
+            // generates cards for `concept_nodes`, so the gate must count the
+            // same rows. It previously counted `flashcard_topics`, which is
+            // the deprecated taxonomy — `sync_topics_from_signatures` is now a
+            // no-op, so that table stays empty on new installs and the gate
+            // reported "nothing to do" no matter how many concepts were
+            // waiting for cards.
             eligible_count(
                 conn,
                 &format!(
-                    "SELECT COUNT(*)
-                     FROM flashcard_topics
-                     WHERE card_count < {target_cards}
-                       AND (
-                         last_generated_at IS NULL
-                         OR datetime(last_generated_at) < datetime('now', '-{min_interval} minutes')
-                       )"
+                    "SELECT COUNT(*) FROM (
+                       SELECT cn.id
+                       FROM concept_nodes cn
+                       JOIN workspaces w ON w.id = cn.workspace_id
+                       LEFT JOIN learning_cards lc
+                         ON lc.source_type = 'concept' AND lc.source_id = cn.id
+                       WHERE w.is_hidden = 0
+                         AND (cn.hierarchy_level IS NULL OR cn.hierarchy_level = 'concept')
+                         AND cn.superseded_by IS NULL
+                       GROUP BY cn.id
+                       HAVING COUNT(lc.id) < {target_cards}
+                          AND (MAX(lc.created_at) IS NULL
+                               OR datetime(MAX(lc.created_at)) < datetime('now', '-{min_interval} minutes'))
+                     )"
                 ),
             )
         }
@@ -3108,16 +3122,24 @@ fn pending_workload_for_job(
                 .ok()
                 .and_then(|value| value.trim_matches('"').parse::<i64>().ok())
                 .unwrap_or(60);
+            // Counts the same `concept_nodes` rows the job actually works on;
+            // `flashcard_topics` is the deprecated taxonomy and stays empty on
+            // new installs. See the matching gate in `has_auto_work_for_job`.
             conn.query_row(
                 &format!(
-                    "SELECT COUNT(*), COALESCE(SUM(LENGTH(topic)), 0)
-                     FROM flashcard_topics
-                     WHERE workspace_id = ?1
-                       AND card_count < 8
-                       AND (
-                         last_generated_at IS NULL
-                         OR datetime(last_generated_at) < datetime('now', '-{min_interval} minutes')
-                       )"
+                    "SELECT COUNT(*), COALESCE(SUM(name_length), 0) FROM (
+                       SELECT LENGTH(cn.name) AS name_length
+                       FROM concept_nodes cn
+                       LEFT JOIN learning_cards lc
+                         ON lc.source_type = 'concept' AND lc.source_id = cn.id
+                       WHERE cn.workspace_id = ?1
+                         AND (cn.hierarchy_level IS NULL OR cn.hierarchy_level = 'concept')
+                         AND cn.superseded_by IS NULL
+                       GROUP BY cn.id
+                       HAVING COUNT(lc.id) < 8
+                          AND (MAX(lc.created_at) IS NULL
+                               OR datetime(MAX(lc.created_at)) < datetime('now', '-{min_interval} minutes'))
+                     )"
                 ),
                 rusqlite::params![ws],
                 |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
@@ -3476,4 +3498,105 @@ pub fn list_active(conn: &rusqlite::Connection) -> Result<Vec<ActiveBackgroundJo
         }
     }
     Ok(jobs)
+}
+
+#[cfg(test)]
+mod flashcard_gate_tests {
+    use super::*;
+
+    /// Minimal schema for the flashcard eligibility gate: the tables its query
+    /// touches, plus the deprecated `flashcard_topics` so a regression back to
+    /// counting it would still compile and run (and fail the assertion below).
+    fn conn_with_concepts() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+             CREATE TABLE workspaces (id TEXT PRIMARY KEY, is_hidden INTEGER NOT NULL DEFAULT 0);
+             CREATE TABLE concept_nodes (
+                 id TEXT PRIMARY KEY,
+                 workspace_id TEXT,
+                 name TEXT,
+                 hierarchy_level TEXT,
+                 superseded_by TEXT
+             );
+             CREATE TABLE learning_cards (
+                 id TEXT PRIMARY KEY,
+                 source_type TEXT,
+                 source_id TEXT,
+                 created_at TEXT
+             );
+             CREATE TABLE flashcard_topics (
+                 id TEXT PRIMARY KEY,
+                 workspace_id TEXT,
+                 topic TEXT,
+                 card_count INTEGER,
+                 last_generated_at TEXT
+             );
+             INSERT INTO workspaces (id, is_hidden) VALUES ('ws-1', 0);",
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn cardless_concepts_make_flashcard_generation_eligible() {
+        let conn = conn_with_concepts();
+        conn.execute(
+            "INSERT INTO concept_nodes (id, workspace_id, name, hierarchy_level, superseded_by)
+             VALUES ('c1', 'ws-1', 'rsync', 'concept', NULL)",
+            [],
+        )
+        .unwrap();
+
+        // `flashcard_topics` is empty, as it is on every install since its
+        // seeder became a no-op. The gate must still see work to do, because
+        // the job generates cards for `concept_nodes`. Counting the
+        // deprecated table here made the job permanently ineligible.
+        assert!(has_auto_work(&conn, "flashcard_generation"));
+    }
+
+    #[test]
+    fn concepts_at_target_card_count_are_not_eligible() {
+        let conn = conn_with_concepts();
+        conn.execute(
+            "INSERT INTO concept_nodes (id, workspace_id, name, hierarchy_level, superseded_by)
+             VALUES ('c1', 'ws-1', 'rsync', 'concept', NULL)",
+            [],
+        )
+        .unwrap();
+        // Pin the target rather than relying on the default, so the test does
+        // not silently stop covering saturation if that default changes.
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('flashcard_topic_target_cards', '3')",
+            [],
+        )
+        .unwrap();
+        // More cards than the target, all generated long enough ago that the
+        // cooldown does not hold them back.
+        for i in 0..4 {
+            conn.execute(
+                "INSERT INTO learning_cards (id, source_type, source_id, created_at)
+                 VALUES (?1, 'concept', 'c1', datetime('now', '-30 days'))",
+                rusqlite::params![format!("card-{i}")],
+            )
+            .unwrap();
+        }
+
+        assert!(!has_auto_work(&conn, "flashcard_generation"));
+    }
+
+    #[test]
+    fn hidden_workspaces_do_not_make_the_job_eligible() {
+        let conn = conn_with_concepts();
+        conn.execute("UPDATE workspaces SET is_hidden = 1 WHERE id = 'ws-1'", [])
+            .unwrap();
+        conn.execute(
+            "INSERT INTO concept_nodes (id, workspace_id, name, hierarchy_level, superseded_by)
+             VALUES ('c1', 'ws-1', 'rsync', 'concept', NULL)",
+            [],
+        )
+        .unwrap();
+
+        assert!(!has_auto_work(&conn, "flashcard_generation"));
+    }
 }
