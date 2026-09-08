@@ -168,7 +168,7 @@ function CollapsibleFilter({
         title={placeholder}
         aria-label={placeholder}
         aria-expanded={false}
-        className="inline-flex items-center justify-center rounded-lg border border-[var(--border-color)] px-2.5 py-1.5 text-[var(--text-muted)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border-color)] text-[var(--text-muted)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
       >
         <Search size={13} />
       </button>
@@ -195,7 +195,7 @@ function CollapsibleFilter({
         }}
         placeholder={placeholder}
         aria-label={placeholder}
-        className={`w-full rounded-lg border border-[var(--border-color)] px-3 py-1.5 pl-8 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none ${inputClassName}`}
+        className={`h-8 w-full rounded-lg border border-[var(--border-color)] px-3 pl-8 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none ${inputClassName}`}
       />
     </div>
   );
@@ -1035,6 +1035,16 @@ export default function KnowledgeGraphView({
   const refreshButtonLabel = isAnalyzing
     ? `Refreshing (${refreshCompletedCount + refreshFailedCount}/${refreshWatchedTasks.length})…`
     : "Refresh Knowledge Map";
+  // Progress line for the empty-map placeholder while a refresh runs. Prefers
+  // the most specific signal available: per-sub-workspace, then per-chunk, then
+  // the coarse job count.
+  const emptyMapProgressMessage = descendantProgress
+    ? `Analyzing ${descendantProgress.workspace_name} (${descendantProgress.index + 1} of ${descendantProgress.total} sub-workspaces)…`
+    : chunkProgress
+      ? `Analyzing ${chunkProgress.label} — chunk ${chunkProgress.chunk_index + 1} of ${chunkProgress.total_chunks}…`
+      : refreshRunningCount > 0
+        ? `Running background jobs (${refreshCompletedCount + refreshFailedCount} of ${refreshWatchedTasks.length} finished). Topics appear as each job completes.`
+        : "Starting background jobs… Topics appear as each one completes.";
   const refreshButtonTooltip = `Runs these background jobs for this workspace: ${refreshWatchedTasks
     .map((t) => REFRESH_JOB_LABELS[t])
     .join(", ")}. The map updates as each job completes. For memory, glossary, flashcards, and other workspace jobs, use Preferences > Data Controls > Run Background Processing Now.`;
@@ -1502,7 +1512,7 @@ export default function KnowledgeGraphView({
                           disabled={isAnalyzing || !activeWorkspaceId}
                           title={refreshButtonTooltip}
                           aria-label={refreshButtonLabel}
-                          className="inline-flex w-9 items-center justify-center rounded-l-xl border border-r-0 border-[rgba(var(--accent-color-rgb),0.35)] bg-[var(--accent-color)] py-1.5 text-sm font-medium text-white transition-colors hover:bg-[var(--accent-color)]/90 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-l-lg border border-r-0 border-[rgba(var(--accent-color-rgb),0.35)] bg-[var(--accent-color)] text-white transition-colors hover:bg-[var(--accent-color)]/90 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {isAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
                         </button>
@@ -1511,7 +1521,7 @@ export default function KnowledgeGraphView({
                           aria-label="Refresh mode"
                           onClick={() => setRefreshModeMenuOpen((open) => !open)}
                           disabled={isAnalyzing}
-                          className="inline-flex self-stretch w-9 items-center justify-center rounded-l-none rounded-r-xl border border-l border-[rgba(var(--accent-color-rgb),0.35)] bg-[var(--accent-color)] text-white hover:bg-[var(--accent-color)]/90 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex h-8 w-6 items-center justify-center rounded-l-none rounded-r-lg border border-l border-[rgba(var(--accent-color-rgb),0.35)] bg-[var(--accent-color)] text-white hover:bg-[var(--accent-color)]/90 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <ChevronDown size={14} />
                         </button>
@@ -1609,7 +1619,7 @@ export default function KnowledgeGraphView({
                         disabled={nodes.length === 0 || exportingFormat !== null}
                         title="Export"
                         aria-label="Export"
-                        className="inline-flex items-center gap-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)] disabled:opacity-50"
+                        className="inline-flex h-8 items-center justify-center gap-0.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-1.5 text-[var(--text-muted)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)] disabled:opacity-50"
                       >
                         {exportingFormat ? (
                           <Loader2 size={13} className="animate-spin" />
@@ -1679,13 +1689,35 @@ export default function KnowledgeGraphView({
                   {nodes.length === 0 ? (
                     <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-[var(--bg-primary)]/90 px-6 text-center">
                       <div className="rounded-full bg-[var(--accent-color)]/10 p-4 text-[var(--accent-color)]">
-                        <Network size={26} />
+                        {isAnalyzing ? <Loader2 size={26} className="animate-spin" /> : <Network size={26} />}
                       </div>
                       <div className="max-w-md">
-                        <div className="text-lg font-semibold text-[var(--text-primary)]">Your roadmap will appear here</div>
-                        <div className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                          Analyze this workspace after you have a little material in it, and Aetherium will turn that activity into a structured roadmap.
+                        {/* While the refresh runs, the empty map is a transient
+                         *  state, not a dead end — say what is happening and how
+                         *  far along it is instead of inviting another refresh. */}
+                        <div className="text-lg font-semibold text-[var(--text-primary)]">
+                          {isAnalyzing ? "Building your roadmap…" : "Your roadmap will appear here"}
                         </div>
+                        <div className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                          {isAnalyzing
+                            ? emptyMapProgressMessage
+                            : "Analyze this workspace after you have a little material in it, and Aetherium will turn that activity into a structured roadmap."}
+                        </div>
+                        {isAnalyzing && (
+                          <div
+                            role="progressbar"
+                            aria-valuemin={0}
+                            aria-valuemax={refreshWatchedTasks.length}
+                            aria-valuenow={refreshCompletedCount + refreshFailedCount}
+                            aria-label="Roadmap refresh progress"
+                            className="mt-3 h-1 w-full overflow-hidden rounded-full bg-[var(--border-color)]"
+                          >
+                            <div
+                              className="h-full rounded-full bg-[var(--accent-color)] transition-[width] duration-500"
+                              style={{ width: `${Math.round(((refreshCompletedCount + refreshFailedCount) / refreshWatchedTasks.length) * 100)}%` }}
+                            />
+                          </div>
+                        )}
                       </div>
                       {emptyMapNotice && (
                         <div
@@ -1738,7 +1770,7 @@ export default function KnowledgeGraphView({
                                 disabled={nodes.length === 0 || exportingFormat !== null}
                                 title="Export"
                                 aria-label="Export"
-                                className="inline-flex items-center gap-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-1.5 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-color)] disabled:opacity-50"
+                                className="inline-flex h-8 items-center justify-center gap-0.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-1.5 text-[var(--text-muted)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)] disabled:opacity-50"
                               >
                                 {exportingFormat ? (
                                   <Loader2 size={13} className="animate-spin" />

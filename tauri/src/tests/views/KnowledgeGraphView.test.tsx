@@ -490,4 +490,28 @@ describe("KnowledgeGraphView", () => {
     expect(await screen.findByText("Cgroups")).toBeInTheDocument();
     expect(screen.getByText("Namespaces")).toBeInTheDocument();
   }, 15000);
+  it("shows generation progress in the empty roadmap placeholder while refreshing", async () => {
+    // No concepts yet, so the empty-map placeholder is what the user sees.
+    mocks.listConcepts.mockResolvedValue([]);
+    mocks.listLinks.mockResolvedValue([]);
+    // Hold the refresh in flight so isAnalyzing stays true for the assertions.
+    api.knowledge.refreshWorkspace = vi.fn().mockReturnValue(new Promise(() => {}));
+
+    render(
+      <MemoryRouter initialEntries={[{ pathname: "/", state: null }]}>
+        <RoadmapPane hideSidebar fillHeight />
+      </MemoryRouter>,
+    );
+
+    // Idle: the placeholder invites an analysis.
+    expect(await screen.findByText("Your roadmap will appear here")).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("button", { name: /Refresh Knowledge Map/ })[0]);
+
+    // In progress: the heading and body say work is underway rather than
+    // leaving the idle "will appear here" copy on screen.
+    expect(await screen.findByText("Building your roadmap…")).toBeInTheDocument();
+    expect(screen.queryByText("Your roadmap will appear here")).not.toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: "Roadmap refresh progress" })).toBeInTheDocument();
+  }, 15000);
 });
