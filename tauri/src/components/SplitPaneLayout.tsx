@@ -7,6 +7,7 @@ import { MessageSquare, FileText, BarChart2, LucideIcon, FileEdit, Network } fro
 import { CompactMenuSelect } from "./CompactMenuSelect";
 import { Tooltip } from "./Tooltip";
 import { api } from "../lib/api";
+import { isLinux, isWindows } from "../lib/platform";
 
 const KnowledgeGraphView = React.lazy(() => import("../views/KnowledgeGraphView"));
 const FolderDashboardView = React.lazy(() => import("../views/FolderDashboardView"));
@@ -200,12 +201,31 @@ function PaneSubWorkspaceTabs({ paneId }: { paneId: PaneId }) {
     setPaneWorkspace(paneId, workspaceId);
   }
 
+  // The secondary pane's strip runs to the window's right edge, directly under
+  // the titlebar back/forward/sort/split buttons and window controls. Reserve
+  // the same trailing gutter the split titlebar workspace-nav uses for its
+  // secondary pane so the last sub-workspace tabs aren't hidden behind them.
+  const trailingInsetClass =
+    paneId === "secondary"
+      ? isLinux || isWindows
+        ? "pr-[192px]"
+        : "pr-24"
+      : "";
+
   if (!parent) {
-    return <div className="h-8 border-b border-[var(--surface-border)] bg-[var(--bg-base)]/80 shrink-0" />;
+    return (
+      <div
+        data-testid={`pane-subworkspace-strip-${paneId}`}
+        className={`h-8 border-b border-[var(--surface-border)] bg-[var(--bg-base)]/80 shrink-0 ${trailingInsetClass}`}
+      />
+    );
   }
 
   return (
-    <div className="flex items-center h-8 border-b border-[var(--surface-border)] bg-[var(--bg-base)]/80 px-2 shrink-0 select-none">
+    <div
+      data-testid={`pane-subworkspace-strip-${paneId}`}
+      className={`flex items-center h-8 border-b border-[var(--surface-border)] bg-[var(--bg-base)]/80 px-2 shrink-0 select-none ${trailingInsetClass}`}
+    >
       <div className="flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none">
         {/* Pinned overview dot — navigates to the parent (overview) workspace */}
         <Tooltip content={parent.name} position="top">
