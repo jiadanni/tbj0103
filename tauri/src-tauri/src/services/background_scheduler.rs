@@ -2157,6 +2157,27 @@ pub fn start_scheduler(app: AppHandle) {
         let mut snapshot_tick: u32 = 0;
         set_next_tick_at_from_now();
 
+        // One-time sweep: a prompt-bank job left `running` by a previous session
+        // (dropped task future on restart/crash) blocks its workspace forever.
+        {
+            let db = app.state::<crate::db::DbState>();
+            match crate::services::prompt_bank::reclaim_stale_jobs(&db.0) {
+                Ok(n) if n > 0 => crate::logging::log_buffered(
+                    "info",
+                    "prompt_bank",
+                    &format!("reclaimed {n} stale running job(s) on startup"),
+                    "{}",
+                ),
+                Ok(_) => {}
+                Err(error) => crate::logging::log_buffered(
+                    "warn",
+                    "prompt_bank",
+                    &format!("startup stale-job sweep failed: {error}"),
+                    "{}",
+                ),
+            }
+        }
+
         loop {
             interval.tick().await;
             set_next_tick_at_from_now();
