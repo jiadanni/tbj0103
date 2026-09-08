@@ -43,10 +43,10 @@ export function ContextWindowBar({ tokensUsed, contextSize, isOverride = false, 
       <div className="font-semibold text-xs">Context window</div>
       <div className="text-[11px] flex flex-col gap-0.5">
         <div>
-          Limit: <span className="font-mono text-[var(--accent-color)]">{contextSize}</span> tok
+          Limit: <span className="font-semibold tabular-nums text-[var(--accent-color)]">{contextSize}</span> tok
           <span className="text-[var(--text-muted)]"> ({isOverride ? "configured" : "default"})</span>
         </div>
-        {isOverride && <div>Default: <span className="font-mono">{DEFAULT_CONTEXT_SIZE}</span> tok</div>}
+        {isOverride && <div>Default: <span className="tabular-nums">{DEFAULT_CONTEXT_SIZE}</span> tok</div>}
         {modelName && <div className="text-[var(--text-muted)] truncate">Model: {modelName}</div>}
       </div>
       <div className="mt-0.5 text-[11px] text-[var(--text-muted)] leading-snug">

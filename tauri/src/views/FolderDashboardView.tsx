@@ -63,13 +63,13 @@ function MetricStat({
         }`}
       />
       <span
-        className={`font-mono text-[11px] font-medium tabular-nums ${
+        className={`text-[11px] font-semibold tabular-nums ${
           isZero ? "text-[var(--text-muted)]" : "text-[var(--text-primary)]"
         }`}
       >
         {value}
       </span>
-      <span className="font-mono text-[11px] text-[var(--text-muted)]">{label}</span>
+      <span className="text-[11px] text-[var(--text-muted)]">{label}</span>
     </>
   );
   // Discrete chips rather than a dot-separated run: each metric reads as its own
