@@ -156,10 +156,10 @@ export default function Sidebar({
   const visibleTooltip = tooltip && tooltip.path === location.pathname ? tooltip : null;
   const isPreferencesActive = activeSegment === "/preferences";
   const activeNavClassName = "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]";
-  const inactiveNavClassName = "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]";
+  const inactiveNavClassName = "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]";
 
   return (
-    <div className={`flex h-full flex-col bg-[var(--bg-sidebar)] border-r border-[var(--border-color)] shrink-0 transition-[width] duration-200 ${labelsVisible ? "w-44" : "w-14 items-center"}`}>
+    <div className={`flex h-full flex-col bg-[var(--bg-base)] border-r border-[var(--surface-border)] shrink-0 transition-[width] duration-200 ${labelsVisible ? "w-44" : "w-14 items-center"}`}>
       {/* Scrollable nav section */}
       <div className="flex-1 overflow-y-auto py-4 w-full">
         {labelsVisible ? (
@@ -226,7 +226,7 @@ export default function Sidebar({
       </div>
 
       {/* Fixed bottom controls */}
-      <div className={`relative border-t border-[var(--border-color)] ${!labelsVisible ? "p-2 flex flex-col items-center" : "p-3"}`}>
+      <div className={`relative border-t border-[var(--surface-border)] ${!labelsVisible ? "p-2 flex flex-col items-center" : "p-3"}`}>
         {/* Collapse / expand toggle */}
         {presentation === "sidebar" && (
           <button

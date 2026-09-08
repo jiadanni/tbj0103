@@ -267,7 +267,7 @@ function WorkspaceTabBar({
         data-tauri-drag-region
         onMouseDown={onDragRegionMouseDown}
         onDoubleClick={onDragRegionDoubleClick}
-        className={`relative flex items-center h-10 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)] px-2 shrink-0 select-none ${isMac ? "pl-[72px]" : ""} ${!isMac ? "pr-[112px]" : ""}`}
+        className={`relative flex items-center h-10 border-b border-[var(--surface-border)] bg-[var(--bg-base)] px-2 shrink-0 select-none ${isMac ? "pl-[72px]" : ""} ${!isMac ? "pr-[112px]" : ""}`}
       >
         {showSplitTitlebarWorkspaceNavigation && <SplitTitlebarWorkspaceNavigation />}
         {!isMac && <div className="relative z-10"><AppHeaderMenu /></div>}
