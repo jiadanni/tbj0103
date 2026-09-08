@@ -98,6 +98,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v82_chat_file_sync_outbox",
     "v83_chat_file_delete_outbox",
     "v84_feed_difficulty_and_suspension",
+    "v85_concept_self_rank",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -2604,6 +2605,39 @@ fn run_migrations(conn: &Connection) -> Result<()> {
         )?;
         tx.execute(
             "INSERT INTO _migrations(name) VALUES('v84_feed_difficulty_and_suspension')",
+            [],
+        )?;
+        tx.commit()?;
+    }
+
+    // v85: user-owned self-ranking for knowledge map concepts. The existing
+    // mastery signal is derived from SM-2 ease factors and lives on the
+    // deprecated flashcard_topics table; this is deliberately separate — a
+    // rank the user sets and owns, which no background job overwrites.
+    // `self_ranked_at` distinguishes "never ranked" from "ranked at the
+    // starting level", so the suggestion UI knows whether to prompt.
+    let applied_v85: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v85_concept_self_rank'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v85 == 0 {
+        let tx = conn.unchecked_transaction()?;
+        for (table, column, decl) in [
+            (
+                "concept_nodes",
+                "self_rank",
+                "INTEGER CHECK (self_rank IS NULL OR self_rank BETWEEN 1 AND 10)",
+            ),
+            ("concept_nodes", "self_ranked_at", "TEXT"),
+        ] {
+            if !column_exists(&tx, table, column)? {
+                tx.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {column} {decl};"))?;
+            }
+        }
+        tx.execute(
+            "INSERT INTO _migrations(name) VALUES('v85_concept_self_rank')",
             [],
         )?;
         tx.commit()?;

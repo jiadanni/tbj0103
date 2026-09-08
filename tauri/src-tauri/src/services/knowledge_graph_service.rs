@@ -42,6 +42,11 @@ pub(crate) fn row_to_concept(row: &rusqlite::Row) -> rusqlite::Result<ConceptNod
         created_at: row.get(11)?,
         updated_at: row.get(12)?,
         hierarchy_level: level_str.parse().unwrap_or_default(),
+        // Read positionally but tolerate absence: several queries select the
+        // original 14-column shape, and they should keep working rather than
+        // erroring on a missing index.
+        self_rank: row.get(14).unwrap_or(None),
+        self_ranked_at: row.get(15).unwrap_or(None),
     })
 }
 

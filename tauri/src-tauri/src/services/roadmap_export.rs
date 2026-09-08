@@ -342,6 +342,8 @@ mod tests {
             hierarchy_level: level,
             created_at: String::new(),
             updated_at: String::new(),
+            self_rank: None,
+            self_ranked_at: None,
         }
     }
 

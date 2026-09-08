@@ -17,6 +17,8 @@ function makeNode(id: string, name: string, hierarchy_level: string): ConceptNod
     hierarchy_level,
     created_at: "",
     updated_at: "",
+    self_rank: null,
+    self_ranked_at: null,
   };
 }
 
@@ -49,6 +51,8 @@ describe("buildForest", () => {
         hierarchy_level: "chapter",
         created_at: "",
         updated_at: "",
+    self_rank: null,
+    self_ranked_at: null,
       },
       {
         id: "chapter-2",
@@ -64,6 +68,8 @@ describe("buildForest", () => {
         hierarchy_level: "chapter",
         created_at: "",
         updated_at: "",
+    self_rank: null,
+    self_ranked_at: null,
       },
       {
         id: "section-1",
@@ -79,6 +85,8 @@ describe("buildForest", () => {
         hierarchy_level: "section",
         created_at: "",
         updated_at: "",
+    self_rank: null,
+    self_ranked_at: null,
       },
       {
         id: "section-2",
@@ -94,6 +102,8 @@ describe("buildForest", () => {
         hierarchy_level: "section",
         created_at: "",
         updated_at: "",
+    self_rank: null,
+    self_ranked_at: null,
       },
       {
         id: "concept-1",
@@ -109,6 +119,8 @@ describe("buildForest", () => {
         hierarchy_level: "concept",
         created_at: "",
         updated_at: "",
+    self_rank: null,
+    self_ranked_at: null,
       },
       {
         id: "concept-2",
@@ -124,6 +136,8 @@ describe("buildForest", () => {
         hierarchy_level: "concept",
         created_at: "",
         updated_at: "",
+    self_rank: null,
+    self_ranked_at: null,
       },
     ] satisfies ConceptNode[];
 
@@ -190,6 +204,8 @@ describe("buildForest", () => {
         hierarchy_level: "chapter",
         created_at: "",
         updated_at: "",
+    self_rank: null,
+    self_ranked_at: null,
       },
       {
         id: "chapter-real",
@@ -205,6 +221,8 @@ describe("buildForest", () => {
         hierarchy_level: "chapter",
         created_at: "",
         updated_at: "",
+    self_rank: null,
+    self_ranked_at: null,
       },
     ] satisfies ConceptNode[];
 

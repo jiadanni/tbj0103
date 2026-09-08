@@ -362,6 +362,7 @@ pub fn run() {
             commands::knowledge_graph::list_concepts,
             commands::knowledge_graph::get_concept,
             commands::knowledge_graph::update_concept,
+            commands::knowledge_graph::set_concept_self_rank,
             commands::knowledge_graph::delete_concept,
             commands::knowledge_graph::set_concept_parent,
             commands::knowledge_graph::upsert_concept_from_tag,

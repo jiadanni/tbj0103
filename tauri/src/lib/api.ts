@@ -248,6 +248,27 @@ export interface ConceptNode {
   x_position: number; y_position: number; review_count: number;
   hierarchy_level: string;
   created_at: string; updated_at: string;
+  /** User-owned rank, 1-based into CONCEPT_RANK_LEVELS. Null until ranked. */
+  self_rank: number | null;
+  /** When the user last set self_rank; null means never ranked. */
+  self_ranked_at: string | null;
+}
+
+/**
+ * Named self-ranking levels, in order. A concept's `self_rank` is a 1-based
+ * index into this list. These are the user's own assessment — background jobs
+ * never write them; review performance only suggests a value.
+ */
+export const CONCEPT_RANK_LEVELS = ["New", "Learning", "Confident", "Mastered"] as const;
+
+/** Settings key holding the 1-based level new concepts are ranked at when the
+ *  user first ranks one. Defaults to 1 ("New"). */
+export const CONCEPT_RANK_START_SETTING = "concept_rank_start_level";
+
+/** Label for a rank, or null when the concept has never been ranked. */
+export function conceptRankLabel(rank: number | null | undefined): string | null {
+  if (rank == null) { return null; }
+  return CONCEPT_RANK_LEVELS[rank - 1] ?? null;
 }
 
 export interface ConceptLink {
@@ -1862,6 +1883,9 @@ export const api = {
     deleteConcept: (id: string) => invoke<void>("delete_concept", { id }),
     setConceptParent: (childId: string, parentId: string | null) =>
       invoke<void>("set_concept_parent", { childId, parentId }),
+    /** Set the user's own rank for a concept; null clears it back to unranked. */
+    setConceptSelfRank: (id: string, selfRank: number | null) =>
+      invoke<void>("set_concept_self_rank", { id, selfRank }),
     createLink: (sourceId: string, targetId: string, linkType?: string, strength?: number) =>
       invoke<ConceptLink>("create_concept_link", { req: { source_id: sourceId, target_id: targetId, link_type: linkType, strength } }),
     listLinks: (workspaceId: string, limit?: number, offset?: number, opts?: { includeDescendants?: boolean }) => invoke<ConceptLink[]>("list_concept_links", { workspaceId, limit, offset, includeDescendants: opts?.includeDescendants }),

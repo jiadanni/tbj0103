@@ -68,7 +68,7 @@ pub fn list_concepts(
         "AND (superseded_by IS NULL OR superseded_by = '') "
     };
     let sql = format!(
-        "{cte}SELECT cn.id, cn.workspace_id, cn.name, cn.concept_description, cn.concept_type, cn.tags, cn.aliases, cn.references_json, cn.x_position, cn.y_position, cn.review_count, cn.created_at, cn.updated_at, cn.hierarchy_level
+        "{cte}SELECT cn.id, cn.workspace_id, cn.name, cn.concept_description, cn.concept_type, cn.tags, cn.aliases, cn.references_json, cn.x_position, cn.y_position, cn.review_count, cn.created_at, cn.updated_at, cn.hierarchy_level, cn.self_rank, cn.self_ranked_at
          FROM concept_nodes cn
          WHERE cn.workspace_id {ws_cond} {superseded_cond}\
          AND NOT EXISTS (SELECT 1 FROM blocked_topics bt WHERE bt.workspace_id = cn.workspace_id AND bt.normalized_name = lower(cn.name))
@@ -91,7 +91,7 @@ pub fn list_concepts(
 pub fn get_concept(state: State<DbState>, id: String) -> Result<Option<ConceptNode>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     let result = conn.query_row(
-        "SELECT id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at, hierarchy_level
+        "SELECT id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at, hierarchy_level, self_rank, self_ranked_at
          FROM concept_nodes WHERE id = ?1",
         rusqlite::params![id],
         row_to_concept,
@@ -125,6 +125,40 @@ pub fn update_concept(
         rusqlite::params![name, concept_description, x_position, y_position, now, id],
     )
     .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Set (or clear) the user's own rank for a concept. Separate from
+/// `update_concept` because this is user-owned state that no background job
+/// may touch: review performance only ever *suggests* a rank, and the write
+/// path for that suggestion is the user accepting it here. Passing `None`
+/// clears the rank back to "never ranked".
+#[tauri::command]
+pub fn set_concept_self_rank(
+    state: State<DbState>,
+    id: String,
+    self_rank: Option<i64>,
+) -> Result<(), String> {
+    if let Some(rank) = self_rank {
+        if !(1..=10).contains(&rank) {
+            return Err(format!("self_rank must be between 1 and 10, got {rank}"));
+        }
+    }
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().to_rfc3339();
+    // Clearing the rank clears the timestamp too, so "never ranked" stays
+    // distinguishable from "ranked at the starting level".
+    let ranked_at = self_rank.map(|_| now.clone());
+    let changed = conn
+        .execute(
+            "UPDATE concept_nodes SET self_rank = ?1, self_ranked_at = ?2, updated_at = ?3
+             WHERE id = ?4",
+            rusqlite::params![self_rank, ranked_at, now, id],
+        )
+        .map_err(|e| e.to_string())?;
+    if changed == 0 {
+        return Err(format!("no concept with id {id}"));
+    }
     Ok(())
 }
 
