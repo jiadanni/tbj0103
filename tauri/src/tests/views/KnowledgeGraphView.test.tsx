@@ -38,7 +38,10 @@ vi.mock("@/components/RoadmapGraph", () => ({
   ),
 }));
 
-vi.mock("@/lib/api", () => ({
+vi.mock("@/lib/api", async (importOriginal) => ({
+  // Keep the real rank constants/helpers rather than restating them here — a
+  // duplicated copy would silently drift from the production scale.
+  ...(await importOriginal<typeof import("@/lib/api")>()),
   REFRESH_WORKSPACE_TASK_TYPES: [
     "memory_extraction",
     "workspace_glossary",
@@ -54,6 +57,9 @@ vi.mock("@/lib/api", () => ({
     },
     dashboard: {
       getSummary: mocks.getSummary,
+    },
+    topics: {
+      listAll: vi.fn().mockResolvedValue([]),
     },
     flashcard: {
       listByConcept: mocks.listByConcept,

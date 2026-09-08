@@ -133,6 +133,12 @@ pub struct ConceptNode {
     pub hierarchy_level: HierarchyLevel,
     pub created_at: String,
     pub updated_at: String,
+    /// User-owned rank, 1-based into the configured level names. `None` until
+    /// the user ranks it; never written by a background job.
+    pub self_rank: Option<i64>,
+    /// When the user last set `self_rank`. `None` means never ranked, which is
+    /// distinct from being ranked at the starting level.
+    pub self_ranked_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -219,6 +225,10 @@ impl ConceptNode {
             hierarchy_level: HierarchyLevel::Concept,
             created_at: now.clone(),
             updated_at: now,
+            // A freshly created concept is unranked; the starting level is
+            // applied when the user first ranks it, not at creation.
+            self_rank: None,
+            self_ranked_at: None,
         }
     }
 }

@@ -11,7 +11,7 @@ import {
   type RoadmapViewportInset,
 } from "../lib/roadmapFit";
 import { buildForest, pruneCollapsedSections, type RoadmapNode } from "../lib/conceptTree";
-import { formatTimestamp } from "../lib/dates";
+import { buildConceptTooltip, buildConceptTooltipRows, type ConceptTooltipStats } from "../lib/conceptTooltip";
 
 const TYPE_COLORS: Record<string, string> = {
   person: "#60a5fa",
@@ -96,6 +96,12 @@ interface RoadmapGraphProps {
   onSelectConcept: (concept: ConceptNode | null) => void;
   searchFilter?: string;
   viewportInset?: RoadmapViewportInset;
+  /**
+   * Per-concept hover stats, keyed by concept id. Supplied by the parent from
+   * one aggregate query — the graph must never fetch these per node, which
+   * would be an N+1 across the whole map.
+   */
+  conceptStats?: Record<string, ConceptTooltipStats>;
 }
 
 export interface RoadmapGraphHandle {
@@ -120,6 +126,7 @@ function RoadmapGraphInner(
     onSelectConcept,
     searchFilter,
     viewportInset,
+    conceptStats,
   }: RoadmapGraphProps,
   ref: Ref<RoadmapGraphHandle>,
 ) {
@@ -129,6 +136,38 @@ function RoadmapGraphInner(
   const [transform, setTransform] = useState<d3.ZoomTransform>(d3.zoomIdentity);
   const [dims, setDims] = useState({ width: 0, height: 0 });
   const [expandedSections, setExpandedSections] = useState<Set<string>>(() => new Set());
+  // Hovered node for the styled tooltip. Native <title> renders an unstyled OS
+  // tooltip, so the hover card is drawn as real markup instead.
+  const [hovered, setHovered] = useState<{ id: string; x: number; y: number } | null>(null);
+
+  // Degree per concept for the hover tooltip. Derived from the links already
+  // in props — one pass, rather than a lookup per rendered node.
+  const linkCountById = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const link of links) {
+      counts.set(link.source_id, (counts.get(link.source_id) ?? 0) + 1);
+      counts.set(link.target_id, (counts.get(link.target_id) ?? 0) + 1);
+    }
+    return counts;
+  }, [links]);
+
+  // Resolve the hovered node id to the data the hover card renders. Kept as a
+  // memo so moving the pointer within one node does not rebuild the rows.
+  const hoveredTooltip = useMemo(() => {
+    if (!hovered) { return null; }
+    const node = nodes.find((n) => n.id === hovered.id);
+    if (!node) { return null; }
+    return {
+      x: hovered.x,
+      y: hovered.y,
+      name: node.name,
+      concept_type: node.concept_type,
+      rows: buildConceptTooltipRows(node, {
+        ...(conceptStats?.[node.id] ?? {}),
+        linkCount: linkCountById.get(node.id),
+      }),
+    };
+  }, [hovered, nodes, conceptStats, linkCountById]);
 
   // Stale section IDs (kept across data refreshes) are filtered out lazily
   // inside the layout memo below rather than via a setState-in-effect pass.
@@ -601,8 +640,22 @@ function RoadmapGraphInner(
                   event.stopPropagation();
                   onSelectConcept(sourceNode);
                 }}
+                onMouseEnter={() => setHovered({ id: d.data.id, x: d.x, y: d.y - dim.height / 2 })}
+                onMouseLeave={() => setHovered((cur) => (cur?.id === d.data.id ? null : cur))}
               >
-                <title>{`${d.data.name} (${d.data.concept_type})${sourceNode?.created_at ? ` • Extracted ${formatTimestamp(sourceNode.created_at)}` : ""}`}</title>
+                <title>
+                  {buildConceptTooltip(
+                    sourceNode ?? {
+                      name: d.data.name,
+                      concept_type: d.data.concept_type,
+                      self_rank: null,
+                    },
+                    {
+                      ...(conceptStats?.[d.data.id] ?? {}),
+                      linkCount: linkCountById.get(d.data.id),
+                    },
+                  )}
+                </title>
                 <rect
                   width={dim.width}
                   height={dim.height}
@@ -698,6 +751,39 @@ function RoadmapGraphInner(
           })}
         </g>
       </svg>
+
+      {/* Styled hover card. Positioned in container space by applying the live
+       *  zoom transform to the node's layout coordinates, and pointer-events
+       *  none so it never steals the hover that spawned it. */}
+      {hoveredTooltip && (
+        <div
+          className="pointer-events-none absolute z-20 w-max max-w-[15rem] -translate-x-1/2 -translate-y-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] px-2.5 py-2 shadow-lg"
+          style={{
+            left: transform.applyX(hoveredTooltip.x),
+            top: transform.applyY(hoveredTooltip.y) - 8,
+          }}
+          role="tooltip"
+        >
+          <div className="mb-1 flex items-baseline gap-1.5">
+            <span className="truncate text-xs font-semibold text-[var(--text-primary)]">
+              {hoveredTooltip.name}
+            </span>
+            <span className="shrink-0 text-[10px] text-[var(--text-muted)]">
+              {hoveredTooltip.concept_type}
+            </span>
+          </div>
+          <dl className="space-y-0.5">
+            {hoveredTooltip.rows.map((row) => (
+              <div key={row.label} className="flex items-baseline justify-between gap-3">
+                <dt className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
+                  {row.label}
+                </dt>
+                <dd className="text-right text-[10px] text-[var(--text-secondary)]">{row.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
     </div>
   );
 }

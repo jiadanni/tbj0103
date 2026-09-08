@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import RoadmapGraph, { type RoadmapGraphHandle } from "../components/RoadmapGraph";
 import { formatTimestamp, formatDateShort } from "../lib/dates";
+import { buildConceptTooltip, suggestedRankFromEase, type ConceptTooltipStats } from "../lib/conceptTooltip";
 import {
   api,
   REFRESH_WORKSPACE_TASK_TYPES,
@@ -42,7 +43,10 @@ import {
   type BackgroundTaskEvent,
   type ChangeProposal,
   type ConceptLink,
+  CONCEPT_RANK_LEVELS,
+  conceptRankLabel,
   type ConceptNode,
+  type TopicListItem,
   type DashboardSummary,
   type DescendantAnalysisProgress,
   type LearningCard,
@@ -604,6 +608,66 @@ export default function KnowledgeGraphView({
       setSelectedConcept(match);
     }
   }, [externalSelectedConceptId, nodes, selectedConcept?.id]);
+
+  // Per-concept card/review counts for hover tooltips. One aggregate query for
+  // the whole workspace (`list_all_topics`), never a fetch per node.
+  const [topicStats, setTopicStats] = useState<TopicListItem[]>([]);
+  useEffect(() => {
+    if (!activeWorkspaceId) { setTopicStats([]); return; }
+    let cancelled = false;
+    api.topics
+      .listAll(activeWorkspaceId)
+      .then((rows) => { if (!cancelled) { setTopicStats(rows); } })
+      // Tooltips are additive: losing stats must not break the map, the
+      // tooltip just omits the card line.
+      .catch(() => { if (!cancelled) { setTopicStats([]); } });
+    return () => { cancelled = true; };
+  }, [activeWorkspaceId]);
+
+  const conceptTooltipStats = useMemo(() => {
+    const byId: Record<string, ConceptTooltipStats> = {};
+    for (const row of topicStats) {
+      if (!row.concept_id) { continue; }
+      byId[row.concept_id] = {
+        cardCount: row.card_count,
+        reviewCount: row.review_count,
+        // list_all_topics does not carry ease factors, so no suggestion is
+        // derivable here yet; the detail panel computes one from the concept's
+        // own cards when it has them.
+        suggestedRank: null,
+      };
+    }
+    return byId;
+  }, [topicStats]);
+
+  // Suggestion for the selected concept, from the ease factors of its own
+  // cards (already fetched for the detail panel — no extra query).
+  const suggestedRankForSelected = useMemo(() => {
+    const reviewed = conceptCards.filter((card) => (card.repetitions ?? 0) > 0);
+    if (reviewed.length === 0) { return null; }
+    const avgEase = reviewed.reduce((sum, card) => sum + (card.ease_factor ?? 2.5), 0) / reviewed.length;
+    return suggestedRankFromEase(avgEase, reviewed.length);
+  }, [conceptCards]);
+
+  /** Persist a self-rank and reflect it locally without refetching the graph. */
+  const applySelfRank = useCallback(async (rank: number | null) => {
+    if (!selectedConcept) { return; }
+    const conceptId = selectedConcept.id;
+    try {
+      await api.graph.setConceptSelfRank(conceptId, rank);
+    } catch {
+      // Ranking is user state, not derived data: if the write fails, leave the
+      // UI showing the stored value rather than a rank that was never saved.
+      return;
+    }
+    const rankedAt = rank == null ? null : new Date().toISOString();
+    setSelectedConcept((prev) =>
+      prev && prev.id === conceptId ? { ...prev, self_rank: rank, self_ranked_at: rankedAt } : prev,
+    );
+    setNodes((prev) =>
+      prev.map((n) => (n.id === conceptId ? { ...n, self_rank: rank, self_ranked_at: rankedAt } : n)),
+    );
+  }, [selectedConcept]);
 
   const hierarchyTree = useMemo(() => {
     const parentOf = new Map(
@@ -1342,7 +1406,7 @@ export default function KnowledgeGraphView({
                             <button
                               key={node.id}
                               onClick={() => setSelectedConcept(selectedConcept?.id === node.id ? null : node)}
-                              title={node.created_at ? `Extracted ${formatTimestamp(node.created_at)}` : undefined}
+                              title={buildConceptTooltip(node, conceptTooltipStats[node.id] ?? {})}
                               className={`ml-3 flex w-full items-center gap-1.5 rounded px-2 py-0.5 text-left text-xs transition-colors ${
                                 selectedConcept?.id === node.id
                                   ? "bg-[var(--accent-color)]/20 text-[var(--accent-color)]"
@@ -1370,7 +1434,7 @@ export default function KnowledgeGraphView({
                     <button
                       key={node.id}
                       onClick={() => setSelectedConcept(selectedConcept?.id === node.id ? null : node)}
-                      title={node.created_at ? `Extracted ${formatTimestamp(node.created_at)}` : undefined}
+                      title={buildConceptTooltip(node, conceptTooltipStats[node.id] ?? {})}
                       className={`flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs transition-colors ${
                         selectedConcept?.id === node.id
                           ? "bg-[var(--accent-color)]/20 text-[var(--accent-color)]"
@@ -1413,6 +1477,59 @@ export default function KnowledgeGraphView({
               {selectedConcept.concept_description && (
                 <p className="mb-3 text-[11px] leading-relaxed text-[var(--text-secondary)]">{selectedConcept.concept_description}</p>
               )}
+
+              {/* Self-ranking. The user owns this value; review performance
+               *  only ever suggests one, and accepting it is an explicit click.
+               *  Hover tooltips elsewhere display the rank but never set it. */}
+              <div className="mb-3">
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                    Your rank
+                  </span>
+                  {selectedConcept.self_rank != null && (
+                    <button
+                      onClick={() => { void applySelfRank(null); }}
+                      className="text-[10px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {CONCEPT_RANK_LEVELS.map((label, index) => {
+                    const rank = index + 1;
+                    const active = selectedConcept.self_rank === rank;
+                    return (
+                      <button
+                        key={label}
+                        onClick={() => { void applySelfRank(rank); }}
+                        aria-pressed={active}
+                        className={`rounded-lg border px-2 py-1 text-[10px] transition-colors ${
+                          active
+                            ? "border-[var(--accent-color)] bg-[var(--accent-color)]/15 text-[var(--accent-color)]"
+                            : "border-[var(--border-color)] text-[var(--text-secondary)] hover:border-[var(--accent-color)]"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {suggestedRankForSelected != null
+                  && suggestedRankForSelected !== selectedConcept.self_rank && (
+                  <button
+                    onClick={() => { void applySelfRank(suggestedRankForSelected); }}
+                    className="mt-1.5 text-[10px] text-[var(--text-muted)] transition-colors hover:text-[var(--accent-color)]"
+                  >
+                    Reviews suggest {conceptRankLabel(suggestedRankForSelected)} — use it
+                  </button>
+                )}
+                {selectedConcept.self_ranked_at && (
+                  <p className="mt-1 text-[10px] text-[var(--text-muted)]">
+                    Ranked {formatDateShort(selectedConcept.self_ranked_at)}
+                  </p>
+                )}
+              </div>
 
               <div className="mb-2 flex items-center gap-2">
                 <button
@@ -1844,6 +1961,7 @@ export default function KnowledgeGraphView({
                           onSelectConcept={setSelectedConcept}
                           searchFilter={graphSearch}
                           viewportInset={roadmapViewportInset}
+                          conceptStats={conceptTooltipStats}
                         />
                         {/* Floating canvas dock (Figma/Miro style): zoom, reset
                             framing, and fullscreen grouped in one unit so the

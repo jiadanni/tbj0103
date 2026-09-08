@@ -57,6 +57,11 @@ fn load_tree(
                 created_at: r.get(11)?,
                 updated_at: r.get(12)?,
                 hierarchy_level: level_str.parse().unwrap_or_default(),
+                // This query selects the 14-column shape; rank is not part of
+                // an export payload, so read defensively rather than widening
+                // the SELECT.
+                self_rank: r.get(14).unwrap_or(None),
+                self_ranked_at: r.get(15).unwrap_or(None),
             })
         })
         .map_err(|e| e.to_string())?

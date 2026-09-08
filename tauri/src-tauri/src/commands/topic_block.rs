@@ -71,14 +71,18 @@ pub fn list_all_topics(
              LEFT JOIN blocked_topics bt
                 ON bt.workspace_id = cn.workspace_id
                AND bt.normalized_name = lower(trim(cn.name))
+             -- Cards attach to concepts directly (source_type='concept'), not
+             -- through flashcard_topics: that taxonomy is deprecated and its
+             -- seeder is a no-op, so joining by topic name reported 0 cards for
+             -- every concept regardless of how many it actually had.
              LEFT JOIN (
-                SELECT ft.workspace_id, lower(trim(ft.topic)) AS norm_topic,
-                       ft.card_count,
+                SELECT lc.source_id AS concept_id,
+                       COUNT(*) AS card_count,
                        COALESCE(SUM(CASE WHEN lc.repetitions > 0 THEN 1 ELSE 0 END), 0) AS review_count
-                FROM flashcard_topics ft
-                LEFT JOIN learning_cards lc ON lc.topic_id = ft.id
-                GROUP BY ft.workspace_id, lower(trim(ft.topic))
-             ) fc ON fc.workspace_id = cn.workspace_id AND fc.norm_topic = lower(trim(cn.name))
+                FROM learning_cards lc
+                WHERE lc.source_type = 'concept'
+                GROUP BY lc.source_id
+             ) fc ON fc.concept_id = cn.id
              WHERE cn.workspace_id = ?1
                AND (cn.superseded_by IS NULL OR cn.superseded_by = '')
              ORDER BY cn.name ASC",

@@ -146,7 +146,12 @@ CREATE TABLE IF NOT EXISTS concept_nodes (
     superseded_by TEXT REFERENCES concept_nodes(id) ON DELETE SET NULL,
     superseded_at TEXT,
     supersede_reason TEXT,
-    last_modified_by_job TEXT
+    last_modified_by_job TEXT,
+    -- User-owned self-ranking. NULL self_ranked_at means never ranked, which
+    -- is distinct from being ranked at the starting level. No background job
+    -- writes these; review performance only ever suggests a value.
+    self_rank INTEGER CHECK (self_rank IS NULL OR self_rank BETWEEN 1 AND 10),
+    self_ranked_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS concept_links (
