@@ -503,15 +503,30 @@ describe("KnowledgeGraphView", () => {
       </MemoryRouter>,
     );
 
-    // Idle: the placeholder invites an analysis.
-    expect(await screen.findByText("Your roadmap will appear here")).toBeInTheDocument();
+    // Idle with no map yet: the placeholder and the button both say "build",
+    // since there is nothing to refresh.
+    expect(await screen.findByText("Build your knowledge map")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Refresh Knowledge Map/ })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getAllByRole("button", { name: /Refresh Knowledge Map/ })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: /Build Knowledge Map/ })[0]);
 
     // In progress: the heading and body say work is underway rather than
     // leaving the idle "will appear here" copy on screen.
     expect(await screen.findByText("Building your roadmap…")).toBeInTheDocument();
-    expect(screen.queryByText("Your roadmap will appear here")).not.toBeInTheDocument();
+    expect(screen.queryByText("Build your knowledge map")).not.toBeInTheDocument();
     expect(screen.getByRole("progressbar", { name: "Roadmap refresh progress" })).toBeInTheDocument();
+  }, 15000);
+  it("calls the action Refresh only once a map exists", async () => {
+    // Default mocks return one concept, so a map is already present.
+    render(
+      <MemoryRouter initialEntries={[{ pathname: "/", state: null }]}>
+        <RoadmapPane hideSidebar fillHeight />
+      </MemoryRouter>,
+    );
+
+    expect(
+      (await screen.findAllByRole("button", { name: /Refresh Knowledge Map/ })).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /Build Knowledge Map/ })).not.toBeInTheDocument();
   }, 15000);
 });
