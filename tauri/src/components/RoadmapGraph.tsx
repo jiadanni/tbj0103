@@ -471,8 +471,7 @@ function RoadmapGraphInner(
         width={dims.width}
         height={dims.height}
         className="block"
-        style={{ cursor: "grab" }}
-        fontFamily="'Inter', 'SF Pro Text', system-ui, -apple-system, sans-serif"
+        style={{ cursor: "grab", fontFamily: "var(--app-font-family)" }}
       >
         <defs>
           <marker
@@ -697,9 +696,8 @@ function RoadmapGraphInner(
                     y={textTop + lines.length * lineHeight - 1}
                     dominantBaseline="middle"
                     fontSize={isChapter ? 10 : 9.5}
-                    fontFamily='"JetBrains Mono", "Fira Code", Menlo, monospace'
                     fill="var(--text-muted)"
-                    style={{ pointerEvents: "none", userSelect: "none" }}
+                    style={{ pointerEvents: "none", userSelect: "none", fontFamily: "var(--app-mono-family)" }}
                   >
                     {childCount === 1 ? "1 node" : `${childCount} nodes`}
                   </text>
@@ -738,9 +736,8 @@ function RoadmapGraphInner(
                       textAnchor="middle"
                       dominantBaseline="middle"
                       fontSize={10}
-                      fontFamily='"JetBrains Mono", "Fira Code", Menlo, monospace'
                       fill="var(--text-secondary)"
-                      style={{ pointerEvents: "none", userSelect: "none" }}
+                      style={{ pointerEvents: "none", userSelect: "none", fontFamily: "var(--app-mono-family)" }}
                     >
                       {badgeText}
                     </text>

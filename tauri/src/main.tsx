@@ -76,7 +76,7 @@ function mountBootOverlay() {
     "gap:14px",
     "background:#0e0e0e",
     "color:#f4f4f5",
-    "font:14px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',sans-serif",
+    "font:14px/1.4 'Aetherium Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif",
     "transition:opacity 120ms ease-out",
   ].join(";");
   const spinner = document.createElement("div");
