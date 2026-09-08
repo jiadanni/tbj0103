@@ -356,7 +356,7 @@ export default function Sidebar({
             >
               <Zap size={16} strokeWidth={1.5} />
               <span className="flex-1">Command Palette</span>
-              <kbd className="text-[10px] px-1 py-0.5 bg-[var(--bg-hover)] rounded font-mono text-[var(--text-muted)]">⌘K</kbd>
+              <kbd className="text-[10px] px-1 py-0.5 bg-[var(--bg-hover)] rounded text-[var(--text-muted)]">⌘K</kbd>
             </button>
           </div>
         )}

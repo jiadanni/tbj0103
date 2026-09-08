@@ -331,7 +331,7 @@ function ShortcutRecorder({
             {displayTokens.map((token, i) => (
               <span key={i} className="flex items-center gap-1">
                 <kbd className={[
-                  "inline-flex items-center rounded-md border px-2 py-0.5 font-mono text-xs font-semibold shadow-sm transition-colors select-none",
+                  "inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold shadow-sm transition-colors select-none",
                   recording
                     ? "border-[var(--accent-color)]/50 bg-[var(--accent-color)]/10 text-[var(--accent-color)]"
                     : "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)]",

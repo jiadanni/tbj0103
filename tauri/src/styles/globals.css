@@ -619,16 +619,15 @@ select optgroup {
 
 @layer components {
   /* The micro-label voice for UI chrome: section headers, metric captions,
-     status-bar fields. Mono separates system chrome from prose, which stays in
-     --app-font-family. Defined once because this convention had drifted across
-     four sizes (9/10/11/12px) and three tracking values, and that inconsistency
-     read as unconsidered. Prose, headings and body copy must NOT use this. */
+     status-bar fields. One font across the whole app (--app-font-family); this
+     class carries the *only* other axis of separation from body copy — smaller,
+     a touch heavier, muted, with a hair of tracking. No mono, no uppercase.
+     Defined once because this had drifted across four sizes (9/10/11/12px) and
+     three tracking values. Prose, headings and body copy must NOT use this. */
   .label-chrome {
-    font-family: var(--app-mono-family);
-    font-size: 10px;
-    font-weight: 500;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
     color: var(--text-muted);
   }
 

@@ -1284,7 +1284,7 @@ export default function KnowledgeGraphView({
               <div className="flex flex-col gap-1 mt-1">
                 <div className="flex justify-between items-center text-[10px] text-[var(--text-secondary)]">
                   <span>Confidence Threshold</span>
-                  <span className="font-mono text-[var(--accent-color)]">{confidenceThreshold.toFixed(2)}</span>
+                  <span className="tabular-nums font-semibold text-[var(--accent-color)]">{confidenceThreshold.toFixed(2)}</span>
                 </div>
                 <input
                   type="range"

@@ -697,7 +697,7 @@ function RoadmapGraphInner(
                     dominantBaseline="middle"
                     fontSize={isChapter ? 10 : 9.5}
                     fill="var(--text-muted)"
-                    style={{ pointerEvents: "none", userSelect: "none", fontFamily: "var(--app-mono-family)" }}
+                    style={{ pointerEvents: "none", userSelect: "none" }}
                   >
                     {childCount === 1 ? "1 node" : `${childCount} nodes`}
                   </text>
@@ -737,7 +737,7 @@ function RoadmapGraphInner(
                       dominantBaseline="middle"
                       fontSize={10}
                       fill="var(--text-secondary)"
-                      style={{ pointerEvents: "none", userSelect: "none", fontFamily: "var(--app-mono-family)" }}
+                      style={{ pointerEvents: "none", userSelect: "none" }}
                     >
                       {badgeText}
                     </text>
