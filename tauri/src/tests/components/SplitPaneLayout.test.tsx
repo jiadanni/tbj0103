@@ -124,6 +124,20 @@ describe("SplitPaneLayout — PaneSubWorkspaceTabs", () => {
     expect(firstChild?.contains(pinnedTab)).toBe(true);
   });
 
+  it("reserves a trailing gutter on the secondary pane's sub-workspace strip but not the primary's", () => {
+    // The secondary pane's strip runs to the window's right edge, under the
+    // titlebar back/forward/sort/split buttons. It must reserve right padding so
+    // the last sub-workspace tabs aren't hidden behind them; the primary pane
+    // (bounded by the resize divider) must not.
+    render(<SplitPaneLayout />);
+
+    const primaryStrip = screen.getByTestId("pane-subworkspace-strip-primary");
+    const secondaryStrip = screen.getByTestId("pane-subworkspace-strip-secondary");
+
+    expect(secondaryStrip.className).toMatch(/\bpr-(24|\[192px\])\b/);
+    expect(primaryStrip.className).not.toMatch(/\bpr-(24|\[192px\])\b/);
+  });
+
   it("uses split section navigation instead of the main section navigation", () => {
     useWorkspaceStore.setState({
       ...INITIAL_STORE,
