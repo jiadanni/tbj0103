@@ -885,8 +885,16 @@ async fn sweep_and_synthesize(
     model: &str,
     report: TickReport,
 ) -> Result<TickReport, String> {
+    // Group synthesis is best-effort: a workspace whose LLM call fails or whose
+    // reply will not parse still gets its concepts filed by the sweep below, so
+    // one bad workspace must not abort the rest. Log the reason rather than
+    // discarding it — a silent failure here reports "refreshed" to the UI while
+    // leaving every topic ungrouped, which is indistinguishable from "there was
+    // nothing to group".
     for ws in workspaces {
-        let _ = synthesize_topic_groups(state, ollama_url.clone(), ws, model).await;
+        if let Err(e) = synthesize_topic_groups(state, ollama_url.clone(), ws, model).await {
+            eprintln!("[concept_hierarchy] group synthesis failed for workspace {ws}: {e}");
+        }
     }
 
     let pool = state.0.clone();
@@ -894,7 +902,9 @@ async fn sweep_and_synthesize(
     let _ = tokio::task::spawn_blocking(move || -> Result<(), String> {
         let conn = pool.get().map_err(|e| e.to_string())?;
         for ws in &workspaces {
-            let _ = sweep_orphan_concepts(&conn, ws);
+            if let Err(e) = sweep_orphan_concepts(&conn, ws) {
+                eprintln!("[concept_hierarchy] orphan sweep failed for workspace {ws}: {e}");
+            }
         }
         Ok(())
     })

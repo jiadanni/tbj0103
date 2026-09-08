@@ -342,11 +342,18 @@ export default function KnowledgeGraphView({
   // Per-task status snapshot driven by `background-task` events. Used by the
   // sync-mode progress modal and the async-mode passive refetch.
   type RefreshJobState = "idle" | "queued" | "running" | "completed" | "failed" | "cancelled";
-  // The map button runs only the graph-feeding job. The full seven-job
-  // workspace refresh lives in Preferences > Data Controls > Run Background
-  // Processing Now. The hierarchy tick seeds concept nodes from topic
-  // signatures itself, so this single job both creates nodes and links them.
-  const GRAPH_REFRESH_TASK_TYPES: RefreshWorkspaceTaskType[] = ["concept_hierarchy"];
+  // The map button runs the graph-feeding jobs. The full seven-job workspace
+  // refresh lives in Preferences > Data Controls > Run Background Processing
+  // Now. The hierarchy tick seeds concept nodes from topic signatures itself,
+  // so it both creates nodes and links them; flashcard generation then gives
+  // those concepts something to practise. Without the second job the refresh
+  // produced topics that were permanently "no cards yet", so every Learn Next
+  // row led to an empty review queue. Order matters: hierarchy first, so the
+  // concepts exist before cards are generated for them.
+  const GRAPH_REFRESH_TASK_TYPES: RefreshWorkspaceTaskType[] = [
+    "concept_hierarchy",
+    "flashcard_generation",
+  ];
   const [refreshJobStatus, setRefreshJobStatus] = useState<Record<RefreshWorkspaceTaskType, RefreshJobState>>(
     () => Object.fromEntries(
       REFRESH_WORKSPACE_TASK_TYPES.map((t) => [t, "idle" as RefreshJobState]),
@@ -1032,9 +1039,14 @@ export default function KnowledgeGraphView({
   const refreshRunningCount = refreshWatchedTasks.filter(
     (t) => refreshJobStatus[t] === "queued" || refreshJobStatus[t] === "running",
   ).length;
+  // Nothing has been built yet, so "Refresh" would ask the user to refresh a
+  // map that does not exist. Name the action for what it actually does the
+  // first time, and only call it a refresh once there is something to rebuild.
+  const hasKnowledgeMap = nodes.length > 0;
+  const refreshVerbLabel = hasKnowledgeMap ? "Refresh Knowledge Map" : "Build Knowledge Map";
   const refreshButtonLabel = isAnalyzing
-    ? `Refreshing (${refreshCompletedCount + refreshFailedCount}/${refreshWatchedTasks.length})…`
-    : "Refresh Knowledge Map";
+    ? `${hasKnowledgeMap ? "Refreshing" : "Building"} (${refreshCompletedCount + refreshFailedCount}/${refreshWatchedTasks.length})…`
+    : refreshVerbLabel;
   // Progress line for the empty-map placeholder while a refresh runs. Prefers
   // the most specific signal available: per-sub-workspace, then per-chunk, then
   // the coarse job count.
@@ -1696,12 +1708,12 @@ export default function KnowledgeGraphView({
                          *  state, not a dead end — say what is happening and how
                          *  far along it is instead of inviting another refresh. */}
                         <div className="text-lg font-semibold text-[var(--text-primary)]">
-                          {isAnalyzing ? "Building your roadmap…" : "Your roadmap will appear here"}
+                          {isAnalyzing ? "Building your roadmap…" : "Build your knowledge map"}
                         </div>
                         <div className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
                           {isAnalyzing
                             ? emptyMapProgressMessage
-                            : "Analyze this workspace after you have a little material in it, and Aetherium will turn that activity into a structured roadmap."}
+                            : "Aetherium will turn this workspace's chats, notes, and documents into a structured roadmap, then generate cards to practise with."}
                         </div>
                         {isAnalyzing && (
                           <div
