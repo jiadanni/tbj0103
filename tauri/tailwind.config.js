@@ -28,12 +28,13 @@ export default {
         "3xl": "var(--radius-dialog)",
       },
       fontFamily: {
-        // Defer to --app-font-family so `font-sans` matches what <body> actually
-        // renders. globals.css swaps that token per platform (Noto Sans on
-        // Linux); hardcoding the Apple stack here meant the utility and the body
-        // could resolve to two different fonts on non-Apple platforms.
+        // Both defer to the CSS tokens in globals.css so the `font-sans` /
+        // `font-mono` utilities always resolve to the exact same faces as
+        // <body> and .prose. Never hardcode a family name here — globals.css
+        // is the single source of truth (bundled "Aetherium Sans" / "Aetherium
+        // Mono", with platform fallbacks).
         sans: ["var(--app-font-family)"],
-        mono: ["JetBrains Mono", "Fira Code", "Menlo", "monospace"],
+        mono: ["var(--app-mono-family)"],
       },
     },
   },

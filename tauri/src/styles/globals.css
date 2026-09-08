@@ -3,6 +3,58 @@
 @tailwind utilities;
 
 /* =====================================================
+   Bundled fonts — self-hosted so every platform renders
+   identically offline. "Aetherium Sans" is Noto Sans,
+   "Aetherium Mono" is JetBrains Mono. These names are
+   used verbatim in --app-font-family and --app-mono-family
+   below; nothing else should name a font family directly.
+   Subsetted to Latin + common punctuation (see
+   scripts/build-fonts.sh if the ranges ever need widening).
+   ===================================================== */
+@font-face {
+  font-family: "Aetherium Sans";
+  src: url("../assets/fonts/NotoSans-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Aetherium Sans";
+  src: url("../assets/fonts/NotoSans-Italic.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Aetherium Sans";
+  src: url("../assets/fonts/NotoSans-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Aetherium Sans";
+  src: url("../assets/fonts/NotoSans-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Aetherium Mono";
+  src: url("../assets/fonts/JetBrainsMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Aetherium Mono";
+  src: url("../assets/fonts/JetBrainsMono-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* =====================================================
    Aetherium CSS Custom Properties (Theme Variables)
    Mirrors ThemeManager.swift
    ===================================================== */
@@ -12,7 +64,8 @@
   --accent-color-rgb: 0, 122, 255;
   --sidebar-width: 240px;
   --font-size-base: 14px;
-  --app-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --app-font-family: "Aetherium Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --app-mono-family: "Aetherium Mono", "JetBrains Mono", "JetBrainsMono NF", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   /* Corner language. tailwind.config.js maps rounded-md/lg -> control,
      rounded-xl -> card, rounded-2xl -> panel, rounded-3xl -> dialog, so these
      four values control every corner in the app. Radius is not a theme
@@ -51,10 +104,6 @@
   --message-user-text: #ffffff;
   --message-assistant-bg: var(--bg-secondary);
   --message-assistant-border: transparent;
-}
-
-:root[data-platform="linux"] {
-  --app-font-family: "Noto Sans", system-ui, "Liberation Sans", sans-serif;
 }
 
 /* System theme (default) */
@@ -290,14 +339,14 @@ body {
   background-color: var(--bg-secondary);
   color: var(--text-primary);
   overflow-x: auto;
-  font-family: "JetBrains Mono", "JetBrainsMono NF", monospace;
+  font-family: var(--app-mono-family);
 }
 .prose code:not(pre code) {
   @apply px-1.5 py-0.5 rounded text-sm;
   background-color: var(--bg-secondary);
   color: var(--accent-color);
   font-weight: normal;
-  font-family: "JetBrains Mono", "JetBrainsMono NF", monospace;
+  font-family: var(--app-mono-family);
 }
 .prose table {
   @apply my-3 w-full text-sm border-collapse;
@@ -575,7 +624,7 @@ select optgroup {
      four sizes (9/10/11/12px) and three tracking values, and that inconsistency
      read as unconsidered. Prose, headings and body copy must NOT use this. */
   .label-chrome {
-    font-family: theme("fontFamily.mono");
+    font-family: var(--app-mono-family);
     font-size: 10px;
     font-weight: 500;
     letter-spacing: 0.14em;
