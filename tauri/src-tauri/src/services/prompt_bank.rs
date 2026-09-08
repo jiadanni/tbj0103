@@ -18,6 +18,10 @@ use tauri::{AppHandle, Emitter};
 
 const DEFAULT_TARGET_COUNT: i64 = 30;
 const REFILL_WATERMARK: i64 = 15;
+/// A `running` job whose `updated_at` has not advanced for this long is assumed
+/// to belong to a task future that was dropped (app restart, panic, window close
+/// mid-run) and is reset to `failed` so its workspace is no longer blocked.
+const STALE_JOB_TIMEOUT_SECS: i64 = 15 * 60;
 const BATCH_SIZE: usize = 20;
 
 #[derive(Debug, Clone, Serialize)]
@@ -438,6 +442,29 @@ pub async fn run_job_by_id(
     run_generation(app, pool, &job_id, &workspace_id, target_count).await
 }
 
+/// Reset `running` jobs that have made no progress within `STALE_JOB_TIMEOUT_SECS`.
+///
+/// The generation loop bumps `updated_at` after every batch, so a `running` row
+/// that is older than the timeout has no live task behind it. Left alone it
+/// blocks its workspace forever (every dispatch query excludes workspaces with a
+/// `queued`/`running` job) and drives the status-bar elapsed timer indefinitely.
+pub fn reclaim_stale_jobs(pool: &Pool<SqliteConnectionManager>) -> Result<u64, String> {
+    let conn = pool.get().map_err(|e| e.to_string())?;
+    let changed = conn
+        .execute(
+            "UPDATE workspace_prompt_bank_jobs
+             SET status = 'failed',
+                 error = 'Interrupted \u{2014} generation task did not finish (app restart or crash)',
+                 completed_at = ?1,
+                 updated_at = ?1
+             WHERE status = 'running'
+               AND CAST((julianday(?1) - julianday(updated_at)) * 86400 AS INTEGER) > ?2",
+            params![now(), STALE_JOB_TIMEOUT_SECS],
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(changed as u64)
+}
+
 pub async fn tick(app: &AppHandle, db: &DbState) -> Result<Option<PromptBankJob>, String> {
     tick_for_workspaces(app, db, None).await
 }
@@ -447,6 +474,9 @@ pub async fn tick_for_workspaces(
     db: &DbState,
     workspace_filter: Option<&[String]>,
 ) -> Result<Option<PromptBankJob>, String> {
+    if let Err(error) = reclaim_stale_jobs(&db.0) {
+        eprintln!("[prompt_bank] failed to reclaim stale jobs: {error}");
+    }
     let maybe_job = {
         let conn = db.0.get().map_err(|e| e.to_string())?;
         let queued = if let Some(workspace_filter) = workspace_filter {
@@ -973,5 +1003,85 @@ mod tests {
         assert!(text.contains("Systems"));
         assert!(text.contains("desktop app learning"));
         assert!(!text.contains("React"));
+    }
+
+    fn jobs_pool() -> Pool<SqliteConnectionManager> {
+        let pool = r2d2::Pool::builder()
+            .max_size(1)
+            .build(r2d2_sqlite::SqliteConnectionManager::memory())
+            .unwrap();
+        pool.get()
+            .unwrap()
+            .execute_batch(
+                "CREATE TABLE workspace_prompt_bank_jobs (
+                     id TEXT PRIMARY KEY NOT NULL,
+                     workspace_id TEXT NOT NULL,
+                     status TEXT NOT NULL DEFAULT 'queued',
+                     target_count INTEGER NOT NULL DEFAULT 120,
+                     generated_count INTEGER NOT NULL DEFAULT 0,
+                     model TEXT NOT NULL DEFAULT '',
+                     error TEXT,
+                     started_at TEXT,
+                     completed_at TEXT,
+                     created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                 );",
+            )
+            .unwrap();
+        pool
+    }
+
+    fn insert_job(pool: &Pool<SqliteConnectionManager>, id: &str, status: &str, updated_at: &str) {
+        pool.get()
+            .unwrap()
+            .execute(
+                "INSERT INTO workspace_prompt_bank_jobs
+                 (id, workspace_id, status, target_count, generated_count, model, started_at, updated_at)
+                 VALUES (?1, 'w1', ?2, 30, 0, 'gemma3:4b', ?3, ?3)",
+                params![id, status, updated_at],
+            )
+            .unwrap();
+    }
+
+    fn status_of(pool: &Pool<SqliteConnectionManager>, id: &str) -> String {
+        pool.get()
+            .unwrap()
+            .query_row(
+                "SELECT status FROM workspace_prompt_bank_jobs WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn reclaim_stale_jobs_fails_only_stale_running_rows() {
+        let pool = jobs_pool();
+        // Running, last progress > timeout ago -> reclaimed.
+        insert_job(&pool, "stale", "running", "2000-01-01T00:00:00Z");
+        // Running, progress seconds ago -> left alone.
+        insert_job(&pool, "fresh", "running", &now());
+        // Terminal states are never touched.
+        insert_job(&pool, "done", "completed", "2000-01-01T00:00:00Z");
+        insert_job(&pool, "queued", "queued", "2000-01-01T00:00:00Z");
+
+        let changed = reclaim_stale_jobs(&pool).unwrap();
+
+        assert_eq!(changed, 1);
+        assert_eq!(status_of(&pool, "stale"), "failed");
+        assert_eq!(status_of(&pool, "fresh"), "running");
+        assert_eq!(status_of(&pool, "done"), "completed");
+        assert_eq!(status_of(&pool, "queued"), "queued");
+
+        let err: Option<String> = pool
+            .get()
+            .unwrap()
+            .query_row(
+                "SELECT error FROM workspace_prompt_bank_jobs WHERE id = 'stale'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(err.unwrap().contains("Interrupted"));
     }
 }
