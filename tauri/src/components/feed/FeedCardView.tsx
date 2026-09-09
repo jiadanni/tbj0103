@@ -51,6 +51,16 @@ export default function FeedCardView({
     : null;
   const diffColors = diffInfo ? getDifficultyColor(diffInfo.score) : null;
 
+  // Suppress topic badge if it merely duplicates the workspace or is already in the title
+  const cleanFront = card.front
+    .replace(/^Core Engineering Concept:\s*/i, "")
+    .replace(/\s*\(#?\d+\)$/, "");
+
+  const isTopicRedundant =
+    !card.topic ||
+    card.topic.trim().toLowerCase() === card.workspace_name.trim().toLowerCase() ||
+    cleanFront.toLowerCase().includes(card.topic.trim().toLowerCase());
+
   return (
     <div className="flex h-full w-full select-none flex-col items-center justify-between overflow-hidden bg-[var(--bg-primary)] px-6 pb-6 pt-14 text-center">
       <div className="my-auto flex min-h-0 w-full max-w-2xl flex-col items-center gap-3">
@@ -58,7 +68,7 @@ export default function FeedCardView({
           <span className="rounded-full border border-[rgba(var(--accent-color-rgb),0.35)] bg-[rgba(var(--accent-color-rgb),0.12)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--accent-color)]">
             {card.workspace_name}
           </span>
-          {card.topic && (
+          {!isTopicRedundant && card.topic && (
             <span className="rounded-full border border-[var(--border-color)] bg-[var(--bg-elevated)] px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-[var(--text-secondary)]">
               {card.topic}
             </span>
@@ -75,7 +85,7 @@ export default function FeedCardView({
         </div>
 
         <h2 className="shrink-0 text-xl font-bold leading-snug tracking-tight text-[var(--text-primary)] sm:text-2xl">
-          {card.front}
+          {cleanFront}
         </h2>
 
         {showBack ? (
