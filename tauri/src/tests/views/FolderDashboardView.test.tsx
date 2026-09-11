@@ -345,7 +345,7 @@ describe("FolderDashboardView", () => {
         </MemoryRouter>,
       );
 
-      expect(await screen.findByText(/Ready — 4 cards due/)).toBeInTheDocument();
+      expect(await screen.findByText(/Ready — 4 cards to review/)).toBeInTheDocument();
     });
 
     it("starts a review session scoped to the chosen concept", async () => {

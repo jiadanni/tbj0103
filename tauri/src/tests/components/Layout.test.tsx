@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
 import { useSettingsStore } from "@/stores/settingsStore";
@@ -376,6 +376,84 @@ describe("Layout", () => {
       expect(createChildSpy).toHaveBeenCalledWith("root-1", "Gamma");
       expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("child-3");
     });
+  });
+
+  it("renders sub-workspace tab bar with compact h-8 height and no phantom padding", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "root-1", name: "Parent", description: "", prompt_instructions: "", topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "child-1", name: "Alpha", description: "", prompt_instructions: "", topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: "root-1", icon: "", order_index: 0, last_message_at: null, survey_data: null },
+      ],
+      activeWorkspaceId: "child-1",
+      activeParentWorkspaceId: "root-1",
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/folder"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    const subTab = screen.getByRole("button", { name: "Alpha" });
+    const bar = subTab.closest("div[data-tauri-drag-region]");
+    expect(bar).not.toBeNull();
+    expect(bar?.className).toContain("h-8");
+    expect(bar?.className).not.toMatch(/\bpl-\[72px\]\b/);
+    expect(bar?.className).not.toMatch(/\bpr-\[112px\]\b/);
+  });
+
+  it("opens quick-jump menu from sub-workspace tab bar and switches sub-workspace", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "root-1", name: "Parent", description: "", prompt_instructions: "", topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "child-1", name: "Alpha", description: "", prompt_instructions: "", topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: "root-1", icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "child-2", name: "Beta", description: "", prompt_instructions: "", topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: "root-1", icon: "", order_index: 0, last_message_at: null, survey_data: null },
+      ],
+      activeWorkspaceId: "child-1",
+      activeParentWorkspaceId: "root-1",
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/folder"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    const menuTrigger = screen.getByRole("button", { name: "All Sub-workspaces" });
+    expect(menuTrigger).toBeInTheDocument();
+    fireEvent.click(menuTrigger);
+
+    const menu = screen.getByRole("menu", { name: "Sub-workspace menu" });
+    expect(menu).toBeInTheDocument();
+    expect(within(menu).getByText("Parent (Overview)")).toBeInTheDocument();
+
+    const betaMenuItem = within(menu).getByRole("menuitemradio", { name: /Beta/ });
+    fireEvent.click(betaMenuItem);
+    expect(useWorkspaceStore.getState().activeWorkspaceId).toBe("child-2");
+  });
+
+  it("groups New Workspace and More Workspaces buttons adjacent to root tabs without flex-1 gap", () => {
+    useWorkspaceStore.setState({
+      workspaceNavigation: "top-tabs",
+      workspaces: [
+        { id: "root-1", name: "Alpha", description: "", prompt_instructions: "", topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+      ],
+      activeWorkspaceId: "root-1",
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/folder"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    const rootTab = screen.getByRole("button", { name: "Alpha" });
+    const tabStrip = rootTab.parentElement;
+    expect(tabStrip?.className).toContain("shrink");
+    expect(tabStrip?.className).not.toContain("flex-1");
+
+    expect(screen.getByRole("button", { name: "New Workspace" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "More workspaces" })).toBeInTheDocument();
   });
 
   it("renders the global History button in the titlebar on standard routes", () => {
@@ -892,6 +970,66 @@ describe("Layout", () => {
     expect(screen.getByText("Open workspace")).toBeInTheDocument();
     expect(screen.getByText("Rename workspace")).toBeInTheDocument();
     expect(screen.getByText("Manage workspaces")).toBeInTheDocument();
+  });
+
+  it("opens a custom context menu for workspace tabs in split pane mode", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "ws-1", name: "Agentic", description: "", prompt_instructions: "", topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "ws-2", name: "Rust", description: "", prompt_instructions: "", topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+      ],
+      activeWorkspaceId: "ws-1",
+      splitMode: true,
+      panes: {
+        primary: { workspaceId: "ws-1", folderId: null, view: "folder", chatSessionId: null, noteSelection: null },
+        secondary: { workspaceId: "ws-2", folderId: null, view: "folder", chatSessionId: null, noteSelection: null },
+      },
+      workspaceNavigation: "top-tabs",
+      splitWorkspaceNavigation: "match-main",
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/folder"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    const tabs = screen.getAllByText("Agentic");
+    expect(tabs.length).toBeGreaterThanOrEqual(1);
+    fireEvent.contextMenu(tabs[0]);
+
+    expect(screen.getByText("Open workspace")).toBeInTheDocument();
+    expect(screen.getByText("Rename workspace")).toBeInTheDocument();
+    expect(screen.getByText("Manage workspaces")).toBeInTheDocument();
+  });
+
+  it("opens a custom context menu for sub-workspace tabs in split pane mode", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "ws-1", name: "Parent", description: "", prompt_instructions: "", topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
+        { id: "ws-sub", name: "SubProject", description: "", prompt_instructions: "", topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: "ws-1", icon: "", order_index: 0, last_message_at: null, survey_data: null },
+      ],
+      activeWorkspaceId: "ws-1",
+      splitMode: true,
+      panes: {
+        primary: { workspaceId: "ws-1", folderId: null, view: "folder", chatSessionId: null, noteSelection: null },
+        secondary: { workspaceId: "ws-1", folderId: null, view: "folder", chatSessionId: null, noteSelection: null },
+      },
+      workspaceNavigation: "top-tabs",
+      splitWorkspaceNavigation: "match-main",
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/folder"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    const subTab = screen.getAllByText("SubProject")[0];
+    fireEvent.contextMenu(subTab);
+
+    expect(screen.getByText("Open sub-workspace")).toBeInTheDocument();
+    expect(screen.getByText("Rename sub-workspace")).toBeInTheDocument();
   });
 
   it("opens a custom context menu for top section tabs", () => {
