@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Plus } from "lucide-react";
 import { useWorkspaceStore } from "../../stores/workspaceStore";
 import type { Workspace, PaneId } from "../../stores/workspaceStore";
 import { api } from "../../lib/api";
 import { WorkspaceIcon } from "../../lib/workspaceIcon";
+import { Tooltip } from "../Tooltip";
 import { handleHorizontalWheel, workspaceTabClassName } from "./workspaceNavShared";
 
 function WorkspaceNavigationTabs({
@@ -13,12 +14,14 @@ function WorkspaceNavigationTabs({
   onSelect,
   onContextMenu,
   paneId,
+  onAdd,
 }: {
   workspaces: Workspace[];
   activeWorkspaceId: string | null;
   onSelect: (workspaceId: string) => void;
   onContextMenu?: (workspace: Workspace, x: number, y: number) => void;
   paneId?: PaneId;
+  onAdd?: () => void;
 }) {
   const allWorkspaces = useWorkspaceStore((state) => state.workspaces);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -98,12 +101,12 @@ function WorkspaceNavigationTabs({
   }, [menuOpen]);
 
   return (
-    <div className="relative flex h-full min-w-0 flex-1 items-center gap-1" data-no-drag>
+    <div className="relative flex h-full min-w-0 items-center gap-1" data-no-drag>
       {/* items-end (not items-center) so each tab's `self-end` resolves against
           the titlebar's bottom edge. With items-center the tabs sat a few px
           below the chevron and + buttons beside them. */}
       <div
-        className="flex h-full min-w-0 flex-1 items-end gap-1 overflow-x-auto scrollbar-none"
+        className="flex h-full min-w-0 shrink items-end gap-1 overflow-x-auto scrollbar-none"
         onWheel={handleHorizontalWheel}
       >
         {workspaces.map((workspace) => (
@@ -219,6 +222,20 @@ function WorkspaceNavigationTabs({
           </button>
         ))}
       </div>
+      {onAdd && (
+        <Tooltip content="New Workspace" position="bottom">
+          <button
+            type="button"
+            data-no-drag
+            onClick={onAdd}
+            title="New Workspace"
+            aria-label="New Workspace"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+          >
+            <Plus size={16} />
+          </button>
+        </Tooltip>
+      )}
       <div ref={menuRef} className="relative shrink-0">
         <button
           type="button"

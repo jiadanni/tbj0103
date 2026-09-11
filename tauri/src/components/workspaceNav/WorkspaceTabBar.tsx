@@ -5,14 +5,13 @@ import {
   Columns2,
   ExternalLink,
   Pencil,
-  Plus,
   Settings as SettingsIcon,
   Trash2,
   WandSparkles,
 } from "lucide-react";
 import { useWorkspaceStore } from "../../stores/workspaceStore";
 import { useSettingsStore } from "../../stores/settingsStore";
-import type { Workspace } from "../../stores/workspaceStore";
+import type { Workspace, PaneId } from "../../stores/workspaceStore";
 import { api } from "../../lib/api";
 import { inferWorkspaceIconName } from "../../lib/workspaceIconRules";
 import { isMac } from "../../lib/platform";
@@ -66,6 +65,8 @@ function WorkspaceTabBar({
   const combineSubWorkspaceDropdown = useWorkspaceStore((state) => state.combineSubWorkspaceDropdown);
   const combineSectionDropdown = useWorkspaceStore((state) => state.combineSectionDropdown);
   const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId);
+  const setPaneWorkspace = useWorkspaceStore((state) => state.setPaneWorkspace);
+  const setActivePaneId = useWorkspaceStore((state) => state.setActivePaneId);
   const addWorkspace = useWorkspaceStore((state) => state.addWorkspace);
   const setWorkspaces = useWorkspaceStore((state) => state.setWorkspaces);
   const isDemoMode = useWorkspaceStore((state) => state.isDemoMode);
@@ -73,7 +74,7 @@ function WorkspaceTabBar({
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
-  const [contextMenu, setContextMenu] = useState<{ workspace: Workspace; x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ workspace: Workspace; x: number; y: number; paneId?: PaneId } | null>(null);
   const [dialogState, setDialogState] = useState<WorkspaceDialogState | null>(null);
   const [dialogBusy, setDialogBusy] = useState(false);
   const [promptDialog, setPromptDialog] = useState<{ kind: "create-sub" | "rename"; workspace?: Workspace } | null>(null);
@@ -88,6 +89,26 @@ function WorkspaceTabBar({
   const showSinglePaneWorkspaceDropdown = !showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs && workspaceNavigation === "top-dropdown";
   const showSinglePaneWorkspaceSidebar = !showSplitTitlebarWorkspaceNavigation && showWorkspaceTabs && workspaceNavigation === "sidebar";
   const showSplitToggle = !splitUnsupportedRoute || splitMode;
+
+  useEffect(() => {
+    function handleOpenContextMenu(event: Event) {
+      const customEvent = event as CustomEvent<{ workspace: Workspace; x: number; y: number; paneId?: PaneId }>;
+      if (customEvent.detail?.workspace) {
+        if (customEvent.detail.paneId) {
+          setActivePaneId(customEvent.detail.paneId);
+        }
+        setContextMenu({
+          workspace: customEvent.detail.workspace,
+          x: customEvent.detail.x,
+          y: customEvent.detail.y,
+          paneId: customEvent.detail.paneId,
+        });
+      }
+    }
+    window.addEventListener("aetherium:open-workspace-context-menu", handleOpenContextMenu);
+    return () => window.removeEventListener("aetherium:open-workspace-context-menu", handleOpenContextMenu);
+  }, [setActivePaneId]);
+
   function resetCreateWorkspaceForm() {
     setNewName("");
     setNewDescription("");
@@ -99,7 +120,12 @@ function WorkspaceTabBar({
     const isChanged = nextWorkspaceId !== activeWorkspaceId;
     setActiveParentWorkspaceId(parentWorkspaceId);
     setActiveWorkspaceId(nextWorkspaceId, { allowRoot });
-    if (isChanged && switchWorkspaceSection) { navigate(switchWorkspaceSection); }
+    if (splitMode) {
+      const targetPaneId = contextMenu?.paneId ?? useWorkspaceStore.getState().activePaneId;
+      setPaneWorkspace(targetPaneId, nextWorkspaceId);
+    } else if (isChanged && switchWorkspaceSection) {
+      navigate(switchWorkspaceSection);
+    }
     setContextMenu(null);
   }
 
@@ -269,7 +295,11 @@ function WorkspaceTabBar({
         onDoubleClick={onDragRegionDoubleClick}
         className={`relative flex items-center h-10 border-b border-[var(--surface-border)] bg-[var(--bg-base)] px-2 shrink-0 select-none ${isMac ? "pl-[72px]" : ""} ${!isMac ? "pr-[112px]" : ""}`}
       >
-        {showSplitTitlebarWorkspaceNavigation && <SplitTitlebarWorkspaceNavigation />}
+        {showSplitTitlebarWorkspaceNavigation && (
+          <SplitTitlebarWorkspaceNavigation
+            onContextMenu={(ws, x, y, paneId) => setContextMenu({ workspace: ws, x, y, paneId })}
+          />
+        )}
         {!isMac && <div className="relative z-10"><AppHeaderMenu /></div>}
         <div
           onWheel={handleHorizontalWheel}
@@ -313,17 +343,8 @@ function WorkspaceTabBar({
                   activeWorkspaceId={activeParentWorkspaceId ?? activeWorkspaceId}
                   onSelect={activateWorkspace}
                   onContextMenu={(ws, x, y) => setContextMenu({ workspace: ws, x, y })}
+                  onAdd={() => setCreating(true)}
                 />
-              ) : null}
-              {showWorkspaceTabs ? (
-                <Tooltip content="New Workspace" position="bottom">
-                  <button
-                    onClick={() => setCreating(true)}
-                    className="ml-1 w-9 h-10 flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded transition-colors"
-                  >
-                    <Plus size={20} />
-                  </button>
-                </Tooltip>
               ) : null}
               {combinedBreadcrumbNode}
             </div>
@@ -405,6 +426,9 @@ function WorkspaceTabBar({
         >
           <button
             onClick={() => {
+              if (contextMenu.paneId) {
+                setActivePaneId(contextMenu.paneId);
+              }
               activateWorkspace(contextMenu.workspace.id);
             }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"

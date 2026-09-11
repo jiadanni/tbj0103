@@ -12,9 +12,37 @@ use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
+
+type CachedTopicEmbedding = (String, Vec<f32>);
+type TopicEmbeddingMap = HashMap<String, CachedTopicEmbedding>;
+
+pub(crate) static TOPIC_EMBEDDING_CACHE: LazyLock<Mutex<TopicEmbeddingMap>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub fn get_cached_topic_embedding(workspace_id: &str, topic_text: &str) -> Option<Vec<f32>> {
+    let cache = TOPIC_EMBEDDING_CACHE.lock().ok()?;
+    let (cached_text, embedding) = cache.get(workspace_id)?;
+    if cached_text == topic_text {
+        Some(embedding.clone())
+    } else {
+        None
+    }
+}
+
+pub fn set_cached_topic_embedding(workspace_id: String, topic_text: String, embedding: Vec<f32>) {
+    if let Ok(mut cache) = TOPIC_EMBEDDING_CACHE.lock() {
+        if cache.len() >= 128 && !cache.contains_key(&workspace_id) {
+            if let Some(key) = cache.keys().next().cloned() {
+                cache.remove(&key);
+            }
+        }
+        cache.insert(workspace_id, (topic_text, embedding));
+    }
+}
 
 const DEFAULT_TARGET_COUNT: i64 = 30;
 const REFILL_WATERMARK: i64 = 15;
@@ -306,16 +334,32 @@ pub async fn list_suggestions(
     }
 
     let query_embedding = if let Some(model) = context.embedding_model.as_deref() {
-        let client = OllamaClient::new(Some(context.ollama_url.clone()))?;
-        client
-            .generate_embedding_with_options(
-                "prompt_bank_rank",
-                model,
-                &context.topic_text,
-                Some("0s"),
-            )
-            .await
-            .ok()
+        if let Some(cached) = get_cached_topic_embedding(workspace_id, &context.topic_text) {
+            Some(cached)
+        } else {
+            // Not in cache: do NOT block the UI on an unbounded cold Ollama load.
+            // Spawn a background task to compute and cache the embedding for subsequent switches.
+            let ws_id = workspace_id.to_string();
+            let topic_text = context.topic_text.clone();
+            let model_str = model.to_string();
+            let ollama_url = context.ollama_url.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Ok(client) = OllamaClient::new(Some(ollama_url)) {
+                    if let Ok(vec) = client
+                        .generate_embedding_with_options(
+                            "prompt_bank_rank",
+                            &model_str,
+                            &topic_text,
+                            Some("5m"),
+                        )
+                        .await
+                    {
+                        set_cached_topic_embedding(ws_id, topic_text, vec);
+                    }
+                }
+            });
+            None
+        }
     } else {
         None
     };
@@ -683,6 +727,20 @@ async fn run_generation(
         params![final_count, now(), job_id],
     )
     .map_err(|e| e.to_string())?;
+
+    if let Some(model) = context.embedding_model.as_deref() {
+        if let Ok(vec) = client
+            .generate_embedding_with_options(
+                "prompt_bank_rank",
+                model,
+                &context.topic_text,
+                Some("5m"),
+            )
+            .await
+        {
+            set_cached_topic_embedding(workspace_id.to_string(), context.topic_text.clone(), vec);
+        }
+    }
     Ok(())
 }
 
@@ -885,7 +943,7 @@ async fn insert_prompt(
 
     let (embedding, embedding_model) = if let Some(model) = context.embedding_model.as_deref() {
         match client
-            .generate_embedding_with_options("workspace_prompt_bank", model, &prompt, Some("0s"))
+            .generate_embedding_with_options("workspace_prompt_bank", model, &prompt, Some("5m"))
             .await
         {
             Ok(vec) => (Some(f32_vec_to_bytes(&vec)), Some(model.to_string())),
@@ -1083,5 +1141,24 @@ mod tests {
             )
             .unwrap();
         assert!(err.unwrap().contains("Interrupted"));
+    }
+
+    #[test]
+    fn topic_embedding_cache_hit_and_invalidation_on_text_change() {
+        let ws = "ws-test-cache".to_string();
+        let topic_a = "Rust and Tauri development".to_string();
+        let topic_b = "Python and FastAPI development".to_string();
+        let emb = vec![0.1_f32, 0.2, 0.3];
+
+        set_cached_topic_embedding(ws.clone(), topic_a.clone(), emb.clone());
+
+        // Hit when text matches
+        assert_eq!(get_cached_topic_embedding(&ws, &topic_a), Some(emb));
+
+        // Miss when topic text has changed
+        assert_eq!(get_cached_topic_embedding(&ws, &topic_b), None);
+
+        // Miss for another workspace
+        assert_eq!(get_cached_topic_embedding("ws-other", &topic_a), None);
     }
 }

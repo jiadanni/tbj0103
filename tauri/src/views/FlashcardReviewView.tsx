@@ -4,8 +4,8 @@
  * Manual creation available as secondary option.
  */
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { RotateCcw, Plus, CheckCircle, Sparkles, Loader2, ChevronDown, ChevronRight, Play } from "lucide-react";
-import { api, type LearningCard, type ReviewStats, type FlashcardTopic, type SuggestedTopic } from "../lib/api";
+import { RotateCcw, Plus, CheckCircle, Sparkles, Loader2, ChevronDown, ChevronRight, Play, X, Filter } from "lucide-react";
+import { api, type LearningCard, type ReviewStats, type FlashcardTopic, type SuggestedTopic, type ConceptNode } from "../lib/api";
 import { useSettingsStore } from "../stores/settingsStore";
 import { useScopedWorkspace, useBubbleUpFlag } from "../lib/workspacePane";
 import { CompactMenuSelect } from "../components/CompactMenuSelect";
@@ -89,7 +89,8 @@ function TopicRow({ topic, indent, hasChildren, collapsed, onToggle, isLoading, 
 export default function FlashcardReviewView({
   conceptId,
   hideSidebar = false,
-}: { conceptId?: string | null; hideSidebar?: boolean } = {}) {
+  onClearConcept,
+}: { conceptId?: string | null; hideSidebar?: boolean; onClearConcept?: () => void } = {}) {
   const { activeWorkspaceId } = useScopedWorkspace();
   const includeDescendants = useBubbleUpFlag();
   const preferredModel = useSettingsStore((s) => s.preferredModel);
@@ -105,6 +106,30 @@ export default function FlashcardReviewView({
   const [isFlipped, setIsFlipped] = useState(false);
   const [stats, setStats] = useState<ReviewStats | null>(null);
   const [reviewed, setReviewed] = useState(0);
+  const [concept, setConcept] = useState<ConceptNode | null>(null);
+
+  useEffect(() => {
+    if (!conceptId) {
+      setConcept(null);
+      return;
+    }
+    let isMounted = true;
+    api.graph
+      .getConcept(conceptId)
+      .then((c) => {
+        if (isMounted) {
+          setConcept(c);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setConcept(null);
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [conceptId]);
 
   // Generate state
   const [topic, setTopic] = useState("");
@@ -258,24 +283,27 @@ export default function FlashcardReviewView({
     }
   }
 
-  async function review(quality: number) {
-    if (!currentCard) {return;}
-    const updated = await api.flashcard.review(currentCard.id, quality);
-    setCards((prev) => {
-      const next = [...prev];
-      next[currentIndex] = updated;
-      return next;
-    });
-    setReviewed((r) => r + 1);
-    setIsFlipped(false);
-    setCurrentIndex((i) => i + 1);
-    if (currentIndex >= cards.length - 1) {
-      if (activeWorkspaceId) {api.flashcard.getStats(activeWorkspaceId).then(setStats).catch(() => {});}
-    }
-    if (updated.topic_id) {
-      refreshTopics();
-    }
-  }
+  const review = useCallback(
+    async (quality: number) => {
+      if (!currentCard) {return;}
+      const updated = await api.flashcard.review(currentCard.id, quality);
+      setCards((prev) => {
+        const next = [...prev];
+        next[currentIndex] = updated;
+        return next;
+      });
+      setReviewed((r) => r + 1);
+      setIsFlipped(false);
+      setCurrentIndex((i) => i + 1);
+      if (currentIndex >= cards.length - 1) {
+        if (activeWorkspaceId) {api.flashcard.getStats(activeWorkspaceId).then(setStats).catch(() => {});}
+      }
+      if (updated.topic_id) {
+        refreshTopics();
+      }
+    },
+    [currentCard, currentIndex, cards.length, activeWorkspaceId, refreshTopics],
+  );
 
   async function generateCards(customTopicName?: string) {
     const targetTopic = customTopicName ?? topic;
@@ -306,6 +334,40 @@ export default function FlashcardReviewView({
   }
 
   const isDone = cards.length > 0 && currentIndex >= cards.length;
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (showCreate || showGenerateModal) {return;}
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (e.code === "Space") {
+        e.preventDefault();
+        if (currentCard && !isDone) {
+          setIsFlipped((f) => !f);
+        }
+        return;
+      }
+
+      if (isFlipped && currentCard && !isDone) {
+        const num = parseInt(e.key, 10);
+        if (num >= 1 && num <= 6) {
+          e.preventDefault();
+          review(num - 1);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showCreate, showGenerateModal, currentCard, isDone, isFlipped, review]);
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -339,7 +401,7 @@ export default function FlashcardReviewView({
         {stats && (
           <div className="px-4 py-3 border-b border-[var(--border-color)] space-y-2">
             <div className="flex items-baseline justify-between">
-              <span className="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">Due today</span>
+              <span className="text-[11px] uppercase tracking-wide text-[var(--text-muted)]">Ready to review</span>
               <span className="text-lg font-semibold text-[var(--accent-color)] tabular-nums">{stats.due_today}</span>
             </div>
             <div className="h-1 bg-[var(--bg-hover)] rounded-full overflow-hidden">
@@ -353,6 +415,26 @@ export default function FlashcardReviewView({
               <span>{stats.learned} learned / {stats.total_cards} total</span>
               <span>ease {stats.avg_ease.toFixed(2)}</span>
             </div>
+            {conceptId && (
+              <div className="mt-2 pt-2 border-t border-[var(--border-color)]/60 text-[10px]">
+                <div className="flex items-center justify-between text-[var(--text-secondary)] mb-1">
+                  <span className="truncate" title={concept?.name || "Filtered concept"}>
+                    Concept: {concept?.name || "Filtered"}
+                  </span>
+                  <span className="font-semibold text-[var(--accent-color)] tabular-nums shrink-0 ml-1">
+                    {cards.length} cards
+                  </span>
+                </div>
+                {onClearConcept && (
+                  <button
+                    onClick={onClearConcept}
+                    className="text-[9px] text-[var(--accent-color)] hover:underline flex items-center gap-0.5"
+                  >
+                    <span>Show all {stats.due_today} workspace cards</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -485,13 +567,38 @@ export default function FlashcardReviewView({
       )}
 
       {/* Card area */}
-      <div className="flex-1 flex flex-col items-center justify-center gap-8 p-8">
+      <div className="flex-1 flex flex-col items-center justify-center gap-6 p-6 sm:p-8 overflow-y-auto min-h-0">
+        {conceptId && !isDone && (
+          <div className="w-full max-w-2xl xl:max-w-3xl flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-[rgba(var(--accent-color-rgb),0.08)] border border-[rgba(var(--accent-color-rgb),0.2)] text-xs text-[var(--text-secondary)]">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="font-semibold text-[var(--accent-color)] shrink-0 flex items-center gap-1">
+                <Filter size={12} /> Concept:
+              </span>
+              <span className="font-medium text-[var(--text-primary)] truncate" title={concept?.name || "Selected Concept"}>
+                {concept?.name || "Loading concept…"}
+              </span>
+              <span className="text-[var(--text-muted)] text-[11px] shrink-0">
+                ({cards.length} cards · {stats?.due_today ?? cards.length} across workspace)
+              </span>
+            </div>
+            {onClearConcept && (
+              <button
+                onClick={onClearConcept}
+                className="shrink-0 flex items-center gap-1 text-[11px] font-medium text-[var(--accent-color)] hover:underline ml-3"
+              >
+                <span>Review all</span>
+                <X size={12} />
+              </button>
+            )}
+          </div>
+        )}
+
         {isDone ? (
-          <div className="flex flex-col items-center gap-4 text-center">
+          <div className="flex flex-col items-center gap-4 text-center max-w-lg">
             <CheckCircle size={48} className="text-green-400" />
             <h2 className="text-xl font-semibold text-[var(--text-primary)]">Session Complete!</h2>
             <p className="text-sm text-[var(--text-muted)]">
-              You reviewed {reviewed} card{reviewed !== 1 ? "s" : ""}. Come back tomorrow for more.
+              You reviewed {reviewed} card{reviewed !== 1 ? "s" : ""}. Practice whenever you feel like it next.
             </p>
             <div className="flex items-center gap-2">
               <button
@@ -521,35 +628,83 @@ export default function FlashcardReviewView({
         ) : currentCard ? (
           <>
             {/* Progress */}
-            <div className="w-full max-w-lg">
-              <div className="flex justify-between text-xs text-[var(--text-muted)] mb-1">
-                <span>{currentIndex + 1} / {cards.length}</span>
-                <span className="capitalize">{currentCard.source_type === "ai_generated" ? "AI generated" : currentCard.source_type}</span>
+            <div className="w-full max-w-2xl xl:max-w-3xl">
+              <div className="flex justify-between text-xs text-[var(--text-muted)] mb-1.5">
+                <span className="font-medium text-[var(--text-secondary)]">
+                  Card {currentIndex + 1} of {cards.length}
+                </span>
+                <span className="capitalize text-[var(--text-muted)]">
+                  {currentCard.source_type === "ai_generated" ? "AI generated" : currentCard.source_type}
+                </span>
               </div>
-              <div className="h-1 bg-[var(--bg-hover)] rounded-full overflow-hidden">
+              <div className="h-1.5 bg-[var(--bg-hover)] rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-[var(--accent-color)] transition-all"
+                  className="h-full bg-[var(--accent-color)] transition-all duration-200"
                   style={{ width: `${((currentIndex + 1) / cards.length) * 100}%` }}
                 />
               </div>
             </div>
 
             {/* Card */}
-            <Tooltip content="Click to flip">
+            <Tooltip content={isFlipped ? "Click or press Space to flip back" : "Click or press Space to reveal answer"}>
               <div
-                className="w-full max-w-lg cursor-pointer"
+                className="w-full max-w-2xl xl:max-w-3xl cursor-pointer select-none"
                 onClick={() => setIsFlipped((f) => !f)}
               >
-                <div className={`relative min-h-[220px] rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-7 flex flex-col justify-center transition-all duration-300 ${isFlipped ? "shadow-lg shadow-[var(--accent-color)]/10" : ""}`}>
-                  <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-3">
-                    {isFlipped ? "Answer" : "Question \u2014 click to reveal"}
-                  </div>
-                  <p className="text-base text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap">
-                    {isFlipped ? currentCard.back : currentCard.front}
-                  </p>
-                  {!isFlipped && (
-                    <div className="absolute bottom-4 right-4 opacity-30">
-                      <RotateCcw size={16} className="text-[var(--text-muted)]" />
+                <div
+                  className={`relative min-h-[280px] sm:min-h-[320px] rounded-2xl border bg-[var(--bg-elevated)] p-6 sm:p-8 flex flex-col justify-between transition-all duration-200 ${
+                    isFlipped
+                      ? "border-[var(--accent-color)]/30 shadow-xl shadow-[rgba(var(--accent-color-rgb),0.06)]"
+                      : "border-[var(--border-color)] hover:border-[var(--accent-color)]/40 shadow-md"
+                  }`}
+                >
+                  {!isFlipped ? (
+                    <div className="flex flex-col flex-1 justify-between">
+                      <div className="flex items-center justify-between text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
+                        <span className="font-semibold">Question</span>
+                        <span className="flex items-center gap-1.5 normal-case tracking-normal text-[11px] text-[var(--text-muted)]">
+                          <span>Press</span>
+                          <kbd className="px-1.5 py-0.5 rounded bg-[var(--bg-primary)] border border-[var(--border-color)] font-mono text-[10px] text-[var(--text-secondary)]">
+                            Space
+                          </kbd>
+                          <span>or click to reveal</span>
+                        </span>
+                      </div>
+                      <p className="my-auto py-6 text-lg sm:text-xl text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap font-medium">
+                        {currentCard.front}
+                      </p>
+                      <div className="flex items-center justify-end text-[var(--text-muted)] opacity-40">
+                        <RotateCcw size={16} />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col flex-1 justify-between">
+                      <div>
+                        <div className="text-[10px] uppercase font-semibold tracking-wider text-[var(--text-muted)] mb-1.5">
+                          Question
+                        </div>
+                        <p className="text-sm sm:text-base text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap">
+                          {currentCard.front}
+                        </p>
+                      </div>
+
+                      <div className="my-4 border-t border-[var(--border-color)]/70" />
+
+                      <div className="my-auto py-2">
+                        <div className="text-[11px] uppercase font-semibold tracking-wider text-[var(--accent-color)] mb-2">
+                          Answer
+                        </div>
+                        <p className="text-base sm:text-lg text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap font-medium">
+                          {currentCard.back}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-3 text-[10px] text-[var(--text-muted)]">
+                        <span className="flex items-center gap-1">
+                          <RotateCcw size={12} /> Click or <kbd className="px-1.5 py-0.5 rounded bg-[var(--bg-primary)] border border-[var(--border-color)] font-mono text-[9px] text-[var(--text-secondary)]">Space</kbd> to flip back
+                        </span>
+                        <span>Rate below to advance</span>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -558,14 +713,17 @@ export default function FlashcardReviewView({
 
             {/* Quality buttons (only when flipped) */}
             {isFlipped && (
-              <div className="w-full max-w-lg grid grid-cols-6 gap-2">
+              <div className="w-full max-w-2xl xl:max-w-3xl grid grid-cols-6 gap-2 sm:gap-3">
                 {QUALITY_LABELS.map(({ q, label, color, bg }) => (
                   <button
                     key={q}
                     onClick={() => review(q)}
-                    className={`py-2 rounded-xl text-xs font-medium transition-colors ${color} ${bg}`}
+                    className={`group py-2.5 px-1.5 sm:px-2 rounded-xl text-xs font-medium transition-all flex flex-col items-center justify-center gap-1 border border-transparent hover:border-current/30 active:scale-[0.98] ${color} ${bg}`}
                   >
-                    {label}
+                    <span className="font-semibold text-xs tracking-tight">{label}</span>
+                    <kbd className="px-1.5 py-0.5 text-[9px] rounded bg-black/15 dark:bg-white/10 font-mono opacity-60 group-hover:opacity-100 transition-opacity">
+                      {q + 1}
+                    </kbd>
                   </button>
                 ))}
               </div>
@@ -574,9 +732,9 @@ export default function FlashcardReviewView({
         ) : (
           <div className="flex flex-col items-center gap-5 text-center max-w-md">
             <Sparkles size={40} className="text-[var(--accent-color)] opacity-50" />
-            <h2 className="text-lg font-semibold text-[var(--text-primary)]">No cards due right now</h2>
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">All caught up!</h2>
             <p className="text-sm text-[var(--text-muted)]">
-              Generate new flashcards using AI from workspace topics or any custom topic of your choice.
+              All cards have been reviewed for now. Generate new flashcards from workspace topics or add custom cards anytime.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-3 mt-2">
               <button

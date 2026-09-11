@@ -57,6 +57,18 @@ export function WaterfallSuggestions({ suggestions, onSelect, onDismiss }: Water
 
   const canCycle = suggestions.length > SLOT_COUNT;
 
+  // Reset rotation and dimming when suggestions change (e.g. workspace switch)
+  const suggestionsKey = useMemo(
+    () => suggestions.map((s) => s.id).join(","),
+    [suggestions],
+  );
+  const [prevSuggestionsKey, setPrevSuggestionsKey] = useState(suggestionsKey);
+  if (suggestionsKey !== prevSuggestionsKey) {
+    setPrevSuggestionsKey(suggestionsKey);
+    setPage(0);
+    setFading(false);
+  }
+
   useEffect(() => {
     if (!canCycle) { return; }
     const tick = window.setInterval(() => {

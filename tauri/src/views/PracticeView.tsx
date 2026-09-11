@@ -33,6 +33,12 @@ export default function PracticeView() {
   // dashboard's "what to learn next" panel starts a focused session.
   const reviewConceptId = useMemo(() => searchParams.get("concept") ?? undefined, [searchParams]);
 
+  const handleClearConcept = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("concept");
+    setSearchParams(next, { replace: true });
+  };
+
   const initialQuizTopic = useMemo(() => searchParams.get("topic") ?? undefined, [searchParams]);
   const initialQuizKindRaw = useMemo(() => searchParams.get("kind"), [searchParams]);
   const initialQuizKind = initialQuizKindRaw === "pop" || initialQuizKindRaw === "exam"
@@ -57,42 +63,46 @@ export default function PracticeView() {
         </h1>
       </header>
 
-      <div className="flex gap-2 border-b border-[var(--border-color)] bg-[var(--bg-primary)]/40 px-4 py-3">
-        <button
-          onClick={() => setMode("review")}
-          className={`flex-1 rounded-xl border px-4 py-3 text-sm font-medium transition-colors ${
-            practiceMode === "review"
-              ? "border-[var(--accent-color)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
-              : "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:border-[var(--accent-color)]"
-          }`}
-        >
-          Review flashcards
-        </button>
-        <button
-          onClick={() => setMode("quiz")}
-          className={`flex-1 rounded-xl border px-4 py-3 text-sm font-medium transition-colors ${
-            practiceMode === "quiz"
-              ? "border-[var(--accent-color)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
-              : "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:border-[var(--accent-color)]"
-          }`}
-        >
-          Take a quiz
-        </button>
-        <button
-          onClick={() => setMode("feed")}
-          className={`flex-1 rounded-xl border px-4 py-3 text-sm font-medium transition-colors ${
-            practiceMode === "feed"
-              ? "border-[var(--accent-color)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
-              : "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:border-[var(--accent-color)]"
-          }`}
-        >
-          Boom Scroll
-        </button>
+      <div className="border-b border-[var(--border-color)] bg-[var(--bg-primary)]/40 px-4 py-2.5">
+        <div className="flex gap-2 max-w-2xl">
+          <button
+            onClick={() => setMode("review")}
+            className={`flex-1 rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors ${
+              practiceMode === "review"
+                ? "border-[var(--accent-color)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
+                : "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:border-[var(--accent-color)]"
+            }`}
+          >
+            Review flashcards
+          </button>
+          <button
+            onClick={() => setMode("quiz")}
+            className={`flex-1 rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors ${
+              practiceMode === "quiz"
+                ? "border-[var(--accent-color)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
+                : "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:border-[var(--accent-color)]"
+            }`}
+          >
+            Take a quiz
+          </button>
+          <button
+            onClick={() => setMode("feed")}
+            className={`flex-1 rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors ${
+              practiceMode === "feed"
+                ? "border-[var(--accent-color)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
+                : "border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:border-[var(--accent-color)]"
+            }`}
+          >
+            Boom Scroll
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 min-h-0 overflow-hidden">
         <Suspense fallback={<div className="p-4 text-sm text-[var(--text-muted)]">Loading…</div>}>
-          {practiceMode === "review" && <ReviewPane conceptId={reviewConceptId} />}
+          {practiceMode === "review" && (
+            <ReviewPane conceptId={reviewConceptId} onClearConcept={handleClearConcept} />
+          )}
           {practiceMode === "quiz" && (
             <QuizzesPane
               hideSidebar

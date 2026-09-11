@@ -71,6 +71,16 @@ function PaneWorkspaceSidebar({ paneId }: { paneId: PaneId }) {
         <button
           key={`${paneId}-ws-${ws.id}`}
           onClick={() => selectWorkspace(ws.id)}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setActivePaneId(paneId);
+            window.dispatchEvent(
+              new CustomEvent("aetherium:open-workspace-context-menu", {
+                detail: { workspace: ws, x: event.clientX, y: event.clientY, paneId },
+              })
+            );
+          }}
           onDragOver={(event) => {
             if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {return;}
             event.preventDefault();
@@ -232,6 +242,16 @@ function PaneSubWorkspaceTabs({ paneId }: { paneId: PaneId }) {
           <button
             data-testid={`pane-pinned-tab-${paneId}`}
             onClick={() => selectWorkspace(parent.id)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setActivePaneId(paneId);
+              window.dispatchEvent(
+                new CustomEvent("aetherium:open-workspace-context-menu", {
+                  detail: { workspace: parent, x: event.clientX, y: event.clientY, paneId },
+                })
+              );
+            }}
             onDragOver={(event) => {
               if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {return;}
               event.preventDefault();
@@ -285,6 +305,16 @@ function PaneSubWorkspaceTabs({ paneId }: { paneId: PaneId }) {
           <button
             key={workspace.id}
             onClick={() => selectWorkspace(workspace.id)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setActivePaneId(paneId);
+              window.dispatchEvent(
+                new CustomEvent("aetherium:open-workspace-context-menu", {
+                  detail: { workspace, x: event.clientX, y: event.clientY, paneId },
+                })
+              );
+            }}
             onDragOver={(event) => {
               if (!event.dataTransfer.types.includes("application/x-chat-session-ids")) {return;}
               event.preventDefault();

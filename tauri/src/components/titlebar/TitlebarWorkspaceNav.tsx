@@ -1,5 +1,5 @@
 import { useWorkspaceStore } from "../../stores/workspaceStore";
-import type { PaneId } from "../../stores/workspaceStore";
+import type { PaneId, Workspace } from "../../stores/workspaceStore";
 import { CompactMenuSelect } from "../CompactMenuSelect";
 import { WorkspaceNavDropdownSelect } from "../chrome/WorkspaceNavDropdownSelect";
 import { WorkspaceNavigationTabs } from "../workspaceNav/WorkspaceNavigationTabs";
@@ -11,7 +11,17 @@ import {
 } from "../workspaceNav/workspaceNavShared";
 import { isMac, isLinux, isWindows } from "../../lib/platform";
 
-function SplitTitlebarWorkspaceTabs({ paneId }: { paneId: PaneId }) {
+interface SplitTitlebarWorkspaceNavigationProps {
+  onContextMenu?: (workspace: Workspace, x: number, y: number, paneId?: PaneId) => void;
+}
+
+function SplitTitlebarWorkspaceTabs({
+  paneId,
+  onContextMenu,
+}: {
+  paneId: PaneId;
+  onContextMenu?: (workspace: Workspace, x: number, y: number, paneId?: PaneId) => void;
+}) {
   const allWorkspaces = useWorkspaceStore((s) => s.workspaces);
   const rootWorkspaces = allWorkspaces.filter((ws) => ws.parent_workspace_id === null);
   const paneWorkspaceId = useWorkspaceStore((s) => s.panes[paneId].workspaceId);
@@ -29,6 +39,10 @@ function SplitTitlebarWorkspaceTabs({ paneId }: { paneId: PaneId }) {
       workspaces={rootWorkspaces}
       activeWorkspaceId={activeWorkspaceId}
       onSelect={selectWorkspace}
+      onContextMenu={(workspace, x, y) => {
+        setActivePaneId(paneId);
+        onContextMenu?.(workspace, x, y, paneId);
+      }}
       paneId={paneId}
     />
   );
@@ -90,7 +104,9 @@ function SingleTitlebarWorkspaceDropdown({
   );
 }
 
-function SplitTitlebarWorkspaceNavigation() {
+function SplitTitlebarWorkspaceNavigation({
+  onContextMenu,
+}: SplitTitlebarWorkspaceNavigationProps = {}) {
   const splitSizes = useWorkspaceStore((s) => s.splitSizes);
   const workspaceNavigation = useWorkspaceStore((s) => s.workspaceNavigation);
   const splitWorkspaceNavigation = useWorkspaceStore((s) => s.splitWorkspaceNavigation);
@@ -113,7 +129,7 @@ function SplitTitlebarWorkspaceNavigation() {
           {resolvedSplitWorkspaceNavigation === "dropdown" ? (
             <SplitTitlebarWorkspaceDropdown paneId="primary" />
           ) : (
-            <SplitTitlebarWorkspaceTabs paneId="primary" />
+            <SplitTitlebarWorkspaceTabs paneId="primary" onContextMenu={onContextMenu} />
           )}
         </div>
       </div>
@@ -123,7 +139,7 @@ function SplitTitlebarWorkspaceNavigation() {
           {resolvedSplitWorkspaceNavigation === "dropdown" ? (
             <SplitTitlebarWorkspaceDropdown paneId="secondary" />
           ) : (
-            <SplitTitlebarWorkspaceTabs paneId="secondary" />
+            <SplitTitlebarWorkspaceTabs paneId="secondary" onContextMenu={onContextMenu} />
           )}
         </div>
       </div>

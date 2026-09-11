@@ -773,11 +773,19 @@ export default function ChatView() {
   const [messageSources] = useState<Record<string, SearchResult[]>>({});
   const [expandedSources, setExpandedSources] = useState<string | null>(null);
   const [followUps, setFollowUps] = useState<string[]>([]);
-  const [promptBankPrompts, setPromptBankPrompts] = useState<string[]>([]);
-  // Same suggestions, retaining which workspace each came from. A parent
-  // workspace's bank includes its children's prompts, so a card can be labelled
-  // with its origin and open the chat there.
-  const [promptBankEntries, setPromptBankEntries] = useState<PromptBankEntry[]>([]);
+  // Workspace-keyed cache of prompt bank suggestions so switching between
+  // workspaces renders instant suggestions without delay or cross-workspace leakage.
+  const [promptBankCache, setPromptBankCache] = useState<Record<string, PromptBankEntry[]>>({});
+  const promptBankEntries = useMemo(() => {
+    if (!effectiveWorkspaceId || activeChatMessages.length > 0) {
+      return [];
+    }
+    return promptBankCache[effectiveWorkspaceId] ?? [];
+  }, [effectiveWorkspaceId, activeChatMessages.length, promptBankCache]);
+
+  const promptBankPrompts = useMemo(() => {
+    return promptBankEntries.map((entry) => entry.prompt);
+  }, [promptBankEntries]);
   const followUpsGenRef = useRef(0);
 
   // Per-message metadata (tok/s and duration) persisted on the Message itself;
@@ -1318,8 +1326,6 @@ export default function ChatView() {
 
   useEffect(() => {
     if (!effectiveWorkspaceId || activeChatMessages.length > 0) {
-      setPromptBankPrompts([]);
-      setPromptBankEntries([]);
       return;
     }
 
@@ -1327,18 +1333,23 @@ export default function ChatView() {
     api.workspace.listPromptSuggestions(effectiveWorkspaceId, 12)
       .then((suggestions) => {
         if (!cancelled) {
-          setPromptBankPrompts(suggestions.map((suggestion) => suggestion.prompt));
-          setPromptBankEntries(suggestions.map((suggestion) => ({
+          const entries = suggestions.map((suggestion) => ({
             prompt: suggestion.prompt,
             workspaceId: suggestion.workspace_id,
             workspaceName: suggestion.workspace_name,
-          })));
+          }));
+          setPromptBankCache((prev) => ({
+            ...prev,
+            [effectiveWorkspaceId]: entries,
+          }));
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setPromptBankPrompts([]);
-          setPromptBankEntries([]);
+          setPromptBankCache((prev) => ({
+            ...prev,
+            [effectiveWorkspaceId]: [],
+          }));
         }
       });
 
@@ -2954,7 +2965,7 @@ export default function ChatView() {
     hasComposerHeader,
     showComposerHeader,
     waterfallSuggestions,
-    handleDismissSuggestion,
+    handleDismissSuggestion: baseDismissSuggestion,
   } = useComposerSuggestions({
     activeWorkspace,
     activeFolder,
@@ -2969,6 +2980,23 @@ export default function ChatView() {
     activeChatId,
     effectiveWorkspaceId,
   });
+
+  const handleDismissSuggestion = useCallback((suggestion: ComposerSuggestion) => {
+    baseDismissSuggestion(suggestion);
+    if (effectiveWorkspaceId) {
+      setPromptBankCache((prev) => {
+        const current = prev[effectiveWorkspaceId];
+        if (!current) { return prev; }
+        const key = suggestion.prompt.trim().toLowerCase();
+        return {
+          ...prev,
+          [effectiveWorkspaceId]: current.filter(
+            (entry) => entry.prompt.trim().toLowerCase() !== key,
+          ),
+        };
+      });
+    }
+  }, [baseDismissSuggestion, effectiveWorkspaceId]);
 
   // Map model_id to display name from global labels or priority list
   const modelDisplayName = (modelId: string) => resolveModelDisplayName(modelId, modelLabels, aiModelList);

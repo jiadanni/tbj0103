@@ -240,12 +240,13 @@ const setActiveFolderId = vi.fn();
 const setActiveWorkspaceId = vi.fn();
 let mockWorkspacePane: Record<string, unknown> | null = null;
 let mockActiveChatId: string | null = null;
+let mockScopedWorkspaceId: string | null = null;
 
 vi.mock("@/lib/workspacePane", () => ({
   useScopedChat: () => ({ activeChat: mockActiveChatId, activeChatId: mockActiveChatId, setActiveChatId }),
   useScopedFolders: () => [],
   useScopedWorkspace: () => ({
-    activeWorkspaceId: "ws-1",
+    activeWorkspaceId: mockScopedWorkspaceId ?? "ws-1",
     activeFolderId: null,
     setActiveWorkspaceId,
     setActiveFolderId,
@@ -293,6 +294,7 @@ describe("ChatView", () => {
     __resetWorkspacePromptsDedup();
     mockWorkspacePane = null;
     mockActiveChatId = null;
+    mockScopedWorkspaceId = null;
 
     useWorkspaceStore.setState({
       workspaces: [
@@ -1295,5 +1297,76 @@ describe("ChatView", () => {
     await flushMicrotasks();
     await new Promise((resolve) => setTimeout(resolve, 5));
     expect(api.workspace.generateWorkspacePrompts).toHaveBeenCalledTimes(1);
+  });
+
+  it("caches prompt suggestions per workspace and does not leak prompts across workspace switches", async () => {
+    (api.workspace.listPromptSuggestions as ReturnType<typeof vi.fn>).mockImplementation((wsId: string) => {
+      if (wsId === "ws-1") {
+        return Promise.resolve([
+          { id: "p1", prompt: "How does Rust ownership work?", tags: ["rust"], score: 1, workspace_id: "ws-1", workspace_name: "Default Workspace" },
+        ]);
+      }
+      if (wsId === "ws-2") {
+        return Promise.resolve([
+          { id: "p2", prompt: "How does React state work?", tags: ["react"], score: 1, workspace_id: "ws-2", workspace_name: "Frontend Workspace" },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    useWorkspaceStore.setState((s) => ({
+      workspaces: [
+        ...s.workspaces,
+        {
+          id: "ws-2",
+          name: "Frontend Workspace",
+          created_at: "",
+          updated_at: "",
+          is_hidden: false,
+          description: "",
+          prompt_instructions: "",
+          topic_signature: {
+            auto_detected_tags: [],
+            custom_tags: [],
+            excluded_tags: [],
+            intent_patterns: [],
+            suggested_prompts: [],
+            generated_at: null,
+            message_count_at_gen: null,
+            ollama_enriched: false,
+          },
+          signature_updated_at: null,
+          parent_workspace_id: null,
+          icon: "",
+          order_index: 1,
+          last_message_at: null,
+          survey_data: null,
+        },
+      ],
+    }));
+
+    mockScopedWorkspaceId = "ws-1";
+    const { unmount } = await renderChatView();
+    await flushMicrotasks();
+    await waitFor(() => {
+      expect(api.workspace.listPromptSuggestions).toHaveBeenCalledWith("ws-1", 12);
+    });
+    expect(screen.getAllByText("How does Rust ownership work?").length).toBeGreaterThan(0);
+    unmount();
+
+    // Switch to ws-2
+    mockScopedWorkspaceId = "ws-2";
+    const { unmount: unmount2 } = await renderChatView();
+    // ws-1 prompt must NOT be in the document
+    expect(screen.queryByText("How does Rust ownership work?")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getAllByText("How does React state work?").length).toBeGreaterThan(0);
+    });
+    unmount2();
+
+    // Switch back to ws-1 - should render cached ws-1 prompt immediately
+    mockScopedWorkspaceId = "ws-1";
+    await renderChatView();
+    expect(screen.getAllByText("How does Rust ownership work?").length).toBeGreaterThan(0);
   });
 });

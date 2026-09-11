@@ -91,10 +91,14 @@ export function useComposerSuggestions({
   const hasComposerHeader = composerSuggestionRows.length > 0;
   const showComposerHeader = hasComposerHeader && !isComposerHeaderCollapsed;
 
-  // Locally suppress prompts the user has dismissed (X'd) this session so they
-  // disappear immediately regardless of source (bank / AI / fallback). The
-  // dismissal is also persisted to the backend as negative feedback below.
-  const [dismissedPromptKeys, setDismissedPromptKeys] = useState<Set<string>>(() => new Set());
+  // Local dismissals tracked per workspace so suppression is workspace-scoped
+  // without leaking across switches.
+  const [dismissedByWorkspace, setDismissedByWorkspace] = useState<Record<string, Set<string>>>({});
+  const workspaceKey = effectiveWorkspaceId ?? "";
+  const dismissedPromptKeys = useMemo(
+    () => dismissedByWorkspace[workspaceKey] ?? new Set<string>(),
+    [dismissedByWorkspace, workspaceKey],
+  );
 
   const waterfallSuggestions = useMemo(() => {
     if (activeChatId) { return []; }
@@ -104,15 +108,16 @@ export function useComposerSuggestions({
   }, [activeChatId, composerSuggestionRows, dismissedPromptKeys]);
 
   const handleDismissSuggestion = useCallback((suggestion: ComposerSuggestion) => {
-    setDismissedPromptKeys((prev) => {
-      const next = new Set(prev);
+    setDismissedByWorkspace((prev) => {
+      const current = prev[workspaceKey] ?? new Set<string>();
+      const next = new Set(current);
       next.add(suggestion.prompt.trim().toLowerCase());
-      return next;
+      return { ...prev, [workspaceKey]: next };
     });
     if (effectiveWorkspaceId) {
       void api.workspace.dismissPromptSuggestion(effectiveWorkspaceId, suggestion.prompt);
     }
-  }, [effectiveWorkspaceId]);
+  }, [effectiveWorkspaceId, workspaceKey]);
 
   return {
     composerWorkspaceRow,

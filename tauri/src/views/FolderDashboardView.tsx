@@ -115,7 +115,7 @@ function MetricSummaryStrip({
     <div className="flex flex-wrap items-center gap-2">
       <MetricStat label="Topics" value={topics} onClick={onTopics} />
       <MetricStat label="Sources" value={sources} />
-      <MetricStat label="Due" value={dueReview} onClick={onDueReview} />
+      <MetricStat label="Review" value={dueReview} onClick={onDueReview} />
       <MetricStat label="Goals" value={activeGoals} />
     </div>
   );
@@ -536,7 +536,7 @@ function NextUpCard({ workspaceId }: { workspaceId: string }) {
       return `${item.unmet_prereqs} prerequisite${item.unmet_prereqs === 1 ? "" : "s"} first`;
     }
     if (item.due_cards > 0) {
-      return `Ready — ${item.due_cards} card${item.due_cards === 1 ? "" : "s"} due`;
+      return `Ready — ${item.due_cards} card${item.due_cards === 1 ? "" : "s"} to review`;
     }
     if (item.total_cards === 0) {
       return "Ready — no cards yet";
