@@ -120,15 +120,16 @@ function workspaceTabClassName({
   isActive: boolean;
   isDragTarget?: boolean;
 }) {
-  // h-full + self-end so the tab meets the titlebar's bottom border, the way a
-  // browser tab does. A fixed height with `mt-1` inside an `items-center` strip
-  // left the tabs sitting a few px below the chevron/+/action buttons.
-  return `relative flex h-[34px] items-center gap-1.5 self-end rounded-t-xl border border-b-0 px-3.5 text-sm font-medium whitespace-nowrap transition-all select-none ${
+  // self-end so the tab meets the titlebar's bottom border, the way a browser
+  // tab does. Fill + a 2px top accent rail is the only active-state signal —
+  // no border ring, no drop shadow — matching the single-signal rule used for
+  // sidebar nav items and chat list rows.
+  return `relative flex h-[30px] items-center gap-1.5 self-end rounded-t-lg px-3 text-[13px] font-medium whitespace-nowrap transition-all select-none ${
     isDragTarget
-      ? "border-[rgba(var(--accent-color-rgb),0.45)] bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)] shadow-sm"
+      ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
       : isActive
-      ? "border-[var(--surface-border)] bg-[var(--surface)] text-[var(--text-primary)] shadow-[0_-10px_25px_-20px_rgba(15,23,42,0.55)]"
-      : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+      ? "bg-[var(--surface)] text-[var(--text-primary)]"
+      : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
   }`;
 }
 

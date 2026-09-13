@@ -27,22 +27,23 @@ const RoadmapPane = lazy(() =>
 );
 
 function timeAgo(iso: string | undefined | null) {
-  if (!iso) { return "recently"; }
+  if (!iso) { return "now"; }
   const parsed = new Date(iso).getTime();
-  if (isNaN(parsed)) { return "recently"; }
+  if (isNaN(parsed)) { return "now"; }
   const diffMs = Date.now() - parsed;
   const minutes = Math.floor(diffMs / 60000);
-  if (minutes < 1) { return "just now"; }
-  if (minutes < 60) { return `${minutes}m ago`; }
+  if (minutes < 1) { return "now"; }
+  if (minutes < 60) { return `${minutes}m`; }
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) { return `${hours}h ago`; }
-  return `${Math.floor(hours / 24)}d ago`;
+  if (hours < 24) { return `${hours}h`; }
+  return `${Math.floor(hours / 24)}d`;
 }
 
 /**
- * One metric inside the summary strip. Renders as a button only when there is
- * somewhere to go, so zero-value metrics stay inert rather than advertising a
- * dead click target.
+ * One metric folded into the header: a mono tabular count over a muted
+ * caption, matching the workspace-tab count style used elsewhere in the
+ * shell chrome. Renders as a button only when there is somewhere to go, so
+ * zero-value metrics stay inert rather than advertising a dead click target.
  */
 function MetricStat({
   label,
@@ -55,46 +56,31 @@ function MetricStat({
 }) {
   const isZero = value === 0 || value === "0";
   const content = (
-    <>
+    <span className="flex flex-col gap-px">
       <span
-        aria-hidden
-        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-          isZero ? "bg-[var(--text-muted)] opacity-40" : "bg-[var(--text-secondary)]"
-        }`}
-      />
-      <span
-        className={`text-[11px] font-semibold tabular-nums ${
+        className={`font-mono text-[15px] tabular-nums leading-none ${
           isZero ? "text-[var(--text-muted)]" : "text-[var(--text-primary)]"
         }`}
       >
         {value}
       </span>
-      <span className="text-[11px] text-[var(--text-muted)]">{label}</span>
-    </>
+      <span className="text-[10.5px] leading-none text-[var(--text-muted)]">{label}</span>
+    </span>
   );
-  // Discrete chips rather than a dot-separated run: each metric reads as its own
-  // object, and the leading dot matches the status-dot language used on graph
-  // nodes and in the status bar.
-  const chipClass =
-    "flex items-center gap-1.5 rounded-md border border-[var(--surface-border)] bg-[var(--surface-hover)] px-2 py-1";
   if (onClick) {
     return (
-      <button
-        type="button"
-        onClick={onClick}
-        className={`${chipClass} transition-colors hover:border-[rgba(var(--accent-color-rgb),0.35)] hover:bg-[var(--surface-raised)]`}
-      >
+      <button type="button" onClick={onClick} className="text-left">
         {content}
       </button>
     );
   }
-  return <span className={chipClass}>{content}</span>;
+  return content;
 }
 
 /**
- * Replaces the former 2x2 grid of near-empty stat cards. A single strip carries
- * the same numbers in roughly one quarter of the vertical space, which is what
- * buys the roadmap canvas its extra height.
+ * Metrics folded into the header next to the workspace title, separated by a
+ * hairline rule rather than living in their own strip. Buys the roadmap
+ * canvas the vertical space the former stat cards took up.
  */
 function MetricSummaryStrip({
   topics,
@@ -112,7 +98,7 @@ function MetricSummaryStrip({
   onDueReview?: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex items-center gap-4">
       <MetricStat label="Topics" value={topics} onClick={onTopics} />
       <MetricStat label="Sources" value={sources} />
       <MetricStat label="Review" value={dueReview} onClick={onDueReview} />
@@ -133,36 +119,30 @@ function QuickActionsCard({
   onPractice: () => void;
 }) {
   const actions: { label: string; icon: React.ReactNode; onClick: () => void }[] = [
-    { label: "New Chat", icon: <MessageSquare size={14} />, onClick: onNewChat },
-    { label: "New Note", icon: <FileText size={14} />, onClick: onNewNote },
-    { label: "Upload Source", icon: <Plus size={14} />, onClick: onUploadSource },
+    { label: "New chat", icon: <MessageSquare size={14} />, onClick: onNewChat },
+    { label: "New note", icon: <FileText size={14} />, onClick: onNewNote },
+    { label: "Upload source", icon: <Plus size={14} />, onClick: onUploadSource },
     { label: "Practice", icon: <Target size={14} />, onClick: onPractice },
   ];
   return (
-    <section className="surface-card rounded-xl p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="label-chrome">
-          Quick Actions
-        </h2>
-      </div>
-      <div className="grid grid-cols-2 gap-1.5">
-        {actions.map((action) => (
-          <button
-            key={action.label}
-            type="button"
-            onClick={action.onClick}
-            className="surface-card surface-card-interactive group flex items-center gap-2 rounded-lg px-2 py-2 text-left"
-          >
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]">
-              {action.icon}
-            </span>
-            <span className="truncate text-xs font-medium text-[var(--text-primary)]">
-              {action.label}
-            </span>
-          </button>
+    <div className="flex h-full flex-col px-[13px] py-[11px]">
+      <h2 className="label-chrome mb-[7px]">Actions</h2>
+      <div className="flex flex-col">
+        {actions.map((action, i) => (
+          <div key={action.label}>
+            {i > 0 && <div className="h-px bg-[var(--surface-border)]" />}
+            <button
+              type="button"
+              onClick={action.onClick}
+              className="flex h-[29px] w-full items-center gap-2 text-left text-[var(--text-primary)]"
+            >
+              <span className="shrink-0 text-[var(--accent-color)]">{action.icon}</span>
+              <span className="flex-1 truncate text-xs">{action.label}</span>
+            </button>
+          </div>
         ))}
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -301,16 +281,36 @@ export default function FolderDashboardView() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* Header: workspace name + search */}
-      <header className="border-b border-[var(--surface-border)] bg-[linear-gradient(135deg,rgba(var(--accent-color-rgb),0.10),rgba(255,255,255,0)_50%),var(--surface)] px-4 py-3">
+      {/* Header: workspace name + metrics folded in + search */}
+      <header className="border-b border-[var(--surface-border)] bg-[var(--surface)] px-4 py-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="min-w-0 flex-1">
-            <div className="label-chrome">
-              Dashboard
+          <div className="flex min-w-0 items-center gap-4">
+            <div className="min-w-0">
+              <div className="label-chrome tracking-[0.12em]">
+                Dashboard
+              </div>
+              <h1 className="mt-0.5 text-xl font-semibold tracking-[-0.01em] text-[var(--text-primary)]">
+                {summary.workspace_name || workspace?.name || "Learning workspace"}
+              </h1>
             </div>
-            <h1 className="mt-0.5 text-xl font-semibold text-[var(--text-primary)]">
-              {summary.workspace_name || workspace?.name || "Learning workspace"}
-            </h1>
+
+            <div className="hidden h-[34px] w-px shrink-0 bg-[var(--surface-border)] lg:block" />
+
+            <MetricSummaryStrip
+              topics={summary.overview.topics}
+              sources={summary.overview.sources}
+              dueReview={summary.review.topics_due_for_review}
+              activeGoals={summary.overview.active_goals}
+              onTopics={summary.overview.topics > 0 ? () => navigate("/topics") : undefined}
+              onDueReview={
+                summary.review.topics_due_for_review > 0
+                  ? () => navigate(
+                    summary.review.route.path,
+                    summary.review.route.state ? { state: summary.review.route.state } : undefined,
+                  )
+                  : undefined
+              }
+            />
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -319,33 +319,17 @@ export default function FolderDashboardView() {
         </div>
       </header>
 
-      {/* Top strip: metrics + goals + continue learning side-by-side */}
-      <div className="border-b border-[var(--surface-border)] bg-[var(--bg-base)] px-4 py-3">
-        <MetricSummaryStrip
-          topics={summary.overview.topics}
-          sources={summary.overview.sources}
-          dueReview={summary.review.topics_due_for_review}
-          activeGoals={summary.overview.active_goals}
-          onTopics={summary.overview.topics > 0 ? () => navigate("/topics") : undefined}
-          onDueReview={
-            summary.review.topics_due_for_review > 0
-              ? () => navigate(
-                summary.review.route.path,
-                summary.review.route.state ? { state: summary.review.route.state } : undefined,
-              )
-              : undefined
-          }
-        />
-
-        {/* items-start (not stretch) so a card with one goal stays short instead
-            of matching Continue Learning's height in dead space. */}
-        <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(16rem,1fr)_minmax(16rem,1fr)_minmax(16rem,1fr)_minmax(20rem,1.3fr)] xl:items-start">
+      {/* One panel, four columns separated by hairline dividers */}
+      <div className="border-b border-[var(--surface-border)] px-4 py-3">
+        <div className="surface-card grid overflow-hidden rounded-xl [grid-template-columns:minmax(0,1fr)_1px_minmax(0,0.85fr)_1px_minmax(0,0.85fr)_1px_minmax(0,1.25fr)]">
           <NextUpCard workspaceId={activeWorkspaceId} />
+          <div className="bg-[var(--surface-border)]" />
 
           <GoalsCard
             workspaceId={activeWorkspaceId}
             includeDescendants={includeDescendants}
           />
+          <div className="bg-[var(--surface-border)]" />
 
           <QuickActionsCard
             onNewChat={() => navigate("/chat", { state: { createNewChat: true } })}
@@ -353,67 +337,64 @@ export default function FolderDashboardView() {
             onUploadSource={() => navigate("/sources")}
             onPractice={() => navigate(summary.review.route.path, summary.review.route.state ? { state: summary.review.route.state } : undefined)}
           />
+          <div className="bg-[var(--surface-border)]" />
 
-          <section className="surface-card rounded-xl p-3">
-            <div className="mb-2 flex items-center justify-between">
+          <div className="flex flex-col px-[13px] py-[11px]">
+            <div className="mb-[7px] flex items-center justify-between">
               <h2 className="label-chrome">
-                Continue Learning
+                Continue
               </h2>
               <button
                 onClick={() => navigate("/history")}
-                className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-secondary)]"
+                className="flex items-center gap-1 text-[10.5px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-secondary)]"
               >
-                All
-                <ArrowRight size={11} />
+                History
+                <ArrowRight size={10} />
               </button>
             </div>
             {continueThreads.length > 0 ? (
-              <div className="space-y-0.5">
-                {continueThreads.map((item) => (
-                  <button
-                    key={item.session_id}
-                    onClick={() => navigate(item.route.path, item.route.state ? { state: item.route.state } : undefined)}
-                    onMouseEnter={() => setActiveContinueThreadId(item.session_id)}
-                    onMouseLeave={() => setActiveContinueThreadId((current) => current === item.session_id ? null : current)}
-                    onFocus={() => setActiveContinueThreadId(item.session_id)}
-                    onBlur={() => setActiveContinueThreadId((current) => current === item.session_id ? null : current)}
-                    className="group flex w-full items-start gap-2 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-[var(--surface-hover)]"
-                  >
-                    <MessageSquare size={12} className="mt-[3px] shrink-0 text-[var(--text-muted)]" />
-                    <div className="min-w-0 flex-1">
-                      {/* Title and age share a line so each row is two lines, not
-                          three -- three left the card looking sparse. */}
-                      <div className="flex items-baseline gap-2">
-                        <span className="truncate text-sm font-medium text-[var(--text-primary)]">
+              <div className="flex flex-col">
+                {continueThreads.map((item, i) => (
+                  <div key={item.session_id}>
+                    {i > 0 && <div className="h-px bg-[var(--surface-border)]" />}
+                    <button
+                      onClick={() => navigate(item.route.path, item.route.state ? { state: item.route.state } : undefined)}
+                      onMouseEnter={() => setActiveContinueThreadId(item.session_id)}
+                      onMouseLeave={() => setActiveContinueThreadId((current) => current === item.session_id ? null : current)}
+                      onFocus={() => setActiveContinueThreadId(item.session_id)}
+                      onBlur={() => setActiveContinueThreadId((current) => current === item.session_id ? null : current)}
+                      className="group flex w-full items-baseline gap-2.5 py-1.5 text-left"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs font-medium text-[var(--text-primary)]">
                           {item.title}
-                        </span>
-                        <span className="ml-auto shrink-0 text-[10px] text-[var(--text-muted)]">
-                          {timeAgo(item.updated_at)}
-                        </span>
+                        </div>
+                        {/* Always shown, clamped to a single line: the row's height
+                            never depends on hover, so nothing below it can shift.
+                            Hover only brightens the text. Reserving two hidden
+                            lines instead left the list looking sparse. */}
+                        <div
+                          className={`mt-px truncate text-[11px] transition-colors duration-150 ${
+                            activeContinueThreadId === item.session_id
+                              ? "text-[var(--text-secondary)]"
+                              : "text-[var(--text-muted)]"
+                          }`}
+                        >
+                          {item.folder_name ? `${item.folder_name} · ` : ""}
+                          {item.last_snippet || "No messages yet"}
+                        </div>
                       </div>
-                      {/* Always shown, clamped to a single line: the row's height
-                          never depends on hover, so nothing below it can shift.
-                          Hover only brightens the text. Reserving two hidden
-                          lines instead left the list looking sparse. */}
-                      <div
-                        className={`truncate text-[11px] transition-colors duration-150 ${
-                          activeContinueThreadId === item.session_id
-                            ? "text-[var(--text-secondary)]"
-                            : "text-[var(--text-muted)]"
-                        }`}
-                      >
-                        {item.folder_name ? `${item.folder_name} · ` : ""}
-                        {item.last_snippet || "No messages yet"}
-                      </div>
-                    </div>
-                    <ArrowRight size={12} className="mt-[3px] shrink-0 text-[var(--text-muted)] transition-transform group-hover:translate-x-0.5 group-hover:text-[var(--accent-color)]" />
-                  </button>
+                      <span className="shrink-0 font-mono text-[10px] tabular-nums text-[var(--text-muted)]">
+                        {timeAgo(item.updated_at)}
+                      </span>
+                    </button>
+                  </div>
                 ))}
               </div>
             ) : (
               <div className="text-xs text-[var(--text-muted)]">Nothing to resume yet.</div>
             )}
-          </section>
+          </div>
         </div>
       </div>
 
@@ -530,49 +511,33 @@ function NextUpCard({ workspaceId }: { workspaceId: string }) {
     };
   }, [workspaceId]);
 
-  /** Why this concept is where it is, in the user's terms. */
-  function reasonFor(item: LearningPathItem): string {
-    if (item.unmet_prereqs > 0) {
-      return `${item.unmet_prereqs} prerequisite${item.unmet_prereqs === 1 ? "" : "s"} first`;
-    }
-    if (item.due_cards > 0) {
-      return `Ready — ${item.due_cards} card${item.due_cards === 1 ? "" : "s"} to review`;
-    }
-    if (item.total_cards === 0) {
-      return "Ready — no cards yet";
-    }
-    if (item.unlocks > 0) {
-      return `Ready — unlocks ${item.unlocks}`;
-    }
-    return "Ready to learn";
-  }
-
   return (
-    <section className="surface-card rounded-xl p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="label-chrome">Learn Next</h2>
+    <div className="px-[13px] py-[11px]">
+      <div className="mb-[7px] flex items-center justify-between">
+        <h2 className="label-chrome">Learn next</h2>
         <button
           onClick={() => navigate("/topics")}
-          className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-secondary)]"
+          className="flex items-center gap-1 text-[10.5px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-secondary)]"
         >
           All
-          <ArrowRight size={11} />
+          <ArrowRight size={10} />
         </button>
       </div>
 
       {items === null ? (
-        <p className="px-1 py-3 text-[11px] text-[var(--text-muted)]">Loading…</p>
+        <p className="py-3 text-[11px] text-[var(--text-muted)]">Loading…</p>
       ) : items.length === 0 ? (
-        <p className="px-1 py-3 text-[11px] leading-relaxed text-[var(--text-muted)]">
+        <p className="py-3 text-[11px] leading-relaxed text-[var(--text-muted)]">
           Nothing to suggest yet. Analyse a workspace to build its concept map,
           and the next thing to learn shows up here.
         </p>
       ) : (
-        <ul className="space-y-1.5">
-          {items.map((item) => {
+        <div className="flex flex-col">
+          {items.map((item, i) => {
             const blocked = item.unmet_prereqs > 0;
             return (
-              <li key={item.concept_id}>
+              <div key={item.concept_id}>
+                {i > 0 && <div className="h-px bg-[var(--surface-border)]" />}
                 <button
                   type="button"
                   // A blocked concept still navigates — seeing why it is
@@ -580,37 +545,31 @@ function NextUpCard({ workspaceId }: { workspaceId: string }) {
                   onClick={() =>
                     navigate(`/practice?tab=review&concept=${encodeURIComponent(item.concept_id)}`)
                   }
-                  className="surface-card surface-card-interactive group flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left"
+                  className="group flex h-[29px] w-full items-center gap-2 text-left"
                 >
-                  <span
-                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
-                      blocked
-                        ? "bg-[var(--bg-hover)] text-[var(--text-muted)]"
-                        : "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
-                    }`}
-                  >
-                    {blocked ? <Lock size={13} /> : <Sparkles size={13} />}
+                  <span className="w-3.5 shrink-0 font-mono text-[10px] tabular-nums text-[var(--text-muted)]">
+                    {String(i + 1).padStart(2, "0")}
                   </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-xs font-medium text-[var(--text-primary)]">
-                      {item.concept_name}
-                    </span>
-                    <span className="block truncate text-[10px] text-[var(--text-muted)]">
-                      {reasonFor(item)}
-                      {item.hierarchy_path ? ` · ${item.hierarchy_path}` : ""}
-                    </span>
+                  <span className="min-w-0 flex-1 truncate text-xs text-[var(--text-primary)]">
+                    {item.concept_name}
                   </span>
-                  <ArrowRight
-                    size={12}
-                    className="shrink-0 text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100"
-                  />
+                  {blocked ? (
+                    <Lock size={11} className="shrink-0 text-[var(--text-muted)]" />
+                  ) : (
+                    <span className="shrink-0 font-mono text-[10px] tabular-nums text-[var(--accent-color)]">
+                      {item.due_cards > 0 ? item.due_cards : item.total_cards}
+                    </span>
+                  )}
+                  <span className="hidden shrink-0 text-[10px] text-[var(--text-muted)] sm:inline">
+                    {blocked ? "blocked" : "due"}
+                  </span>
                 </button>
-              </li>
+              </div>
             );
           })}
-        </ul>
+        </div>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -673,22 +632,20 @@ function GoalsCard({
   }
 
   return (
-    <section className="flex min-h-0 flex-col surface-card rounded-xl">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--surface-border)]">
-        <div className="label-chrome">
-          Workspace goals
-        </div>
+    <div className="flex min-h-0 flex-col px-[13px] py-[11px]">
+      <div className="mb-[7px] flex items-center justify-between">
+        <h2 className="label-chrome">Goals</h2>
         <button
           onClick={() => setShowCreate(true)}
-          className="inline-flex items-center gap-1 rounded-md border border-[var(--border-color)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+          className="flex items-center gap-1 text-[10.5px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-secondary)]"
         >
           <Plus size={10} /> New
         </button>
       </div>
 
-      <div className="flex-1 min-h-0 max-h-[220px] overflow-y-auto px-3 py-2 space-y-1">
+      <div className="flex min-h-0 max-h-[220px] flex-col overflow-y-auto">
         {showCreate && (
-          <div className="mb-2 rounded-lg border border-[var(--accent-color)]/40 bg-[var(--bg-elevated)] p-2">
+          <div className="mb-1.5 rounded-lg border border-[var(--accent-color)]/40 bg-[var(--bg-elevated)] p-2">
             <input
               autoFocus
               value={newTitle}
@@ -705,7 +662,7 @@ function GoalsCard({
         )}
 
         {goals.length === 0 && !showCreate && (
-          <div className="flex flex-col items-center gap-1.5 px-2 py-6 text-center">
+          <div className="flex flex-col items-center gap-1.5 px-1 py-6 text-center">
             <Target size={18} className="text-[var(--text-muted)]" />
             <p className="text-[11px] text-[var(--text-muted)]">No goals yet</p>
             <button
@@ -717,23 +674,25 @@ function GoalsCard({
           </div>
         )}
 
-        {incomplete.map((goal) => (
-          <GoalRow
-            key={goal.id}
-            goal={goal}
-            inheritedFrom={
-              goal.workspace_id !== workspaceId
-                ? workspaceNameById.get(goal.workspace_id) ?? "parent"
-                : null
-            }
-            onToggle={() => toggleComplete(goal)}
-            onDelete={() => deleteGoal(goal.id)}
-          />
+        {incomplete.map((goal, i) => (
+          <div key={goal.id}>
+            {i > 0 && <div className="h-px bg-[var(--surface-border)]" />}
+            <GoalRow
+              goal={goal}
+              inheritedFrom={
+                goal.workspace_id !== workspaceId
+                  ? workspaceNameById.get(goal.workspace_id) ?? "parent"
+                  : null
+              }
+              onToggle={() => toggleComplete(goal)}
+              onDelete={() => deleteGoal(goal.id)}
+            />
+          </div>
         ))}
 
         {complete.length > 0 && (
-          <div className="pt-2 mt-2 border-t border-[var(--surface-border)]">
-            <div className="px-1 pb-1 text-[9px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          <div className="mt-1 border-t border-[var(--surface-border)] pt-1">
+            <div className="pb-1 text-[9px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
               Completed · {complete.length}
             </div>
             {complete.map((goal) => (
@@ -753,7 +712,7 @@ function GoalsCard({
           </div>
         )}
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -769,7 +728,7 @@ function GoalRow({
   const readOnly = inheritedFrom !== null;
   return (
     <div
-      className={`group flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-[var(--bg-elevated)] ${dim ? "opacity-60" : ""}`}
+      className={`group flex h-[29px] items-center gap-2 ${dim ? "opacity-60" : ""}`}
       title={inheritedFrom ? `Inherited from ${inheritedFrom}` : undefined}
     >
       <button

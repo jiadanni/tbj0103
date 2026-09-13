@@ -378,7 +378,7 @@ describe("Layout", () => {
     });
   });
 
-  it("renders sub-workspace tab bar with compact h-8 height and no phantom padding", () => {
+  it("renders sub-workspace tab bar with compact height and no phantom padding", () => {
     useWorkspaceStore.setState({
       workspaces: [
         { id: "root-1", name: "Parent", description: "", prompt_instructions: "", topic_signature: { auto_detected_tags: [], custom_tags: [], excluded_tags: [], intent_patterns: [], generated_at: null, message_count_at_gen: null, ollama_enriched: false }, signature_updated_at: null, is_hidden: false, created_at: "", updated_at: "", parent_workspace_id: null, icon: "", order_index: 0, last_message_at: null, survey_data: null },
@@ -397,7 +397,7 @@ describe("Layout", () => {
     const subTab = screen.getByRole("button", { name: "Alpha" });
     const bar = subTab.closest("div[data-tauri-drag-region]");
     expect(bar).not.toBeNull();
-    expect(bar?.className).toContain("h-8");
+    expect(bar?.className).toContain("h-[34px]");
     expect(bar?.className).not.toMatch(/\bpl-\[72px\]\b/);
     expect(bar?.className).not.toMatch(/\bpr-\[112px\]\b/);
   });
@@ -760,10 +760,10 @@ describe("Layout", () => {
     const splitAgenticTabs = screen.getAllByRole("button", { name: "Agentic" });
     const splitRustTabs = screen.getAllByRole("button", { name: "Rust" });
 
-    expect(splitAgenticTabs.some((button) => button.className.includes("rounded-t-xl"))).toBe(true);
-    expect(splitAgenticTabs.some((button) => button.className.includes("h-[34px]"))).toBe(true);
+    expect(splitAgenticTabs.some((button) => button.className.includes("rounded-t-lg"))).toBe(true);
+    expect(splitAgenticTabs.some((button) => button.className.includes("h-[30px]"))).toBe(true);
     expect(splitAgenticTabs.some((button) => button.className.includes("bg-[var(--surface)]"))).toBe(true);
-    expect(splitRustTabs.some((button) => button.className.includes("rounded-t-xl"))).toBe(true);
+    expect(splitRustTabs.some((button) => button.className.includes("rounded-t-lg"))).toBe(true);
     expect(splitRustTabs.some((button) => button.className.includes("text-[var(--text-secondary)]"))).toBe(true);
   });
 
