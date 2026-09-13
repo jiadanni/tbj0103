@@ -64,6 +64,15 @@ vi.mock("@/lib/workspacePane", () => ({
   useBubbleUpFlag: () => false,
 }));
 
+// FolderDashboardView only ever needs RoadmapPane to mount; it does not
+// exercise the graph view's own data flow. Mocking it here avoids having to
+// grow this file's @/lib/api mock to cover KnowledgeGraphView's much larger
+// surface (aiModel, background jobs, refresh tasks, etc.) just to satisfy a
+// component this test isn't actually testing.
+vi.mock("@/views/KnowledgeGraphView", () => ({
+  RoadmapPane: () => <div data-testid="roadmap-pane-stub" />,
+}));
+
 const mockNavigate = vi.fn();
 
 vi.mock("react-router-dom", async () => {
@@ -171,7 +180,7 @@ describe("FolderDashboardView", () => {
       expect(mocks.getSummary).toHaveBeenCalledWith("ws-1", { includeDescendants: false });
     });
 
-    expect(await screen.findByText("Continue Learning")).toBeInTheDocument();
+    expect(await screen.findByText("Continue")).toBeInTheDocument();
     expect(screen.getByText("cgroups vs namespaces")).toBeInTheDocument();
     expect(screen.getByText("Rootless container setup")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ask" })).toBeInTheDocument();
@@ -331,7 +340,10 @@ describe("FolderDashboardView", () => {
         </MemoryRouter>,
       );
 
-      expect(await screen.findByText(/2 prerequisites first/)).toBeInTheDocument();
+      // Blocked concepts show a lock icon and a "blocked" label instead of a
+      // due-count, rather than prose explaining the prerequisite count.
+      expect(await screen.findByText("Attention")).toBeInTheDocument();
+      expect(screen.getByText("blocked")).toBeInTheDocument();
     });
 
     it("reports due cards on a ready concept", async () => {
@@ -345,7 +357,8 @@ describe("FolderDashboardView", () => {
         </MemoryRouter>,
       );
 
-      expect(await screen.findByText(/Ready — 4 cards to review/)).toBeInTheDocument();
+      expect(await screen.findByText("4")).toBeInTheDocument();
+      expect(screen.getByText("due")).toBeInTheDocument();
     });
 
     it("starts a review session scoped to the chosen concept", async () => {

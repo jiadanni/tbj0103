@@ -147,14 +147,15 @@ export function SessionItem({
           openSession(session);
         }
       }}
-      className={`group flex min-w-0 cursor-pointer select-none items-center gap-1 rounded-xl border border-transparent px-3 py-2 transition-colors ${isSelected
-        ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
-        : isActive
-          ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
-          : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+      className={`group relative flex min-w-0 cursor-pointer select-none items-center gap-1 h-[30px] transition-colors ${isSelected || isActive
+        ? "bg-[rgba(var(--accent-color-rgb),0.10)] text-[var(--text-primary)]"
+        : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
         }`}
-      style={{ paddingLeft: `${12 + depth * 20}px` }}
+      style={{ paddingLeft: `${12 + depth * 20}px`, paddingRight: 12 }}
     >
+      {(isSelected || isActive) && (
+        <span className="absolute inset-y-0 left-0 w-0.5 bg-[var(--accent-color)]" />
+      )}
       {selectMode && (
         <button
           onClick={(e) => { e.stopPropagation(); toggleSelect(session.id); }}
@@ -196,7 +197,7 @@ export function SessionItem({
           className={`absolute inset-y-0 right-0 flex items-center justify-end transition-opacity group-hover:opacity-0 group-focus-within:opacity-0 ${isRenaming ? "opacity-0" : "opacity-100"
             }`}
         >
-          <span className={`text-[var(--text-muted)] ${isSplitPane ? "text-[10px]" : "text-[10px]"}`}>
+          <span className="font-mono tabular-nums text-[10px] text-[var(--text-muted)]">
             {timeAgo}
           </span>
         </div>

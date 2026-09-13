@@ -64,7 +64,7 @@ function MiniBar({ percent, label, sublabel }: { percent: number; label: string;
           style={{ width: `${percent}%` }}
         />
       </div>
-      <span className="text-xs tabular-nums text-[var(--text-secondary)] leading-none">
+      <span className="font-mono text-xs tabular-nums text-[var(--text-secondary)] leading-none">
         {sublabel ?? `${percent}%`}
       </span>
     </div>
@@ -200,7 +200,7 @@ function CoreBars({ cores, aggregate }: { cores: number[]; aggregate: number }) 
           style={{ width: `${aggregate}%` }}
         />
       </div>
-      <span className="text-xs tabular-nums text-[var(--text-secondary)] leading-none">
+      <span className="font-mono text-xs tabular-nums text-[var(--text-secondary)] leading-none">
         {aggregate}%
       </span>
       {anchorRect && <CoreGraphPopup cores={displayed} anchorRect={anchorRect} sectionRect={sectionRect} />}
@@ -656,7 +656,7 @@ function ZoomSlider() {
             background: `linear-gradient(to right, rgba(var(--accent-color-rgb),0.6) 0%, rgba(var(--accent-color-rgb),0.6) ${percent}%, color-mix(in srgb, var(--border-color), transparent 50%) ${percent}%, color-mix(in srgb, var(--border-color), transparent 50%) 100%)`,
           }}
         />
-        <span className="text-xs tabular-nums text-[var(--text-secondary)] leading-none w-7 text-right">
+        <span className="font-mono text-xs tabular-nums text-[var(--text-secondary)] leading-none w-7 text-right">
           {clamped}
         </span>
       </div>
@@ -1042,7 +1042,7 @@ export default function StatusBar() {
         {!hasAnyJobOrPrompt && (
           <div className="flex shrink-0 items-center gap-1.5 text-xs text-[var(--text-muted)]">
             <span className="h-1.5 w-1.5 rounded-full bg-[var(--text-muted)]/50" aria-hidden="true" />
-            <span>Idle</span>
+            <span className="font-mono">idle</span>
           </div>
         )}
       </div>
@@ -1087,7 +1087,7 @@ export default function StatusBar() {
                   <span className="text-xs text-[var(--text-secondary)] leading-none font-medium">VRAM:</span>
                     <Tooltip content={stats?.gpu_name ?? ""}>
                       <span
-                        className="text-xs text-[var(--text-secondary)] leading-none tabular-nums truncate max-w-[100px]"
+                        className="font-mono text-xs text-[var(--text-secondary)] leading-none tabular-nums truncate max-w-[100px]"
                       >
                         {gpuLabel}
                       </span>

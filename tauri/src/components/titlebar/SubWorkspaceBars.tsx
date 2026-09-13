@@ -103,7 +103,7 @@ function SubWorkspaceTabBar({
     <div
       data-tauri-drag-region
       onMouseDown={onDragRegionMouseDown}
-      className="relative flex items-center h-8 border-b border-[var(--surface-border)] bg-[var(--bg-base)]/80 px-2 shrink-0 select-none"
+      className="relative flex items-center h-[34px] border-b border-[var(--surface-border)] bg-[var(--bg-base)] px-2.5 shrink-0 select-none"
     >
       {/* Fade the right edge so a long, horizontally-scrollable tab list reads
           as continuing off-screen instead of being clipped mid-label. */}
@@ -129,10 +129,10 @@ function SubWorkspaceTabBar({
                 }
               }}
               aria-label={`${parent.name} (Overview)`}
-              className={`relative flex h-[24px] w-7 items-center justify-center shrink-0 rounded-md border transition-all select-none border-r-2 border-r-[var(--accent-color)]/60 ${
+              className={`relative flex h-[22px] w-7 items-center justify-center shrink-0 rounded-md transition-all select-none ${
                 activeWorkspaceId === parent.id
-                  ? "border-[var(--surface-border)] bg-[var(--surface)] text-[var(--accent-color)] shadow-xs"
-                  : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                  ? "bg-[rgba(var(--accent-color-rgb),0.14)] text-[var(--accent-color)]"
+                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
               }`}
             >
               <svg width="6" height="6" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
@@ -150,15 +150,12 @@ function SubWorkspaceTabBar({
                 onContextMenu(workspace, event.clientX, event.clientY);
               }
             }}
-            className={`relative flex h-[24px] items-center gap-1.5 shrink-0 rounded-md border px-2.5 text-xs whitespace-nowrap transition-all select-none ${
+            className={`relative flex h-[22px] items-center gap-1.5 shrink-0 rounded-md px-2.5 font-mono text-[11px] whitespace-nowrap transition-all select-none ${
               activeWorkspaceId === workspace.id
-                ? "border-[var(--surface-border)] bg-[var(--surface)] font-medium text-[var(--text-primary)] shadow-xs"
-                : "border-transparent font-normal text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                ? "bg-[rgba(var(--accent-color-rgb),0.14)] text-[var(--accent-color)]"
+                : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
             }`}
           >
-            {activeWorkspaceId === workspace.id && (
-              <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent-color)] shrink-0" />
-            )}
             <WorkspaceIcon name={workspace.icon} label={workspace.name} className="h-3.5 w-3.5 opacity-70 shrink-0" />
             {workspace.name}
           </button>

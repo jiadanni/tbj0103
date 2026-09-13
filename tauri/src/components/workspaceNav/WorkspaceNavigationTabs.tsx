@@ -215,7 +215,7 @@ function WorkspaceNavigationTabs({
             })}
           >
             {(dragOverWorkspaceId === workspace.id || activeWorkspaceId === workspace.id) && (
-              <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
+              <span className="absolute inset-x-0 top-0 h-0.5 bg-[var(--accent-color)]" />
             )}
             <WorkspaceIcon name={workspace.icon} label={workspace.name} className="h-3.5 w-3.5 opacity-70" />
             {workspace.name}

@@ -434,7 +434,7 @@ describe("StatusBar", () => {
 
   it("renders idle indicator when no background jobs are active", async () => {
     render(<StatusBar />);
-    expect(screen.getByText("Idle")).toBeInTheDocument();
+    expect(screen.getByText("idle")).toBeInTheDocument();
   });
 
   it("displays workspace name tag on a job pill when workspace_id is present", async () => {
@@ -481,7 +481,7 @@ describe("StatusBar", () => {
 
     expect(screen.getByText("Memory Extraction")).toBeInTheDocument();
     expect(screen.getByText("- Deep Learning")).toBeInTheDocument();
-    expect(screen.queryByText("Idle")).not.toBeInTheDocument();
+    expect(screen.queryByText("idle")).not.toBeInTheDocument();
   });
 
   it("renders Ollama status in the scheduled jobs popover according to settingsStore state", async () => {
