@@ -54,6 +54,7 @@ vi.mock("@/lib/api", () => ({
     listenBackgroundTaskPrompt,
     listenBackgroundSchedulerPauseStatus,
     ollama: {
+      listModels: vi.fn(() => Promise.resolve([])),
       listModelsFresh: vi.fn(() => Promise.resolve([])),
       ensureRunning: vi.fn(() => Promise.resolve({ available: true, launched: false, message: "OK", models: [] })),
     },
@@ -484,6 +485,7 @@ describe("StatusBar", () => {
   });
 
   it("renders Ollama status in the scheduled jobs popover according to settingsStore state", async () => {
+    vi.mocked(api.ollama.listModels).mockRejectedValue(new Error("Ollama down"));
     vi.mocked(api.ollama.listModelsFresh).mockRejectedValue(new Error("Ollama down"));
     act(() => {
       useSettingsStore.setState({ ollamaStatus: "offline" });

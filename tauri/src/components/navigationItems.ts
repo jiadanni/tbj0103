@@ -15,8 +15,8 @@ export interface NavigationItem {
 
 export const PRIMARY_NAV_ITEMS: NavigationItem[] = [
   { path: "/folder", icon: BarChart2, label: "Dashboard" },
-  { path: "/practice", icon: ClipboardCheck, label: "Practice" },
   { path: "/chat", icon: MessageSquare, label: "Chat" },
+  { path: "/practice", icon: ClipboardCheck, label: "Practice" },
   { path: "/notes", icon: FileEdit, label: "Library" },
   { path: "/history", icon: History, label: "History" },
 ];

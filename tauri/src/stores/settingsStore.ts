@@ -251,7 +251,7 @@ export const useSettingsStore = create<SettingsStore>()(
       checkOllamaReachability: async () => {
         set({ ollamaStatus: "checking" });
         try {
-          const models = await api.ollama.listModelsFresh(get().ollamaUrl || undefined);
+          const models = await api.ollama.listModels(get().ollamaUrl || undefined);
           const reachable = Array.isArray(models);
           set({ ollamaStatus: reachable ? "online" : "offline" });
           return reachable;

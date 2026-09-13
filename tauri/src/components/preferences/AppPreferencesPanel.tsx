@@ -93,18 +93,20 @@ export function AppPreferencesPanel({
             </div>
           </div>
 
-          <div className="flex items-start gap-3 py-0.5">
-            <Toggle
-              on={hideNativeMenu}
-              onToggle={onToggleHideNativeMenu}
+          {isMac && (
+            <div className="flex items-start gap-3 py-0.5">
+              <Toggle
+                on={hideNativeMenu}
+                onToggle={onToggleHideNativeMenu}
               />
-            <div>
-              <p className="text-sm text-[var(--text-secondary)]">Hide native menu</p>
-              <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                Removes the standard application menu bar (macOS only).
-              </p>
+              <div>
+                <p className="text-sm text-[var(--text-secondary)]">Hide native menu</p>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                  Removes the standard application menu bar (macOS only).
+                </p>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="flex items-start gap-3 py-0.5">
             <Toggle
@@ -303,7 +305,7 @@ function ShortcutRecorder({
     : tokens;
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 max-w-sm">
       {/* Capture zone */}
       <button
         ref={containerRef}
