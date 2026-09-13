@@ -641,8 +641,13 @@ function RoadmapGraphInner(
                 }}
                 onMouseEnter={() => setHovered({ id: d.data.id, x: d.x, y: d.y - dim.height / 2 })}
                 onMouseLeave={() => setHovered((cur) => (cur?.id === d.data.id ? null : cur))}
+                aria-labelledby={`rg-desc-${d.data.id}`}
               >
-                <title>
+                {/* Screen-reader label via <desc> instead of aria-label.
+                    WebKitGTK (Tauri on Linux) renders aria-label on interactive
+                    SVG groups as a native tooltip, duplicating the styled hover
+                    card — <desc> is invisible to the browser's tooltip logic. */}
+                <desc id={`rg-desc-${d.data.id}`}>
                   {buildConceptTooltip(
                     sourceNode ?? {
                       name: d.data.name,
@@ -654,7 +659,7 @@ function RoadmapGraphInner(
                       linkCount: linkCountById.get(d.data.id),
                     },
                   )}
-                </title>
+                </desc>
                 <rect
                   width={dim.width}
                   height={dim.height}
