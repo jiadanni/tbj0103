@@ -1,6 +1,8 @@
 import { RefreshCw } from "lucide-react";
 import { Toggle } from "../Toggle";
-import type { AppSettings, GitSyncStatus } from "../../lib/api";
+import { api } from "../../lib/api";
+import type { AppSettings, GitSyncStatus, RemoteDeviceBranch, PendingPromotion } from "../../lib/api";
+import { useState, useEffect } from "react";
 
 interface SyncPreferencesPanelProps {
   dbSettings: AppSettings;
@@ -29,6 +31,75 @@ export function SyncPreferencesPanel({
   onSaveRemoteUrl,
   onTriggerSync,
 }: SyncPreferencesPanelProps) {
+  const [deviceLabel, setDeviceLabel] = useState(gitSync?.device_label ?? '');
+  const [makingMain, setMakingMain] = useState(false);
+  const [devices, setDevices] = useState<RemoteDeviceBranch[]>([]);
+  const [loadingDevices, setLoadingDevices] = useState(false);
+  const [promotions, setPromotions] = useState<PendingPromotion[]>([]);
+  const [promoting, setPromoting] = useState(false);
+
+  useEffect(() => {
+    if (gitSync?.device_label !== undefined) {
+      setDeviceLabel(gitSync.device_label);
+    }
+  }, [gitSync?.device_label]);
+
+  useEffect(() => {
+    if (gitSync?.enabled && !gitSync?.is_main_role) {
+      api.gitSync.listPendingPromotions().then(setPromotions).catch(() => {});
+    }
+  }, [gitSync?.enabled, gitSync?.is_main_role]);
+
+  const handleMakeMain = async () => {
+    setMakingMain(true);
+    try {
+      await api.gitSync.setMainRole();
+      // The parent will refresh gitSync status
+    } catch (err) {
+      console.error('Failed to set main role:', err);
+    } finally {
+      setMakingMain(false);
+    }
+  };
+
+  const handleRefreshDevices = async () => {
+    setLoadingDevices(true);
+    try {
+      const result = await api.gitSync.listDevices();
+      setDevices(result);
+    } catch (err) {
+      console.error('Failed to list devices:', err);
+    } finally {
+      setLoadingDevices(false);
+    }
+  };
+
+  const handlePromoteOne = async (chatRelpath: string) => {
+    setPromoting(true);
+    try {
+      await api.gitSync.promoteChatToMain(chatRelpath);
+      const updated = await api.gitSync.listPendingPromotions();
+      setPromotions(updated);
+    } catch (err) {
+      console.error('Promote failed:', err);
+    } finally {
+      setPromoting(false);
+    }
+  };
+
+  const handlePromoteAll = async () => {
+    setPromoting(true);
+    try {
+      await api.gitSync.promoteAllDiverged();
+      const updated = await api.gitSync.listPendingPromotions();
+      setPromotions(updated);
+    } catch (err) {
+      console.error('Promote all failed:', err);
+    } finally {
+      setPromoting(false);
+    }
+  };
+
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
       <div className="max-w-4xl px-5 py-4 space-y-8">
@@ -106,6 +177,125 @@ export function SyncPreferencesPanel({
                 </p>
               )}
             </div>
+
+            {gitSync?.enabled && gitSync?.device_id && (
+              <section className="space-y-3 border-t border-[var(--border-color)] pt-4" data-pref-section>
+                <div>
+                  <div className="text-sm font-medium text-[var(--text-primary)]">This Device</div>
+                  <div className="text-xs text-[var(--text-muted)] mt-0.5">Your device identity for sync</div>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-[var(--text-secondary)] w-20 shrink-0">Label</label>
+                    <input
+                      type="text"
+                      value={deviceLabel}
+                      onChange={(e) => setDeviceLabel(e.target.value)}
+                      onBlur={() => api.gitSync.setDeviceLabel(deviceLabel)}
+                      placeholder="My MacBook"
+                      className="flex-1 px-2 py-1 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-[var(--text-secondary)] w-20 shrink-0">Branch</span>
+                    <code className="text-xs text-[var(--text-muted)] font-mono truncate">{gitSync.device_branch}</code>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {gitSync?.enabled && gitSync?.device_id && (
+              <section className="space-y-3 border-t border-[var(--border-color)] pt-4" data-pref-section>
+                <div>
+                  <div className="text-sm font-medium text-[var(--text-primary)]">Main Branch Role</div>
+                  <div className="text-xs text-[var(--text-muted)] mt-0.5">
+                    {gitSync.is_main_role
+                      ? "This device pushes directly to the main branch"
+                      : "This device pushes to its own branch; promote chats to reach main"}
+                  </div>
+                </div>
+                {!gitSync.is_main_role && (
+                  <button
+                    onClick={handleMakeMain}
+                    disabled={makingMain}
+                    className="px-3 py-1.5 text-xs rounded bg-[var(--accent-color)] text-white hover:opacity-90 disabled:opacity-50"
+                  >
+                    {makingMain ? 'Setting...' : 'Make this device main'}
+                  </button>
+                )}
+              </section>
+            )}
+
+            {gitSync?.enabled && (
+              <section className="space-y-3 border-t border-[var(--border-color)] pt-4" data-pref-section>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-medium text-[var(--text-primary)]">Other Devices</div>
+                    <div className="text-xs text-[var(--text-muted)] mt-0.5">Devices syncing to the same remote</div>
+                  </div>
+                  <button
+                    onClick={handleRefreshDevices}
+                    disabled={loadingDevices}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
+                  >
+                    <RefreshCw size={11} className={loadingDevices ? 'animate-spin' : ''} />
+                    Refresh
+                  </button>
+                </div>
+                {devices.length > 0 ? (
+                  <div className="space-y-1">
+                    {devices.map((d) => (
+                      <div key={d.branch_name} className="flex items-center justify-between px-2 py-1.5 rounded bg-[var(--bg-elevated)] text-xs">
+                        <code className="font-mono text-[var(--text-muted)] truncate">{d.branch_name}</code>
+                        {d.last_commit_date && (
+                          <span className="text-[var(--text-muted)] shrink-0 ml-2">{new Date(d.last_commit_date).toLocaleDateString()}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-xs text-[var(--text-muted)]">{loadingDevices ? 'Loading...' : 'No other devices found'}</div>
+                )}
+              </section>
+            )}
+
+            {gitSync?.enabled && !gitSync?.is_main_role && (
+              <section className="space-y-3 border-t border-[var(--border-color)] pt-4" data-pref-section>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-medium text-[var(--text-primary)]">Pending Promotions</div>
+                    <div className="text-xs text-[var(--text-muted)] mt-0.5">Chats that have diverged from main</div>
+                  </div>
+                  {promotions.length > 0 && (
+                    <button
+                      onClick={handlePromoteAll}
+                      disabled={promoting}
+                      className="px-3 py-1.5 text-xs rounded bg-[var(--accent-color)] text-white hover:opacity-90 disabled:opacity-50"
+                    >
+                      {promoting ? 'Promoting...' : 'Promote All'}
+                    </button>
+                  )}
+                </div>
+                {promotions.length > 0 ? (
+                  <div className="space-y-1">
+                    {promotions.map((p) => (
+                      <div key={p.chat_relpath} className="flex items-center justify-between px-2 py-1.5 rounded bg-[var(--bg-elevated)] text-xs">
+                        <span className="text-[var(--text-primary)] truncate">{p.title || p.session_id}</span>
+                        <button
+                          onClick={() => handlePromoteOne(p.chat_relpath)}
+                          disabled={promoting}
+                          className="shrink-0 ml-2 px-2 py-0.5 rounded border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-40"
+                        >
+                          Promote
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-xs text-[var(--text-muted)]">No diverged chats</div>
+                )}
+              </section>
+            )}
 
             <div className="flex items-center justify-between py-1 border-t border-[var(--border-color)] pt-4">
               <div>

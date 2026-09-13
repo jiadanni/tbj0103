@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
+use std::collections::HashMap;
+use serde::{Serialize, Deserialize};
 
 static SYNC_LOCK: Mutex<()> = Mutex::new(());
 
@@ -208,12 +210,16 @@ fn validate_tree(repo: &Path, revision: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_rebase_range(repo: &Path, range: &str) -> Result<(), String> {
+fn validate_commit_range(repo: &Path, range: &str) -> Result<(), String> {
     let commits = git(repo, &["rev-list", range])?;
     for commit in commits.lines() {
         validate_tree(repo, commit)?;
     }
     Ok(())
+}
+
+fn validate_rebase_range(repo: &Path, range: &str) -> Result<(), String> {
+    validate_commit_range(repo, range)
 }
 
 fn check_idle(repo: &Path) -> Result<(), String> {
@@ -437,6 +443,267 @@ fn pick_newer_version(remote: Option<&str>, local: Option<&str>) -> String {
 /// Determine the app data dir that should be tracked.
 pub fn data_dir_from_app_dir(app_data_dir: &Path) -> PathBuf {
     app_data_dir.to_path_buf()
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatSyncRecord {
+    pub last_known_main_commit: Option<String>,
+    pub last_known_device_commit: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PromoteOutcome {
+    Promoted,
+    Diverged,
+    NotFound,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteDeviceBranch {
+    pub branch_name: String,
+    pub device_id: String,
+    pub last_commit_date: Option<String>,
+}
+
+pub struct SyncV2Result {
+    pub pulled: bool,
+    pub pushed: bool,
+    pub error: Option<String>,
+    pub diverged_paths: Vec<String>,
+}
+
+pub fn validate_branch_name(name: &str) -> bool {
+    if name == "main" { return true; }
+    if let Some(id) = name.strip_prefix("device/") {
+        let parts: Vec<&str> = id.split('-').collect();
+        parts.len() == 5
+            && parts[0].len() == 8
+            && parts[1].len() == 4
+            && parts[2].len() == 4
+            && parts[3].len() == 4
+            && parts[4].len() == 12
+            && id.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
+    } else {
+        false
+    }
+}
+
+pub fn load_chat_commit_map(conn: &rusqlite::Connection) -> Result<HashMap<String, ChatSyncRecord>, String> {
+    let value: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'git_sync_chat_commit_map'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+    match value {
+        Some(json) => serde_json::from_str(&json).map_err(|e| e.to_string()),
+        None => Ok(HashMap::new()),
+    }
+}
+
+pub fn save_chat_commit_map(conn: &rusqlite::Connection, map: &HashMap<String, ChatSyncRecord>) -> Result<(), String> {
+    let json = serde_json::to_string(map).map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('git_sync_chat_commit_map', ?1)",
+        [&json],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[allow(dead_code)]
+pub fn last_commit_for_path(repo: &Path, reference: &str, path: &str) -> Result<Option<String>, String> {
+    match git(repo, &["rev-list", "-1", reference, "--", path]) {
+        Ok(out) => {
+            let trimmed = out.trim();
+            if trimmed.is_empty() { Ok(None) } else { Ok(Some(trimmed.to_string())) }
+        }
+        Err(_) => Ok(None),
+    }
+}
+
+fn is_ancestor(repo: &Path, ancestor: &str, descendant: &str) -> Result<bool, String> {
+    match git(repo, &["merge-base", "--is-ancestor", ancestor, descendant]) {
+        Ok(_) => Ok(true),
+        Err(_) => Ok(false),
+    }
+}
+
+pub fn sync_v2(
+    repo_dir: &Path,
+    device_branch: &str,
+    main_branch: &str,
+    is_main_role: bool,
+) -> SyncV2Result {
+    let mut result = SyncV2Result {
+        pulled: false,
+        pushed: false,
+        error: None,
+        diverged_paths: Vec::new(),
+    };
+
+    let _lock = match SYNC_LOCK.try_lock() {
+        Ok(lock) => lock,
+        Err(_) => {
+            result.error = Some("A Git sync is already running".to_string());
+            return result;
+        }
+    };
+
+    if let Err(e) = check_idle(repo_dir) {
+        result.error = Some(e);
+        return result;
+    }
+
+    if let Err(e) = commit_if_dirty(repo_dir) {
+        result.error = Some(e);
+        return result;
+    }
+
+    let _ = git(repo_dir, &["fetch", "--no-tags", "origin", device_branch, main_branch]);
+
+    let remote_device_ref = format!("origin/{}", device_branch);
+    let remote_main_ref = format!("origin/{}", main_branch);
+
+    let device_fetched = git(repo_dir, &["rev-parse", "--verify", &remote_device_ref]).is_ok();
+    let main_fetched = git(repo_dir, &["rev-parse", "--verify", &remote_main_ref]).is_ok();
+
+    if device_fetched {
+        if let Err(e) = validate_commit_range(repo_dir, &format!("HEAD..{}", remote_device_ref)) {
+            result.error = Some(e);
+            return result;
+        }
+        
+        match is_ancestor(repo_dir, &remote_device_ref, "HEAD") {
+            Ok(true) => {}
+            Ok(false) => {
+                result.error = Some(format!("Device branch {} on remote has diverged from local. This device cannot sync.", device_branch));
+                return result;
+            }
+            Err(e) => {
+                result.error = Some(e);
+                return result;
+            }
+        }
+    }
+    
+    if main_fetched {
+        if let Err(e) = validate_commit_range(repo_dir, &format!("HEAD..{}", remote_main_ref)) {
+            result.error = Some(e);
+            return result;
+        }
+    }
+
+    if !is_main_role && main_fetched {
+        if let Ok(diff_out) = git(repo_dir, &["diff", "--name-only", "HEAD", &remote_main_ref]) {
+            for line in diff_out.lines() {
+                let trimmed = line.trim();
+                if !trimmed.is_empty() && trimmed.starts_with("chats/") {
+                    result.diverged_paths.push(trimmed.to_string());
+                }
+            }
+        }
+    }
+
+    if let Err(e) = validate_tree(repo_dir, "HEAD") {
+        result.error = Some(e);
+        return result;
+    }
+
+    match git(repo_dir, &["push", "origin", &format!("HEAD:refs/heads/{}", device_branch)]) {
+        Ok(_) => result.pushed = true,
+        Err(e) => {
+            result.error = Some(e);
+            return result;
+        }
+    }
+
+    if is_main_role {
+        match git(repo_dir, &["push", "origin", &format!("HEAD:refs/heads/{}", main_branch)]) {
+            Ok(_) => {},
+            Err(e) => {
+                result.error = Some(e);
+                return result;
+            }
+        }
+    }
+
+    result
+}
+
+pub fn promote_chat_to_main(
+    repo_dir: &Path,
+    main_branch: &str,
+    chat_relpath: &str,
+) -> Result<PromoteOutcome, String> {
+    let _lock = match SYNC_LOCK.try_lock() {
+        Ok(lock) => lock,
+        Err(_) => return Err("A Git sync is already running".to_string()),
+    };
+
+    git(repo_dir, &["fetch", "--no-tags", "origin", main_branch])?;
+    let remote_main = format!("origin/{}", main_branch);
+    
+    if git(repo_dir, &["rev-parse", "--verify", &remote_main]).is_err() {
+        return Ok(PromoteOutcome::NotFound);
+    }
+    
+    let current_branch = git(repo_dir, &["rev-parse", "--abbrev-ref", "HEAD"])?.trim().to_string();
+    
+    git(repo_dir, &["branch", "-f", "tmp-promote", &remote_main])?;
+    git(repo_dir, &["checkout", "tmp-promote"])?;
+    
+    let res = (|| -> Result<PromoteOutcome, String> {
+        git(repo_dir, &["checkout", &current_branch, "--", chat_relpath])?;
+        git(repo_dir, &["commit", "-m", &format!("Promote {}", chat_relpath)])?;
+        match git(repo_dir, &["push", "origin", &format!("tmp-promote:refs/heads/{}", main_branch)]) {
+            Ok(_) => Ok(PromoteOutcome::Promoted),
+            Err(_) => Ok(PromoteOutcome::Diverged),
+        }
+    })();
+    
+    git(repo_dir, &["checkout", &current_branch])?;
+    git(repo_dir, &["branch", "-D", "tmp-promote"])?;
+    
+    res
+}
+
+pub fn promote_all_diverged_chats(
+    repo_dir: &Path,
+    main_branch: &str,
+    paths: &[String],
+) -> Vec<(String, PromoteOutcome)> {
+    let mut outcomes = Vec::new();
+    for path in paths {
+        match promote_chat_to_main(repo_dir, main_branch, path) {
+            Ok(outcome) => outcomes.push((path.clone(), outcome)),
+            Err(_) => outcomes.push((path.clone(), PromoteOutcome::Diverged)),
+        }
+    }
+    outcomes
+}
+
+pub fn list_remote_device_branches(repo_dir: &Path) -> Result<Vec<RemoteDeviceBranch>, String> {
+    let out = git(repo_dir, &["ls-remote", "--heads", "origin"])?;
+    let mut branches = Vec::new();
+    for line in out.lines() {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() == 2 {
+            let ref_name = parts[1];
+            if let Some(branch_name) = ref_name.strip_prefix("refs/heads/") {
+                if validate_branch_name(branch_name) && branch_name != "main" {
+                    let device_id = branch_name.strip_prefix("device/").unwrap_or("").to_string();
+                    branches.push(RemoteDeviceBranch {
+                        branch_name: branch_name.to_string(),
+                        device_id,
+                        last_commit_date: None,
+                    });
+                }
+            }
+        }
+    }
+    Ok(branches)
 }
 
 #[cfg(test)]
@@ -736,5 +1003,39 @@ mod tests {
             std::fs::read_to_string(root.join("secrets/key")).unwrap(),
             "synthetic-key"
         );
+    }
+
+    #[test]
+    fn validates_remote_branch_names_strictly() {
+        assert!(validate_branch_name("main"));
+        assert!(validate_branch_name("device/12345678-1234-1234-1234-123456789abc"));
+        assert!(!validate_branch_name("master"));
+        assert!(!validate_branch_name("device/"));
+        assert!(!validate_branch_name("device/invalid-uuid"));
+        assert!(!validate_branch_name("device/12345678-1234-1234-1234-123456789abg"));
+        assert!(!validate_branch_name("../main"));
+        assert!(!validate_branch_name("device/../../escape"));
+    }
+
+    #[test]
+    fn sync_v2_pushes_to_device_branch_without_force() {
+        let _lock = TEST_SYNC_LOCK.lock().unwrap();
+        let remote = repo();
+        let dir = repo();
+        let root = dir.path();
+        git(
+            root,
+            &["remote", "set-url", "origin", remote.path().to_str().unwrap()],
+        ).unwrap();
+
+        let device_id = "12345678-1234-1234-1234-123456789abc";
+        let device_branch = format!("device/{}", device_id);
+
+        write(root, "chats/chat1.json", r#"{"updated_at":"2026-01-01","messages":[]}"#);
+
+        let res = sync_v2(root, &device_branch, "main", false);
+        assert!(res.pushed, "Should push to device branch: {:?}", res.error);
+        assert!(res.diverged_paths.is_empty());
+        assert!(git(remote.path(), &["show-ref", &format!("refs/heads/{}", device_branch)]).is_ok());
     }
 }

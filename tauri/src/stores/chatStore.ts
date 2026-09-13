@@ -28,6 +28,8 @@ export interface ChatSession {
   deleted_at?: string;
   last_accessed_at?: string;
   is_imported?: boolean;
+  parent_session_id?: string | null;
+  branch_message_id?: string | null;
   is_unread?: boolean;
   created_at: string;
   updated_at: string;

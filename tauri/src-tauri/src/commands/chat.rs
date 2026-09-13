@@ -479,3 +479,13 @@ pub fn branch_chat_session(
     let mut conn = state.0.get().map_err(|e| e.to_string())?;
     chat_service::branch_session(&mut conn, &workspace_id, &session_id, &message_id, title)
 }
+
+#[tauri::command]
+pub fn list_session_branches(
+    state: State<DbState>,
+    workspace_id: String,
+    session_id: String,
+) -> Result<Vec<ChatSession>, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    chat_service::list_branches(&conn, &workspace_id, &session_id)
+}

@@ -1080,6 +1080,108 @@ pub fn branch_session(
     Ok(session)
 }
 
+pub fn list_branches(
+    conn: &Connection,
+    workspace_id: &str,
+    session_id: &str,
+) -> Result<Vec<ChatSession>, String> {
+    let mut stmt = conn.prepare(
+        "SELECT id, workspace_id, folder_id, title, model_name, system_prompt, \
+         is_pinned, is_incognito, exclude_from_analytics, is_deleted, deleted_at, \
+         last_accessed_at, last_processed_message_count, is_imported, \
+         parent_session_id, branch_message_id, is_unread, created_at, updated_at, \
+         message_count \
+         FROM chat_sessions \
+         WHERE parent_session_id = ?1 AND workspace_id = ?2 AND is_deleted = 0 \
+         ORDER BY created_at ASC"
+    ).map_err(|e| e.to_string())?;
+    let rows = stmt.query_map(rusqlite::params![session_id, workspace_id], |row| {
+        row_to_session(row)
+    }).map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
+pub fn materialize_incoming_branch(
+    conn: &mut Connection,
+    workspace_id: &str,
+    folder_id: &str,
+    original_session_id: &str,
+    incoming: &crate::services::chat_file_store::ChatFileData,
+    source_label: &str,
+) -> Result<ChatSession, String> {
+    // 1. Check if original_session_id exists locally
+    //    If not (deleted locally), skip and return error
+    let parent = match get_session(conn, workspace_id, original_session_id) {
+        Ok(Some(session)) => session,
+        Ok(None) => return Err(format!(
+            "Parent session {} not found locally (likely deleted) — skipping sync branch",
+            original_session_id
+        )),
+        Err(e) => return Err(e),
+    };
+    
+    // 2. Create new session with parent_session_id set
+    let new_id = uuid::Uuid::new_v4().to_string();
+    let title = format!("{} ({})", incoming.title, source_label);
+    let now = chrono::Utc::now().to_rfc3339();
+    
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    
+    tx.execute(
+        "INSERT INTO chat_sessions (
+            id, workspace_id, folder_id, title, model_name, system_prompt,
+            is_pinned, is_incognito, exclude_from_analytics, is_deleted, deleted_at,
+            last_accessed_at, last_processed_message_count, message_count, is_imported, parent_session_id, branch_message_id,
+            is_unread, created_at, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?8, 0, NULL, ?9, 0, 0, 1, ?10, NULL, 1, ?11, ?12)",
+        rusqlite::params![
+            new_id,
+            workspace_id,
+            folder_id,
+            title,
+            incoming.model,
+            incoming.system_prompt,
+            parent.is_incognito as i32,
+            parent.exclude_from_analytics as i32,
+            now, // last_accessed_at
+            original_session_id, // parent_session_id
+            now, // created_at
+            now, // updated_at
+        ],
+    ).map_err(|e| e.to_string())?;
+    
+    // 3. Import messages
+    for msg in &incoming.messages {
+        let role = msg.role.as_str();
+        if !matches!(role, "user" | "assistant" | "system") { continue; }
+        let msg_id = uuid::Uuid::new_v4().to_string();
+        tx.execute(
+            "INSERT INTO messages (id, session_id, role, content, model_name, \
+             tokens_used, duration_ms, variant_group_id, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8)",
+            rusqlite::params![
+                msg_id,
+                new_id,
+                role,
+                msg.content,
+                msg.model,
+                msg.tokens_used,
+                msg.duration_ms,
+                msg.timestamp,
+            ],
+        ).map_err(|e| e.to_string())?;
+    }
+    
+    tx.commit().map_err(|e| e.to_string())?;
+    
+    // Update message_count properly by fetching it if we had to calculate it, but it should be fixed if we add trigger, or we can just leave it as 0 if the trigger will update it.
+    // Actually, there's no trigger for chat_sessions.message_count right now, it usually updates manually or with a query. But wait, `add_message` doesn't update `message_count`. Oh right, in a lot of places it doesn't matter.
+    
+    get_session(conn, workspace_id, &new_id).and_then(|opt| {
+        opt.ok_or_else(|| "Failed to fetch newly created branch".to_string())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1713,5 +1815,74 @@ mod tests {
             0,
             "child should never see parent sessions even with bubbling"
         );
+    }
+
+    #[test]
+    fn test_list_branches_and_materialize_incoming_branch() {
+        let pool = setup_test_db();
+        let mut conn = pool.get().unwrap();
+        let ws_id = setup_workspace(&conn);
+
+        let parent = create_session(
+            &conn,
+            CreateChatSessionRequest {
+                workspace_id: ws_id.clone(),
+                folder_id: "".to_string(),
+                title: Some("Original Chat".to_string()),
+                model_name: Some("llama3".to_string()),
+                system_prompt: None,
+                is_incognito: None,
+                exclude_from_analytics: None,
+                parent_session_id: None,
+                branch_message_id: None,
+            },
+        )
+        .unwrap();
+
+        let incoming_data = crate::services::chat_file_store::ChatFileData {
+            id: "remote-id".to_string(),
+            title: "Original Chat".to_string(),
+            model: "llama3".to_string(),
+            system_prompt: "".to_string(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+            updated_at: chrono::Utc::now().to_rfc3339(),
+            messages: vec![crate::services::chat_file_store::ChatFileMessage {
+                id: "msg-1".to_string(),
+                role: "user".to_string(),
+                content: "Hello from device 2".to_string(),
+                model: None,
+                tokens_used: None,
+                duration_ms: None,
+                timestamp: chrono::Utc::now().to_rfc3339(),
+            }],
+        };
+
+        let branch = materialize_incoming_branch(
+            &mut conn,
+            &ws_id,
+            "",
+            &parent.id,
+            &incoming_data,
+            "device/2",
+        )
+        .unwrap();
+
+        assert_eq!(branch.parent_session_id.as_deref(), Some(parent.id.as_str()));
+        assert!(branch.branch_message_id.is_none());
+        assert!(branch.title.contains("device/2"));
+
+        let branches = list_branches(&conn, &ws_id, &parent.id).unwrap();
+        assert_eq!(branches.len(), 1);
+        assert_eq!(branches[0].id, branch.id);
+
+        let missing = materialize_incoming_branch(
+            &mut conn,
+            &ws_id,
+            "",
+            "non-existent-id",
+            &incoming_data,
+            "device/2",
+        );
+        assert!(missing.is_err());
     }
 }

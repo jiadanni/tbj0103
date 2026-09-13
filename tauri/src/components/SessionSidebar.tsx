@@ -2,7 +2,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState, memo, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
-import { Plus, Trash2, ChevronDown, ChevronRight, Pencil, Check, Search, Pin, PinOff, MessageSquare, RefreshCw, Ghost, Shield, Folder as FolderIcon, FolderOpen, FolderPlus, MoreHorizontal, MoveRight, X, Loader2, Copy, ExternalLink, Save, FileText, BookOpen, BarChart2 } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronRight, Pencil, Check, Search, Pin, PinOff, MessageSquare, RefreshCw, Ghost, Shield, Folder as FolderIcon, FolderOpen, FolderPlus, MoreHorizontal, MoveRight, X, Loader2, Copy, ExternalLink, Save, FileText, BookOpen, BarChart2, GitBranch } from "lucide-react";
 import { api } from "../lib/api";
 import { useChatStore } from "../stores/chatStore";
 import { useWorkspaceStore, type Folder, type Workspace } from "../stores/workspaceStore";
@@ -188,6 +188,11 @@ export function SessionItem({
               {session.title || "New Chat"}
             </span>
           </Tooltip>
+          {session.parent_session_id && (
+            <Tooltip content="Branched chat" position="top">
+              <GitBranch size={isSplitPane ? 12 : 11} className="text-emerald-400 shrink-0" />
+            </Tooltip>
+          )}
           {session.is_incognito && <Ghost size={isSplitPane ? 12 : 11} className="text-purple-400 shrink-0" />}
           {!session.is_incognito && session.exclude_from_analytics && <Shield size={isSplitPane ? 12 : 11} className="text-sky-400 shrink-0" />}
         </div>

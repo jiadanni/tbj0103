@@ -84,6 +84,7 @@ vi.mock("lucide-react", () => ({
   FolderPlus: () => <div data-testid="icon-folder-plus" />,
   Ghost: () => <div data-testid="icon-ghost" />,
   Shield: () => <div data-testid="icon-shield" />,
+  GitBranch: () => <div data-testid="icon-git-branch" />,
   Save: () => <div data-testid="icon-save" />,
   MoreHorizontal: () => <div data-testid="icon-more-horizontal" />,
   MoveRight: () => <div data-testid="icon-move-right" />,

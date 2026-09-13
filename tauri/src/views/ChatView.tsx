@@ -2,7 +2,7 @@ import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { WaterfallSuggestions } from "../components/WaterfallSuggestions";
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { Send, Plus, Trash2, ChevronDown, ArrowLeft, ArrowUpCircle, Pencil, Check, MessageSquare, SplitSquareHorizontal, RefreshCw, Paperclip, Image, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Ghost, Shield, Info } from "lucide-react";
+import { Send, Plus, Trash2, ChevronDown, ArrowLeft, ArrowUpCircle, Pencil, Check, MessageSquare, SplitSquareHorizontal, RefreshCw, Paperclip, Image, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Ghost, Shield, Info, GitBranch } from "lucide-react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
@@ -247,6 +247,7 @@ export default function ChatView() {
   const currentPaneId = workspacePane?.paneId ?? null;
 
   const { activeChatId, setActiveChatId } = useScopedChat();
+  const [branchBannerDismissed, setBranchBannerDismissed] = useState(false);
   const globalSessions = useChatStore((s) => s.sessions);
   // Granular selectors to avoid re-rendering entire view on every message update in background sessions
   const activeChatMessages = useChatStore(useCallback((s) => activeChatId ? (s.messages[activeChatId] ?? []) : [], [activeChatId]));
@@ -1227,6 +1228,7 @@ export default function ChatView() {
 
   useEffect(() => {
     setAttachedSources([]);
+    setBranchBannerDismissed(false);
   }, [effectiveWorkspaceId, activeChatId]);
 
   // Load sessions (scoped to active folder, or unscoped when none selected)
@@ -3321,6 +3323,22 @@ export default function ChatView() {
                     onChatClick={onChatClick}
                     className="sticky top-0 z-10"
                   />
+
+                  {activeSession?.parent_session_id && !branchBannerDismissed && (
+                    <div className="mx-4 mt-2 px-3 py-2 rounded bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-300 flex items-start gap-2">
+                      <GitBranch size={13} className="mt-0.5 shrink-0" />
+                      <div className="flex-1">
+                        <span>This chat is a branch from a synced version.</span>
+                      </div>
+                      <button
+                        onClick={() => setBranchBannerDismissed(true)}
+                        className="text-emerald-400 hover:text-emerald-200 shrink-0"
+                        aria-label="Dismiss"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  )}
 
                   {activeSession?.is_incognito && (
                     <div className="mx-4 mt-2 px-3 py-2 rounded bg-purple-500/10 border border-purple-500/20 text-[11px] text-purple-300 flex items-start gap-2">

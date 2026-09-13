@@ -938,6 +938,31 @@ export interface GitSyncStatus {
   remote_url: string;
   last_synced_at: string;
   last_error: string;
+  // v2 fields
+  device_id: string;
+  device_label: string;
+  device_branch: string;
+  main_branch: string;
+  is_main_role: boolean;
+}
+
+export interface RemoteDeviceBranch {
+  branch_name: string;
+  device_id: string;
+  last_commit_date: string | null;
+}
+
+export type PromoteOutcome = "Promoted" | "Diverged" | "NotFound";
+
+export interface PendingPromotion {
+  chat_relpath: string;
+  session_id: string;
+  title: string;
+}
+
+export interface PromoteBatchResult {
+  session_id: string;
+  outcome: PromoteOutcome;
 }
 
 export interface LogEntry {
@@ -1425,6 +1450,8 @@ export const api = {
       invoke<ChatSession>("create_chat_session", { req: { workspace_id: workspaceId, folder_id: folderId ?? '', title: opts?.title, model_name: opts?.modelName, system_prompt: opts?.systemPrompt, is_incognito: opts?.is_incognito, exclude_from_analytics: opts?.exclude_from_analytics } }),
     branchSession: (workspaceId: string, sessionId: string, messageId: string, title?: string) =>
       invoke<ChatSession>("branch_chat_session", { workspaceId, sessionId, messageId, title: title ?? null }),
+    listSessionBranches: (workspaceId: string, sessionId: string) =>
+      invoke<ChatSession[]>("list_session_branches", { workspaceId, sessionId }),
     listSessions: (workspaceId: string, folderId?: string | null, opts?: { limit?: number; offset?: number; includeDescendants?: boolean }) =>
       timed("chat.listSessions", () =>
         invoke<ChatSession[]>("list_chat_sessions", { workspaceId, folderId: folderId ?? '', limit: opts?.limit, offset: opts?.offset, includeDescendants: opts?.includeDescendants }),
@@ -2699,6 +2726,18 @@ export const api = {
     configure: (remoteUrl: string, enabled: boolean) =>
       invoke<void>("configure_git_sync", { remoteUrl, enabled }),
     triggerSync: () => invoke<GitSyncStatus>("trigger_git_sync"),
+    setDeviceLabel: (label: string) =>
+      invoke<void>("set_git_sync_device_label", { label }),
+    setMainRole: () =>
+      invoke<void>("set_git_sync_main_role"),
+    listDevices: () =>
+      invoke<RemoteDeviceBranch[]>("list_git_sync_devices"),
+    listPendingPromotions: () =>
+      invoke<PendingPromotion[]>("list_pending_promotions"),
+    promoteChatToMain: (chatRelpath: string) =>
+      invoke<PromoteOutcome>("promote_chat_to_main", { chatRelpath }),
+    promoteAllDiverged: () =>
+      invoke<PromoteBatchResult[]>("promote_all_diverged_chats"),
   },
 
   logs: {
