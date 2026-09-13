@@ -1537,14 +1537,16 @@ impl OllamaClient {
         caps
     }
 
-    /// Force-flush the process-level model cache and capability cache.
+    /// Force-flush the process-level model cache.
     /// Called whenever the user explicitly refreshes the model list.
+    ///
+    /// Note: The per-model capability cache is intentionally preserved across
+    /// refreshes (respecting its 10-minute TTL) because model capabilities
+    /// only change when a model is re-pulled. Preserving it prevents N sequential
+    /// `/api/show` calls on every refresh.
     pub fn invalidate_model_cache(&self) {
         if let Ok(mut guard) = model_cache().lock() {
             *guard = None;
-        }
-        if let Ok(mut guard) = capability_cache().lock() {
-            guard.entries.clear();
         }
     }
 
