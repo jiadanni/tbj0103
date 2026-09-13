@@ -9,20 +9,15 @@ Anthropic exports deliver a manifest JSON (e.g. manifest-*.json) or links file
 containing single-use download URLs for individual archives (conversations,
 projects, memories, design_chats, light_metadata).
 
-Export download URLs require an authenticated claude.ai session — pass
---cookies-file with a Netscape-format cookies.txt (exported from your
-logged-in browser) or every download comes back as the logged-out HTML
-app shell instead of a zip.
-
 Usage:
   # Download all archives into ~/Downloads/claude-zips:
-  python3 scripts/download_claude_export.py manifest.json --cookies-file cookies.txt -d ~/Downloads/claude-zips
+  python3 scripts/download_claude_export.py manifest.json -d ~/Downloads/claude-zips
 
   # Download from a plain text file containing export links:
-  python3 scripts/download_claude_export.py links.txt --cookies-file cookies.txt -d ~/Downloads/claude-zips
+  python3 scripts/download_claude_export.py links.txt -d ~/Downloads/claude-zips
 
   # Download AND unpack/prepare in one step:
-  python3 scripts/download_claude_export.py manifest.json --cookies-file cookies.txt --unpack
+  python3 scripts/download_claude_export.py manifest.json --unpack
 
 Stdlib only — works on macOS, Linux, and Windows.
 """

@@ -166,43 +166,18 @@ def find_manifest(path: Path):
     return None
 
 
-def parse_cookies_file(path: Path) -> str:
-    """Parse a Netscape-format cookies.txt (as exported by browser cookie-export
-    extensions) into a `name=value; name=value` Cookie header string."""
-    pairs = []
-    with path.open(encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            fields = line.split("\t")
-            if len(fields) < 7:
-                continue
-            domain, name, value = fields[0], fields[5], fields[6]
-            if "claude.ai" in domain or "anthropic.com" in domain:
-                pairs.append(f"{name}={value}")
-    if not pairs:
-        die(
-            f"No claude.ai cookies found in {path}. Export cookies for claude.ai "
-            "while logged in (e.g. with a browser cookie-export extension) as a "
-            "Netscape-format cookies.txt file."
-        )
-    return "; ".join(pairs)
-
-
-def download_file(url: str, dest: Path, timeout: int = DOWNLOAD_TIMEOUT, cookie_header: str = None) -> bool:
+def download_file(url: str, dest: Path, timeout: int = DOWNLOAD_TIMEOUT) -> bool:
     """Download a file with browser User-Agent, chunked streaming, and progress bar."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
 
-    headers = {
-        "User-Agent": DEFAULT_USER_AGENT,
-        "Accept": "application/zip, application/octet-stream, */*",
-    }
-    if cookie_header:
-        headers["Cookie"] = cookie_header
-
-    req = urllib.request.Request(url, headers=headers)
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": DEFAULT_USER_AGENT,
+            "Accept": "application/zip, application/octet-stream, */*",
+        },
+    )
 
     start_time = time.time()
     last_update = 0.0
@@ -261,21 +236,14 @@ def download_file(url: str, dest: Path, timeout: int = DOWNLOAD_TIMEOUT, cookie_
     # Validate zip integrity if named .zip
     if dest.suffix.lower() == ".zip":
         if not zipfile.is_zipfile(tmp):
-            with tmp.open("rb") as fh:
-                head = fh.read(256)
             tmp.unlink(missing_ok=True)
-            if head.lstrip().startswith(b"<") or b"<html" in head.lower():
-                raise ValueError(
-                    f"{dest.name} came back as an HTML page, not a zip — you are not "
-                    "authenticated. Pass --cookies-file with your claude.ai session cookies."
-                )
             raise ValueError(f"{dest.name} is not a valid zip archive (download corrupted or truncated)")
 
     tmp.replace(dest)
     return True
 
 
-def download_missing(download_dir: Path, manifest: dict, cookie_header: str = None) -> list:
+def download_missing(download_dir: Path, manifest: dict) -> list:
     """Download any manifest file not already on disk. Returns local zip paths."""
     entries = manifest.get("data_files", [])
     if not entries:
@@ -308,7 +276,7 @@ def download_missing(download_dir: Path, manifest: dict, cookie_header: str = No
             continue
 
         try:
-            download_file(url, dest, timeout=DOWNLOAD_TIMEOUT, cookie_header=cookie_header)
+            download_file(url, dest, timeout=DOWNLOAD_TIMEOUT)
         except urllib.error.HTTPError as exc:
             if exc.code in (403, 404, 410):
                 log(
@@ -475,25 +443,11 @@ def main() -> None:
         action="store_true",
         help="Skip downloading even if manifest has URLs; use only existing .zip files.",
     )
-    parser.add_argument(
-        "--cookies-file",
-        type=Path,
-        default=None,
-        help="Netscape-format cookies.txt with your claude.ai session cookies. "
-        "Required because export download URLs need an authenticated session.",
-    )
     args = parser.parse_args()
 
     source = args.source.expanduser().resolve()
     if not source.exists():
         die(f"No such path: {source}")
-
-    cookie_header = None
-    if args.cookies_file:
-        cookies_path = args.cookies_file.expanduser().resolve()
-        if not cookies_path.exists():
-            die(f"No such cookies file: {cookies_path}")
-        cookie_header = parse_cookies_file(cookies_path)
 
     download_dir = determine_download_dir(source, args.download_dir)
     found = find_manifest(source)
@@ -508,7 +462,7 @@ def main() -> None:
         log(f"Download destination: {download_dir}\n")
 
         if not args.skip_download:
-            zips = download_missing(download_dir, manifest, cookie_header=cookie_header)
+            zips = download_missing(download_dir, manifest)
     else:
         log(f"No manifest found — searching for .zip files in {download_dir}\n")
 
