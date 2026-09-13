@@ -2,7 +2,7 @@
 
 > **Local-first AI learning companion**
 
-Aetherium combines conversational AI, source-grounded research, bidirectional knowledge graphs, and flexible organization—powered by local models (Ollama, MLX, Llama.cpp) and external AI providers. Your data remains on your machine.
+Aetherium combines conversational AI, source-grounded research, bidirectional knowledge graphs, and flexible organization—all powered by local Ollama models. Your data remains on your machine.
 
 ![Swift](https://img.shields.io/badge/Swift-5.9-orange.svg)
 ![SwiftUI](https://img.shields.io/badge/SwiftUI-macOS%2014+-blue.svg)
@@ -73,7 +73,7 @@ The Tauri port is the primary development target and receives all new features.
 ### Data Synchronization & Resilience
 - **Git-based Sync**: Automatic background synchronization to private Git repositories via SSH
 - **Automated Backups**: Configurable local database backups with version history
-- **Data Portability**: Comprehensive imports from **Anthropic Claude** (Legacy, v2, and v3 split-archives with project routing, clustering, and memory extraction), **ChatGPT**, **LM Studio** (single and batch multi-folder), and **Google Gemini (Takeout)**; export chats to JSON, notes and sessions to Markdown or Obsidian-compatible vaults, and full database backups (`.aebak`)
+- **Data Portability**: Import from LM Studio and Google Gemini; export to Markdown or Obsidian
 - **Topic-based Routing**: Automatic workspace selection based on message content via Topic Signatures
 
 ### Full-Text & Semantic Search
@@ -106,90 +106,6 @@ The Tauri port is the primary development target and receives all new features.
 - **PIN Protection**: Optional application lock with PIN
 - **Biometric Security**: macOS Touch ID support (Tauri/Swift)
 - **Encryption**: Optional database encryption for sensitive chat history
-
-## Importing Claude Data Exports
-
-Aetherium provides a dedicated, resilient pipeline for importing data exports from [Claude](https://claude.ai) and the Claude Desktop app into local workspaces, preserving conversation threads, project system instructions, reference files, and account-level memories.
-
-### The Challenge: Fast-Evolving Export Formats
-
-Anthropic has iteratively redesigned its data export packaging across multiple generations:
-- **Legacy Format (v1)**: A single monolithic `.zip` archive containing `conversations.json`, `projects.json`, `memories.json`, and `users.json`.
-- **v2 Format (May 2026)**: Shifted to a structured directory hierarchy: individual project definitions in `projects/<project-uuid>.json` (containing custom instructions and reference `docs`), project-associated chats in `design_chats/<uuid>.json`, and scoped project memories in `memories.json`. Crucially, Anthropic stripped project identifiers from `conversations.json`, leaving unlinked chats as unassigned "orphans".
-- **v3 Format (August 30, 2026+ Split Delivery)**: Anthropic replaced single-archive downloads with a manifest-driven multi-part delivery: an `export-<date>.json` manifest containing single-use, time-limited download URLs pointing to multiple separate zip files (`conversations-000.zip`, `conversations-001.zip`, `projects.zip`, `memories.zip`, etc.). In addition, memories transitioned from a single JSON array into a `memories/` directory containing per-account records (`memories/<account-uuid>.json`) alongside markdown memory files (`/profile.md`, `/topics/*.md`).
-
-#### Common Export Pitfalls & Data Loss
-1. **Split-Part Overwrites**: Multi-part exports (e.g., `conversations-000.zip` and `conversations-001.zip`) both contain an internal file named `conversations.json`. Unpacking or merging them with standard file managers (such as macOS Finder or Archive Utility) causes the second part to overwrite the first, silently discarding half your conversation history.
-2. **Scattered Folders**: Extracting multiple `.zip` archives by hand often creates isolated subdirectories, preventing the importer from finding correlated projects and conversations.
-3. **Single-Use Download Links**: Download URLs listed in Claude manifest files expire quickly or fail after the first fetch.
-
----
-
-### Preparing Claude Exports (`scripts/prepare_claude_export.py`)
-
-To ensure clean, complete ingestion without data loss, Aetherium includes a standalone helper script (`scripts/prepare_claude_export.py`) using only the Python standard library (no `pip install` required; works on macOS, Linux, and Windows):
-
-```bash
-# Option A: Download archives only (without unpacking)
-python3 scripts/download_claude_export.py ~/Downloads/manifest.json -d ~/Downloads/claude-zips
-
-# Option B: Download and unpack/prepare in one step
-python3 scripts/prepare_claude_export.py ~/Downloads/manifest.json -o ~/claude-export
-
-# Option C: Unpack already downloaded .zip files
-python3 scripts/prepare_claude_export.py ~/Downloads/claude-zips -o ~/claude-export
-```
-
-**What the scripts do:**
-- **Automated Retrieval**: Downloads all `.zip` parts using browser headers (`User-Agent`) to prevent 403 blocks from Cloudflare/Claude.ai, with live transfer progress indicators.
-- **Link & Manifest Parsing**: Supports official Anthropic manifest JSON files as well as plain `.txt` files containing export links.
-- **Array Concatenation**: Safely merges multi-part JSON arrays (e.g. `conversations.json`) across split archives instead of overwriting them.
-- **Archive Safety**: Enforces zip integrity validation and zip-slip path prevention.
-- **Completeness Verification**: Validates the output directory structure (`conversations.json`, `projects/`, `memories/`, `design_chats/`) and outputs a verified folder ready for Aetherium.
-
----
-
-### In-App Import Engine & Architecture
-
-Once the export folder is prepared, point Aetherium's importer at it via **Preferences → Import → Claude**. The import engine executes the following pipeline:
-
-#### 1. Automatic Format Detection
-The engine inspects the folder structure and memory layout:
-- Distinguishes automatically between **Legacy**, **v2**, and **v3** layouts.
-- Identifies memory locations (per-account `memories/` directory vs. legacy `memories.json`).
-- Flags unmerged split-part leftovers (e.g., `*-001.json`) to warn you before any import proceeds.
-
-#### 2. Project & Workspace Mapping
-- **Hierarchy Placement**: Map any Claude project to a new top-level Workspace, a Sub-Workspace, or a Folder within an existing workspace.
-- **Asset Preservation**: Automatically imports project custom system instructions (`prompt_template`) and attached knowledge files (`docs`) into the target workspace.
-- **Remembered Destinations**: Remembers your preferred folder mappings across repeated imports.
-
-#### 3. Multi-Tiered Orphan Chat Matching
-Because Claude's export strips project identifiers from `conversations.json`, Aetherium uses a layered matching engine to accurately suggest which project each orphan conversation belongs to:
-1. **Title Matching**: Exact and substring matching against project names.
-2. **Topical Keyword Coverage (IDF Scoring)**: Computes inverse document frequency (IDF) mass over discriminative terms across project descriptions, docs, prompts, and titles. Conversational filler words are suppressed, and user-configurable strictness margins (**Strict**, **Balanced**, **Loose**) control the required confidence gap over runner-up projects.
-3. **Semantic Embedding Similarity**: When local Ollama embedding models (e.g., `nomic-embed-text`) are configured, computes cosine similarity between project source text and chat excerpts, rescuing relevant chats that share conceptual meaning without exact keyword overlap.
-4. **LLM Classification**: Optional batched local LLM pass for zero-shot categorization.
-5. **Interactive Review**: The UI surfaces match reasons (`title`, `keywords`, `topics`, `semantic`, `llm`), confidence scores, and runner-up candidates for confirmation before committing.
-
-#### 4. Unmatched Conversation Clustering
-Orphan chats that belong to no existing Claude project are not left as an undifferentiated list. Aetherium runs an unsupervised clustering pass:
-- Groups leftover chats by embedding similarity (cosine similarity against cluster centroid and seed to avoid drift) or lexical title overlap.
-- Uses a local LLM to synthesize descriptive folder names (e.g. `Suggested: Docker & DevOps`).
-
-#### 5. Account-Level & Project-Level Memory Ingestion
-- Scopes project-specific memories into their corresponding workspace context.
-- Parses account-level user profile and topic files from Claude v3 markdown memory directories (`/profile.md`, `/topics/*.md`):
-  - Strips YAML frontmatter.
-  - Cleans provenance tags (e.g., `[stated]`, `[implied]`).
-  - Splits bullet points into discrete `fact` and `preference` records stored in Aetherium's Intelligent Memory table (`memories`).
-
-#### 6. Idempotent Re-Import & Link Tracking
-- Maintains persistent mappings in `import_source_links`, `import_destinations`, and `import_memory_links`.
-- Re-importing newer exports recognizes previously imported sessions and memories by their source UUIDs, preventing duplicate chats and allowing selective in-place updates or destination restorations.
-
-#### 7. Direct Backup Conversion
-- In addition to interactive UI import, Aetherium can transform a Claude export folder directly into a standard Aetherium `.aebak` JSON backup file, allowing entire archives to be imported or restored in one click.
 
 ## Getting Started
 
@@ -304,9 +220,6 @@ tauri/
 | `ai_models` | Local and Web AI provider registry with per-model context-size overrides |
 | `settings` | Global application preferences |
 | `app_logs` | Application diagnostics and inference logs |
-| `import_source_links` | Provenance links mapping imported sessions (e.g. Claude UUIDs) to app sessions to prevent duplicates |
-| `import_destinations` | Remembered target workspace and folder mappings for imported projects |
-| `import_memory_links` | Provenance tracking for imported account and project-scoped memories |
 
 ## Contributing
 
