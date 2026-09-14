@@ -1,5 +1,5 @@
 import React from "react";
-import { Plus } from "lucide-react";
+import { Plus, House } from "lucide-react";
 import { Tooltip } from "../Tooltip";
 
 export type SinglePaneWorkspaceSidebarDensity = "comfortable" | "compact";
@@ -52,7 +52,7 @@ const SIZES = {
       "flex h-5 w-5 items-center justify-center rounded text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]",
     headerIconSize: 12,
     overviewGap: "gap-1.5",
-    overviewDotSize: 6,
+    overviewDotSize: 12,
   },
   compact: {
     container: "w-[85px] p-1 gap-0.5",
@@ -68,7 +68,7 @@ const SIZES = {
       "flex h-3 w-3 items-center justify-center rounded text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]",
     headerIconSize: 8,
     overviewGap: "gap-1",
-    overviewDotSize: 4,
+    overviewDotSize: 9,
   },
 } as const;
 
@@ -107,14 +107,10 @@ export function SinglePaneWorkspaceSidebar({
           overview.isActive ? sizes.itemActive : sizes.itemInactive
         }`;
         const dot = (
-          <svg
-            width={sizes.overviewDotSize}
-            height={sizes.overviewDotSize}
-            viewBox="0 0 6 6"
-            className="fill-current opacity-80 shrink-0"
-          >
-            <circle cx="3" cy="3" r="3" />
-          </svg>
+          <House
+            size={sizes.overviewDotSize}
+            className="opacity-80 shrink-0"
+          />
         );
         if (overview.onClick) {
           return (

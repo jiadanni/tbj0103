@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, Plus } from "lucide-react";
+import { ChevronDown, Plus, House } from "lucide-react";
 import { useWorkspaceStore } from "../../stores/workspaceStore";
 import type { Workspace } from "../../stores/workspaceStore";
 import { Tooltip } from "../Tooltip";
@@ -135,7 +135,7 @@ function SubWorkspaceTabBar({
                   : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
               }`}
             >
-              <svg width="6" height="6" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
+              <House size={13} className="opacity-80 shrink-0" />
             </button>
           </Tooltip>
         )}
@@ -216,7 +216,7 @@ function SubWorkspaceTabBar({
                           : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                       }`}
                     >
-                      <svg width="6" height="6" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
+                      <House size={13} className="opacity-80 shrink-0" />
                       <span className="truncate">{parent.name} (Overview)</span>
                     </button>
                   )}

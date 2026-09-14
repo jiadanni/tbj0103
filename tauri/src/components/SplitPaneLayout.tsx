@@ -3,7 +3,7 @@ import React, { Suspense, useMemo } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { type PaneId, type PaneView, type Workspace, useWorkspaceStore } from "../stores/workspaceStore";
 import { WorkspacePaneProvider, useScopedWorkspace } from "../lib/workspacePane";
-import { MessageSquare, FileText, BarChart2, LucideIcon, FileEdit, Network } from "lucide-react";
+import { MessageSquare, FileText, BarChart2, LucideIcon, FileEdit, Network, House } from "lucide-react";
 import { CompactMenuSelect } from "./CompactMenuSelect";
 import { Tooltip } from "./Tooltip";
 import { api } from "../lib/api";
@@ -298,7 +298,7 @@ function PaneSubWorkspaceTabs({ paneId }: { paneId: PaneId }) {
                   : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/80 hover:text-[var(--text-primary)]"
             }`}
           >
-            <svg data-testid="pinned-dot" width="6" height="6" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
+            <House data-testid="pinned-dot" size={13} className="opacity-80 shrink-0" />
           </button>
         </Tooltip>
         {children.map((workspace) => (
