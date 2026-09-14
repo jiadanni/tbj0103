@@ -1,5 +1,5 @@
 import type { DeckCard } from "../lib/deck";
-import { formatDifficultyLabel, getDifficultyColor, resolvePresetId } from "../lib/difficulty";
+import { formatDifficultyLabel, resolvePresetId } from "../lib/difficulty";
 
 export type FeedMode = "study" | "test";
 
@@ -28,7 +28,6 @@ export default function FeedCard({ card, mode, revealed, activePresetId }: FeedC
         card.difficultyLabel,
       )
     : null;
-  const diffColors = diffInfo ? getDifficultyColor(diffInfo.score) : null;
 
   // Suppress topic badge if it merely duplicates the workspace or is already in the title
   const cleanFront = card.front
@@ -46,9 +45,6 @@ export default function FeedCard({ card, mode, revealed, activePresetId }: FeedC
         <div className="shrink-0 text-xs font-semibold tracking-wide text-zinc-500">
           {card.workspaceName}
           {!isTopicRedundant && card.topic && <span> · {card.topic}</span>}
-          {diffInfo && diffColors && (
-            <span className={diffColors.text}> · {diffInfo.label}</span>
-          )}
         </div>
 
         <h2 className="shrink-0 text-2xl sm:text-3xl font-bold leading-snug text-zinc-50 tracking-tight">
@@ -60,10 +56,15 @@ export default function FeedCard({ card, mode, revealed, activePresetId }: FeedC
           // question/answer split to make room for, so they get most of the
           // screen. Test answers stay compact.
           <div
-            className={`mt-4 w-full rounded-2xl border border-zinc-800/80 bg-zinc-900/60 p-5 text-left backdrop-blur-md transition-all duration-300 flex min-h-0 flex-col ${
+            className={`relative mt-4 w-full rounded-2xl border border-zinc-800/80 bg-zinc-900/60 p-5 text-left backdrop-blur-md transition-all duration-300 flex min-h-0 flex-col ${
               isStudy ? "flex-1" : "max-h-[35vh]"
             }`}
           >
+            {diffInfo && (
+              <span className="absolute top-3 right-4 text-[11px] font-semibold tracking-wide text-zinc-600">
+                L{diffInfo.score}
+              </span>
+            )}
             {!isStudy && (
               <div className="flex items-center gap-2 mb-2.5 shrink-0">
                 <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
