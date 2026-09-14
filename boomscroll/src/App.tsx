@@ -67,6 +67,26 @@ export default function App() {
     }
   }, [isLastCard, current, order]);
 
+  // Keep the difficulty filter in sync with which workspaces are enabled.
+  // Switching to a workspace whose cards don't include a previously-picked
+  // level left enabledDifficulties disjoint from availableLevels, so every
+  // card in the new selection was filtered out and the feed silently showed
+  // zero cards.
+  useEffect(() => {
+    if (!deck) {return;}
+    const availableHere = new Set<DifficultyScore>();
+    for (const card of deck.cards) {
+      if (!enabledIds.has(card.workspaceId)) {continue;}
+      if (card.difficulty === undefined) {continue;}
+      availableHere.add(card.difficulty);
+    }
+    if (availableHere.size === 0) {return;}
+    const hasOverlap = [...enabledDifficulties].some((level) => availableHere.has(level));
+    if (!hasOverlap) {
+      setEnabledDifficulties(availableHere);
+    }
+  }, [deck, enabledIds, enabledDifficulties]);
+
   // Restore deck from localStorage on mount if available
   useEffect(() => {
     const savedDeck = localStorage.getItem("boomscroll_active_deck");
