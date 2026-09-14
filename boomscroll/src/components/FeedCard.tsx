@@ -43,24 +43,15 @@ export default function FeedCard({ card, mode, revealed, activePresetId }: FeedC
   return (
     <div className="flex h-full w-full flex-col items-center justify-center bg-zinc-950 px-6 pt-[calc(var(--safe-top)+2rem)] pb-[calc(var(--safe-bottom)+2rem)] text-center select-none overflow-hidden touch-none">
       <div className="flex min-h-0 flex-col items-center gap-3 w-full max-w-lg">
-        <div className="flex flex-wrap items-center justify-center gap-2 mb-2 shrink-0">
-          <span className="rounded-full bg-purple-950/60 border border-purple-800/50 px-3 py-1 text-[11px] font-semibold tracking-wider text-purple-300 uppercase">
-            {card.workspaceName}
-            {!isTopicRedundant && card.topic && (
-              <span className="font-normal normal-case text-purple-300/70"> · {card.topic}</span>
-            )}
-          </span>
+        <div className="shrink-0 text-xs font-semibold tracking-wide text-zinc-500">
+          {card.workspaceName}
+          {!isTopicRedundant && card.topic && <span> · {card.topic}</span>}
           {diffInfo && diffColors && (
-            <span
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold tracking-wider uppercase ${diffColors.bg} ${diffColors.border} ${diffColors.text}`}
-            >
-              <span className={`h-1.5 w-1.5 rounded-full ${diffColors.dot}`} />
-              L{diffInfo.score} • {diffInfo.label}
-            </span>
+            <span className={diffColors.text}> · {diffInfo.label}</span>
           )}
         </div>
 
-        <h2 className="shrink-0 text-xl sm:text-2xl font-bold leading-snug text-zinc-50 tracking-tight">
+        <h2 className="shrink-0 text-2xl sm:text-3xl font-bold leading-snug text-zinc-50 tracking-tight">
           {cleanFront}
         </h2>
 
@@ -82,14 +73,13 @@ export default function FeedCard({ card, mode, revealed, activePresetId }: FeedC
               </div>
             )}
             <div className="overflow-y-auto flex-1 pr-1 touch-pan-y overscroll-contain">
-              <p className="text-sm sm:text-base leading-relaxed text-zinc-200 whitespace-pre-line">
+              <p className="text-base sm:text-lg leading-relaxed text-zinc-200 whitespace-pre-line">
                 {card.back}
               </p>
             </div>
           </div>
         ) : (
           <div className="mt-6 flex flex-col items-center gap-1.5 opacity-60">
-            <span className="text-lg">⚡</span>
             <p className="text-xs uppercase tracking-widest text-zinc-500 font-medium">
               Tap to reveal answer
             </p>

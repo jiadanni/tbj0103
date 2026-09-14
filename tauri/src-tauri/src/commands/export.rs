@@ -219,11 +219,16 @@ pub(crate) fn build_feed_deck(
     let mut workspaces: Vec<serde_json::Value> = Vec::new();
     let mut cards: Vec<serde_json::Value> = Vec::new();
 
+    // Topic comes from the concept graph (the current taxonomy — see
+    // flashcard_topic_service.rs) when the card has been migrated to it via
+    // source_type='concept'/source_id, falling back to the legacy
+    // flashcard_topics join for any card the v57 migration didn't reach.
     let mut card_stmt = conn
         .prepare(
-            "SELECT lc.id, lc.front, lc.back, ft.topic, lc.kind, lc.ease_factor, lc.repetitions,
+            "SELECT lc.id, lc.front, lc.back, COALESCE(cn.name, ft.topic), lc.kind, lc.ease_factor, lc.repetitions,
                     lc.difficulty, lc.difficulty_preset, lc.difficulty_label
              FROM learning_cards lc
+             LEFT JOIN concept_nodes cn ON lc.source_type = 'concept' AND lc.source_id = cn.id
              LEFT JOIN flashcard_topics ft ON ft.id = lc.topic_id
              WHERE lc.workspace_id = ?1 AND lc.suspended_at IS NULL
              ORDER BY lc.created_at",
@@ -395,6 +400,55 @@ mod feed_deck_tests {
         assert_eq!(cards[0]["difficulty"], 1);
         assert!(cards[1]["topic"].is_null());
         assert_eq!(cards[2]["workspace_id"], "ws_b");
+    }
+
+    #[test]
+    fn topic_prefers_concept_node_over_legacy_flashcard_topic() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        insert_workspace(&conn, "ws_a", "Rust Study");
+
+        // A stale legacy topic row the v57 migration left behind, plus the
+        // concept_nodes row it should have been superseded by.
+        conn.execute(
+            "INSERT INTO flashcard_topics (id, workspace_id, topic) VALUES ('t1', 'ws_a', 'Ownership (stale)')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO concept_nodes (id, workspace_id, name, concept_description, concept_type, tags, aliases, references_json, x_position, y_position, review_count, created_at, updated_at, hierarchy_level)
+             VALUES ('cn1', 'ws_a', 'Ownership', '', 'topic', '[]', '[]', '[]', 0.0, 0.0, 0, '2026-01-01', '2026-01-01', 'concept')",
+            [],
+        )
+        .unwrap();
+
+        // Card migrated to the concept graph, but topic_id still points at
+        // the now-stale legacy row (as v57 leaves it).
+        conn.execute(
+            crate::commands::flashcard::INSERT_CARD_SQL,
+            rusqlite::params![
+                "c1",
+                "ws_a",
+                "Front c1",
+                "Back c1",
+                "concept",
+                Some("cn1"),
+                Some("t1"),
+                2.5_f64,
+                0_i64,
+                0_i64,
+                "2026-01-01",
+                Option::<String>::None,
+                "2026-01-01T00:00:00Z",
+                Option::<String>::None
+            ],
+        )
+        .unwrap();
+
+        let json = build_feed_deck(&conn, &["ws_a".to_string()]).unwrap();
+        let deck: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let cards = deck["cards"].as_array().unwrap();
+        assert_eq!(cards[0]["topic"], "Ownership");
     }
 
     #[test]
