@@ -46,7 +46,7 @@ export default function FeedCard({ card, mode, revealed, activePresetId, onBanis
     cleanFront.toLowerCase().includes(card.topic.trim().toLowerCase());
 
   return (
-    <div className="flex h-full w-full flex-col items-center justify-between bg-zinc-950 px-6 pt-[calc(var(--safe-top)+3.5rem)] pb-[calc(var(--safe-bottom)+1.5rem)] text-center select-none overflow-hidden touch-none">
+    <div className="flex h-full w-full flex-col items-center justify-between bg-zinc-950 px-6 pt-[calc(var(--safe-top)+4rem)] pb-[calc(var(--safe-bottom)+1.5rem)] text-center select-none overflow-hidden touch-none">
       <div className="flex min-h-0 flex-col items-center gap-3 w-full max-w-lg my-auto">
         <div className="flex flex-wrap items-center justify-center gap-2 mb-2 shrink-0">
           <span className="rounded-full bg-purple-950/60 border border-purple-800/50 px-3 py-1 text-[11px] font-semibold tracking-wider text-purple-300 uppercase">

@@ -116,5 +116,4 @@ boomscroll/public/*.json
 !boomscroll/public/demo.json
 !boomscroll/public/swe.json
 !boomscroll/public/econ.json
-!boomscroll/public/econ_geo_deck.json
 *.deck.json

@@ -400,13 +400,13 @@ export default function App() {
         <div className="flex flex-col sm:flex-row gap-3 w-full max-w-xs justify-center">
           <button
             onClick={() => void openDeck()}
-            className="rounded-full bg-zinc-50 px-6 py-3 text-sm font-semibold text-zinc-900 active:opacity-80 transition-opacity"
+            className="flex min-h-[48px] items-center justify-center rounded-full bg-zinc-50 px-6 py-3 text-sm font-semibold text-zinc-900 active:opacity-80 transition-opacity"
           >
             Open deck
           </button>
           <button
             onClick={() => void loadDemoDeck()}
-            className="rounded-full border border-zinc-800 bg-transparent px-6 py-3 text-sm font-semibold text-zinc-300 hover:bg-zinc-900/50 hover:text-zinc-100 active:opacity-80 transition-all"
+            className="flex min-h-[48px] items-center justify-center rounded-full border border-zinc-800 bg-transparent px-6 py-3 text-sm font-semibold text-zinc-300 hover:bg-zinc-900/50 hover:text-zinc-100 active:opacity-80 transition-all"
           >
             Try demo deck
           </button>
@@ -438,7 +438,7 @@ export default function App() {
           <h1 className="text-xl font-bold tracking-tight">Banished</h1>
           <button
             onClick={() => setShowBanished(false)}
-            className="text-xs text-zinc-400 hover:text-zinc-200"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-zinc-800 bg-zinc-900/60 px-3.5 text-xs font-medium text-zinc-300 hover:text-zinc-100 active:opacity-80 transition-colors"
           >
             Done
           </button>
@@ -456,7 +456,7 @@ export default function App() {
             {banishedCards.map((card) => (
               <li
                 key={card.id}
-                className="flex items-start justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3"
+                className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3"
               >
                 <span className="min-w-0 flex-1 text-left">
                   <span className="block text-sm text-zinc-200 line-clamp-2">{card.front}</span>
@@ -466,7 +466,7 @@ export default function App() {
                 </span>
                 <button
                   onClick={() => restoreCards([card.id])}
-                  className="shrink-0 rounded-full border border-zinc-800 px-3 py-1 text-[11px] font-medium text-zinc-300 hover:bg-zinc-900/50 hover:text-zinc-100 active:opacity-80 transition-colors"
+                  className="shrink-0 flex min-h-[44px] items-center justify-center rounded-full border border-zinc-800 bg-zinc-900/80 px-4 text-xs font-medium text-zinc-200 hover:bg-zinc-800 hover:text-zinc-100 active:opacity-80 transition-colors"
                 >
                   Restore
                 </button>
@@ -479,7 +479,7 @@ export default function App() {
           <div className="flex shrink-0 w-full max-w-sm pt-2">
             <button
               onClick={() => restoreCards(banishedCards.map((c) => c.id))}
-              className="w-full rounded-full border border-zinc-800 px-6 py-3 text-sm font-semibold text-zinc-300 hover:bg-zinc-900/50 hover:text-zinc-100 active:opacity-80 transition-colors"
+              className="flex min-h-[48px] w-full items-center justify-center rounded-full border border-zinc-800 px-6 py-3 text-sm font-semibold text-zinc-300 hover:bg-zinc-900/50 hover:text-zinc-100 active:opacity-80 transition-colors"
             >
               Restore all
             </button>
@@ -544,7 +544,7 @@ export default function App() {
                 startFeed(deck, enabledIds, enabledDifficulties);
               }
             }}
-            className="text-xs text-zinc-400 hover:text-zinc-200"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-zinc-800 bg-zinc-900/60 px-3.5 text-xs font-medium text-zinc-300 hover:text-zinc-100 active:opacity-80 transition-colors"
           >
             Done
           </button>
@@ -562,7 +562,7 @@ export default function App() {
                 setActivePresetId(nextPreset);
                 localStorage.setItem("boomscroll_active_preset", nextPreset);
               }}
-              className="rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-100 focus:outline-none"
+              className="min-h-[44px] rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs text-zinc-100 focus:outline-none cursor-pointer"
             >
               {Object.values(DIFFICULTY_PRESETS).map((p) => (
                 <option key={p.id} value={p.id}>
@@ -625,7 +625,7 @@ export default function App() {
                           return nextSet;
                         })
                       }
-                      className={`flex flex-col items-center justify-center rounded-xl border p-1.5 transition-all ${
+                      className={`flex min-h-[52px] flex-col items-center justify-center rounded-xl border px-1 py-2 transition-all ${
                         isSelected
                           ? `${color.bg} ${color.border} ${color.text} shadow-sm font-semibold`
                           : "border-zinc-800 bg-zinc-950/40 text-zinc-500 opacity-60"
@@ -655,7 +655,7 @@ export default function App() {
             onClick={() =>
               setEnabledIds(allSelected ? new Set() : new Set(deck.workspaces.map((ws) => ws.id)))
             }
-            className="rounded-full border border-zinc-800 px-3 py-1 text-[11px] font-medium text-zinc-300 hover:bg-zinc-900/50 hover:text-zinc-100 active:opacity-80 transition-colors"
+            className="flex min-h-[44px] items-center justify-center rounded-full border border-zinc-800 bg-zinc-900/60 px-3.5 text-xs font-medium text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100 active:opacity-80 transition-colors"
           >
             {allSelected ? "Unselect all" : "Select all"}
           </button>
@@ -664,10 +664,11 @@ export default function App() {
         <ul className="w-full max-w-sm min-h-0 flex-1 space-y-2 overflow-y-auto touch-pan-y pr-1">
           {deck.workspaces.map((ws) => (
             <li key={ws.id}>
-              <label className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3 cursor-pointer hover:border-zinc-700 transition-colors">
+              <label className="flex min-h-[48px] items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3 cursor-pointer hover:border-zinc-700 transition-colors">
                 <span className="flex items-center gap-3 text-sm">
                   <input
                     type="checkbox"
+                    className="h-5 w-5 rounded border-zinc-700 accent-purple-500 cursor-pointer shrink-0"
                     checked={enabledIds.has(ws.id)}
                     onChange={() =>
                       setEnabledIds((prev) => {
@@ -693,23 +694,29 @@ export default function App() {
           <button
             onClick={() => startFeed(deck, enabledIds, enabledDifficulties)}
             disabled={enabledCards === 0}
-            className="w-full rounded-full bg-zinc-50 px-6 py-3 text-sm font-semibold text-zinc-900 active:opacity-80 disabled:opacity-40"
+            className="flex min-h-[48px] w-full items-center justify-center rounded-full bg-zinc-50 px-6 py-3 text-sm font-semibold text-zinc-900 active:opacity-80 disabled:opacity-40"
           >
             Scroll {enabledCards} cards
           </button>
-          <div className="flex gap-4">
-            <button onClick={() => void openDeck()} className="text-xs text-zinc-400 hover:text-zinc-200">
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <button
+              onClick={() => void openDeck()}
+              className="flex min-h-[44px] items-center justify-center rounded-lg px-3 py-2 text-xs font-medium text-zinc-400 hover:text-zinc-200 active:bg-zinc-900/60 transition-colors"
+            >
               + Add deck
             </button>
             {banishedCount > 0 && (
               <button
                 onClick={() => setShowBanished(true)}
-                className="text-xs text-zinc-400 hover:text-zinc-200"
+                className="flex min-h-[44px] items-center justify-center rounded-lg px-3 py-2 text-xs font-medium text-zinc-400 hover:text-zinc-200 active:bg-zinc-900/60 transition-colors"
               >
                 Banished ({banishedCount})
               </button>
             )}
-            <button onClick={closeDeck} className="text-xs text-zinc-500 hover:text-zinc-300">
+            <button
+              onClick={closeDeck}
+              className="flex min-h-[44px] items-center justify-center rounded-lg px-3 py-2 text-xs font-medium text-zinc-500 hover:text-zinc-300 active:bg-zinc-900/60 transition-colors"
+            >
               Close deck
             </button>
           </div>
@@ -729,18 +736,18 @@ export default function App() {
       onPointerCancel={onPointerUp}
     >
       {/* Safe area top margin keeps controls clear of Android status bar / camera cutout */}
-      <div className="pointer-events-none absolute left-0 right-0 top-[calc(var(--safe-top)+0.5rem)] z-10 flex items-center justify-between px-4">
-        <div className="pointer-events-auto flex min-w-0 items-center gap-2">
+      <div className="pointer-events-none absolute left-0 right-0 top-[calc(var(--safe-top)+0.5rem)] z-10 flex items-center justify-between gap-2 px-3 sm:px-4">
+        <div className="pointer-events-auto flex min-w-0 items-center gap-1.5 sm:gap-2">
           <div className="flex shrink-0 overflow-hidden rounded-full border border-zinc-800 text-xs bg-zinc-950/80 backdrop-blur-md">
             <button
               onClick={() => switchFeedMode("study")}
-              className={`whitespace-nowrap px-3 py-1.5 font-medium transition-colors ${mode === "study" ? "bg-purple-900/60 text-purple-200 font-semibold" : "text-zinc-400 hover:text-zinc-200"}`}
+              className={`flex min-h-[44px] items-center justify-center whitespace-nowrap px-3.5 font-medium transition-colors ${mode === "study" ? "bg-purple-900/60 text-purple-200 font-semibold" : "text-zinc-400 hover:text-zinc-200"}`}
             >
               Study
             </button>
             <button
               onClick={() => switchFeedMode("test")}
-              className={`whitespace-nowrap px-3 py-1.5 font-medium transition-colors ${mode === "test" ? "bg-zinc-800 text-zinc-100 font-semibold" : "text-zinc-400 hover:text-zinc-200"}`}
+              className={`flex min-h-[44px] items-center justify-center whitespace-nowrap px-3.5 font-medium transition-colors ${mode === "test" ? "bg-zinc-800 text-zinc-100 font-semibold" : "text-zinc-400 hover:text-zinc-200"}`}
             >
               Test
             </button>
@@ -752,11 +759,11 @@ export default function App() {
               aria-checked={showAnswerImmediately}
               aria-label="Show the answer as soon as each card appears"
               title="Show the answer as soon as each card appears"
-              className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-800 bg-zinc-950/80 px-2.5 py-1.5 text-xs text-zinc-400 backdrop-blur-md transition-colors active:text-zinc-200"
+              className="flex min-h-[44px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-800 bg-zinc-950/80 px-3 text-xs text-zinc-400 backdrop-blur-md transition-colors active:text-zinc-200"
             >
               <span
                 aria-hidden="true"
-                className={`flex h-3.5 w-3.5 items-center justify-center rounded-[4px] border text-[9px] font-bold leading-none transition-colors ${
+                className={`flex h-4 w-4 items-center justify-center rounded-[4px] border text-[10px] font-bold leading-none transition-colors ${
                   showAnswerImmediately
                     ? "border-emerald-400 bg-emerald-400 text-zinc-900"
                     : "border-zinc-600 text-transparent"
@@ -771,7 +778,7 @@ export default function App() {
         <div className="pointer-events-auto flex shrink-0 items-center gap-1.5">
           <button
             onClick={() => void openDeck()}
-            className="whitespace-nowrap rounded-full border border-zinc-800 px-3 py-1 text-xs text-zinc-400 active:text-zinc-200"
+            className="flex min-h-[44px] items-center justify-center whitespace-nowrap rounded-full border border-zinc-800 bg-zinc-950/80 px-3 text-xs font-medium text-zinc-400 backdrop-blur-md hover:text-zinc-200 active:text-zinc-200 transition-colors"
             title="Import another deck"
           >
             + Add
@@ -779,7 +786,7 @@ export default function App() {
           {deck.workspaces.length > 1 && (
             <button
               onClick={() => setShowFilter(true)}
-              className="whitespace-nowrap rounded-full border border-zinc-800 px-3 py-1 text-xs text-zinc-500 active:text-zinc-300"
+              className="flex min-h-[44px] items-center justify-center whitespace-nowrap rounded-full border border-zinc-800 bg-zinc-950/80 px-3 text-xs font-medium text-zinc-400 backdrop-blur-md hover:text-zinc-200 active:text-zinc-200 transition-colors"
               title="Choose workspaces"
             >
               Decks
@@ -787,8 +794,9 @@ export default function App() {
           )}
           <button
             onClick={closeDeck}
-            className="shrink-0 rounded-full px-2 py-1 text-xs text-zinc-600 active:text-zinc-300"
+            className="flex h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full border border-zinc-800 bg-zinc-950/80 text-sm font-medium text-zinc-400 backdrop-blur-md hover:text-zinc-200 active:text-zinc-100 transition-colors"
             aria-label="Close deck"
+            title="Close deck"
           >
             ✕
           </button>
@@ -856,22 +864,22 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex flex-col gap-2 pt-2">
+            <div className="flex flex-col gap-2.5 pt-2">
               <button
                 onClick={handleConfirmMerge}
-                className="w-full rounded-full bg-zinc-50 py-3 text-xs font-semibold text-zinc-900 active:opacity-80 transition-opacity"
+                className="flex min-h-[48px] w-full items-center justify-center rounded-full bg-zinc-50 px-4 py-3 text-xs font-semibold text-zinc-900 active:opacity-80 transition-opacity"
               >
                 Merge Decks
               </button>
               <button
                 onClick={handleConfirmReplace}
-                className="w-full rounded-full border border-zinc-800 bg-zinc-900 py-3 text-xs font-semibold text-zinc-200 hover:bg-zinc-800 active:opacity-80 transition-colors"
+                className="flex min-h-[48px] w-full items-center justify-center rounded-full border border-zinc-800 bg-zinc-900 px-4 py-3 text-xs font-semibold text-zinc-200 hover:bg-zinc-800 active:opacity-80 transition-colors"
               >
                 Replace Active Deck
               </button>
               <button
                 onClick={() => setPendingDeck(null)}
-                className="w-full py-2 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                className="flex min-h-[44px] w-full items-center justify-center rounded-lg py-2 text-xs font-medium text-zinc-500 hover:text-zinc-300 active:text-zinc-200 transition-colors"
               >
                 Cancel
               </button>
