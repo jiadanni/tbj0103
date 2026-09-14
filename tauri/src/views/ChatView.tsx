@@ -2289,18 +2289,32 @@ export default function ChatView() {
       setScopedFolderId(null);
       setActiveChatId(null);
       await refreshFolderTree(suggestion.workspaceId);
-      const session = await findOrCreateEmptySession({
-        workspaceId: suggestion.workspaceId,
-      });
-      if (session) {
-        activateSession(session);
-      }
+      // Create a brand-new session rather than recycling a stale blank one.
+      // Recycling would inherit the old session's created_at, making the chat
+      // appear older than it is, and would "take over" an unrelated empty chat.
+      const session = await api.chat.createSession(
+        suggestion.workspaceId,
+        null,
+        { modelName: modelForSend },
+      );
+      activateSession(session);
       setInput((prev) => mergeComposerInput(prev, suggestion.prompt));
       requestAnimationFrame(() => resizeAndFocusComposer(suggestion.prompt.length));
       return;
     }
 
     if (suggestion.action === "send_immediately" || sendImmediately) {
+      // Starter prompts should create a brand-new session so they don't
+      // recycle stale blank chats (which would inherit the old timestamp and
+      // appear as old conversations in the sidebar).
+      if (!activeChatId && effectiveWorkspaceId) {
+        const freshSession = await api.chat.createSession(
+          effectiveWorkspaceId,
+          effectiveFolderId,
+          { modelName: modelForSend },
+        );
+        activateSession(freshSession);
+      }
       await sendMessageWithModel(modelForSend, suggestion.prompt);
       return;
     }
