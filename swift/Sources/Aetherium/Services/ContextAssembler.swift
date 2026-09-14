@@ -52,13 +52,19 @@ final class ContextAssembler {
         var finalMessages: [Message] = []
         var systemParts: [String] = []
 
-        // Fetch Session
+        // Fetch Workspace & Session
+        let wsDescriptor = FetchDescriptor<Workspace>(predicate: #Predicate { $0.id == workspaceId })
+        let workspace = try modelContext.fetch(wsDescriptor).first
+
         let sessionDescriptor = FetchDescriptor<ChatSession>(predicate: #Predicate { $0.id == sessionId })
         guard let session = try modelContext.fetch(sessionDescriptor).first else {
             throw AppError.notFound("Chat Session not found")
         }
 
         // 1. System Prompt
+        if let ws = workspace, !ws.ignoreNameInAiContext, !ws.title.isEmpty {
+            systemParts.append("Workspace: \(ws.title)")
+        }
         if let sp = session.systemPrompt, !sp.isEmpty {
             systemParts.append(sp)
         }
