@@ -8,11 +8,6 @@ interface FeedCardProps {
   mode: FeedMode;
   revealed: boolean;
   activePresetId?: string;
-  /**
-   * Banish this card from the feed. Omitted for the background preview card,
-   * which must not offer a live control.
-   */
-  onBanish?: () => void;
 }
 
 /**
@@ -22,7 +17,7 @@ interface FeedCardProps {
  *   decided by the caller (the "Show answer immediately" preference) and
  *   passed in as `revealed`.
  */
-export default function FeedCard({ card, mode, revealed, activePresetId, onBanish }: FeedCardProps) {
+export default function FeedCard({ card, mode, revealed, activePresetId }: FeedCardProps) {
   const isStudy = mode === "study";
   const showBack = isStudy || revealed;
 
@@ -46,17 +41,15 @@ export default function FeedCard({ card, mode, revealed, activePresetId, onBanis
     cleanFront.toLowerCase().includes(card.topic.trim().toLowerCase());
 
   return (
-    <div className="flex h-full w-full flex-col items-center justify-between bg-zinc-950 px-6 pt-[calc(var(--safe-top)+4rem)] pb-[calc(var(--safe-bottom)+1.5rem)] text-center select-none overflow-hidden touch-none">
-      <div className="flex min-h-0 flex-col items-center gap-3 w-full max-w-lg my-auto">
+    <div className="flex h-full w-full flex-col items-center justify-center bg-zinc-950 px-6 pt-[calc(var(--safe-top)+2rem)] pb-[calc(var(--safe-bottom)+2rem)] text-center select-none overflow-hidden touch-none">
+      <div className="flex min-h-0 flex-col items-center gap-3 w-full max-w-lg">
         <div className="flex flex-wrap items-center justify-center gap-2 mb-2 shrink-0">
           <span className="rounded-full bg-purple-950/60 border border-purple-800/50 px-3 py-1 text-[11px] font-semibold tracking-wider text-purple-300 uppercase">
             {card.workspaceName}
+            {!isTopicRedundant && card.topic && (
+              <span className="font-normal normal-case text-purple-300/70"> · {card.topic}</span>
+            )}
           </span>
-          {!isTopicRedundant && card.topic && (
-            <span className="rounded-full border border-zinc-700/80 bg-zinc-900/80 px-3 py-1 text-[11px] font-medium tracking-wider text-zinc-400 uppercase">
-              {card.topic}
-            </span>
-          )}
           {diffInfo && diffColors && (
             <span
               className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold tracking-wider uppercase ${diffColors.bg} ${diffColors.border} ${diffColors.text}`}
@@ -80,12 +73,14 @@ export default function FeedCard({ card, mode, revealed, activePresetId, onBanis
               isStudy ? "flex-1" : "max-h-[35vh]"
             }`}
           >
-            <div className="flex items-center gap-2 mb-2.5 shrink-0">
-              <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
-              <span className="text-xs font-semibold uppercase tracking-wider text-emerald-400">
-                {isStudy ? "Detailed Explanation" : "Answer"}
-              </span>
-            </div>
+            {!isStudy && (
+              <div className="flex items-center gap-2 mb-2.5 shrink-0">
+                <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-emerald-400">
+                  Answer
+                </span>
+              </div>
+            )}
             <div className="overflow-y-auto flex-1 pr-1 touch-pan-y overscroll-contain">
               <p className="text-sm sm:text-base leading-relaxed text-zinc-200 whitespace-pre-line">
                 {card.back}
@@ -100,41 +95,6 @@ export default function FeedCard({ card, mode, revealed, activePresetId, onBanis
             </p>
           </div>
         )}
-      </div>
-
-      <div className="flex shrink-0 flex-col items-center gap-3 pt-4">
-        {onBanish && (
-          <button
-            type="button"
-            aria-label="Banish this card"
-            title="Hold this card out of the feed"
-            // The card root captures pointers for the swipe gesture and toggles
-            // the answer on tap. Stopping the event at pointer-down keeps both
-            // from firing when this is pressed.
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation();
-              onBanish();
-            }}
-            className="flex min-h-[44px] items-center gap-1.5 rounded-full border border-zinc-800/80 bg-zinc-900/60 px-4 text-xs font-medium text-zinc-500 backdrop-blur-md transition-colors hover:border-zinc-700 hover:text-zinc-300 active:opacity-70"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              className="h-3.5 w-3.5"
-              aria-hidden="true"
-            >
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-            Banish
-          </button>
-        )}
-        <div className="text-[10px] text-zinc-600 uppercase tracking-widest">
-          Swipe up for next card
-        </div>
       </div>
     </div>
   );

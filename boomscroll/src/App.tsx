@@ -15,6 +15,8 @@ import {
 import type { Deck, DeckCard } from "./lib/deck";
 import { loadQuarantine, saveQuarantine } from "./lib/quarantine";
 import type { QuarantineMap } from "./lib/quarantine";
+import { loadStarred, saveStarred } from "./lib/starred";
+import type { StarredMap } from "./lib/starred";
 import {
   DIFFICULTY_PRESETS,
   DEFAULT_PRESET_ID,
@@ -33,14 +35,16 @@ export default function App() {
   const [enabledDifficulties, setEnabledDifficulties] = useState<Set<DifficultyScore>>(
     new Set<DifficultyScore>([1, 2, 3, 4, 5]),
   );
-  const [activePresetId, setActivePresetId] = useState<string>(DEFAULT_PRESET_ID);
   const [quarantined, setQuarantined] = useState<QuarantineMap>({});
+  const [starred, setStarred] = useState<StarredMap>({});
   const [showBanished, setShowBanished] = useState(false);
+  const [showStarred, setShowStarred] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
   const [order, setOrder] = useState<DeckCard[]>([]);
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [drag, setDrag] = useState(0);
+  const [dragX, setDragX] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [mode, setMode] = useState<FeedMode>("study");
@@ -53,7 +57,9 @@ export default function App() {
 
   const nextOrderRef = useRef<DeckCard[] | null>(null);
   const startYRef = useRef(0);
+  const startXRef = useRef(0);
   const movedRef = useRef(false);
+  const axisRef = useRef<"vertical" | "horizontal" | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const current = order[index] ?? null;
@@ -94,10 +100,6 @@ export default function App() {
     try {
       const savedIdsRaw = localStorage.getItem("boomscroll_enabled_ids");
       const savedIds = savedIdsRaw ? new Set<string>(JSON.parse(savedIdsRaw)) : undefined;
-      const savedPreset = localStorage.getItem("boomscroll_active_preset");
-      if (savedPreset && DIFFICULTY_PRESETS[savedPreset]) {
-        setActivePresetId(savedPreset);
-      }
       loadDeckFromText(savedDeck, savedIds, true);
     } catch {
       localStorage.removeItem("boomscroll_active_deck");
@@ -177,6 +179,7 @@ export default function App() {
       setDeck(parsed);
       setEnabledIds(allIds);
       setQuarantined(banished);
+      setStarred(loadStarred(deckKey(parsed)));
       setError(null);
       localStorage.setItem("boomscroll_active_deck", raw);
       localStorage.setItem("boomscroll_enabled_ids", JSON.stringify(Array.from(allIds)));
@@ -209,9 +212,16 @@ export default function App() {
     };
     saveQuarantine(deckKey(merged), mergedBanished);
 
+    const mergedStarred: StarredMap = {
+      ...loadStarred(deckKey(pendingDeck.deck)),
+      ...starred,
+    };
+    saveStarred(deckKey(merged), mergedStarred);
+
     setDeck(merged);
     setEnabledIds(newEnabledIds);
     setQuarantined(mergedBanished);
+    setStarred(mergedStarred);
     localStorage.setItem("boomscroll_active_deck", rawExport);
     localStorage.setItem("boomscroll_enabled_ids", JSON.stringify(Array.from(newEnabledIds)));
     setPendingDeck(null);
@@ -276,7 +286,9 @@ export default function App() {
     // In-memory only — the persisted per-deck record stays, so reopening this
     // deck restores what was banished in it.
     setQuarantined({});
+    setStarred({});
     setShowBanished(false);
+    setShowStarred(false);
     setShowFilter(false);
     nextOrderRef.current = null;
     localStorage.removeItem("boomscroll_active_deck");
@@ -312,6 +324,7 @@ export default function App() {
     }
     setRevealed(showAnswerImmediately);
     setDrag(0);
+    setDragX(0);
     setUseTransition(false);
   }
 
@@ -324,6 +337,33 @@ export default function App() {
     setQuarantined(nextBanished);
     saveQuarantine(deckKey(deck), nextBanished);
     startFeed(deck, enabledIds, enabledDifficulties, mode, nextBanished);
+  }
+
+  /**
+   * Star the current card as a bookmark. Unlike banishing, this doesn't
+   * remove it from the feed — it just advances to the next card.
+   */
+  function starCurrent() {
+    if (!current || !deck) {return;}
+    const nextStarred: StarredMap = {
+      ...starred,
+      [current.id]: { at: new Date().toISOString() },
+    };
+    setStarred(nextStarred);
+    saveStarred(deckKey(deck), nextStarred);
+    setUseTransition(true);
+    setCommitting(true);
+    setDragX(-window.innerWidth);
+  }
+
+  function unstarCards(ids: string[]) {
+    if (!deck || ids.length === 0) {return;}
+    const nextStarred = { ...starred };
+    for (const id of ids) {
+      delete nextStarred[id];
+    }
+    setStarred(nextStarred);
+    saveStarred(deckKey(deck), nextStarred);
   }
 
   function advance() {
@@ -339,13 +379,16 @@ export default function App() {
     setCommitting(false);
     setUseTransition(false);
     setDrag(0);
+    setDragX(0);
   }
 
   function onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if (committing || !current) {return;}
     setUseTransition(false);
     startYRef.current = event.clientY;
+    startXRef.current = event.clientX;
     movedRef.current = false;
+    axisRef.current = null;
     setDragging(true);
     event.currentTarget.setPointerCapture(event.pointerId);
   }
@@ -353,14 +396,26 @@ export default function App() {
   function onPointerMove(event: React.PointerEvent<HTMLDivElement>) {
     if (!dragging || committing) {return;}
     const dy = event.clientY - startYRef.current;
-    if (Math.abs(dy) > TAP_SLOP_PX) {
-      movedRef.current = true;
+    const dx = event.clientX - startXRef.current;
+
+    if (!axisRef.current) {
+      if (Math.abs(dy) > TAP_SLOP_PX || Math.abs(dx) > TAP_SLOP_PX) {
+        movedRef.current = true;
+        axisRef.current = Math.abs(dx) > Math.abs(dy) ? "horizontal" : "vertical";
+      }
     }
-    if (dy > 0) {
-      const rubberBand = (dy * RUBBER_BAND_MAX_PX) / (dy + RUBBER_BAND_MAX_PX);
-      setDrag(rubberBand);
-    } else {
-      setDrag(dy);
+
+    if (axisRef.current === "horizontal") {
+      setDragX(dx);
+      return;
+    }
+    if (axisRef.current === "vertical") {
+      if (dy > 0) {
+        const rubberBand = (dy * RUBBER_BAND_MAX_PX) / (dy + RUBBER_BAND_MAX_PX);
+        setDrag(rubberBand);
+      } else {
+        setDrag(dy);
+      }
     }
   }
 
@@ -380,6 +435,21 @@ export default function App() {
       setDrag(0);
       return;
     }
+
+    if (axisRef.current === "horizontal") {
+      if (dragX > COMMIT_THRESHOLD_PX) {
+        // Swipe right: banish. banishCurrent() resets drag/dragX itself.
+        banishCurrent();
+      } else if (dragX < -COMMIT_THRESHOLD_PX) {
+        // Swipe left: star, then slide the card away like a normal advance.
+        starCurrent();
+        setDragX(0);
+      } else {
+        setDragX(0);
+      }
+      return;
+    }
+
     if (drag < -COMMIT_THRESHOLD_PX) {
       setCommitting(true);
       setDrag(-window.innerHeight);
@@ -424,6 +494,7 @@ export default function App() {
   }
 
   const banishedCount = Object.keys(quarantined).length;
+  const starredCount = Object.keys(starred).length;
 
   // Banished-cards review screen
   if (showBanished) {
@@ -489,6 +560,70 @@ export default function App() {
     );
   }
 
+  // Starred-cards review screen
+  if (showStarred) {
+    // Most recently starred first, same rationale as Banished.
+    const starredCards = deck.cards
+      .filter((card) => starred[card.id])
+      .sort((a, b) => starred[b.id].at.localeCompare(starred[a.id].at));
+
+    return (
+      <main className="safe-screen flex h-full flex-col items-center gap-4 px-6 py-4">
+        <div className="w-full max-w-sm shrink-0 flex items-center justify-between">
+          <h1 className="text-xl font-bold tracking-tight">Starred</h1>
+          <button
+            onClick={() => setShowStarred(false)}
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-zinc-800 bg-zinc-900/60 px-3.5 text-xs font-medium text-zinc-300 hover:text-zinc-100 active:opacity-80 transition-colors"
+          >
+            Done
+          </button>
+        </div>
+
+        <p className="w-full max-w-sm shrink-0 text-xs text-zinc-500">
+          Cards you've bookmarked. They stay in the feed — unstarring just
+          removes the bookmark.
+        </p>
+
+        {starredCards.length === 0 ? (
+          <p className="my-auto text-sm text-zinc-500">Nothing starred.</p>
+        ) : (
+          <ul className="w-full max-w-sm min-h-0 flex-1 space-y-2 overflow-y-auto touch-pan-y pr-1">
+            {starredCards.map((card) => (
+              <li
+                key={card.id}
+                className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3"
+              >
+                <span className="min-w-0 flex-1 text-left">
+                  <span className="block text-sm text-zinc-200 line-clamp-2">{card.front}</span>
+                  <span className="mt-1 block text-[11px] uppercase tracking-wider text-zinc-500">
+                    {card.workspaceName}
+                  </span>
+                </span>
+                <button
+                  onClick={() => unstarCards([card.id])}
+                  className="shrink-0 flex min-h-[44px] items-center justify-center rounded-full border border-zinc-800 bg-zinc-900/80 px-4 text-xs font-medium text-zinc-200 hover:bg-zinc-800 hover:text-zinc-100 active:opacity-80 transition-colors"
+                >
+                  Unstar
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {starredCards.length > 0 && (
+          <div className="flex shrink-0 w-full max-w-sm pt-2">
+            <button
+              onClick={() => unstarCards(starredCards.map((c) => c.id))}
+              className="flex min-h-[48px] w-full items-center justify-center rounded-full border border-zinc-800 px-6 py-3 text-sm font-semibold text-zinc-300 hover:bg-zinc-900/50 hover:text-zinc-100 active:opacity-80 transition-colors"
+            >
+              Unstar all
+            </button>
+          </div>
+        )}
+      </main>
+    );
+  }
+
   // Workspace filter screen
   if (showFilter || !current) {
     const enabledCards = deck.cards.filter((card) => {
@@ -515,22 +650,18 @@ export default function App() {
       (level) => (countsByLevel.get(level) ?? 0) > 0,
     );
 
-    // The user's pick is a fallback for decks that declare no preset; a deck
-    // that states one per workspace wins. When the enabled workspaces agree on
-    // a preset, label the level buttons with it.
+    // Each workspace's own declared preset always wins; workspaces that
+    // declare none fall back to the default. When the enabled workspaces
+    // agree on a preset, label the level buttons with it.
     const enabledPresets = new Set(
       deck.workspaces
         .filter((ws) => enabledIds.has(ws.id))
-        .map((ws) => resolvePresetId({ difficultyPreset: ws.preset }, activePresetId)),
+        .map((ws) => resolvePresetId({ difficultyPreset: ws.preset }, DEFAULT_PRESET_ID)),
     );
     const buttonPresetId =
-      enabledPresets.size === 1 ? [...enabledPresets][0] : activePresetId;
+      enabledPresets.size === 1 ? [...enabledPresets][0] : DEFAULT_PRESET_ID;
     const preset = DIFFICULTY_PRESETS[buttonPresetId] ?? DIFFICULTY_PRESETS[DEFAULT_PRESET_ID];
     const presetsDiverge = enabledPresets.size > 1;
-    // A deck that states its own preset everywhere makes the selector inert.
-    const selectorIsFallback = !deck.workspaces
-      .filter((ws) => enabledIds.has(ws.id))
-      .every((ws) => ws.preset && DIFFICULTY_PRESETS[ws.preset]);
 
     return (
       <main className="safe-screen flex h-full flex-col items-center justify-center gap-4 px-6 py-4">
@@ -551,36 +682,9 @@ export default function App() {
         </div>
 
         <div className="w-full max-w-sm shrink-0 space-y-2 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-3.5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
-              {selectorIsFallback ? "Default Preset" : "Domain Preset"}
-            </span>
-            <select
-              value={activePresetId}
-              onChange={(e) => {
-                const nextPreset = e.target.value;
-                setActivePresetId(nextPreset);
-                localStorage.setItem("boomscroll_active_preset", nextPreset);
-              }}
-              className="min-h-[44px] rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs text-zinc-100 focus:outline-none cursor-pointer"
-            >
-              {Object.values(DIFFICULTY_PRESETS).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.icon} {p.shortName}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {!selectorIsFallback && (
+          {presetsDiverge && (
             <p className="text-[11px] leading-snug text-zinc-500">
-              This deck sets its own level names per workspace, so they're used
-              instead of this.
-            </p>
-          )}
-          {selectorIsFallback && presetsDiverge && (
-            <p className="text-[11px] leading-snug text-zinc-500">
-              Workspaces use different level names — the buttons below show this
+              Workspaces use different level names — the buttons below show the
               default.
             </p>
           )}
@@ -705,6 +809,14 @@ export default function App() {
             >
               + Add deck
             </button>
+            {starredCount > 0 && (
+              <button
+                onClick={() => setShowStarred(true)}
+                className="flex min-h-[44px] items-center justify-center rounded-lg px-3 py-2 text-xs font-medium text-zinc-400 hover:text-zinc-200 active:bg-zinc-900/60 transition-colors"
+              >
+                Starred ({starredCount})
+              </button>
+            )}
             {banishedCount > 0 && (
               <button
                 onClick={() => setShowBanished(true)}
@@ -806,7 +918,7 @@ export default function App() {
       {/* Background card (next in feed) */}
       {next && (
         <div className="absolute inset-0 z-0">
-          <FeedCard card={next} mode={mode} revealed={false} activePresetId={activePresetId} />
+          <FeedCard card={next} mode={mode} revealed={false} activePresetId={DEFAULT_PRESET_ID} />
         </div>
       )}
 
@@ -814,21 +926,16 @@ export default function App() {
       <div
         key={current.id}
         style={{
-          transform: `translate3d(0, ${drag}px, 0)`,
+          transform: `translate3d(${dragX}px, ${drag}px, 0) rotate(${dragX / 24}deg)`,
           transition,
+          opacity: dragX !== 0 ? Math.max(1 - Math.abs(dragX) / window.innerWidth, 0.2) : 1,
         }}
         onTransitionEnd={() => {
           if (committing) {advance();}
         }}
         className="absolute inset-0 z-0 select-none touch-none"
       >
-        <FeedCard
-          card={current}
-          mode={mode}
-          revealed={revealed}
-          activePresetId={activePresetId}
-          onBanish={banishCurrent}
-        />
+        <FeedCard card={current} mode={mode} revealed={revealed} activePresetId={DEFAULT_PRESET_ID} />
       </div>
 
       {/* Hidden file input for browser dev mode fallback */}
