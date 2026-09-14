@@ -109,7 +109,31 @@ export function getCodeBlockKeywordColorValue(color: CodeBlockKeywordColor, pale
   return CODE_BLOCK_KEYWORD_COLORS.find((option) => option.id === color)?.value ?? getCodeBlockColorPaletteColors(palette).keyword;
 }
 
+// Virtuoso remounts off-screen code blocks as they re-enter its overscan
+// buffer while scrolling, re-running this tokenizer on unchanged content.
+// Caching by (language, code) turns those remounts into a Map lookup instead
+// of a full re-scan, which is what caused scroll hitching past the first
+// screen of a long chat with code blocks.
+const tokenizeCache = new Map<string, Array<{ text: string; kind: CodeTokenKind }>>();
+const TOKENIZE_CACHE_MAX_ENTRIES = 200;
+
 export function tokenizeCode(code: string, language: string): Array<{ text: string; kind: CodeTokenKind }> {
+  const cacheKey = `${language} ${code}`;
+  const cached = tokenizeCache.get(cacheKey);
+  if (cached) { return cached; }
+
+  const tokens = tokenizeCodeUncached(code, language);
+
+  if (tokenizeCache.size >= TOKENIZE_CACHE_MAX_ENTRIES) {
+    const oldestKey = tokenizeCache.keys().next().value;
+    if (oldestKey !== undefined) { tokenizeCache.delete(oldestKey); }
+  }
+  tokenizeCache.set(cacheKey, tokens);
+
+  return tokens;
+}
+
+function tokenizeCodeUncached(code: string, language: string): Array<{ text: string; kind: CodeTokenKind }> {
   const normalizedLanguage = LANGUAGE_ALIASES[language.toLowerCase()] ?? language.toLowerCase();
   const keywords = KEYWORDS_BY_LANGUAGE[normalizedLanguage];
   const keywordSet = new Set(keywords ?? []);
