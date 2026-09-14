@@ -42,7 +42,13 @@ export type DualModelExecutionMode = "serial" | "parallel";
 export type SettingsNavigationLayout = "top-tabs" | "side-tabs";
 export type ChatMessageStyle = "bubble" | "flat" | "minimal";
 export type ComposerMode = "normal" | "family";
+export type WaterfallStyle = "set-type" | "mosaic" | "bracket";
 export type { CodeBlockColorPalette, CodeBlockContainerStyle, CodeBlockKeywordColor };
+
+const WATERFALL_STYLES: WaterfallStyle[] = ["set-type", "mosaic", "bracket"];
+export function normalizeWaterfallStyle(value: unknown): WaterfallStyle {
+  return WATERFALL_STYLES.includes(value as WaterfallStyle) ? (value as WaterfallStyle) : "set-type";
+}
 
 interface AppSettings {
   preferredModel: string;
@@ -85,6 +91,7 @@ interface AppSettings {
   scrollToTopOnSend: boolean;
   regenerateCreatesBranch: boolean;
   chatMessageStyle: ChatMessageStyle;
+  waterfallStyle: WaterfallStyle;
   expandChatToWindowWidth: boolean;
   codeBlockContainerStyle: CodeBlockContainerStyle;
   codeBlockColorPalette: CodeBlockColorPalette;
@@ -154,6 +161,7 @@ interface SettingsStore extends AppSettings {
   setScrollToTopOnSend: (v: boolean) => void;
   setRegenerateCreatesBranch: (v: boolean) => void;
   setChatMessageStyle: (v: ChatMessageStyle) => void;
+  setWaterfallStyle: (v: WaterfallStyle) => void;
   setExpandChatToWindowWidth: (v: boolean) => void;
   setCodeBlockContainerStyle: (v: CodeBlockContainerStyle) => void;
   setCodeBlockColorPalette: (v: CodeBlockColorPalette) => void;
@@ -224,6 +232,7 @@ export const useSettingsStore = create<SettingsStore>()(
       scrollToTopOnSend: false,
       regenerateCreatesBranch: true,
       chatMessageStyle: "bubble",
+      waterfallStyle: "set-type",
       expandChatToWindowWidth: false,
       codeBlockContainerStyle: "rounded",
       codeBlockColorPalette: "balanced",
@@ -299,6 +308,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setScrollToTopOnSend: (scrollToTopOnSend) => set({ scrollToTopOnSend }),
       setRegenerateCreatesBranch: (regenerateCreatesBranch) => set({ regenerateCreatesBranch }),
       setChatMessageStyle: (chatMessageStyle) => set({ chatMessageStyle }),
+      setWaterfallStyle: (waterfallStyle) => set({ waterfallStyle: normalizeWaterfallStyle(waterfallStyle) }),
       setExpandChatToWindowWidth: (expandChatToWindowWidth) => set({ expandChatToWindowWidth }),
       setCodeBlockContainerStyle: (codeBlockContainerStyle) => set({ codeBlockContainerStyle: normalizeCodeBlockContainerStyle(codeBlockContainerStyle) }),
       setCodeBlockColorPalette: (codeBlockColorPalette) => set({ codeBlockColorPalette: normalizeCodeBlockColorPalette(codeBlockColorPalette) }),
@@ -367,6 +377,7 @@ export const useSettingsStore = create<SettingsStore>()(
           codeBlockContainerStyle: normalizeCodeBlockContainerStyle(state.codeBlockContainerStyle ?? currentState.codeBlockContainerStyle),
           codeBlockColorPalette: normalizeCodeBlockColorPalette(state.codeBlockColorPalette ?? currentState.codeBlockColorPalette),
           codeBlockKeywordColor: normalizeCodeBlockKeywordColor(state.codeBlockKeywordColor ?? currentState.codeBlockKeywordColor),
+          waterfallStyle: normalizeWaterfallStyle(state.waterfallStyle ?? currentState.waterfallStyle),
           // Always reset transient state on startup.
           modelRefreshCounter: 0,
           ollamaStatus: "unknown",

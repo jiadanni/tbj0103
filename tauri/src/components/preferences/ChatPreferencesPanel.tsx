@@ -6,7 +6,7 @@ import {
   CODE_BLOCK_KEYWORD_COLORS,
   getCodeBlockColorPaletteColors,
 } from "../../lib/codeBlockHighlight";
-import { useSettingsStore, type ChatMessageStyle } from "../../stores/settingsStore";
+import { useSettingsStore, type ChatMessageStyle, type WaterfallStyle } from "../../stores/settingsStore";
 import { type AppSettings } from "../../lib/api";
 
 interface ChatPreferencesPanelProps {
@@ -60,6 +60,8 @@ export function ChatPreferencesPanel({
   const setShowComposerChatFollowUps = useSettingsStore((state) => state.setShowComposerChatFollowUps);
   const showStatusBar = useSettingsStore((state) => state.showStatusBar);
   const setShowStatusBar = useSettingsStore((state) => state.setShowStatusBar);
+  const waterfallStyle = useSettingsStore((state) => state.waterfallStyle);
+  const setWaterfallStyle = useSettingsStore((state) => state.setWaterfallStyle);
 
   return (
     <div className="flex flex-col gap-8">
@@ -276,6 +278,34 @@ export function ChatPreferencesPanel({
               <span className="text-[var(--text-secondary)]">Follow-up suggestions</span>
             </label>
           </div>
+        </div>
+
+        {/* Waterfall Style */}
+        <div className="pt-3">
+          <label className="text-xs text-[var(--text-secondary)] mb-2 block font-medium">Waterfall Style</label>
+          <div className="flex flex-row flex-wrap gap-x-6 gap-y-2">
+            {(
+              [
+                { id: "set-type", label: "Set type" },
+                { id: "mosaic", label: "Mosaic" },
+                { id: "bracket", label: "Bracket" },
+              ] as { id: WaterfallStyle; label: string }[]
+            ).map(({ id, label }) => (
+              <label key={id} className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="radio"
+                  name="waterfall_style"
+                  checked={waterfallStyle === id}
+                  onChange={() => setWaterfallStyle(id)}
+                  className="accent-[var(--accent-color)]"
+                />
+                <span className="text-[var(--text-secondary)]">{label}</span>
+              </label>
+            ))}
+          </div>
+          <p className="text-[11px] text-[var(--text-muted)] mt-1.5">
+            How suggested prompts are arranged on the empty-chat screen. Set type: bare prompts on a drawn field. Mosaic: a 3x3 grid. Bracket: cut tiles along a drawn bracket.
+          </p>
         </div>
 
         {/* Chat Identifiers */}

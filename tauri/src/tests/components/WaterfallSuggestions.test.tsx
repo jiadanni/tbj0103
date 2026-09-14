@@ -13,7 +13,7 @@ describe("WaterfallSuggestions", () => {
   it("renders scrolling prompts as selectable buttons", () => {
     const onSelect = vi.fn();
 
-    render(<WaterfallSuggestions suggestions={suggestions} onSelect={onSelect} />);
+    render(<WaterfallSuggestions suggestions={suggestions} onSelect={onSelect} action={null} />);
 
     fireEvent.click(screen.getAllByRole("button", { name: "Map my Rust notes" })[0]);
 
@@ -21,7 +21,7 @@ describe("WaterfallSuggestions", () => {
   });
 
   it("does not render without suggestions", () => {
-    const { container } = render(<WaterfallSuggestions suggestions={[]} onSelect={() => undefined} />);
+    const { container } = render(<WaterfallSuggestions suggestions={[]} onSelect={() => undefined} action={null} />);
 
     expect(container).toBeEmptyDOMElement();
   });
@@ -31,7 +31,7 @@ describe("WaterfallSuggestions", () => {
     const onDismiss = vi.fn();
 
     render(
-      <WaterfallSuggestions suggestions={suggestions} onSelect={onSelect} onDismiss={onDismiss} />,
+      <WaterfallSuggestions suggestions={suggestions} onSelect={onSelect} onDismiss={onDismiss} action={null} />,
     );
 
     fireEvent.click(screen.getAllByRole("button", { name: "Dismiss this suggestion" })[0]);
