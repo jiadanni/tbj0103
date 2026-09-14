@@ -1,4 +1,5 @@
 import React, { useCallback, useRef, useState, useEffect, useMemo } from "react";
+import { useChatStore } from "../stores/chatStore";
 import type { Message } from "../stores/chatStore";
 import type { VirtuosoHandle } from "react-virtuoso";
 
@@ -6,7 +7,6 @@ interface ChatMinimapProps {
   messages: Message[];
   virtuosoRef: React.RefObject<VirtuosoHandle | null>;
   scrollContainer: HTMLDivElement | null;
-  streamingContent?: string;
   isStreaming?: boolean;
 }
 
@@ -40,10 +40,33 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
   messages,
   virtuosoRef,
   scrollContainer,
-  streamingContent = "",
   isStreaming = false,
 }) => {
   const trackRef = useRef<HTMLDivElement>(null);
+  // Subscribed directly (rAF-batched) rather than via a prop, so per-token
+  // streaming updates only re-render this subtree, not the whole ChatView.
+  const [streamingContent, setStreamingContent] = useState("");
+  const streamingRafRef = useRef(0);
+
+  useEffect(() => {
+    if (!isStreaming) {
+      window.cancelAnimationFrame(streamingRafRef.current);
+      streamingRafRef.current = requestAnimationFrame(() => { setStreamingContent(""); });
+      return;
+    }
+    const unsub = useChatStore.subscribe(
+      (state) => state.streamingContent,
+      (content) => {
+        window.cancelAnimationFrame(streamingRafRef.current);
+        streamingRafRef.current = requestAnimationFrame(() => { setStreamingContent(content); });
+      },
+    );
+    return () => {
+      unsub();
+      window.cancelAnimationFrame(streamingRafRef.current);
+    };
+  }, [isStreaming]);
+
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const [tooltipY, setTooltipY] = useState(0);
   const [trackClientH, setTrackClientH] = useState(0);
@@ -250,8 +273,8 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
   }, [blocks, scrollContainer, layoutTick]);
 
   const jumpTo = useCallback(
-    (idx: number) => {
-      virtuosoRef.current?.scrollToIndex({ index: idx, behavior: "smooth", align: "start" });
+    (idx: number, behavior: "smooth" | "auto" = "smooth") => {
+      virtuosoRef.current?.scrollToIndex({ index: idx, behavior, align: "start" });
     },
     [virtuosoRef],
   );
@@ -305,7 +328,7 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
         return prev === next ? prev : next;
       });
       setTooltipY(relY);
-      if (dragging.current) { jumpTo(positioned[idx]?.msgIdx ?? 0); }
+      if (dragging.current) { jumpTo(positioned[idx]?.msgIdx ?? 0, "auto"); }
     },
     [blockIdxAtY, jumpTo, positioned, trackClientH],
   );

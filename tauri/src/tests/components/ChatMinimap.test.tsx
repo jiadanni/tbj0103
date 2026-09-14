@@ -51,7 +51,6 @@ describe("ChatMinimap", () => {
         messages={messages.slice(0, 2)}
         virtuosoRef={{ current: { scrollToIndex: vi.fn() } as unknown as VirtuosoHandle }}
         scrollContainer={scrollContainer}
-        streamingContent=""
         isStreaming={false}
       />
     );
@@ -67,7 +66,6 @@ describe("ChatMinimap", () => {
         messages={messages}
         virtuosoRef={{ current: { scrollToIndex: vi.fn() } as unknown as VirtuosoHandle }}
         scrollContainer={scrollContainer}
-        streamingContent=""
         isStreaming={false}
       />
     );
@@ -83,7 +81,6 @@ describe("ChatMinimap", () => {
         messages={messages}
         virtuosoRef={{ current: { scrollToIndex: vi.fn() } as unknown as VirtuosoHandle }}
         scrollContainer={scrollContainer}
-        streamingContent=""
         isStreaming={false}
       />
     );
@@ -101,7 +98,6 @@ describe("ChatMinimap", () => {
         messages={messages}
         virtuosoRef={{ current: { scrollToIndex: vi.fn() } as unknown as VirtuosoHandle }}
         scrollContainer={scrollContainer}
-        streamingContent=""
         isStreaming={false}
       />
     );

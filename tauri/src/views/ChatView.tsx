@@ -258,7 +258,6 @@ export default function ChatView() {
   const finalizeStream = useChatStore((s) => s.finalizeStream);
   const setStreamingSession = useChatStore((s) => s.setStreamingSession);
   const streamingSessionId = useChatStore((s) => s.streamingSessionId);
-  const streamingContentForMinimap = useChatStore((s) => s.streamingContent);
   const updateMessage = useChatStore((s) => s.updateMessage);
 
   const activeFolderId = useWorkspaceStore((s) => s.activeFolderId);
@@ -3389,7 +3388,7 @@ export default function ChatView() {
                         }}
                         data={activeMessages}
                         initialTopMostItemIndex={activeMessages.length > 0 ? activeMessages.length - 1 : 0}
-                        followOutput={isCurrentlyStreaming ? "smooth" : false}
+                        followOutput={isCurrentlyStreaming ? "auto" : false}
                         alignToBottom={true}
                         className="w-full min-w-0 overflow-x-hidden py-4"
                         increaseViewportBy={{ top: 1200, bottom: 1200 }}
@@ -3446,7 +3445,6 @@ export default function ChatView() {
                       messages={activeMessages}
                       virtuosoRef={virtuosoRef}
                       scrollContainer={messagesScrollerElement}
-                      streamingContent={streamingContentForMinimap}
                       isStreaming={isCurrentlyStreaming}
                     />
                   </div>
