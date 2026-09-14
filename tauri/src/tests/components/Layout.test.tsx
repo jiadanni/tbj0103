@@ -142,7 +142,24 @@ describe("Layout", () => {
     expect(fixedActions).not.toBeNull();
     expect(tabStrip?.parentElement).toBe(dragRegion);
     expect(fixedActions?.parentElement).toBe(dragRegion);
-    expect(tabStrip).toHaveAttribute("data-no-drag");
+  });
+
+  it("leaves the flex-1 tab strip container draggable so the titlebar can move the window", () => {
+    // Regression: the strip container is `flex-1`, so marking it `data-no-drag`
+    // blanketed the entire empty titlebar area right of the tabs and made the
+    // window undraggable. The tabs themselves carry their own `data-no-drag`.
+    useWorkspaceStore.setState({ workspaceNavigation: "top-tabs" });
+    render(
+      <MemoryRouter initialEntries={["/folder"]}>
+        <Layout />
+      </MemoryRouter>
+    );
+
+    const tabStrip = document.querySelector("[data-workspace-tab-strip]");
+
+    expect(tabStrip).not.toBeNull();
+    expect(tabStrip).not.toHaveAttribute("data-no-drag");
+    expect(tabStrip?.closest("[data-no-drag]")).toBeNull();
   });
 
   it("renders a dedicated draggable handle in the title bar", () => {

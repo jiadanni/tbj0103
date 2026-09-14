@@ -301,6 +301,10 @@ function WorkspaceTabBar({
           />
         )}
         {!isMac && <div className="relative z-10"><AppHeaderMenu /></div>}
+        {/* This container is `flex-1`, so it must NOT carry `data-no-drag`:
+            that would blanket the whole empty titlebar right of the tabs and
+            kill window dragging. The tab list and its controls carry their own
+            `data-no-drag` (see WorkspaceNavigationTabs). */}
         <div
           onWheel={handleHorizontalWheel}
           className={
@@ -312,7 +316,7 @@ function WorkspaceTabBar({
               ? "min-w-0 flex-1"
               : "min-w-0 flex-1 overflow-visible"
           }
-          {...(showWorkspaceTabs && !showSplitTitlebarWorkspaceNavigation && !showSinglePaneWorkspaceDropdown && !showSinglePaneWorkspaceSidebar ? { "data-workspace-tab-strip": "", "data-no-drag": "" } : {})}
+          {...(showWorkspaceTabs && !showSplitTitlebarWorkspaceNavigation && !showSinglePaneWorkspaceDropdown && !showSinglePaneWorkspaceSidebar ? { "data-workspace-tab-strip": "" } : {})}
         >
           {showSinglePaneWorkspaceDropdown ? (
             <div className="flex h-10 items-center gap-1.5">
