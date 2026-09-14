@@ -121,6 +121,16 @@ struct WorkspaceListCard: View {
                     .font(.caption)
                     .textFieldStyle(.plain)
             }
+
+            Toggle("Ignore Name in AI Context", isOn: Binding(
+                get: { workspace.ignoreNameInAiContext },
+                set: { newValue in
+                    workspace.ignoreNameInAiContext = newValue
+                    workspace.updateTimestamp()
+                    try? modelContext.save()
+                }
+            ))
+            .font(.caption)
         }
         .padding()
         .background(false ? Color.accentColor.opacity(0.05) : Color(nsColor: .windowBackgroundColor))

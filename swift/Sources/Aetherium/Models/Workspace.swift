@@ -7,6 +7,7 @@ final class Workspace {
     var title: String
     var workspaceDescription: String
     var isHidden: Bool
+    var ignoreNameInAiContext: Bool = false
     var sortOrder: Int
     var createdAt: Date
     var updatedAt: Date
@@ -33,6 +34,7 @@ final class Workspace {
         title: String,
         description: String,
         isHidden: Bool = false,
+        ignoreNameInAiContext: Bool = false,
         sortOrder: Int = 0,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
@@ -41,6 +43,7 @@ final class Workspace {
         self.title = title
         self.workspaceDescription = description
         self.isHidden = isHidden
+        self.ignoreNameInAiContext = ignoreNameInAiContext
         self.sortOrder = sortOrder
         self.createdAt = createdAt
         self.updatedAt = updatedAt
