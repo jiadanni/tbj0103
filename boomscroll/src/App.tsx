@@ -514,8 +514,6 @@ export default function App() {
     const availableLevels = ([1, 2, 3, 4, 5] as DifficultyScore[]).filter(
       (level) => (countsByLevel.get(level) ?? 0) > 0,
     );
-    const allDiffsSelected =
-      availableLevels.length > 0 && availableLevels.every((l) => enabledDifficulties.has(l));
 
     // The user's pick is a fallback for decks that declare no preset; a deck
     // that states one per workspace wins. When the enabled workspaces agree on
@@ -592,22 +590,6 @@ export default function App() {
               <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">
                 Difficulty Range
               </span>
-              {availableLevels.length > 1 && (
-                <button
-                  onClick={() =>
-                    setEnabledDifficulties(
-                      allDiffsSelected
-                        ? new Set<DifficultyScore>(availableLevels.slice(0, 1))
-                        : new Set<DifficultyScore>(availableLevels),
-                    )
-                  }
-                  className="text-[11px] text-purple-400 hover:text-purple-300"
-                >
-                  {allDiffsSelected
-                    ? `Solo Level ${availableLevels[0]}`
-                    : "All Levels"}
-                </button>
-              )}
             </div>
 
             {availableLevels.length === 0 ? (
