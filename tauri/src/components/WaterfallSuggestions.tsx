@@ -184,7 +184,7 @@ function WaterfallSetType({ suggestions, onSelect, onDismiss, action }: Omit<Wat
           );
         })}
       </div>
-      <div className="relative z-10 flex flex-col items-center gap-5">{action}</div>
+      <div className="pointer-events-auto relative z-10 flex flex-col items-center gap-5">{action}</div>
     </>
   );
 }
@@ -279,7 +279,7 @@ function WaterfallBracket({ suggestions, onSelect, onDismiss, action }: Omit<Wat
           );
         })}
       </div>
-      <div className="relative z-10 flex flex-col items-center gap-5">{action}</div>
+      <div className="pointer-events-auto relative z-10 flex flex-col items-center gap-5">{action}</div>
     </>
   );
 }

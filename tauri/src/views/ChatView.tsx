@@ -3149,14 +3149,14 @@ export default function ChatView() {
                     action={
                       <div
                         ref={emptyStatePrivacyMenuRef}
-                        className="relative flex flex-wrap justify-center gap-3"
+                        className="pointer-events-auto relative flex flex-wrap justify-center gap-3"
                       >
                         {/* The blue radial bloom that used to sit behind this
                             button is gone: it was the loudest thing on an
                             otherwise calm screen, and it washed out the prompt
                             cards arranged around it. The accent fill alone is
                             enough to mark the primary action. */}
-                        <div className="flex overflow-hidden rounded-full border border-[rgba(var(--accent-color-rgb),0.45)] bg-[var(--accent-color)] text-white shadow-[0_2px_8px_-2px_rgba(var(--accent-color-rgb),0.45)] ring-1 ring-inset ring-white/15 transition-transform hover:-translate-y-0.5">
+                        <div className="flex overflow-hidden rounded-full border border-[rgba(var(--accent-color-rgb),0.45)] bg-[var(--accent-color)] text-white shadow-[0_0_20px_rgba(var(--accent-color-rgb),0.35),0_2px_8px_-2px_rgba(var(--accent-color-rgb),0.45)] ring-1 ring-inset ring-white/15 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_0_28px_rgba(var(--accent-color-rgb),0.55),0_4px_12px_-2px_rgba(var(--accent-color-rgb),0.5)]">
                           <button
                             type="button"
                             onClick={() => {

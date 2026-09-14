@@ -1,8 +1,10 @@
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { WaterfallSuggestions } from "@/components/WaterfallSuggestions";
 import type { ComposerSuggestion } from "@/lib/composerSuggestions";
+
+import { useSettingsStore } from "@/stores/settingsStore";
 
 const suggestions: ComposerSuggestion[] = [
   { id: "starter-1", label: "Map my Rust notes", prompt: "Map my Rust notes", action: "append" },
@@ -39,4 +41,32 @@ describe("WaterfallSuggestions", () => {
     expect(onDismiss).toHaveBeenCalledTimes(1);
     expect(onSelect).not.toHaveBeenCalled();
   });
+
+  it("renders the action container with pointer-events-auto in set-type and bracket styles", () => {
+    useSettingsStore.setState({ waterfallStyle: "set-type" });
+    const { rerender } = render(
+      <WaterfallSuggestions
+        suggestions={suggestions}
+        onSelect={() => undefined}
+        action={<button data-testid="start-chat-btn">Start a new chat</button>}
+      />,
+    );
+
+    const button = screen.getByTestId("start-chat-btn");
+    expect(button.parentElement).toHaveClass("pointer-events-auto");
+
+    act(() => {
+      useSettingsStore.setState({ waterfallStyle: "bracket" });
+    });
+    rerender(
+      <WaterfallSuggestions
+        suggestions={suggestions}
+        onSelect={() => undefined}
+        action={<button data-testid="start-chat-btn">Start a new chat</button>}
+      />,
+    );
+
+    expect(screen.getByTestId("start-chat-btn").parentElement).toHaveClass("pointer-events-auto");
+  });
 });
+
