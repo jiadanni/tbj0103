@@ -1,9 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
+import CachedMarkdown from "./CachedMarkdown";
 import { Check, Copy, Pencil, RotateCcw, ChevronDown, ChevronRight, ChevronUp, ChevronLeft, BookOpen, Sparkles, Loader, Trash2 } from "lucide-react";
 import type { Message } from "../stores/chatStore";
 import type { AiModel, SearchResult } from "../lib/api";
@@ -12,9 +9,6 @@ import { Tooltip } from "./Tooltip";
 import HoverDefinitionSurface from "./HoverDefinitionSurface";
 import { useScopedWorkspace } from "../lib/workspacePane";
 import { useSettingsStore } from "../stores/settingsStore";
-
-const REMARK_PLUGINS = [remarkGfm, remarkMath];
-const REHYPE_PLUGINS = [rehypeKatex];
 
 type ContextSources = { memories_used: string[]; artifacts_used: string[]; summaries_used: string[]; documents_used: string[] };
 
@@ -248,7 +242,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                     {thoughtExpanded && (
                       <div className="border-t border-[var(--border-color)] px-3 py-2.5">
                         <div className="prose prose-sm prose-invert min-w-0 max-w-none text-[var(--text-secondary)]">
-                          <ReactMarkdown skipHtml remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={markdownComponents}>{parts.thought}</ReactMarkdown>
+                          <CachedMarkdown content={parts.thought} components={markdownComponents} />
                         </div>
                       </div>
                     )}
@@ -258,9 +252,7 @@ const ChatMessageBubble = React.memo(function ChatMessageBubble({
                   workspaceId={activeWorkspaceId}
                   className="prose prose-sm prose-invert min-w-0 max-w-none"
                 >
-                  <ReactMarkdown skipHtml remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS} components={markdownComponents}>
-                    {parts?.answer || displayMsg.content}
-                  </ReactMarkdown>
+                  <CachedMarkdown content={parts?.answer || displayMsg.content} components={markdownComponents} />
                 </HoverDefinitionSurface>
                 {varCount > 1 && (
                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-[var(--border-color)]">

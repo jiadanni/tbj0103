@@ -44,6 +44,8 @@
     "cmdk": "^1",
     "d3": "^7",
     "date-fns": "^3",
+    "hast-util-to-jsx-runtime": "^2.3.6",
+    "html-url-attributes": "^3.0.1",
     "katex": "^0.16",
     "lucide-react": "^0.441",
     "react": "^18",
@@ -55,6 +57,11 @@
     "rehype-katex": "^7",
     "remark-gfm": "^4",
     "remark-math": "^6",
+    "remark-parse": "^11",
+    "remark-rehype": "^11",
+    "unified": "^11",
+    "unist-util-visit": "^5",
+    "vfile": "^6",
     "zustand": "^4"
   },
   "devDependencies": {
@@ -64,6 +71,7 @@
     "@testing-library/jest-dom": "^6",
     "@testing-library/react": "^16",
     "@types/d3": "^7",
+    "@types/hast": "^3",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "@typescript-eslint/eslint-plugin": "^8.57.1",
