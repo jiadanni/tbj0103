@@ -12,6 +12,7 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import { writeFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import {
   AlertTriangle,
+  BookOpen,
   Brain,
   Check,
   ChevronDown,
@@ -1531,7 +1532,7 @@ export default function KnowledgeGraphView({
                 )}
               </div>
 
-              <div className="mb-2 flex items-center gap-2">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
                 <button
                   onClick={generateConceptCards}
                   disabled={isGeneratingCards || (!selectedModel && !isDemoWithoutModels)}
@@ -1539,6 +1540,14 @@ export default function KnowledgeGraphView({
                 >
                   {isGeneratingCards ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
                   {isGeneratingCards ? "Generating..." : isDemoWithoutModels ? "Simulate Cards" : "Generate Cards"}
+                </button>
+                <button
+                  onClick={() => navigate(`/practice?concept=${selectedConcept.id}`)}
+                  disabled={conceptCards.length === 0}
+                  className="flex items-center gap-1 rounded-lg border border-[var(--border-color)] px-2 py-1 text-[10px] text-[var(--accent-color)] transition-colors hover:bg-[var(--accent-color)]/10 disabled:opacity-40"
+                >
+                  <BookOpen size={10} />
+                  Study this concept
                 </button>
                 {conceptCards.length > 0 && (
                   <span className="text-[10px] text-[var(--text-muted)]">
