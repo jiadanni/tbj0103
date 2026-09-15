@@ -147,14 +147,14 @@ export function SessionItem({
           openSession(session);
         }
       }}
-      className={`group relative flex min-w-0 cursor-pointer select-none items-center gap-1 h-[30px] transition-colors ${isSelected || isActive
-        ? "bg-[rgba(var(--accent-color-rgb),0.10)] text-[var(--text-primary)]"
+      className={`group relative flex min-w-0 cursor-pointer select-none items-center gap-1.5 h-7 rounded-lg transition-colors ${isSelected || isActive
+        ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--text-primary)]"
         : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
         }`}
-      style={{ paddingLeft: `${12 + depth * 20}px`, paddingRight: 12 }}
+      style={{ paddingLeft: `${10 + depth * 20}px`, paddingRight: 10 }}
     >
       {(isSelected || isActive) && (
-        <span className="absolute inset-y-0 left-0 w-0.5 bg-[var(--accent-color)]" />
+        <span className="absolute left-0 top-[5px] bottom-[5px] w-0.5 rounded-full bg-[var(--accent-color)]" />
       )}
       {selectMode && (
         <button

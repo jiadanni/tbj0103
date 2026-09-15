@@ -186,14 +186,14 @@ export default function Sidebar({
                     setContextMenu({ item, x: event.clientX, y: event.clientY });
                   }}
                   aria-current={isActive ? "page" : undefined}
-                  className={`relative w-full flex items-center gap-2 h-[30px] px-2.5 rounded-lg text-[13px] font-medium transition-colors select-none ${
+                  className={`relative w-full flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[13px] font-medium transition-colors select-none ${
                     isActive ? activeNavClassName : inactiveNavClassName
                   }`}
                 >
                   {isActive && (
-                    <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-[var(--accent-color)]" />
+                    <span className="absolute left-0 top-[5px] bottom-[5px] w-0.5 rounded-full bg-[var(--accent-color)]" />
                   )}
-                  <Icon size={15} strokeWidth={1.7} />
+                  <Icon size={14} strokeWidth={1.7} className="opacity-75 shrink-0" />
                   <span className="flex-1 text-left">{item.label}</span>
                 </button>
               );

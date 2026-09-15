@@ -120,16 +120,12 @@ function workspaceTabClassName({
   isActive: boolean;
   isDragTarget?: boolean;
 }) {
-  // self-end so the tab meets the titlebar's bottom border, the way a browser
-  // tab does. Fill + a 2px top accent rail is the only active-state signal —
-  // no border ring, no drop shadow — matching the single-signal rule used for
-  // sidebar nav items and chat list rows.
-  return `relative flex h-[30px] items-center gap-1.5 self-end rounded-t-lg px-3 text-[13px] font-medium whitespace-nowrap transition-all select-none ${
+  return `relative flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium whitespace-nowrap transition-all select-none ${
     isDragTarget
       ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
       : isActive
-      ? "bg-[var(--surface)] text-[var(--text-primary)]"
-      : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+      ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
+      : "bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
   }`;
 }
 

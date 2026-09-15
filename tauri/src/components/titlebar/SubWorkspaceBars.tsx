@@ -103,7 +103,7 @@ function SubWorkspaceTabBar({
     <div
       data-tauri-drag-region
       onMouseDown={onDragRegionMouseDown}
-      className="relative flex items-center h-[34px] border-b border-[var(--surface-border)] bg-[var(--bg-base)] px-2.5 shrink-0 select-none"
+      className="relative flex items-center h-9 border-b border-[var(--surface-border)] bg-[var(--bg-base)] px-2.5 shrink-0 select-none"
     >
       {/* Fade the right edge so a long, horizontally-scrollable tab list reads
           as continuing off-screen instead of being clipped mid-label. */}
@@ -129,13 +129,16 @@ function SubWorkspaceTabBar({
                 }
               }}
               aria-label={`${parent.name} (Overview)`}
-              className={`relative flex h-[22px] w-7 items-center justify-center shrink-0 rounded-md transition-all select-none ${
+              className={`relative flex h-7 w-7 items-center justify-center shrink-0 rounded-lg transition-all select-none ${
                 activeWorkspaceId === parent.id
-                  ? "bg-[rgba(var(--accent-color-rgb),0.14)] text-[var(--accent-color)]"
-                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                  ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
+                  : "bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
               }`}
             >
-              <House size={13} className="opacity-80 shrink-0" />
+              {activeWorkspaceId === parent.id && (
+                <span className="absolute inset-x-0 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
+              )}
+              <House size={14} strokeWidth={1.7} className="opacity-75 shrink-0" />
             </button>
           </Tooltip>
         )}
@@ -150,13 +153,16 @@ function SubWorkspaceTabBar({
                 onContextMenu(workspace, event.clientX, event.clientY);
               }
             }}
-            className={`relative flex h-[22px] items-center gap-1.5 shrink-0 rounded-md px-2.5 font-mono text-[11px] whitespace-nowrap transition-all select-none ${
+            className={`relative flex h-7 items-center gap-1.5 shrink-0 rounded-lg px-2.5 text-[13px] font-medium whitespace-nowrap transition-all select-none ${
               activeWorkspaceId === workspace.id
-                ? "bg-[rgba(var(--accent-color-rgb),0.14)] text-[var(--accent-color)]"
-                : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
+                : "bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
             }`}
           >
-            <WorkspaceIcon name={workspace.icon} label={workspace.name} className="h-3.5 w-3.5 opacity-70 shrink-0" />
+            {activeWorkspaceId === workspace.id && (
+              <span className="absolute inset-x-0 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
+            )}
+            <WorkspaceIcon name={workspace.icon} label={workspace.name} className="h-3.5 w-3.5 opacity-75 shrink-0" />
             {workspace.name}
           </button>
         ))}
@@ -167,9 +173,9 @@ function SubWorkspaceTabBar({
               onClick={onAdd}
               title="New Sub-workspace"
               aria-label="New Sub-workspace"
-              className="h-6 w-6 shrink-0 flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded-md transition-colors"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border-0 bg-transparent text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
             >
-              <Plus size={14} />
+              <Plus size={15} strokeWidth={1.7} />
             </button>
           </Tooltip>
         )}
@@ -186,9 +192,9 @@ function SubWorkspaceTabBar({
               e.stopPropagation();
               setMenuOpen((current) => !current);
             }}
-            className="h-6 w-6 shrink-0 flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded-md transition-colors"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border-0 bg-transparent text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
           >
-            <ChevronDown size={14} />
+            <ChevronDown size={15} strokeWidth={1.7} />
           </button>
 
           {menuOpen && menuStyle

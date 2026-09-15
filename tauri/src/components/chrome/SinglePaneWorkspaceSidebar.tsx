@@ -42,17 +42,17 @@ const SIZES = {
     header:
       "px-3 pt-3 pb-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]",
     list: "flex-1 overflow-y-auto px-2 pb-2 space-y-0.5",
-    item: "rounded-md px-2 py-1.5 text-xs",
-    itemActive: "bg-[var(--accent-color)] text-white",
+    item: "relative rounded-lg px-2.5 h-7 text-[13px] font-medium leading-none",
+    itemActive: "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]",
     itemInactive:
-      "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]",
+      "bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]",
     itemDrag:
       "bg-[var(--accent-color)]/20 text-[var(--accent-color)] ring-1 ring-inset ring-[var(--accent-color)]",
     headerButton:
-      "flex h-5 w-5 items-center justify-center rounded text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]",
-    headerIconSize: 12,
+      "flex h-7 w-7 items-center justify-center rounded-lg border-0 bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors",
+    headerIconSize: 15,
     overviewGap: "gap-1.5",
-    overviewDotSize: 12,
+    overviewDotSize: 14,
   },
   compact: {
     container: "w-[85px] p-1 gap-0.5",
@@ -119,6 +119,9 @@ export function SinglePaneWorkspaceSidebar({
               onClick={overview.onClick}
               className={className}
             >
+              {overview.isActive && (
+                <span className="absolute left-0 top-[5px] bottom-[5px] w-0.5 rounded-full bg-[var(--accent-color)]" />
+              )}
               {dot}
               <span className="truncate">{overview.label}</span>
             </button>
@@ -126,6 +129,9 @@ export function SinglePaneWorkspaceSidebar({
         }
         return (
           <div className={`${className} select-none`}>
+            {overview.isActive && (
+              <span className="absolute left-0 top-[5px] bottom-[5px] w-0.5 rounded-full bg-[var(--accent-color)]" />
+            )}
             {dot}
             <span className="truncate">{overview.label}</span>
           </div>
@@ -169,6 +175,9 @@ export function SinglePaneWorkspaceSidebar({
               onDrop={item.onDrop}
               className={className}
             >
+              {item.isActive && (
+                <span className="absolute left-0 top-[5px] bottom-[5px] w-0.5 rounded-full bg-[var(--accent-color)]" />
+              )}
               {item.name}
             </button>
           );

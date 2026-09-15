@@ -414,7 +414,7 @@ describe("Layout", () => {
     const subTab = screen.getByRole("button", { name: "Alpha" });
     const bar = subTab.closest("div[data-tauri-drag-region]");
     expect(bar).not.toBeNull();
-    expect(bar?.className).toContain("h-[34px]");
+    expect(bar?.className).toContain("h-9");
     expect(bar?.className).not.toMatch(/\bpl-\[72px\]\b/);
     expect(bar?.className).not.toMatch(/\bpr-\[112px\]\b/);
   });
@@ -554,7 +554,7 @@ describe("Layout", () => {
     expect(await screen.findByText("Rust debugging notes")).toBeInTheDocument();
     expect(await screen.findByText("Security checklist")).toBeInTheDocument();
     expect(screen.getByText("Recent chats across all workspaces")).toBeInTheDocument();
-    expect(historyButton.className).toContain("border-[var(--accent-color)]");
+    expect(historyButton.className).toContain("bg-[rgba(var(--accent-color-rgb),0.12)]");
   });
 
   it("shows the global History button as active on the history route", () => {
@@ -564,7 +564,7 @@ describe("Layout", () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByRole("button", { name: "Open History" }).className).toContain("border-[var(--accent-color)]");
+    expect(screen.getByRole("button", { name: "Open History" }).className).toContain("bg-[rgba(var(--accent-color-rgb),0.12)]");
   });
 
   it("navigates to the full history page from the history menu", async () => {
@@ -580,7 +580,7 @@ describe("Layout", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: /show full history/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Open History" }).className).toContain("border-[var(--accent-color)]");
+      expect(screen.getByRole("button", { name: "Open History" }).className).toContain("bg-[rgba(var(--accent-color-rgb),0.12)]");
     });
   });
 
@@ -777,10 +777,10 @@ describe("Layout", () => {
     const splitAgenticTabs = screen.getAllByRole("button", { name: "Agentic" });
     const splitRustTabs = screen.getAllByRole("button", { name: "Rust" });
 
-    expect(splitAgenticTabs.some((button) => button.className.includes("rounded-t-lg"))).toBe(true);
-    expect(splitAgenticTabs.some((button) => button.className.includes("h-[30px]"))).toBe(true);
-    expect(splitAgenticTabs.some((button) => button.className.includes("bg-[var(--surface)]"))).toBe(true);
-    expect(splitRustTabs.some((button) => button.className.includes("rounded-t-lg"))).toBe(true);
+    expect(splitAgenticTabs.some((button) => button.className.includes("rounded-lg"))).toBe(true);
+    expect(splitAgenticTabs.some((button) => button.className.includes("h-7"))).toBe(true);
+    expect(splitAgenticTabs.some((button) => button.className.includes("bg-[rgba(var(--accent-color-rgb),0.12)]"))).toBe(true);
+    expect(splitRustTabs.some((button) => button.className.includes("rounded-lg"))).toBe(true);
     expect(splitRustTabs.some((button) => button.className.includes("text-[var(--text-secondary)]"))).toBe(true);
   });
 

@@ -170,13 +170,13 @@ function TitlebarHistoryMenu() {
           aria-label="Open History"
           aria-haspopup="menu"
           aria-expanded={open}
-          className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-medium transition-colors ${
+          className={`flex h-7 w-7 items-center justify-center rounded-lg border-0 text-sm font-medium transition-colors ${
             open || isHistoryRoute
-              ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
-              : "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+              ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
+              : "bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
           }`}
         >
-          <HistoryIcon size={15} />
+          <HistoryIcon size={15} strokeWidth={1.7} />
         </button>
       </Tooltip>
 

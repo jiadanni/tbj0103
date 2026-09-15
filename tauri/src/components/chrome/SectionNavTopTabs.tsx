@@ -34,12 +34,12 @@ interface SectionNavTopTabsProps {
 
 const SIZES = {
   comfortable: {
-    container: "h-10 px-2 border-b border-[var(--surface-border)] bg-[var(--bg-base)]",
-    tab: "mt-1 h-[34px] gap-1.5 px-3.5 text-sm rounded-t-xl",
-    iconSize: 18,
-    activeStripInset: "inset-x-3",
-    activeShadow: "shadow-[0_-10px_25px_-20px_rgba(15,23,42,0.55)]",
-    activeBorder: "border-[var(--surface-border)]",
+    container: "h-9 px-2.5 border-b border-[var(--surface-border)] bg-[var(--bg-base)]",
+    tab: "h-7 gap-1.5 px-2.5 text-[13px] rounded-lg",
+    iconSize: 14,
+    activeStripInset: "inset-x-0",
+    activeShadow: "",
+    activeBorder: "border-transparent",
   },
   compact: {
     container: "h-8 px-3 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]",
@@ -62,7 +62,7 @@ export function SectionNavTopTabs({
 
   return (
     <div className={`flex items-center shrink-0 overflow-x-auto select-none ${sizes.container}`}>
-      <div className="flex items-center shrink-0">
+      <div className="flex items-center shrink-0 gap-1">
         {items.map((item) => {
           const Icon = item.icon;
           const isActive = item.id === activeId;
@@ -80,10 +80,10 @@ export function SectionNavTopTabs({
                     }
                   : undefined
               }
-              className={`relative flex items-center self-end border border-b-0 font-medium whitespace-nowrap transition-all select-none ${sizes.tab} ${
+              className={`relative flex items-center font-medium whitespace-nowrap transition-all select-none ${sizes.tab} ${
                 isActive
-                  ? `${sizes.activeBorder} bg-[var(--surface)] text-[var(--text-primary)] ${sizes.activeShadow}`
-                  : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                  ? `${sizes.activeBorder} bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)] ${sizes.activeShadow}`
+                  : "border-transparent bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
               }`}
             >
               {isActive && (
@@ -91,7 +91,7 @@ export function SectionNavTopTabs({
                   className={`absolute top-0 h-0.5 rounded-full bg-[var(--accent-color)] ${sizes.activeStripInset}`}
                 />
               )}
-              <Icon size={sizes.iconSize} />
+              <Icon size={sizes.iconSize} strokeWidth={1.7} className="opacity-75 shrink-0" />
               {item.label}
             </button>
           );

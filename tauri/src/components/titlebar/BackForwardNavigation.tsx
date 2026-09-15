@@ -13,9 +13,9 @@ function BackForwardNavigation() {
           onClick={goBack}
           disabled={!canGoBack}
           aria-label="Go back"
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex h-7 w-7 items-center justify-center rounded-lg border-0 bg-transparent text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          <ChevronLeft size={15} />
+          <ChevronLeft size={15} strokeWidth={1.7} />
         </button>
       </Tooltip>
       <Tooltip content="Go forward (Alt+Right / Cmd+Right / Cmd+])" position="bottom">
@@ -23,9 +23,9 @@ function BackForwardNavigation() {
           onClick={goForward}
           disabled={!canGoForward}
           aria-label="Go forward"
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)] disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex h-7 w-7 items-center justify-center rounded-lg border-0 bg-transparent text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          <ChevronRight size={15} />
+          <ChevronRight size={15} strokeWidth={1.7} />
         </button>
       </Tooltip>
     </div>

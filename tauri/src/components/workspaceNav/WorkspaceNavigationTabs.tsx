@@ -102,11 +102,8 @@ function WorkspaceNavigationTabs({
 
   return (
     <div className="relative flex h-full min-w-0 items-center gap-1" data-no-drag>
-      {/* items-end (not items-center) so each tab's `self-end` resolves against
-          the titlebar's bottom edge. With items-center the tabs sat a few px
-          below the chevron and + buttons beside them. */}
       <div
-        className="flex h-full min-w-0 shrink items-end gap-1 overflow-x-auto scrollbar-none"
+        className="flex h-full min-w-0 shrink items-center gap-1 overflow-x-auto scrollbar-none"
         onWheel={handleHorizontalWheel}
       >
         {workspaces.map((workspace) => (
@@ -215,9 +212,9 @@ function WorkspaceNavigationTabs({
             })}
           >
             {(dragOverWorkspaceId === workspace.id || activeWorkspaceId === workspace.id) && (
-              <span className="absolute inset-x-0 top-0 h-0.5 bg-[var(--accent-color)]" />
+              <span className="absolute inset-x-0 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
             )}
-            <WorkspaceIcon name={workspace.icon} label={workspace.name} className="h-3.5 w-3.5 opacity-70" />
+            <WorkspaceIcon name={workspace.icon} label={workspace.name} className="h-3.5 w-3.5 opacity-75 shrink-0" />
             {workspace.name}
           </button>
         ))}
@@ -230,9 +227,9 @@ function WorkspaceNavigationTabs({
             onClick={onAdd}
             title="New Workspace"
             aria-label="New Workspace"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border-0 bg-transparent text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
           >
-            <Plus size={16} />
+            <Plus size={15} strokeWidth={1.7} />
           </button>
         </Tooltip>
       )}
@@ -248,9 +245,9 @@ function WorkspaceNavigationTabs({
             e.stopPropagation();
             setMenuOpen((current) => !current);
           }}
-          className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] shadow-sm transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+          className="flex h-7 w-7 items-center justify-center rounded-lg border-0 bg-transparent text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
         >
-          <ChevronDown size={14} />
+          <ChevronDown size={15} strokeWidth={1.7} />
         </button>
 
         {menuOpen && menuStyle

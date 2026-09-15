@@ -369,9 +369,9 @@ function WorkspaceTabBar({
                 onClick={() => navigate("/preferences")}
                 title="Preferences"
                 aria-label="Preferences"
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
+                className="flex h-7 w-7 items-center justify-center rounded-lg border-0 bg-transparent text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
               >
-                <SettingsIcon size={15} />
+                <SettingsIcon size={15} strokeWidth={1.7} />
               </button>
             </Tooltip>
           )}
@@ -382,13 +382,13 @@ function WorkspaceTabBar({
                 disabled={workspaces.length < 2}
                 title="Toggle Split View"
                 aria-label="Toggle Split View"
-                className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-medium transition-colors ${
+                className={`flex h-7 w-7 items-center justify-center rounded-lg border-0 text-sm font-medium transition-colors ${
                   splitMode
-                    ? "border-[var(--accent-color)] bg-[var(--accent-color)] text-white"
-                    : "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:border-[var(--accent-color)] hover:text-[var(--text-primary)]"
-                } disabled:opacity-40 disabled:hover:border-[var(--border-color)] disabled:hover:text-[var(--text-secondary)]`}
+                    ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
+                    : "bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                } disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-[var(--text-secondary)]`}
               >
-                <Columns2 size={15} />
+                <Columns2 size={15} strokeWidth={1.7} />
               </button>
             </Tooltip>
           )}

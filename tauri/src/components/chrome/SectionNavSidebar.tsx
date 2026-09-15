@@ -28,12 +28,12 @@ interface SectionNavSidebarProps {
 const SIZES = {
   comfortable: {
     button:
-      "flex items-center justify-center w-10 h-10 rounded-xl transition-colors select-none",
+      "relative flex items-center justify-center w-7 h-7 rounded-lg transition-colors select-none",
     active: "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]",
     inactive:
-      "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]",
-    iconSize: 20,
-    iconClass: "",
+      "bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]",
+    iconSize: 14,
+    iconClass: "opacity-75",
     showLabel: false,
     label: "",
     defaultNav: "flex flex-col items-center gap-1",
@@ -88,7 +88,10 @@ export function SectionNavSidebar({
             aria-current={item.isActive ? "page" : undefined}
             className={className}
           >
-            <Icon size={sizes.iconSize} strokeWidth={1.5} className={sizes.iconClass} />
+            {item.isActive && (
+              <span className="absolute left-0 top-[5px] bottom-[5px] w-0.5 rounded-full bg-[var(--accent-color)]" />
+            )}
+            <Icon size={sizes.iconSize} strokeWidth={1.7} className={sizes.iconClass} />
             {sizes.showLabel && <span className={sizes.label}>{item.label}</span>}
           </button>
         );
