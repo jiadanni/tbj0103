@@ -99,6 +99,7 @@ const ALL_MIGRATION_NAMES: &[&str] = &[
     "v83_chat_file_delete_outbox",
     "v84_feed_difficulty_and_suspension",
     "v85_concept_self_rank",
+    "v86_workspace_ignore_name_in_ai_context",
 ];
 
 pub fn initialize_database(path: &Path) -> Result<Pool<SqliteConnectionManager>> {
@@ -2641,6 +2642,27 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             [],
         )?;
         tx.commit()?;
+    }
+
+    // v86: add per-workspace flag to exclude the workspace name from AI
+    // prompt/context construction (e.g. sentimental workspace names that
+    // aren't useful signal for generation).
+    let applied_v86: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM _migrations WHERE name = 'v86_workspace_ignore_name_in_ai_context'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if applied_v86 == 0 {
+        if !column_exists(conn, "workspaces", "ignore_name_in_ai_context")? {
+            conn.execute_batch(
+                "ALTER TABLE workspaces ADD COLUMN ignore_name_in_ai_context INTEGER NOT NULL DEFAULT 0;",
+            )?;
+        }
+        conn.execute(
+            "INSERT INTO _migrations(name) VALUES('v86_workspace_ignore_name_in_ai_context')",
+            [],
+        )?;
     }
 
     Ok(())

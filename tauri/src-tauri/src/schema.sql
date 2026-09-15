@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS workspaces (
     survey_data TEXT,
     about_you TEXT NOT NULL DEFAULT '',
     -- Domain vocabulary used to label 1-5 card difficulty in the feed.
-    difficulty_preset TEXT
+    difficulty_preset TEXT,
+    ignore_name_in_ai_context INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS folders (

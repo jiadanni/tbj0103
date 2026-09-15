@@ -90,6 +90,7 @@ pub struct PromptBankStatus {
 struct WorkspacePromptContext {
     workspace_id: String,
     workspace_name: String,
+    ignore_workspace_name: bool,
     survey_data: Option<String>,
     topic_text: String,
     tags: Vec<String>,
@@ -132,6 +133,7 @@ fn parse_tags(json: &str) -> Vec<String> {
 fn topic_context(
     sig: &TopicSignature,
     workspace_name: &str,
+    ignore_workspace_name: bool,
     survey_data: Option<&str>,
 ) -> (String, Vec<String>) {
     let mut tags: Vec<String> = sig
@@ -146,7 +148,10 @@ fn topic_context(
         }
     }
 
-    let mut parts = vec![workspace_name.to_string()];
+    let mut parts = Vec::new();
+    if !ignore_workspace_name {
+        parts.push(workspace_name.to_string());
+    }
     if !tags.is_empty() {
         parts.push(tags.join(", "));
     }
@@ -157,15 +162,16 @@ fn topic_context(
 }
 
 fn load_context(conn: &Connection, workspace_id: &str) -> Result<WorkspacePromptContext, String> {
-    let (name, survey_data, sig_json): (String, Option<String>, String) = conn
+    let (name, survey_data, sig_json, ignore_name): (String, Option<String>, String, i64) = conn
         .query_row(
-            "SELECT name, survey_data, topic_signature FROM workspaces WHERE id = ?1",
+            "SELECT name, survey_data, topic_signature, ignore_name_in_ai_context FROM workspaces WHERE id = ?1",
             params![workspace_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )
         .map_err(|e| e.to_string())?;
     let sig: TopicSignature = serde_json::from_str(&sig_json).unwrap_or_default();
-    let (mut topic_text, mut tags) = topic_context(&sig, &name, survey_data.as_deref());
+    let (mut topic_text, mut tags) =
+        topic_context(&sig, &name, ignore_name != 0, survey_data.as_deref());
 
     // A parent workspace usually carries little of its own subject matter — the
     // material lives in its children. Generating from the parent row alone gave
@@ -222,6 +228,7 @@ fn load_context(conn: &Connection, workspace_id: &str) -> Result<WorkspacePrompt
     Ok(WorkspacePromptContext {
         workspace_id: workspace_id.to_string(),
         workspace_name: name,
+        ignore_workspace_name: ignore_name != 0,
         survey_data,
         topic_text,
         tags,
@@ -749,13 +756,12 @@ async fn generate_batch(
     context: &WorkspacePromptContext,
     count: usize,
 ) -> Result<Vec<GeneratedPrompt>, String> {
-    let mut prompt = format!(
-        "Generate {count} unique, natural starter questions for an AI learning companion workspace.\n\
-         Workspace: {}\n\
-         Topics/tags: {}\n",
-        context.workspace_name,
-        context.tags.join(", ")
-    );
+    let mut prompt =
+        format!("Generate {count} unique, natural starter questions for an AI learning companion workspace.\n");
+    if !context.ignore_workspace_name {
+        prompt.push_str(&format!("Workspace: {}\n", context.workspace_name));
+    }
+    prompt.push_str(&format!("Topics/tags: {}\n", context.tags.join(", ")));
     if let Some(survey) = context
         .survey_data
         .as_deref()
@@ -1055,12 +1061,25 @@ mod tests {
             ..TopicSignature::default()
         };
 
-        let (text, tags) = topic_context(&sig, "Systems", Some("desktop app learning"));
+        let (text, tags) = topic_context(&sig, "Systems", false, Some("desktop app learning"));
 
         assert_eq!(tags, vec!["Rust".to_string(), "Tauri".to_string()]);
         assert!(text.contains("Systems"));
         assert!(text.contains("desktop app learning"));
         assert!(!text.contains("React"));
+    }
+
+    #[test]
+    fn topic_context_omits_workspace_name_when_flag_set() {
+        let sig = TopicSignature {
+            custom_tags: vec!["Tauri".to_string()],
+            ..TopicSignature::default()
+        };
+
+        let (text, _tags) = topic_context(&sig, "Sentimental Name", true, None);
+
+        assert!(!text.contains("Sentimental Name"));
+        assert!(text.contains("Tauri"));
     }
 
     fn jobs_pool() -> Pool<SqliteConnectionManager> {
