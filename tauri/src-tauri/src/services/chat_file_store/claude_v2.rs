@@ -213,32 +213,61 @@ pub fn preview_v2_projects(
     Ok(previews)
 }
 
+/// Why design chats were left out of a preview.
+///
+/// `empty` is benign (the export itself carried no content for them);
+/// `unreadable` means a file we could not parse, i.e. data the user has but
+/// we did not surface — the UI distinguishes the two.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct DesignChatSkips {
+    pub empty: usize,
+    pub unreadable: usize,
+}
+
 /// Read all `design_chats/<uuid>.json` files and group previews by project
-/// UUID. Also returns the number of chats skipped for having no importable
-/// content (empty, or all messages contentless in the export itself).
+/// UUID. Also returns how many chats were skipped: those with no importable
+/// content (empty, or all messages contentless in the export itself), and
+/// those whose JSON could not be parsed.
+///
+/// An unreadable or unparseable file is skipped rather than failing the whole
+/// preview — one unrecognised file must not cost the user every other chat in
+/// the export. This mirrors [`parse_v2_design_chats_filtered`], which already
+/// skips; when preview returned `Err` instead, the two disagreed and the user
+/// got a hard error with nothing importable.
 pub fn preview_v2_design_chats(
     folder_path: &Path,
-) -> Result<(HashMap<String, Vec<ClaudeConversationPreview>>, usize), String> {
+) -> Result<(HashMap<String, Vec<ClaudeConversationPreview>>, DesignChatSkips), String> {
     let chats_dir = folder_path.join("design_chats");
     if !chats_dir.exists() {
-        return Ok((HashMap::new(), 0));
+        return Ok((HashMap::new(), DesignChatSkips::default()));
     }
 
     let entries = std::fs::read_dir(&chats_dir)
         .map_err(|e| format!("Cannot read design_chats/ directory: {e}"))?;
 
     let mut by_project: HashMap<String, Vec<ClaudeConversationPreview>> = HashMap::new();
-    let mut skipped_empty = 0usize;
+    let mut skips = DesignChatSkips::default();
 
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("json") {
             continue;
         }
-        let bytes =
-            std::fs::read(&path).map_err(|e| format!("Cannot read {}: {e}", path.display()))?;
-        let chat: V2DesignChat = serde_json::from_slice(&bytes)
-            .map_err(|e| format!("Invalid design_chat JSON {}: {e}", path.display()))?;
+        let Ok(bytes) = std::fs::read(&path) else {
+            skips.unreadable += 1;
+            continue;
+        };
+        let chat: V2DesignChat = match serde_json::from_slice(&bytes) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!(
+                    "[import] skipping unparseable design_chat {}: {e}",
+                    path.display()
+                );
+                skips.unreadable += 1;
+                continue;
+            }
+        };
 
         // Same rule as the import path (v2_message_to_chat): keep only chats
         // with at least one human/assistant message with real content.
@@ -247,7 +276,7 @@ pub fn preview_v2_design_chats(
                 && !extract_claude_message_content_v2(m).is_empty()
         });
         if !has_content {
-            skipped_empty += 1;
+            skips.empty += 1;
             continue;
         }
 
@@ -300,7 +329,7 @@ pub fn preview_v2_design_chats(
             .push(preview);
     }
 
-    Ok((by_project, skipped_empty))
+    Ok((by_project, skips))
 }
 
 /// Where an export keeps its memories.
@@ -653,6 +682,53 @@ mod has_memory_tests {
             projects[0].has_memory,
             "has_memory must be true whenever the export carries memory"
         );
+    }
+
+    /// One unparseable file in `design_chats/` must not fail the whole preview.
+    /// Regression: `preview_v2_design_chats` used `?` on the parse error while
+    /// the import path skipped, so a single unrecognised file (a Claude Design
+    /// chat, whose `content` is an object rather than an array) aborted the
+    /// preview and the user could import nothing at all.
+    #[test]
+    fn preview_skips_unparseable_design_chat_and_keeps_the_rest() {
+        let dir = tempfile::tempdir().unwrap();
+        let chats = dir.path().join("design_chats");
+        std::fs::create_dir(&chats).unwrap();
+
+        std::fs::write(
+            chats.join("good.json"),
+            r#"{"uuid":"c1","title":"Kept","project":{"uuid":"p1","name":"P"},
+                "created_at":"2026-09-13T00:00:00Z","updated_at":"2026-09-13T00:00:00Z",
+                "messages":[{"uuid":"m1","sender":"human","text":"hello",
+                             "created_at":"2026-09-13T00:00:00Z"}]}"#,
+        )
+        .unwrap();
+
+        // `content` as an object where a sequence is expected — the exact shape
+        // that triggered "invalid type: map, expected a sequence".
+        std::fs::write(
+            chats.join("bad.json"),
+            r#"{"uuid":"c2","title":"Dropped","project":{"uuid":"p1","name":"P"},
+                "created_at":"2026-09-13T00:00:00Z","updated_at":"2026-09-13T00:00:00Z",
+                "messages":[{"uuid":"m2","role":"user","content":{"content":"hi"},
+                             "created_at":"2026-09-13T00:00:00Z"}]}"#,
+        )
+        .unwrap();
+
+        // Not valid JSON at all.
+        std::fs::write(chats.join("garbage.json"), "{not json").unwrap();
+
+        let (by_project, skips) = super::preview_v2_design_chats(dir.path())
+            .expect("a bad file must not fail the whole preview");
+
+        assert_eq!(skips.unreadable, 2, "both bad files counted as unreadable");
+        assert_eq!(skips.empty, 0, "unparseable is not the same as empty");
+        assert_eq!(
+            by_project.get("p1").map(|v| v.len()),
+            Some(1),
+            "the parseable chat must still be previewed"
+        );
+        assert_eq!(by_project["p1"][0].uuid, "c1");
     }
 }
 

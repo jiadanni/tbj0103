@@ -1699,6 +1699,8 @@ export const api = {
         orphan_count: number;
         /** Conversations dropped from the preview because the export contains no content for them (deleted/stripped husks). */
         skipped_empty: number;
+        /** Design chat files skipped because their JSON could not be read or parsed — unlike `skipped_empty`, this is data present in the export that we failed to surface. */
+        skipped_unreadable: number;
         memories: {
           conversations_memory: string;
           folder_memories: { project_uuid: string; folder_name: string; memory: string }[];
@@ -2625,14 +2627,6 @@ export const api = {
       invoke<MemorySummarySnapshot[]>("list_memory_summary_snapshots", { scope, workspaceId: workspaceId ?? null }),
     restoreSummarySnapshot: (snapshotId: string) =>
       invoke<MemorySummary>("restore_memory_summary_snapshot", { snapshotId }),
-  },
-
-  webAI: {
-    /** Send a query to a web AI provider via the Playwright bridge. */
-    sendMessage: (sessionId: string, provider: string, query: string, preserveSession: boolean) =>
-      invoke<string>("send_web_message", { sessionId: sessionId, provider, query, preserveSession }),
-    stopStream: (sessionId: string) =>
-      invoke<void>("stop_web_stream", { sessionId }),
   },
 
   // Streaming: listen to Ollama stream events for a session

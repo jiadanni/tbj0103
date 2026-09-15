@@ -1627,11 +1627,13 @@ pub async fn preview_claude_files(
         let project_name_map = claude_v2::load_v2_project_name_map(&folder);
 
         // 2. Preview design_chats grouped by project UUID
-        let (convs_by_project, skipped_empty_design) = if include_conversations || include_projects
-        {
+        let (convs_by_project, design_skips) = if include_conversations || include_projects {
             claude_v2::preview_v2_design_chats(&folder)?
         } else {
-            (std::collections::HashMap::new(), 0)
+            (
+                std::collections::HashMap::new(),
+                claude_v2::DesignChatSkips::default(),
+            )
         };
 
         // 3. Orphan conversations from conversations.json
@@ -1644,7 +1646,8 @@ pub async fn preview_claude_files(
             } else {
                 (Vec::new(), 0)
             };
-        let skipped_empty = skipped_empty_design + skipped_empty_orphans;
+        let skipped_empty = design_skips.empty + skipped_empty_orphans;
+        let skipped_unreadable = design_skips.unreadable;
         let convs_ms = convs_started.elapsed().as_millis();
 
         // 4. Memories
@@ -1759,6 +1762,7 @@ pub async fn preview_claude_files(
             "orphan_conversations": orphan_conversations,
             "orphan_count": orphan_count,
             "skipped_empty": skipped_empty,
+            "skipped_unreadable": skipped_unreadable,
             "memories": if include_memories { Some(memories) } else { None },
             "memories_by_project": if include_memories { Some(memories_by_project) } else { None },
             "suggestions": suggestions,
@@ -1908,6 +1912,9 @@ pub async fn preview_claude_files(
             "orphan_conversations": orphan_conversations,
             "orphan_count": orphan_count,
             "skipped_empty": skipped_empty,
+            // Legacy exports have no design_chats/ directory, so nothing there
+            // can be unreadable; emitted for parity with the v2 branch.
+            "skipped_unreadable": 0,
             "memories": if include_memories { memories } else { None },
             "memories_by_project": if include_memories { Some(memories_by_project) } else { None },
             "suggestions": suggestions,

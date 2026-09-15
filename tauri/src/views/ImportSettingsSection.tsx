@@ -222,6 +222,7 @@ export default function ImportSettingsSection() {
   // Conversations the export contains no content for (deleted/stripped husks) —
   // dropped from the preview, surfaced as a count so totals stay explainable.
   const [claudeSkippedEmpty, setClaudeSkippedEmpty] = useState(0);
+  const [claudeSkippedUnreadable, setClaudeSkippedUnreadable] = useState(0);
   // LLM-generated descriptions for projects the export left blank
   // (uuid → text). Used as matching input in place of long narrative
   // memories, shown in the project detail pane, and written onto the
@@ -707,6 +708,7 @@ export default function ImportSettingsSection() {
     setClaudeConvsByProject({});
     setClaudeOrphans([]);
     setClaudeSkippedEmpty(0);
+    setClaudeSkippedUnreadable(0);
     setGeneratedDescriptions({});
     setDescGenerating(false);
     setClaudeSelected(new Set());
@@ -795,6 +797,7 @@ export default function ImportSettingsSection() {
       setClaudeConvsByProject(result.conversations_by_project);
       setClaudeOrphans(reviewOrphans);
       setClaudeSkippedEmpty(result.skipped_empty ?? 0);
+      setClaudeSkippedUnreadable(result.skipped_unreadable ?? 0);
       setClaudeSuggestions(result.suggestions ?? []);
       setClaudeMemoriesByProject(result.memories_by_project ?? {});
 
@@ -2623,6 +2626,14 @@ export default function ImportSettingsSection() {
                                 title="Claude's export contains these conversations but no content for them (no name, summary, or message text) — likely deleted or stripped chats. They cannot be identified or imported."
                               >
                                 · {claudeSkippedEmpty} empty skipped
+                              </span>
+                            )}
+                            {claudeSkippedUnreadable > 0 && (
+                              <span
+                                className="ml-2 text-amber-600 dark:text-amber-500"
+                                title="These chat files could not be parsed, so they are not included in this import. The rest of the export is unaffected. See the terminal log for the specific files and parse errors."
+                              >
+                                · {claudeSkippedUnreadable} unreadable
                               </span>
                             )}
                             {topicCoverage && (
