@@ -5,6 +5,7 @@ import { WaterfallSuggestions } from "@/components/WaterfallSuggestions";
 import type { ComposerSuggestion } from "@/lib/composerSuggestions";
 
 import { useSettingsStore } from "@/stores/settingsStore";
+import { WorkspacePaneProvider } from "@/lib/workspacePane";
 
 const suggestions: ComposerSuggestion[] = [
   { id: "starter-1", label: "Map my Rust notes", prompt: "Map my Rust notes", action: "append" },
@@ -67,6 +68,37 @@ describe("WaterfallSuggestions", () => {
     );
 
     expect(screen.getByTestId("start-chat-btn").parentElement).toHaveClass("pointer-events-auto");
+  });
+
+  it("adapts layout when in compact mode or split pane context", () => {
+    useSettingsStore.setState({ waterfallStyle: "set-type" });
+    const { container, rerender } = render(
+      <WaterfallSuggestions
+        suggestions={suggestions}
+        onSelect={() => undefined}
+        action={<button>Start a new chat</button>}
+        isCompact={true}
+      />,
+    );
+
+    // In compact mode, cards have text-[13.5px] instead of text-[15px]
+    const cards = container.querySelectorAll(".group");
+    expect(cards.length).toBeGreaterThan(0);
+    expect(cards[0]).toHaveClass("text-[13.5px]");
+
+    // Auto-detect split pane via WorkspacePaneProvider
+    rerender(
+      <WorkspacePaneProvider paneId="primary">
+        <WaterfallSuggestions
+          suggestions={suggestions}
+          onSelect={() => undefined}
+          action={<button>Start a new chat</button>}
+        />
+      </WorkspacePaneProvider>,
+    );
+
+    const splitCards = container.querySelectorAll(".group");
+    expect(splitCards[0]).toHaveClass("text-[13.5px]");
   });
 });
 

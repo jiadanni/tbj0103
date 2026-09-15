@@ -3146,6 +3146,7 @@ export default function ChatView() {
                     suggestions={waterfallSuggestions}
                     onSelect={(suggestion) => void handleComposerSuggestion(suggestion, true)}
                     onDismiss={handleDismissSuggestion}
+                    isCompact={isSplitPane}
                     action={
                       <div
                         ref={emptyStatePrivacyMenuRef}
@@ -3163,7 +3164,7 @@ export default function ChatView() {
                               setIsEmptyStatePrivacyMenuOpen(false);
                               void createNewSession();
                             }}
-                            className="px-5 py-3 text-base font-semibold tracking-[0.01em] transition-colors hover:bg-white/10"
+                            className={`${isSplitPane ? "px-4 py-2.5 text-sm" : "px-5 py-3 text-base"} font-semibold tracking-[0.01em] transition-colors hover:bg-white/10`}
                           >
                             Start a new chat
                           </button>
@@ -3173,9 +3174,9 @@ export default function ChatView() {
                             aria-haspopup="menu"
                             aria-expanded={isEmptyStatePrivacyMenuOpen}
                             onClick={() => setIsEmptyStatePrivacyMenuOpen((open) => !open)}
-                            className="flex items-center justify-center border-l border-white/20 px-3.5 transition-colors hover:bg-white/10"
+                            className={`flex items-center justify-center border-l border-white/20 ${isSplitPane ? "px-2.5 py-2.5" : "px-3.5"} transition-colors hover:bg-white/10`}
                           >
-                            <ChevronDown size={16} className={`transition-transform ${isEmptyStatePrivacyMenuOpen ? "rotate-180" : ""}`} />
+                            <ChevronDown size={isSplitPane ? 14 : 16} className={`transition-transform ${isEmptyStatePrivacyMenuOpen ? "rotate-180" : ""}`} />
                           </button>
                         </div>
                         {isEmptyStatePrivacyMenuOpen && (

@@ -1,7 +1,8 @@
-import React, { type ReactNode, useEffect, useMemo, useState } from "react";
+import React, { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import type { ComposerSuggestion } from "../lib/composerSuggestions";
 import { useSettingsStore } from "../stores/settingsStore";
+import { useWorkspacePane } from "../lib/workspacePane";
 
 interface WaterfallSuggestionsProps {
   suggestions: ComposerSuggestion[];
@@ -18,6 +19,8 @@ interface WaterfallSuggestionsProps {
   action: ReactNode;
   /** Only mosaic needs to lay the action out differently — see above. */
   renderAction?: (action: ReactNode) => ReactNode;
+  /** Explicit override for compact/split-screen layout. Defaults to auto-detecting split pane or container width < 800px. */
+  isCompact?: boolean;
 }
 
 // The per-card leading icon was removed rather than re-keyed. It used to
@@ -45,13 +48,25 @@ const CENTER_GUTTER = "11rem";
 const EDGE = "1.5rem"; // middle row — hugs the pane edge (widest point of the arc)
 const PULLED = "5rem"; // top/bottom rows — pulled inward toward center
 
-const ARC_SLOTS: ArcSlot[] = [
+const WIDE_ARC_SLOTS: ArcSlot[] = [
   { side: "left", top: "20%", inset: PULLED },
   { side: "left", top: "50%", inset: EDGE },
   { side: "left", top: "80%", inset: PULLED },
   { side: "right", top: "20%", inset: PULLED },
   { side: "right", top: "50%", inset: EDGE },
   { side: "right", top: "80%", inset: PULLED },
+];
+
+// Staggered orbital cascade for split/compact panes.
+// Alternates left and right sides so prompts never crowd each other horizontally,
+// and leaves the 50% equator line completely clear for the "Start a new chat" button.
+const COMPACT_ARC_SLOTS: ArcSlot[] = [
+  { side: "left", top: "14%", inset: "1.25rem" },
+  { side: "right", top: "26%", inset: "1.25rem" },
+  { side: "left", top: "38%", inset: "1.25rem" },
+  { side: "right", top: "62%", inset: "1.25rem" },
+  { side: "left", top: "74%", inset: "1.25rem" },
+  { side: "right", top: "86%", inset: "1.25rem" },
 ];
 
 const CYCLE_MS = 9000; // how long each set of prompts stays before rotating
@@ -140,31 +155,40 @@ function SuggestionCard({ suggestion, onSelect, onDismiss, style, className, dis
   );
 }
 
+interface WaterfallLayoutProps extends Omit<WaterfallSuggestionsProps, "renderAction"> {
+  isCompact: boolean;
+}
+
 /**
  * 3a — Set type. No boxes: prompts render as bare styled text arranged in the
  * existing arc around a radial dot-grid/ring background. Closest to the
  * original layout, just de-chromed and given a drawn field behind it.
  */
-function WaterfallSetType({ suggestions, onSelect, onDismiss, action }: Omit<WaterfallSuggestionsProps, "renderAction">) {
-  const { arranged, fading } = useRotatingSlots(suggestions, ARC_SLOTS.length);
+function WaterfallSetType({ suggestions, onSelect, onDismiss, action, isCompact }: WaterfallLayoutProps) {
+  const slots = isCompact ? COMPACT_ARC_SLOTS : WIDE_ARC_SLOTS;
+  const { arranged, fading } = useRotatingSlots(suggestions, slots.length);
   if (suggestions.length === 0) { return <>{action}</>; }
 
   return (
     <>
       <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true">
-        <circle cx="50%" cy="50%" r="18%" fill="none" stroke="rgba(var(--accent-color-rgb),0.22)" />
-        <circle cx="50%" cy="50%" r="32%" fill="none" stroke="rgba(148,163,184,0.12)" />
-        <circle cx="50%" cy="50%" r="46%" fill="none" stroke="rgba(148,163,184,0.07)" />
         <line x1="0" y1="50%" x2="100%" y2="50%" stroke="rgba(148,163,184,0.07)" />
         <line x1="50%" y1="0" x2="50%" y2="100%" stroke="rgba(148,163,184,0.07)" />
       </svg>
-      <div className="pointer-events-none absolute inset-0 select-none overflow-hidden [container-type:inline-size]">
+      <div className="pointer-events-none absolute inset-0 mx-auto h-full w-full max-w-[1020px] select-none overflow-hidden [container-type:inline-size]">
+        <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true">
+          <circle cx="50%" cy="50%" r="18%" fill="none" stroke="rgba(var(--accent-color-rgb),0.22)" />
+          <circle cx="50%" cy="50%" r="32%" fill="none" stroke="rgba(148,163,184,0.12)" />
+          <circle cx="50%" cy="50%" r="46%" fill="none" stroke="rgba(148,163,184,0.07)" />
+        </svg>
         {arranged.map(({ suggestion, slotIndex }) => {
-          const slot = ARC_SLOTS[slotIndex];
-          const availableWidth = `calc(50cqw - ${CENTER_GUTTER} - ${slot.inset})`;
+          const slot = slots[slotIndex];
+          const availableWidth = isCompact
+            ? `min(17rem, calc(100cqw - 4rem))`
+            : `calc(50cqw - ${CENTER_GUTTER} - ${slot.inset})`;
           const style: React.CSSProperties = {
             top: slot.top,
-            width: `clamp(11rem, ${availableWidth}, 18rem)`,
+            width: isCompact ? availableWidth : `clamp(11rem, ${availableWidth}, 18rem)`,
             transform: "translateY(-50%)",
             opacity: fading ? FADE_OPACITY : 1,
             transitionDuration: `${FADE_MS}ms`,
@@ -178,7 +202,7 @@ function WaterfallSetType({ suggestions, onSelect, onDismiss, action }: Omit<Wat
               onSelect={onSelect}
               onDismiss={onDismiss}
               style={style}
-              className={`absolute text-[15px] font-medium leading-[1.3] text-[var(--text-primary)] transition-opacity ease-in-out hover:text-[var(--accent-color)] ${slot.side === "right" ? "items-end" : "items-start"}`}
+              className={`absolute ${isCompact ? "text-[13.5px]" : "text-[15px]"} font-medium leading-[1.35] text-[var(--text-primary)] transition-opacity ease-in-out hover:text-[var(--accent-color)] ${slot.side === "right" ? "items-end" : "items-start"}`}
               dismissClassName={`absolute -top-1.5 ${slot.side === "left" ? "-right-6" : "-left-6"} flex h-5 w-5 items-center justify-center rounded-full border border-[var(--surface-border)] bg-[var(--surface-raised)] text-[var(--text-secondary)] opacity-0 shadow-sm transition-opacity duration-150 hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-color)] group-hover:opacity-100`}
             />
           );
@@ -191,12 +215,16 @@ function WaterfallSetType({ suggestions, onSelect, onDismiss, action }: Omit<Wat
 
 const MOSAIC_PROMPT_SLOTS = 7;
 
+interface WaterfallMosaicProps extends WaterfallSuggestionsProps {
+  isCompact: boolean;
+}
+
 /**
  * 3b — Mosaic. A 3x3 grid fills the whole pane: prompt cells, one accent-filled
  * cell holding the "Start a new chat" action, and a "POOL" cell showing how
  * many more prompts are waiting in rotation.
  */
-function WaterfallMosaic({ suggestions, onSelect, onDismiss, action, renderAction }: WaterfallSuggestionsProps) {
+function WaterfallMosaic({ suggestions, onSelect, onDismiss, action, renderAction, isCompact }: WaterfallMosaicProps) {
   const { arranged, fading } = useRotatingSlots(suggestions, MOSAIC_PROMPT_SLOTS);
   if (suggestions.length === 0) { return <>{action}</>; }
 
@@ -208,7 +236,7 @@ function WaterfallMosaic({ suggestions, onSelect, onDismiss, action, renderActio
       onSelect={onSelect}
       onDismiss={onDismiss}
       style={{ opacity: fading ? FADE_OPACITY : 1, transitionDuration: `${FADE_MS}ms` }}
-      className="relative flex h-full w-full flex-col justify-between bg-[var(--surface-raised)] p-4 text-left text-[15px] leading-[1.35] text-[var(--text-primary)] transition-opacity ease-in-out hover:bg-[var(--surface-hover)]"
+      className={`relative flex h-full w-full flex-col justify-between bg-[var(--surface-raised)] ${isCompact ? "p-2.5 text-[12.5px] leading-[1.3]" : "p-4 text-[15px] leading-[1.35]"} text-left text-[var(--text-primary)] transition-opacity ease-in-out hover:bg-[var(--surface-hover)]`}
     />
   ));
   // Insert the action cell after the 4th prompt cell (mirrors the design's
@@ -216,48 +244,59 @@ function WaterfallMosaic({ suggestions, onSelect, onDismiss, action, renderActio
   cells.splice(
     4,
     0,
-    <div key="action" className="flex h-full w-full flex-col justify-between bg-[var(--accent-color)] p-4 text-white">
+    <div key="action" className={`flex h-full w-full flex-col justify-between bg-[var(--accent-color)] ${isCompact ? "p-2.5" : "p-4"} text-white`}>
       {renderAction ? renderAction(action) : action}
     </div>,
   );
   cells.push(
-    <div key="pool" className="flex h-full w-full flex-col justify-between bg-[var(--surface-sunken)] p-4">
+    <div key="pool" className={`flex h-full w-full flex-col justify-between bg-[var(--surface-sunken)] ${isCompact ? "p-2.5" : "p-4"}`}>
       <span className="text-[11px] font-semibold uppercase tracking-[0.01em] text-[var(--text-muted)]">Pool</span>
-      <span className="font-mono text-3xl text-[var(--surface-border)]">{poolCount}</span>
+      <span className={`font-mono ${isCompact ? "text-2xl" : "text-3xl"} text-[var(--surface-border)]`}>{poolCount}</span>
     </div>,
   );
 
   return (
-    <div className="pointer-events-auto absolute inset-0 grid grid-cols-3 grid-rows-3 gap-px overflow-hidden bg-[var(--surface-border)]">
+    <div className="pointer-events-auto absolute inset-0 mx-auto h-full w-full max-w-[1020px] grid grid-cols-3 grid-rows-3 gap-px overflow-hidden bg-[var(--surface-border)]">
       {cells}
     </div>
   );
 }
 
-const BRACKET_SLOTS: ArcSlot[] = ARC_SLOTS;
-
 /**
  * 3c — Bracket. Cut-corner tiles arranged along two dashed guide paths that
  * trace a bracket shape around a centered action.
  */
-function WaterfallBracket({ suggestions, onSelect, onDismiss, action }: Omit<WaterfallSuggestionsProps, "renderAction">) {
-  const { arranged, fading } = useRotatingSlots(suggestions, BRACKET_SLOTS.length);
+function WaterfallBracket({ suggestions, onSelect, onDismiss, action, isCompact }: WaterfallLayoutProps) {
+  const slots = isCompact ? COMPACT_ARC_SLOTS : WIDE_ARC_SLOTS;
+  const { arranged, fading } = useRotatingSlots(suggestions, slots.length);
   if (suggestions.length === 0) { return <>{action}</>; }
 
   return (
     <>
-      <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true">
-        <path d="M35% 15% Q32% 50% 33% 85%" fill="none" stroke="rgba(var(--accent-color-rgb),0.28)" strokeDasharray="2 5" />
-        <path d="M65% 15% Q68% 50% 67% 85%" fill="none" stroke="rgba(var(--accent-color-rgb),0.28)" strokeDasharray="2 5" />
-      </svg>
-      <div className="pointer-events-none absolute inset-0 select-none overflow-hidden [container-type:inline-size]">
+      <div className="pointer-events-none absolute inset-0 mx-auto h-full w-full max-w-[1020px] select-none overflow-hidden [container-type:inline-size]">
+        <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true">
+          <path
+            d={isCompact ? "M28% 10% Q22% 50% 25% 90%" : "M35% 15% Q32% 50% 33% 85%"}
+            fill="none"
+            stroke="rgba(var(--accent-color-rgb),0.28)"
+            strokeDasharray="2 5"
+          />
+          <path
+            d={isCompact ? "M72% 10% Q78% 50% 75% 90%" : "M65% 15% Q68% 50% 67% 85%"}
+            fill="none"
+            stroke="rgba(var(--accent-color-rgb),0.28)"
+            strokeDasharray="2 5"
+          />
+        </svg>
         {arranged.map(({ suggestion, slotIndex }) => {
-          const slot = BRACKET_SLOTS[slotIndex];
+          const slot = slots[slotIndex];
           const isPrimary = slotIndex === 0;
-          const availableWidth = `calc(50cqw - ${CENTER_GUTTER} - ${slot.inset})`;
+          const availableWidth = isCompact
+            ? `min(17rem, calc(100cqw - 4rem))`
+            : `calc(50cqw - ${CENTER_GUTTER} - ${slot.inset})`;
           const style: React.CSSProperties = {
             top: slot.top,
-            width: `clamp(11rem, ${availableWidth}, 18rem)`,
+            width: isCompact ? availableWidth : `clamp(11rem, ${availableWidth}, 18rem)`,
             transform: "translateY(-50%)",
             opacity: fading ? FADE_OPACITY : 1,
             transitionDuration: `${FADE_MS}ms`,
@@ -274,7 +313,7 @@ function WaterfallBracket({ suggestions, onSelect, onDismiss, action }: Omit<Wat
               onSelect={onSelect}
               onDismiss={onDismiss}
               style={style}
-              className="absolute box-border bg-[var(--surface-raised)] px-3 py-2.5 text-[13.5px] leading-[1.4] text-[var(--text-primary)] transition-opacity ease-in-out hover:bg-[var(--surface-hover)]"
+              className={`absolute box-border bg-[var(--surface-raised)] ${isCompact ? "px-2.5 py-2 text-[12.5px]" : "px-3 py-2.5 text-[13.5px]"} leading-[1.4] text-[var(--text-primary)] transition-opacity ease-in-out hover:bg-[var(--surface-hover)]`}
             />
           );
         })}
@@ -284,8 +323,30 @@ function WaterfallBracket({ suggestions, onSelect, onDismiss, action }: Omit<Wat
   );
 }
 
-export function WaterfallSuggestions({ suggestions, onSelect, onDismiss, action, renderAction }: WaterfallSuggestionsProps) {
+export function WaterfallSuggestions({
+  suggestions,
+  onSelect,
+  onDismiss,
+  action,
+  renderAction,
+  isCompact: isCompactProp,
+}: WaterfallSuggestionsProps) {
   const waterfallStyle = useSettingsStore((state) => state.waterfallStyle);
+  const workspacePane = useWorkspacePane();
+  const isSplit = workspacePane !== null;
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [containerWidth, setContainerWidth] = useState<number | null>(null);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) { return; }
+    const ro = new ResizeObserver(() => setContainerWidth(el.clientWidth));
+    ro.observe(el);
+    setContainerWidth(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+
+  const isCompact = isCompactProp ?? (isSplit || (typeof containerWidth === "number" && containerWidth > 0 && containerWidth < 800));
 
   if (suggestions.length === 0) { return <>{action}</>; }
 
@@ -294,15 +355,34 @@ export function WaterfallSuggestions({ suggestions, onSelect, onDismiss, action,
     : "pointer-events-none absolute inset-0 flex flex-1 min-w-0 flex-col items-center justify-center gap-6 text-center select-none overflow-hidden [container-type:inline-size]";
 
   return (
-    <div className={wrapperClassName}>
+    <div ref={containerRef} className={wrapperClassName}>
       {waterfallStyle === "mosaic" && (
-        <WaterfallMosaic suggestions={suggestions} onSelect={onSelect} onDismiss={onDismiss} action={action} renderAction={renderAction} />
+        <WaterfallMosaic
+          suggestions={suggestions}
+          onSelect={onSelect}
+          onDismiss={onDismiss}
+          action={action}
+          renderAction={renderAction}
+          isCompact={isCompact}
+        />
       )}
       {waterfallStyle === "bracket" && (
-        <WaterfallBracket suggestions={suggestions} onSelect={onSelect} onDismiss={onDismiss} action={action} />
+        <WaterfallBracket
+          suggestions={suggestions}
+          onSelect={onSelect}
+          onDismiss={onDismiss}
+          action={action}
+          isCompact={isCompact}
+        />
       )}
       {waterfallStyle === "set-type" && (
-        <WaterfallSetType suggestions={suggestions} onSelect={onSelect} onDismiss={onDismiss} action={action} />
+        <WaterfallSetType
+          suggestions={suggestions}
+          onSelect={onSelect}
+          onDismiss={onDismiss}
+          action={action}
+          isCompact={isCompact}
+        />
       )}
     </div>
   );
