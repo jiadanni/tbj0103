@@ -34,7 +34,6 @@
     "active": true,
     "targets": ["app", "dmg", "appimage", "deb", "rpm", "msi", "nsis"],
     "resources": [
-      "resources/playwright-runner.js",
       "resources/dictionary.db"
     ],
     "icon": [

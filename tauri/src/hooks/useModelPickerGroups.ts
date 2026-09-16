@@ -20,7 +20,6 @@ export interface UseModelPickerGroupsArgs {
 export interface UseModelPickerGroupsResult {
   aiModelById: Map<string, AiModel>;
   modelPickerOptions: string[];
-  enabledWebModels: AiModel[];
   groupedModelPickerOptions: ModelPickerGroupOption[];
   alternateSendModels: string[];
   groupedAlternateSendModels: ModelPickerGroupOption[];
@@ -51,11 +50,6 @@ export function useModelPickerGroups({
       return !meta?.provider.startsWith("web_");
     }),
     [availableModels, aiModelById],
-  );
-
-  const enabledWebModels = useMemo(
-    () => aiModelList.filter((m) => m.provider.startsWith("web_") && m.enabled && !m.is_hidden),
-    [aiModelList],
   );
 
   const groupedModelPickerOptions = useMemo(() => {
@@ -90,7 +84,6 @@ export function useModelPickerGroups({
   return {
     aiModelById,
     modelPickerOptions,
-    enabledWebModels,
     groupedModelPickerOptions,
     alternateSendModels,
     groupedAlternateSendModels,

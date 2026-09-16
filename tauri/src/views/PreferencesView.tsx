@@ -6,7 +6,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { message } from "@tauri-apps/plugin-dialog";
-import { Palette, Bot, ShieldCheck, HardDrive, Plus, LayoutGrid, Network, Globe, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FolderInput, ScrollText, Info, Brain, ChevronDown, GraduationCap, Search, UserCircle, SlidersHorizontal, X } from "lucide-react";
+import { Palette, Bot, ShieldCheck, HardDrive, Plus, LayoutGrid, Network, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FolderInput, ScrollText, Info, Brain, ChevronDown, GraduationCap, Search, UserCircle, SlidersHorizontal, X } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat, type CoreSettings, type InferenceSettings, type AdvancedSettings, type InferenceJobSetting, type InferenceJobStatus, type BackgroundJobRunMode } from "../lib/api";
 import { resolveModelDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
@@ -39,7 +39,6 @@ import { ModelsTable } from "../components/ModelsTable";
 import { AppPreferencesPanel } from "../components/preferences/AppPreferencesPanel";
 import { AboutYouPreferencesPanel } from "../components/preferences/AboutYouPreferencesPanel";
 import { AppearancePreferencesPanel } from "../components/preferences/AppearancePreferencesPanel";
-import { WebAiPreferencesPanel } from "../components/preferences/WebAiPreferencesPanel";
 import { NavigationPreferencesPanel } from "../components/preferences/NavigationPreferencesPanel";
 import { ChatPreferencesPanel } from "../components/preferences/ChatPreferencesPanel";
 import { SecurityPreferencesPanel } from "../components/preferences/SecurityPreferencesPanel";
@@ -61,7 +60,6 @@ const TABS: { id: PreferencesSection; label: string; Icon: React.ElementType }[]
   { id: "inference-jobs", label: "Inference Jobs", Icon: RefreshCw },
   { id: "memory", label: "Memory", Icon: Brain },
   { id: "mcp", label: "MCP", Icon: Network },
-  { id: "webai", label: "Browser Automation", Icon: Globe },
   { id: "workspaces", label: "Workspaces", Icon: LayoutGrid },
   { id: "sync", label: "Sync", Icon: GitBranch },
   { id: "backup", label: "Backup", Icon: HardDrive },
@@ -1497,16 +1495,13 @@ export default function PreferencesView() {
     return Object.values(providerGroups).sort((a, b) => a.order - b.order);
   }, [aiModels, nonEmbeddingOllamaModels, mlxModels, llamacppModels, composerMode, modelFamilyLabels, customModelFamilies, modelLabels]);
 
-  // Separate local models (AI tab) from web models (Browser Automation tab)
+  // Filter out legacy web-automation provider rows (feature removed) from the
+  // AI models table so any pre-existing rows in a user's DB don't show up.
   const localGroupedAiModels = useMemo(
     () => groupedAiModels
       .map((g) => ({ ...g, models: g.models.filter((m) => !m.provider.startsWith("web_")) }))
       .filter((g) => g.models.length > 0),
     [groupedAiModels]
-  );
-  const webAiModels = useMemo(
-    () => aiModels.filter((m) => m.provider.startsWith("web_")),
-    [aiModels]
   );
 
   async function refreshLlamacppModels(paths: string[]) {
@@ -1933,7 +1928,7 @@ export default function PreferencesView() {
   const probedTabsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const probed = probedTabsRef.current;
-    const inferenceTabs = new Set(["inference", "webai", "chat", "learning"]);
+    const inferenceTabs = new Set(["inference", "chat", "learning"]);
     if (inferenceTabs.has(activeTab)) {
       if (!probed.has("inference")) {
         probed.add("inference");
@@ -2370,23 +2365,8 @@ export default function PreferencesView() {
                   />
                 )}
 
-                {/* ── Browser Automation ── */}
-
-
-
                 </div>
             </PreferencesSplitLayout>
-          )}
-
-          {activeTab === "webai" && (
-            <WebAiPreferencesPanel
-              webSessionPreserve={dbSettings.web_session_preserve}
-              onSetWebSessionPreserve={(value) => set("web_session_preserve", value)}
-              aiModels={aiModels}
-              webAiModels={webAiModels}
-              modelLabels={modelLabels}
-              onModelsChanged={() => { loadAiModels(); incrementModelRefreshCounter(); }}
-            />
           )}
 
           {/* ── Security ── */}

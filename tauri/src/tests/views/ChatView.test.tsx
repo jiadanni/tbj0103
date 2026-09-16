@@ -219,10 +219,6 @@ vi.mock("@/lib/api", () => ({
     search: {
       keyword: vi.fn(() => Promise.resolve([])),
     },
-    webAI: {
-      sendMessage: vi.fn(),
-      stopStream: vi.fn(() => Promise.resolve(undefined)),
-    },
     llamacpp: {
       sendMessage: vi.fn(),
       stopStream: vi.fn(() => Promise.resolve(undefined)),

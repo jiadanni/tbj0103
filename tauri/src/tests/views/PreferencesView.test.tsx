@@ -493,13 +493,10 @@ describe("PreferencesView", () => {
     expect(screen.getByText("Gemma 4")).toBeInTheDocument();
     expect(screen.getByText("Remote Ollama")).toBeInTheDocument();
 
-    // Switch to Browser Automation tab for Web AI models
-    const webAiTab = screen.getByText("Browser Automation");
-    fireEvent.click(webAiTab);
-    
-    expect(await screen.findByText("Manual Browser Targets")).toBeInTheDocument();
-    expect(await screen.findByText("Browser Assistant A")).toBeInTheDocument();
-    expect(screen.getByText("browser-assistant-a")).toBeInTheDocument();
+    // Legacy web_* provider rows (browser automation feature removed) must not
+    // surface in the AI settings tab, even if they still exist in the DB.
+    expect(screen.queryByText("ChatGPT (Web)")).not.toBeInTheDocument();
+    expect(screen.queryByText("Browser Automation")).not.toBeInTheDocument();
   });
 
   it("renders read-only capability badges for Ollama models", async () => {
@@ -515,23 +512,6 @@ describe("PreferencesView", () => {
     expect(await screen.findByText("gemma4:latest")).toBeInTheDocument();
     
     expect(screen.queryByTitle("Toggle chat role")).not.toBeInTheDocument();
-  });
-
-  it("does not show role controls in the add model form", async () => {
-    render(
-      <MemoryRouter initialEntries={["/settings"]}>
-        <PreferencesView />
-      </MemoryRouter>,
-    );
-
-    await screen.findByText("Gemma 4");
-    
-    // Switch to Browser Automation tab for Add Model button
-    fireEvent.click(screen.getByText("Browser Automation"));
-    fireEvent.click(screen.getByRole("button", { name: /add model/i }));
-
-    expect(screen.queryByText("Roles")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "chat" })).not.toBeInTheDocument();
   });
 
   it("renders and updates About You tab fields successfully", async () => {

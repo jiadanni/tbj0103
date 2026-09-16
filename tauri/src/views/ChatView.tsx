@@ -2,7 +2,7 @@ import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { WaterfallSuggestions } from "../components/WaterfallSuggestions";
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { Send, Plus, Trash2, ChevronDown, ArrowLeft, ArrowUpCircle, Pencil, Check, MessageSquare, SplitSquareHorizontal, RefreshCw, Paperclip, Image, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Globe, Ghost, Shield, Info, GitBranch } from "lucide-react";
+import { Send, Plus, Trash2, ChevronDown, ArrowLeft, ArrowUpCircle, Pencil, Check, MessageSquare, SplitSquareHorizontal, RefreshCw, Paperclip, Image, FileText, ChevronUp, Zap, Inbox, Clock, CheckCircle2, Loader2, X, Ghost, Shield, Info, GitBranch } from "lucide-react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { message } from "@tauri-apps/plugin-dialog";
 import { open } from "@tauri-apps/plugin-shell";
@@ -837,9 +837,6 @@ export default function ChatView() {
     }
   }
 
-  // Web AI session settings
-  const preserveWebSession = useSettingsStore((s) => s.webSessionPreserve);
-
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const prevScrollChatIdRef = useRef<string | null>(null);
   const wasStreamingRef = useRef(false);
@@ -882,7 +879,6 @@ export default function ChatView() {
   const {
     aiModelById,
     modelPickerOptions,
-    enabledWebModels,
     groupedModelPickerOptions,
     alternateSendModels,
     groupedAlternateSendModels,
@@ -894,7 +890,6 @@ export default function ChatView() {
     modelLabels,
     selectedModel,
   });
-  const [isWebPickerOpen, setIsWebPickerOpen] = useState(false);
   // uses granular selector from above
   const sessionTokensUsed = activeMessages.reduce((sum, m) => sum + (m.tokens_used ?? 0), 0);
   const setTitlebarTokenCount = useUIStore((s) => s.setTitlebarTokenCount);
@@ -912,12 +907,8 @@ export default function ChatView() {
       : null
   );
 
-  // Web AI provider detection
   const selectedModelMeta = aiModelById.get(selectedModel);
   const effectiveContextSize = selectedModelMeta?.context_size ?? 8192;
-  const isWebProvider = selectedModelMeta?.provider.startsWith("web_") ?? false;
-  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-  const webProviderKey = isWebProvider ? selectedModelMeta!.provider.replace("web_", "") : "";
   const { toolbarState, toolbarRef, dismiss: dismissToolbar } = useTextSelectionToolbar(messagesScrollContainerRef);
 
   useEffect(() => {
@@ -1031,24 +1022,6 @@ export default function ChatView() {
       document.removeEventListener("keydown", handleEscape);
     };
   }, [isAttachmentMenuOpen]);
-
-  useEffect(() => {
-    if (!isWebPickerOpen) { return; }
-    function handleClick(event: MouseEvent) {
-      const target = event.target as HTMLElement | null;
-      if (target?.closest("[data-web-model-menu]")) { return; }
-      setIsWebPickerOpen(false);
-    }
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") { event.preventDefault(); setIsWebPickerOpen(false); }
-    }
-    document.addEventListener("mousedown", handleClick);
-    document.addEventListener("keydown", handleEscape);
-    return () => {
-      document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, [isWebPickerOpen]);
 
   useEffect(() => {
     if (!isEmptyStatePrivacyMenuOpen) { return; }
@@ -2051,11 +2024,8 @@ export default function ChatView() {
     if (!userContent || isStreaming || !modelId || !effectiveWorkspaceId) { return; }
 
     const modelMeta = aiModelById.get(modelId);
-    const isOneOffWebProvider = modelMeta?.provider.startsWith("web_") ?? false;
     const isLlamacppProvider = modelMeta?.provider === "llamacpp";
     const isMlxProvider = modelMeta?.provider === "mlx";
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    const oneOffWebProviderKey = isOneOffWebProvider ? modelMeta!.provider.replace("web_", "") : "";
 
     const ensuredSession = await ensureSessionForChat(modelId);
     if (!ensuredSession) { return; }
@@ -2129,40 +2099,7 @@ export default function ChatView() {
     history.push({ role: "user", content: finalUserContent });
 
     /* eslint-disable @typescript-eslint/no-non-null-assertion */
-    if (isOneOffWebProvider && oneOffWebProviderKey) {
-      try {
-        clearStreamListener();
-        const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs, loadDurationMs) => {
-          if (done) {
-            const assembled = useChatStore.getState().streamingContent;
-            finalizeStream(sid!, modelId, tokensUsed, durationMs, loadDurationMs);
-            setIsStreaming(false);
-            clearStreamListener();
-            api.chat.addMessage(effectiveWorkspaceId, sid!, "assistant", assembled, modelId, tokensUsed, durationMs)
-              .then((persisted) => {
-                updateMessage(sid!, persisted);
-                void refreshSessionMetadataAfterAssistant(sid!, modelId, userContent, ensuredSession.session ?? undefined);
-                triggerFollowUps(sid!);
-              })
-              .catch(() => { });
-            if (tokensUsed && tokensUsed > 0) {
-              api.aiModel.recordTokenUsage(modelId, `web_${oneOffWebProviderKey}`, tokensUsed).catch(() => { });
-            }
-            maybeExtractFlashcards(assembled, sid!, modelId);
-          } else {
-            appendStreamChunk(sid!, chunk);
-          }
-        });
-        streamUnlistenRef.current = unlisten;
-        await api.webAI.sendMessage(sid, oneOffWebProviderKey, finalUserContent, preserveWebSession);
-      } catch (err) {
-        clearStreamListener();
-        setIsStreaming(false);
-        const errMsg = err instanceof Error ? err.message : String(err);
-        appendStreamChunk(sid, `\n\n⚠️ Error: ${errMsg}`);
-        finalizeStream(sid, modelId);
-      }
-    } else if (isLlamacppProvider) {
+    if (isLlamacppProvider) {
       try {
         clearStreamListener();
         const unlisten = await api.listenStream(sid, (chunk, done, tokensUsed, durationMs, loadDurationMs) => {
@@ -3368,17 +3305,6 @@ export default function ChatView() {
                     </div>
                   )}
 
-                  {/* Browser automation notice */}
-                  {isWebProvider && webProviderKey && (
-                    <div className="mx-4 mt-2 px-3 py-1.5 rounded bg-blue-500/10 border border-blue-500/20 text-[11px] text-blue-400 flex items-center gap-1.5">
-                      <Globe size={12} />
-                      A browser window will open for your configured browser target, and your query will be submitted automatically after sign-in.
-                      {!preserveWebSession && (
-                        <span className="ml-auto text-[10px] opacity-60">Session cleared after query</span>
-                      )}
-                    </div>
-                  )}
-
                   {/* Messages */}
                   <div data-testid="chat-messages-area" className={`min-h-0 min-w-0 flex-1 flex flex-col overflow-hidden relative ${activeMessages.length > 0 || isStreaming ? "" : "hidden"}`}>
                     <div ref={messagesScrollContainerRef} className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
@@ -3569,49 +3495,6 @@ export default function ChatView() {
                                 </button>
                               </Tooltip>
 
-                              {/* Browser Assistant picker */}
-                              {enabledWebModels.length > 0 && (
-                                <div className="relative" data-web-model-menu>
-                                  <Tooltip content="Send with a browser assistant" position="top">
-                                    <button
-                                      type="button"
-                                      onClick={() => setIsWebPickerOpen((open) => !open)}
-                                      disabled={!input.trim() || isStreaming}
-                                      aria-label="Send with browser assistant"
-                                      aria-haspopup="menu"
-                                      aria-expanded={isWebPickerOpen}
-                                      className={`${composerIconOnlyButtonClass} ${isWebPickerOpen ? "bg-[rgba(var(--accent-color-rgb),0.15)] text-[var(--accent-color)]" : ""}`}
-                                    >
-                                      <Globe size={13} />
-                                    </button>
-                                  </Tooltip>
-                                  {isWebPickerOpen && (
-                                    <div className="absolute left-0 bottom-full z-20 mb-2 min-w-[200px] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1.5 shadow-2xl">
-                                      <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-                                        Browser Targets
-                                      </div>
-                                      <div className="max-h-48 overflow-y-auto">
-                                        {enabledWebModels.map((m) => (
-                                          <button
-                                            key={m.id}
-                                            type="button"
-                                            onClick={async () => {
-                                              setIsWebPickerOpen(false);
-                                              await sendMessageWithModel(m.model_id);
-                                            }}
-                                            disabled={!input.trim() || isStreaming}
-                                            className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
-                                          >
-                                            <Globe size={14} className="shrink-0 text-[var(--text-muted)]" />
-                                            <span className="min-w-0 truncate">{modelDisplayName(m.model_id)}</span>
-                                          </button>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-
                               {/* Attachment menu */}
                               <div className="relative" data-attachment-menu>
                                 <Tooltip content={attachedSources.length > 0 ? `Attached ${attachedSources.length} file${attachedSources.length === 1 ? "" : "s"}` : "Attach to this message"} position="top">
@@ -3748,15 +3631,6 @@ export default function ChatView() {
                                           setIsStreaming(false);
                                           api.ollama.stopStream(activeChatId).catch(() => { });
                                           api.llamacpp.stopStream(activeChatId).catch(() => { });
-                                          api.webAI.stopStream(activeChatId).catch((error) => {
-                                            const message = error instanceof Error ? error.message : String(error);
-                                            void api.logs.logFrontendEvent(
-                                              "warn",
-                                              "chat",
-                                              "Failed to stop web AI stream",
-                                              JSON.stringify({ session_id: activeChatId, error: message }),
-                                            ).catch(() => {});
-                                          });
                                           if (lastUserMessage) {
                                             setInput(lastUserMessage);
                                             requestAnimationFrame(() => {
