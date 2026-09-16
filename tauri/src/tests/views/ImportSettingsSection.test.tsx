@@ -5,7 +5,8 @@ import { MemoryRouter } from "react-router-dom";
 import ImportSettingsSection from "@/views/ImportSettingsSection";
 import { api } from "@/lib/api";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
-import { open as openDialog, message as showMessage } from "@tauri-apps/plugin-dialog";
+import { open as openDialog, message as showMessage, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { writeTextFile } from "@tauri-apps/plugin-fs";
 
 const mockNavigate = vi.fn();
 
@@ -469,7 +470,7 @@ describe("ImportSettingsSection", () => {
           project_uuid: null,
           first_user_message: "New question",
           summary: "",
-          messages: [],
+          messages: [] as { role: string; content: string }[],
         },
         {
           uuid: "orphan-linked",
@@ -480,7 +481,7 @@ describe("ImportSettingsSection", () => {
           project_uuid: null,
           first_user_message: "Old question",
           summary: "",
-          messages: [],
+          messages: [] as { role: string; content: string }[],
         },
       ],
       orphan_count: 2,
@@ -982,5 +983,43 @@ describe("ImportSettingsSection", () => {
     fireEvent.click(screen.getByText(/2 conversations$/));
     expect(screen.getByText(/imported, still unassigned/)).toBeInTheDocument();
     expect(screen.getByText(/Already imported chat/)).toBeInTheDocument();
+  });
+
+  it("exports only the matcher's context window, not full transcripts", async () => {
+    // Regression: the review export embedded every message of every chat. On a
+    // real 924-chat export that was 28.4 MB of transcripts in a 29.8 MB file
+    // (95%), with a single chat contributing 5.2 MB — too large to hand to a
+    // chat model, which is the whole point of the export. Nothing reads that
+    // depth: the matcher scores the first 3 user turns capped at 700 chars.
+    vi.mocked(openDialog).mockResolvedValue("/imports/claude");
+    vi.mocked(saveDialog).mockResolvedValue("/tmp/review.json");
+    const preview = claudePreviewWithLinks();
+    preview.orphan_conversations[0].messages = [
+      { role: "user", content: "u1".padEnd(900, "x") },
+      { role: "assistant", content: "a1".padEnd(5000, "y") },
+      { role: "user", content: "u2" },
+      { role: "user", content: "u3" },
+      { role: "user", content: "u4-dropped" },
+    ];
+    vi.mocked(api.chatFile.previewClaudeFiles).mockResolvedValueOnce(preview);
+
+    renderImportSettings();
+    fireEvent.click(screen.getAllByText("Select")[2]);
+    await screen.findByText(/1 chat was imported before and will merge automatically/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Export for AI" }));
+    await waitFor(() => { expect(writeTextFile).toHaveBeenCalledTimes(1); });
+
+    const payload = JSON.parse(vi.mocked(writeTextFile).mock.calls[0][1] as string);
+    const conv = payload.conversations.find((c: { uuid: string }) => c.uuid === "orphan-new");
+
+    // Assistant turns dropped, user turns capped at 3.
+    expect(conv.messages).toHaveLength(3);
+    expect(conv.messages.every((m: { role: string }) => m.role === "user")).toBe(true);
+    expect(conv.messages.map((m: { content: string }) => m.content[0] + m.content[1])).toEqual(["u1", "u2", "u3"]);
+    // Long turns truncated to the 700-char budget.
+    expect(conv.messages[0].content).toHaveLength(700);
+    // And the omission is declared rather than left implicit.
+    expect(conv.messages_truncated).toBe(true);
   });
 });
