@@ -61,6 +61,8 @@ export default function App() {
   const movedRef = useRef(false);
   const axisRef = useRef<"vertical" | "horizontal" | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const scrollTargetRef = useRef<HTMLElement | null>(null);
+  const scrollStartTopRef = useRef<number>(0);
 
   const current = order[index] ?? null;
   const isLastCard = order.length > 0 && index === order.length - 1;
@@ -389,6 +391,16 @@ export default function App() {
     startXRef.current = event.clientX;
     movedRef.current = false;
     axisRef.current = null;
+
+    const target = event.target as HTMLElement | null;
+    const scrollable = target?.closest<HTMLElement>(".overflow-y-auto") ?? null;
+    if (scrollable && scrollable.scrollHeight > scrollable.clientHeight) {
+      scrollTargetRef.current = scrollable;
+      scrollStartTopRef.current = scrollable.scrollTop;
+    } else {
+      scrollTargetRef.current = null;
+    }
+
     setDragging(true);
     event.currentTarget.setPointerCapture(event.pointerId);
   }
@@ -410,6 +422,36 @@ export default function App() {
       return;
     }
     if (axisRef.current === "vertical") {
+      if (scrollTargetRef.current) {
+        const el = scrollTargetRef.current;
+        const maxScroll = el.scrollHeight - el.clientHeight;
+        const newScrollTop = scrollStartTopRef.current - dy;
+
+        // The answer container absorbs vertical movement as long as it has scroll room
+        if (newScrollTop >= 0 && newScrollTop <= maxScroll) {
+          el.scrollTop = newScrollTop;
+          setDrag(0);
+          return;
+        }
+
+        // Dragging down past top of answer box -> rubber-band the card
+        if (newScrollTop < 0) {
+          el.scrollTop = 0;
+          const overDy = -newScrollTop;
+          const rubberBand = (overDy * RUBBER_BAND_MAX_PX) / (overDy + RUBBER_BAND_MAX_PX);
+          setDrag(rubberBand);
+          return;
+        }
+
+        // Dragging up past bottom of answer box -> advance card
+        if (newScrollTop > maxScroll) {
+          el.scrollTop = maxScroll;
+          const overDy = newScrollTop - maxScroll;
+          setDrag(-overDy);
+          return;
+        }
+      }
+
       if (dy > 0) {
         const rubberBand = (dy * RUBBER_BAND_MAX_PX) / (dy + RUBBER_BAND_MAX_PX);
         setDrag(rubberBand);
@@ -420,6 +462,7 @@ export default function App() {
   }
 
   function onPointerUp(event: React.PointerEvent<HTMLDivElement>) {
+    scrollTargetRef.current = null;
     if (!dragging) {return;}
     setDragging(false);
     try {

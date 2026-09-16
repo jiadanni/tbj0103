@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import ChatMinimap from "@/components/ChatMinimap";
 import type { Message } from "@/stores/chatStore";
 import type { VirtuosoHandle } from "react-virtuoso";
@@ -103,5 +103,46 @@ describe("ChatMinimap", () => {
     );
 
     expect(screen.getByTestId("chat-minimap")).toHaveStyle({ right: "8px" });
+  });
+
+  it("schedules requestAnimationFrame to batch pointermove during drag", () => {
+    const scrollContainer = createScrollContainer(320, 320);
+    const scrollToIndex = vi.fn();
+    const rafSpy = vi.spyOn(window, "requestAnimationFrame");
+
+    render(
+      <ChatMinimap
+        messages={messages}
+        virtuosoRef={{ current: { scrollToIndex } as unknown as VirtuosoHandle }}
+        scrollContainer={scrollContainer}
+        isStreaming={false}
+      />
+    );
+
+    const track = screen.getByTestId("chat-minimap").firstElementChild as HTMLElement;
+    track.getBoundingClientRect = vi.fn(() => ({
+      top: 0,
+      bottom: 300,
+      left: 0,
+      right: 28,
+      width: 28,
+      height: 300,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    }));
+    track.setPointerCapture = vi.fn();
+
+    fireEvent.pointerDown(track, { clientY: 10, pointerId: 1 });
+    expect(scrollToIndex).toHaveBeenCalledTimes(1);
+
+    const rafCountBefore = rafSpy.mock.calls.length;
+    fireEvent.pointerMove(track, { clientY: 50, pointerId: 1 });
+    fireEvent.pointerMove(track, { clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(track, { clientY: 150, pointerId: 1 });
+
+    // Only one rAF should be scheduled while the previous one is pending
+    expect(rafSpy.mock.calls.length).toBe(rafCountBefore + 1);
+    rafSpy.mockRestore();
   });
 });

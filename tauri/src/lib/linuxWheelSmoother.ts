@@ -3,21 +3,33 @@ import { isLinux } from "./platform";
 const PIXELS_PER_LINE = 40;
 const PIXELS_PER_PAGE = 800;
 
-function findScrollableAncestor(start: Element | null): Element | Window {
+export function findScrollableAncestor(
+  start: Element | null,
+  direction: "x" | "y" | "both" = "both",
+): Element | Window {
   let el: Element | null = start;
   while (el && el !== document.body && el !== document.documentElement) {
     const style = window.getComputedStyle(el);
+    const overflowX = style.overflowX;
     const overflowY = style.overflowY;
+
+    const canScrollX =
+      (direction === "x" || direction === "both") &&
+      (overflowX === "auto" || overflowX === "scroll" || overflowX === "overlay") &&
+      el.scrollWidth > el.clientWidth;
+
     const canScrollY =
+      (direction === "y" || direction === "both") &&
       (overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay") &&
       el.scrollHeight > el.clientHeight;
-    if (canScrollY) { return el; }
+
+    if (canScrollX || canScrollY) { return el; }
     el = el.parentElement;
   }
   return window;
 }
 
-function shouldSkip(target: EventTarget | null): boolean {
+export function shouldSkip(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) { return false; }
   // CodeMirror handles wheel events itself; don't interfere with editors.
   if (target.closest(".cm-editor")) { return true; }
@@ -36,7 +48,7 @@ export function installLinuxWheelSmoother(): void {
       // smooth scroll, Chromium-style smoothed wheel) are already smooth.
       if (event.deltaMode === WheelEvent.DOM_DELTA_PIXEL) { return; }
       if (shouldSkip(event.target)) { return; }
-      // Skip horizontal-only or zoom (Ctrl+wheel) events.
+      // Skip zoom (Ctrl+wheel) events.
       if (event.ctrlKey) { return; }
 
       const multiplier =
@@ -44,13 +56,12 @@ export function installLinuxWheelSmoother(): void {
       const dx = event.deltaX * multiplier;
       const dy = event.deltaY * multiplier;
 
-      const target = findScrollableAncestor(event.target as Element | null);
+      if (dx === 0 && dy === 0) { return; }
+
+      const direction = dx !== 0 && dy === 0 ? "x" : dy !== 0 && dx === 0 ? "y" : "both";
+      const target = findScrollableAncestor(event.target as Element | null, direction);
       event.preventDefault();
-      if (target instanceof Window) {
-        target.scrollBy({ left: dx, top: dy, behavior: "auto" });
-      } else {
-        target.scrollBy({ left: dx, top: dy, behavior: "auto" });
-      }
+      target.scrollBy({ left: dx, top: dy, behavior: "auto" });
     },
     { passive: false, capture: true },
   );

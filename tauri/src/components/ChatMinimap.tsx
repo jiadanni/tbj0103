@@ -80,6 +80,16 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
   // fresh DOM measurements). NOT bumped on plain scroll.
   const [layoutTick, setLayoutTick] = useState(0);
   const dragging = useRef(false);
+  const dragRafId = useRef(0);
+  const pendingDragMsgIdx = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (dragRafId.current !== 0) {
+        window.cancelAnimationFrame(dragRafId.current);
+      }
+    };
+  }, []);
 
   // One block per rendered chat message, plus the active streaming reply. A
   // single prompt/reply can still be long enough to need navigation.
@@ -328,14 +338,34 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
         return prev === next ? prev : next;
       });
       setTooltipY(relY);
-      if (dragging.current) { jumpTo(positioned[idx]?.msgIdx ?? 0, "auto"); }
+      if (dragging.current) {
+        const targetIdx = positioned[idx]?.msgIdx ?? 0;
+        pendingDragMsgIdx.current = targetIdx;
+        if (dragRafId.current === 0) {
+          dragRafId.current = window.requestAnimationFrame(() => {
+            dragRafId.current = 0;
+            if (pendingDragMsgIdx.current !== null) {
+              jumpTo(pendingDragMsgIdx.current, "auto");
+              pendingDragMsgIdx.current = null;
+            }
+          });
+        }
+      }
     },
     [blockIdxAtY, jumpTo, positioned, trackClientH],
   );
 
   const handlePointerUp = useCallback(() => {
     dragging.current = false;
-  }, []);
+    if (dragRafId.current !== 0) {
+      window.cancelAnimationFrame(dragRafId.current);
+      dragRafId.current = 0;
+    }
+    if (pendingDragMsgIdx.current !== null) {
+      jumpTo(pendingDragMsgIdx.current, "auto");
+      pendingDragMsgIdx.current = null;
+    }
+  }, [jumpTo]);
 
   if (positioned.length < 2) { return null; }
 
@@ -358,6 +388,11 @@ const ChatMinimap: React.FC<ChatMinimapProps> = ({
         onPointerLeave={() => {
           setHoveredIdx(null);
           dragging.current = false;
+          if (dragRafId.current !== 0) {
+            window.cancelAnimationFrame(dragRafId.current);
+            dragRafId.current = 0;
+          }
+          pendingDragMsgIdx.current = null;
         }}
       >
         {positioned.map((b, i) => {
