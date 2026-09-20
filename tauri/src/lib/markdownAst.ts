@@ -69,6 +69,11 @@ export function sanitizeTree(tree: Root): Root {
 
     if (node.type === "element") {
       const element = node as Element;
+      if (element.tagName === "code") {
+        const isBlock = Boolean(parent && parent.type === "element" && parent.tagName === "pre");
+        element.properties = element.properties || {};
+        element.properties.inline = !isBlock;
+      }
       for (const key in urlAttributes) {
         // `Object.prototype.hasOwnProperty.call` rather than `Object.hasOwn`
         // (ES2022) or a bare `key in`, which would also match prototype keys.

@@ -45,3 +45,4 @@ pub mod vector_index;
 pub mod workspace_glossary;
 pub mod workspace_hierarchy;
 pub mod workspace_service;
+pub mod profile_manager;

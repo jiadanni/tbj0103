@@ -11,6 +11,7 @@ import { writeTextFile } from "@tauri-apps/plugin-fs";
 const mockNavigate = vi.fn();
 
 vi.mock("lucide-react", () => ({
+  Brain: () => <div data-testid="icon-brain" />,
   Check: () => <div data-testid="icon-check" />,
   CheckSquare: () => <div data-testid="icon-check-square" />,
   ChevronDown: () => <div data-testid="icon-chevron-down" />,
@@ -19,6 +20,7 @@ vi.mock("lucide-react", () => ({
   Eye: () => <div data-testid="icon-eye" />,
   FolderInput: () => <div data-testid="icon-folder-input" />,
   Info: () => <div data-testid="icon-info" />,
+  MessageSquare: () => <div data-testid="icon-message-square" />,
   RefreshCw: () => <div data-testid="icon-refresh-cw" />,
   Square: () => <div data-testid="icon-square" />,
   X: () => <div data-testid="icon-x" />,
@@ -204,6 +206,10 @@ vi.mock("@/lib/api", () => ({
       previewClaudeAccountMemories: vi.fn(() => Promise.resolve({ total: 0, memories: [] })),
       importClaudeAccountMemories: vi.fn(() =>
         Promise.resolve({ imported: 0, updated: 0, skipped: 0 }),
+      ),
+      previewClaudeProjectMemories: vi.fn(() => Promise.resolve({ total: 0, memories: [] })),
+      importClaudeProjectMemories: vi.fn(() =>
+        Promise.resolve({ imported: 0, updated: 0, skipped: 0, workspace_id: "workspace-1", errors: [] }),
       ),
       previewClaudeFiles: vi.fn(() => Promise.resolve({
         format: "v2",

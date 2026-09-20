@@ -743,8 +743,9 @@ export default function ChatView() {
       const match = /language-(\w+)/.exec(className || "");
       const lang = match ? match[1] : "";
       const content = String(children).replace(/\n$/, "");
+      const isBlock = inline === false || (inline === undefined && Boolean(match));
 
-      if (!inline) {
+      if (isBlock) {
         return (
           <CodeBlockRenderer
             content={content}

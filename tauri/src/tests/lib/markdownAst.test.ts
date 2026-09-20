@@ -89,4 +89,12 @@ describe("parseMarkdownToHast sanitisation", () => {
     expect(serialized).not.toContain("\"tagName\":\"script\"");
     expect(serialized).not.toContain("\"type\":\"raw\"");
   });
+
+  it("annotates inline: true for inline code and inline: false for block code", () => {
+    const tree = parseMarkdownToHast("Here is `$var` and:\n\n```js\nconst x = 1;\n```");
+    const serialized = JSON.stringify(tree);
+
+    expect(serialized).toContain("\"inline\":true");
+    expect(serialized).toContain("\"inline\":false");
+  });
 });

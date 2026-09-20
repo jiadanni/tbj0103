@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  Database,
   ExternalLink,
   Settings as SettingsIcon,
   Zap,
@@ -14,6 +15,7 @@ import type { NavigationItem } from "./navigationItems";
 import { SectionNavSidebar } from "./chrome/SectionNavSidebar";
 import { api } from "../lib/api";
 import { useChatStore } from "../stores/chatStore";
+import { useProfileStore } from "../stores/profileStore";
 
 const MIN_FONT_SIZE = 11;
 const MAX_FONT_SIZE = 22;
@@ -43,6 +45,12 @@ export default function Sidebar({
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const activeProfile = useProfileStore((s) => s.activeProfile);
+  const loadProfiles = useProfileStore((s) => s.loadProfiles);
+
+  useEffect(() => {
+    loadProfiles();
+  }, [loadProfiles]);
 
   function showTooltip(label: string, element: HTMLElement) {
     if (labelsVisible) {return;}
@@ -348,6 +356,20 @@ export default function Sidebar({
             </div>
 
             <div className="mx-2 border-t border-[var(--border-color)]" />
+
+            {/* Vault / Profile */}
+            <button
+              onClick={() => {
+                setPopoverOpen(false);
+                goTo("/preferences", { state: { settingsTab: "profiles" } });
+              }}
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
+            >
+              <Database size={16} strokeWidth={1.5} />
+              <span className="flex-1 truncate">
+                Vault: <span className="font-medium text-[var(--text-primary)]">{activeProfile?.name || "Default"}</span>
+              </span>
+            </button>
 
             {/* Command Palette */}
             <button

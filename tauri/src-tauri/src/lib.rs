@@ -243,7 +243,11 @@ pub fn run() {
                 .app_data_dir()
                 .map_err(|e| format!("Failed to get app data directory: {e}"))?;
             std::fs::create_dir_all(&app_dir)?;
-            let db_path = app_dir.join("aetherium.db");
+            let (_, db_path, _) =
+                crate::services::profile_manager::get_active_profile_and_paths(&app_dir);
+            if let Some(parent) = db_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
 
             // AuthState is always managed early so that DB-encryption commands
             // (which run from the boot screen, before the pool exists) work.
@@ -269,6 +273,12 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(authenticated_handler(tauri::generate_handler![
+            // Profile / Vault commands
+            commands::profile::list_profiles,
+            commands::profile::create_profile,
+            commands::profile::switch_profile,
+            commands::profile::rename_profile,
+            commands::profile::delete_profile,
             // Workspace commands
             commands::workspace::create_workspace,
             commands::workspace::create_child_workspace,
@@ -615,6 +625,8 @@ pub fn run() {
             commands::chat_file::preview_claude_projects_fast,
             commands::chat_file::preview_claude_account_memories,
             commands::chat_file::import_claude_account_memories,
+            commands::chat_file::preview_claude_project_memories,
+            commands::chat_file::import_claude_project_memories,
             commands::chat_file::match_claude_with_llm,
             commands::chat_file::match_claude_with_topics,
             commands::chat_file::generate_claude_project_descriptions,
@@ -696,7 +708,8 @@ pub fn complete_db_dependent_setup(
         .and_then(|value: String| serde_json::from_str(&value).ok())
         .unwrap_or_else(|| "CmdOrCtrl+Shift+K".to_string());
 
-    let chats_dir = app_dir.join("chats");
+    let (_, _, chats_dir) = crate::services::profile_manager::get_active_profile_and_paths(&app_dir);
+    let _ = std::fs::create_dir_all(&chats_dir);
     let passphrase = commands::chat_file::load_crypto_state_from_keyring(&conn);
     crate::services::quick_search_index::ensure_populated(&conn)
         .map_err(|e| format!("Failed to populate quick search index: {e}"))?;

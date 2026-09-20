@@ -7,6 +7,7 @@ import React, { useMemo } from "react";
 import {
   ArrowUpDown,
   Brain,
+  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -15,14 +16,20 @@ import {
   Columns2,
   Copy,
   Download,
+  FolderPlus,
   History as HistoryIcon,
+  House,
+  Inbox,
+  Info,
   Paperclip,
   Pencil,
   Pin,
   Plus,
+  RefreshCw,
   Search,
   Send,
   Settings as SettingsIcon,
+  SplitSquareHorizontal,
 } from "lucide-react";
 import type { AppSettings } from "../../lib/api";
 import {
@@ -48,30 +55,30 @@ import { SectionNavSidebar } from "../../components/chrome/SectionNavSidebar";
 import { McMenubarMock } from "../../components/chrome/McMenubarMock";
 import { SinglePaneWorkspaceSidebar } from "../../components/chrome/SinglePaneWorkspaceSidebar";
 import { WorkspaceNavDropdownSelect } from "../../components/chrome/WorkspaceNavDropdownSelect";
+import { WorkspaceIcon } from "../../lib/workspaceIcon";
 import ChatMessageBubble from "../../components/ChatMessageBubble";
 import type { Message } from "../../stores/chatStore";
 
 const NOOP = () => undefined;
-const PREVIEW_MARKDOWN_COMPONENTS: Record<string, React.ElementType> = {};
-const PREVIEW_PARENT_WORKSPACES: Array<{ id: string; name: string; index: number }> = [
-  { id: "preview-ws-1", name: "General", index: 1 },
-  { id: "preview-ws-2", name: "Learning", index: 2 },
-  { id: "preview-ws-3", name: "Projects", index: 3 },
-  { id: "preview-ws-4", name: "Reading", index: 4 },
-  { id: "preview-ws-5", name: "Research", index: 5 },
+const PREVIEW_PARENT_WORKSPACES: Array<{ id: string; name: string; index: number; icon: string }> = [
+  { id: "preview-ws-1", name: "General", index: 1, icon: "rocket" },
+  { id: "preview-ws-2", name: "Learning", index: 2, icon: "book-open" },
+  { id: "preview-ws-3", name: "Projects", index: 3, icon: "code" },
+  { id: "preview-ws-4", name: "Reading", index: 4, icon: "folder" },
+  { id: "preview-ws-5", name: "Research", index: 5, icon: "sparkles" },
 ];
-const PREVIEW_CHILD_WORKSPACES: Array<{ id: string; name: string }> = [
-  { id: "preview-child-1", name: "Overview" },
-  { id: "preview-child-2", name: "Notes" },
-  { id: "preview-child-3", name: "Resources" },
-  { id: "preview-child-4", name: "Tasks" },
+const PREVIEW_CHILD_WORKSPACES: Array<{ id: string; name: string; icon: string }> = [
+  { id: "preview-child-1", name: "Overview", icon: "terminal" },
+  { id: "preview-child-2", name: "Notes", icon: "file-text" },
+  { id: "preview-child-3", name: "Resources", icon: "database" },
+  { id: "preview-child-4", name: "Tasks", icon: "check" },
 ];
-const PREVIEW_CHAT_TITLES: Array<{ title: string; active: boolean }> = [
-  { title: "Speed of light", active: true },
-  { title: "Why is the sky blue?", active: false },
-  { title: "Photosynthesis basics", active: false },
-  { title: "Newton's laws", active: false },
-  { title: "Gravity explained", active: false },
+const PREVIEW_CHAT_TITLES: Array<{ title: string; active: boolean; timeAgo: string }> = [
+  { title: "Speed of light", active: true, timeAgo: "3d" },
+  { title: "Why is the sky blue?", active: false, timeAgo: "3d" },
+  { title: "Photosynthesis basics", active: false, timeAgo: "5d" },
+  { title: "Newton's laws", active: false, timeAgo: "12d" },
+  { title: "Gravity explained", active: false, timeAgo: "19d" },
 ];
 const PREVIEW_RELATED_LINKS: string[] = [
   "Wave-particle duality",
@@ -90,21 +97,11 @@ const PREVIEW_USER_MESSAGE: Message = {
   content: "What is the speed of light?",
   created_at: "2026-01-01T00:00:00Z",
 };
-const PREVIEW_ASSISTANT_MESSAGE_INTRO: Message = {
-  id: "preview-assistant-intro",
-  session_id: "preview",
-  role: "assistant",
-  content: "Light in a vacuum travels at a constant ~299,792 km/s — fast enough to circle the Earth about 7.5 times in a single second. In denser media like glass or water it slows down, and that change in speed is what bends a beam at the boundary (refraction).",
-  model_name: "local-7b",
-  tokens_used: 64,
-  duration_ms: 1400,
-  created_at: "2026-01-01T00:00:01Z",
-};
 const PREVIEW_ASSISTANT_MESSAGE: Message = {
   id: "preview-assistant",
   session_id: "preview",
   role: "assistant",
-  content: "If you want to play with it, here's a tiny helper that converts a distance to its light-travel time:\n\n```python\nC_MPS = 299_792_458  # speed of light in vacuum, m/s\n\ndef light_travel_seconds(distance_m: float) -> float:\n    return distance_m / C_MPS\n```",
+  content: "In a vacuum, light travels at constant speed `$c \\approx 300,000$` km/s. Here is a helper:\n\n```python\nC_MPS = 299_792_458  # speed of light in vacuum, m/s\n\ndef light_travel_seconds(distance_m: float) -> float:\n    return distance_m / C_MPS\n```",
   model_name: "local-7b",
   tokens_used: 120,
   duration_ms: 2500,
@@ -312,18 +309,19 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
       list.sort((a, b) => b.index - a.index);
     }
 
-    return list.map((w) => ({ id: w.id, name: w.name }));
+    return list.map((w) => ({ id: w.id, name: w.name, icon: w.icon }));
   }, [workspaceSortOrder]);
 
   const activeWorkspaceName = parentWorkspaces[0]?.name || "General";
   const previewMarkdownComponents = useMemo(() => ({
     pre: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
     code: ({ inline, className, children }: { inline?: boolean; className?: string; children?: React.ReactNode }) => {
-      if (inline) {
-        return <code>{children}</code>;
-      }
       const match = /language-(\w+)/.exec(className || "");
       const lang = match ? match[1] : "";
+      const isBlock = inline === false || (inline === undefined && Boolean(match));
+      if (!isBlock) {
+        return <code>{children}</code>;
+      }
       return (
         <PreviewCodeBlock
           content={String(children).replace(/\n$/, "")}
@@ -394,28 +392,29 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                   displayLabel={activeWorkspaceName}
                 />
               ) : workspaceNavigation === "top-tabs" ? (
-                <div className="flex gap-1 items-end relative -bottom-[1px] h-full" data-no-drag>
+                <div className="flex items-center gap-1 h-full select-none" data-no-drag>
                   {parentWorkspaces.map((ws, index) => {
                     const isActive = index === 0;
                     return (
                       <div
                         key={ws.id}
-                        className={`relative text-[0.65em] px-2 py-0.5 rounded-t-md border border-b-0 select-none whitespace-nowrap cursor-pointer transition-all ${
+                        className={`relative flex h-5 items-center gap-1 shrink-0 rounded-md px-1.5 text-[0.65em] font-medium whitespace-nowrap transition-all select-none ${
                           isActive
-                            ? "font-semibold text-[var(--text-primary)] bg-[var(--bg-primary)] border-[var(--border-color)]"
-                            : "text-[var(--text-muted)] bg-[var(--bg-sidebar)]/50 border-transparent"
+                            ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
+                            : "bg-transparent text-[var(--text-secondary)]"
                         }`}
                       >
                         {isActive && (
-                          <span className="absolute inset-x-1.5 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
+                          <span className="absolute inset-x-0 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
                         )}
-                        {ws.name}
+                        <WorkspaceIcon name={ws.icon} label={ws.name} className="h-2.5 w-2.5 opacity-75 shrink-0" />
+                        <span>{ws.name}</span>
                       </div>
                     );
                   })}
-                  <button className="h-5 w-5 text-[var(--text-secondary)] rounded flex items-center justify-center mb-0.5">
-                    <Plus size={10} />
-                  </button>
+                  <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[var(--text-secondary)]">
+                    <Plus size={10} strokeWidth={1.7} />
+                  </div>
                 </div>
               ) : (
                 <span className="text-[0.7em] font-semibold text-[var(--text-primary)] truncate">{activeWorkspaceName}</span>
@@ -450,29 +449,32 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                   </div>
                 </Tooltip>
               )}
-              {/* BackForwardNavigation — mirrors Layout.tsx (ChevronLeft/Right in
-                  bordered 8x8 buttons, on the right of the titlebar). */}
-              <div className="h-5 w-5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] flex items-center justify-center text-[var(--text-secondary)]">
-                <ChevronLeft size={10} />
+              {/* BackForwardNavigation — mirrors Layout.tsx (ChevronLeft/Right) */}
+              <div className="h-5 w-5 rounded-md flex items-center justify-center text-[var(--text-secondary)]">
+                <ChevronLeft size={10} strokeWidth={1.7} />
               </div>
-              <div className="h-5 w-5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] flex items-center justify-center text-[var(--text-secondary)]">
-                <ChevronRight size={10} />
+              <div className="h-5 w-5 rounded-md flex items-center justify-center text-[var(--text-secondary)]">
+                <ChevronRight size={10} strokeWidth={1.7} />
               </div>
               {/* TitlebarSortMenu */}
-              <div className="h-5 w-5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] flex items-center justify-center text-[var(--text-secondary)]">
-                <ArrowUpDown size={10} />
+              <div className="h-5 w-5 rounded-md flex items-center justify-center text-[var(--text-secondary)]">
+                <ArrowUpDown size={10} strokeWidth={1.7} />
               </div>
               {/* TitlebarHistoryMenu */}
-              <div className="h-5 w-5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] flex items-center justify-center text-[var(--text-secondary)]">
-                <HistoryIcon size={10} />
+              <div className="h-5 w-5 rounded-md flex items-center justify-center text-[var(--text-secondary)]">
+                <HistoryIcon size={10} strokeWidth={1.7} />
+              </div>
+              {/* SchedulerPauseButton */}
+              <div className="h-5 w-5 rounded-md flex items-center justify-center text-[var(--text-secondary)]">
+                <Brain size={10} strokeWidth={1.7} />
               </div>
               {/* Preferences */}
-              <div className="h-5 w-5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] flex items-center justify-center text-[var(--text-secondary)]">
-                <SettingsIcon size={10} />
+              <div className="h-5 w-5 rounded-md flex items-center justify-center text-[var(--text-secondary)]">
+                <SettingsIcon size={10} strokeWidth={1.7} />
               </div>
               {/* Split toggle */}
-              <div className="h-5 w-5 rounded border border-[var(--border-color)] bg-[var(--bg-primary)] flex items-center justify-center text-[var(--text-secondary)]">
-                <Columns2 size={10} />
+              <div className="h-5 w-5 rounded-md flex items-center justify-center text-[var(--text-secondary)]">
+                <Columns2 size={10} strokeWidth={1.7} />
               </div>
               {!isMac && (
                 // Mirrors WindowControls.tsx SVGs (minimise line, maximise square, close X)
@@ -493,33 +495,34 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
 
           {/* Row 2: Sub-workspace tabs for the active parent workspace (child workspaces) */}
           {subWorkspaceNavigation === "top-tabs" && activeWorkspaceChildren.length > 0 && (
-            <div className="h-7 border-b border-[var(--border-color)] bg-[var(--bg-sidebar)]/90 px-3 flex items-center justify-between shrink-0 select-none">
-              <div className="flex items-center gap-1.5 h-full">
+            <div className="h-6 border-b border-[var(--border-color)] bg-[var(--bg-base)] px-2.5 flex items-center justify-between shrink-0 select-none">
+              <div className="flex items-center gap-1 h-full">
                 {/* Pinned overview indicator */}
-                <div className="flex h-[22px] w-5 items-center justify-center self-end rounded-t border border-b-0 border-transparent text-[var(--text-secondary)] cursor-pointer">
-                  <svg width="4" height="4" viewBox="0 0 6 6" className="fill-current opacity-80 shrink-0"><circle cx="3" cy="3" r="3" /></svg>
+                <div className="relative flex h-5 w-5 items-center justify-center shrink-0 rounded-md transition-all select-none bg-transparent text-[var(--text-secondary)]">
+                  <House size={10} strokeWidth={1.7} className="opacity-75 shrink-0" />
                 </div>
                 {activeWorkspaceChildren.map((child, index) => {
                   const isActive = index === 0;
                   return (
                     <div
                       key={child.id}
-                      className={`relative flex h-[22px] items-center self-end rounded-t border border-b-0 px-2 text-[0.6em] font-medium whitespace-nowrap cursor-pointer transition-all select-none ${
+                      className={`relative flex h-5 items-center gap-1 shrink-0 rounded-md px-1.5 text-[0.6em] font-medium whitespace-nowrap transition-all select-none ${
                         isActive
-                          ? "border-[var(--border-color)] bg-[var(--bg-primary)] text-[var(--text-primary)] font-semibold"
-                          : "border-transparent text-[var(--text-secondary)] opacity-60"
+                          ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)]"
+                          : "bg-transparent text-[var(--text-secondary)]"
                       }`}
                     >
                       {isActive && (
-                        <span className="absolute inset-x-1.5 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
+                        <span className="absolute inset-x-0 top-0 h-0.5 rounded-full bg-[var(--accent-color)]" />
                       )}
-                      {child.name}
+                      <WorkspaceIcon name={child.icon} label={child.name} className="h-2.5 w-2.5 opacity-75 shrink-0" />
+                      <span>{child.name}</span>
                     </div>
                   );
                 })}
-                <button className="h-4 w-4 text-[var(--text-muted)] rounded flex items-center justify-center mb-0.5">
-                  <Plus size={8} />
-                </button>
+                <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[var(--text-secondary)]">
+                  <Plus size={10} strokeWidth={1.7} />
+                </div>
               </div>
             </div>
           )}
@@ -597,11 +600,11 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
               <div className="w-14 shrink-0 bg-[var(--bg-sidebar)] border-r border-[var(--border-color)] py-1.5 flex flex-col justify-between items-center select-none" data-testid="sidebar">
                 <SectionNavSidebar
                   density="compact"
-                  items={PRIMARY_NAV_ITEMS.map((item, index) => ({
+                  items={PRIMARY_NAV_ITEMS.map((item) => ({
                     id: item.path,
                     label: item.label,
                     icon: item.icon,
-                    isActive: index === 2,
+                    isActive: item.path === "/chat",
                   }))}
                 />
                 {/* Footer mirrors Sidebar.tsx: Collapse / Preferences / Aetherium menu */}
@@ -628,10 +631,11 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
             {/* Chat Session List Pane (Sub-sidebar) */}
             <div className="w-[105px] shrink-0 bg-[var(--bg-sidebar)]/40 border-r border-[var(--border-color)] p-1.5 flex flex-col gap-1.5 select-none" data-testid="chat-sessions-list">
               <div className="flex items-center justify-between px-1">
-                <span className="text-[0.6em] font-semibold text-[var(--text-secondary)] uppercase tracking-wide">Chats</span>
-                <div className="flex gap-0.5 text-[0.6em] text-[var(--text-muted)]">
-                  <ArrowUpDown size={8} />
-                  <Pencil size={8} />
+                <span className="text-[0.6em] font-semibold text-[var(--text-secondary)]">Chats</span>
+                <div className="flex items-center gap-1 text-[0.6em] text-[var(--text-muted)]">
+                  <Check size={8} />
+                  <FolderPlus size={8} />
+                  <Plus size={8} />
                 </div>
               </div>
               <div className="flex items-center gap-1 rounded bg-[var(--bg-elevated)] px-1 py-0.5 text-[0.6em] text-[var(--text-muted)]">
@@ -642,13 +646,14 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                 {PREVIEW_CHAT_TITLES.map((s, idx) => (
                   <div
                     key={idx}
-                    className={`px-1.5 py-1 rounded text-[0.6em] truncate leading-tight select-none cursor-pointer ${
+                    className={`px-1.5 py-1 rounded text-[0.6em] leading-tight select-none cursor-pointer flex flex-col gap-0.5 ${
                       s.active
-                        ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)] font-semibold border-l-2 border-[var(--accent-color)]"
+                        ? "bg-[rgba(var(--accent-color-rgb),0.12)] text-[var(--accent-color)] font-medium"
                         : "text-[var(--text-secondary)]"
                     }`}
                   >
-                    {s.title}
+                    <div className="truncate">{s.title}</div>
+                    <div className="text-[0.85em] text-[var(--text-muted)]">{s.timeAgo}</div>
                   </div>
                 ))}
               </div>
@@ -662,11 +667,19 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
               <div className="h-8.5 px-3 border-b border-[var(--border-color)]/60 bg-[var(--bg-primary)] flex items-center justify-between shrink-0 select-none">
                 <div className="flex flex-col min-w-0">
                   <span className="text-[0.5em] font-bold text-[var(--text-muted)] uppercase tracking-wider leading-none mb-0.5">{activeWorkspaceName.toUpperCase()}</span>
-                  <span className="text-[0.7em] font-semibold text-[var(--text-primary)] truncate">{PREVIEW_CHAT_TITLES[0].title}</span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[0.7em] font-semibold text-[var(--text-primary)] truncate">{PREVIEW_CHAT_TITLES[0].title}</span>
+                    <Info size={9} className="text-[var(--text-muted)] shrink-0" />
+                  </div>
                 </div>
-                <div className="flex items-center gap-1 text-[0.65em] text-[var(--text-secondary)] font-medium">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-                  <span>7b | 8.2s</span>
+                <div className="flex items-center gap-1.5 text-[0.6em] text-[var(--text-secondary)] font-medium">
+                  <div className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-muted)]">
+                    <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                    <span className="tabular-nums">974/1k</span>
+                  </div>
+                  <div className="p-0.5 rounded text-[var(--text-muted)]">
+                    <RefreshCw size={9} />
+                  </div>
                 </div>
               </div>
 
@@ -680,8 +693,8 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                 ))}
               </div>
 
-              <div className="flex-1 overflow-y-auto p-3 space-y-3 flex flex-col min-h-0 justify-end relative">
-                <div className="text-[0.8em]">
+              <div className="flex-1 overflow-y-auto p-3 space-y-3 flex flex-col min-h-0 relative">
+                <div className="text-[0.8em] space-y-3">
                   <ChatMessageBubble
                     msg={PREVIEW_USER_MESSAGE}
                     isLastMessage={false}
@@ -696,30 +709,7 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
                     sources={undefined}
                     isSourcesExpanded={false}
                     contextSources={null}
-                    markdownComponents={PREVIEW_MARKDOWN_COMPONENTS}
-                    onCopy={NOOP}
-                    onStartEdit={NOOP}
-                    onSubmitEdit={NOOP}
-                    onSetEditContent={NOOP}
-                    onCancelEdit={NOOP}
-                    onToggleThought={NOOP}
-                    onToggleSources={NOOP}
-                  />
-                  <ChatMessageBubble
-                    msg={PREVIEW_ASSISTANT_MESSAGE_INTRO}
-                    isLastMessage={false}
-                    isStreaming={false}
-                    chatMessageStyle={chatMessageStyle}
-                    expandChatToWindowWidth={false}
-                    showGenInfo={false}
-                    isEditing={false}
-                    editValue=""
-                    isCopied={false}
-                    isThoughtExpanded={false}
-                    sources={undefined}
-                    isSourcesExpanded={false}
-                    contextSources={null}
-                    markdownComponents={PREVIEW_MARKDOWN_COMPONENTS}
+                    markdownComponents={previewMarkdownComponents}
                     onCopy={NOOP}
                     onStartEdit={NOOP}
                     onSubmitEdit={NOOP}
@@ -788,8 +778,9 @@ function LiveAppPreview({ dbSettings, overrides = {} }: {
 
                 <div className="flex items-center gap-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-elevated)] p-1">
                   <div className="flex items-center gap-1 text-[var(--text-muted)] px-1 scale-90">
+                    <SplitSquareHorizontal size={10} className="cursor-pointer" />
                     <Paperclip size={10} className="cursor-pointer" />
-                    <Search size={10} className="cursor-pointer" />
+                    <Inbox size={10} className="cursor-pointer" />
                     <Pencil size={10} className="cursor-pointer" />
                   </div>
                   <div className="flex-1 text-[0.7em] text-[var(--text-muted)] font-normal truncate">

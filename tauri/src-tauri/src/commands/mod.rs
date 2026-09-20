@@ -28,6 +28,7 @@ pub mod memory;
 pub mod mlx;
 pub mod note;
 pub mod ollama;
+pub mod profile;
 pub mod prompt_bank;
 pub mod quick_search;
 pub mod quiz;

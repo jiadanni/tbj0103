@@ -805,7 +805,8 @@ fn db_path_from_app(app: &AppHandle) -> Result<PathBuf, String> {
         .path()
         .app_data_dir()
         .map_err(|e| format!("Failed to resolve app data dir: {e}"))?;
-    Ok(app_dir.join("aetherium.db"))
+    let (_, db_path, _) = crate::services::profile_manager::get_active_profile_and_paths(&app_dir);
+    Ok(db_path)
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -91,4 +91,25 @@ describe("CachedMarkdown", () => {
     expect(b.querySelector("em")).not.toBeNull();
     expect(b.querySelector("strong")).toBeNull();
   });
+
+  it("passes inline: true for inline code and inline: false for fenced code blocks", () => {
+    const codeProps: Array<{ inline?: boolean; text?: string }> = [];
+    const content = "The dollar sign (`$`) in:\n\n```bash\necho $VAR\n```";
+
+    render(
+      <CachedMarkdown
+        content={content}
+        components={{
+          code: ({ inline, children }: { inline?: boolean; children?: React.ReactNode }) => {
+            codeProps.push({ inline, text: String(children).trim() });
+            return <code>{children}</code>;
+          },
+        }}
+      />,
+    );
+
+    expect(codeProps).toHaveLength(2);
+    expect(codeProps[0]).toEqual({ inline: true, text: "$" });
+    expect(codeProps[1]).toEqual({ inline: false, text: "echo $VAR" });
+  });
 });

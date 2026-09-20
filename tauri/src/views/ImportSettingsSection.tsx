@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ask, message, open, save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
-import { Check, CheckSquare, ChevronDown, ChevronRight, Download, Eye, FolderInput, RefreshCw, Square, X } from "lucide-react";
+import { Brain, Check, CheckSquare, ChevronDown, ChevronRight, Download, Eye, FolderInput, MessageSquare, RefreshCw, Square, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api, type ChatSuggestion } from "../lib/api";
 import { conversationGist, isGenericConversationName } from "../lib/conversationGist";
@@ -13,6 +13,7 @@ import PromptDialog from "../components/PromptDialog";
 import { Tooltip } from "../components/Tooltip";
 import ImportConversationPreview, { type ImportConversation } from "../components/ImportConversationPreview";
 import { ClaudeAccountMemoriesPanel } from "../components/ClaudeAccountMemoriesPanel";
+import { ClaudeProjectMemoriesPanel } from "../components/ClaudeProjectMemoriesPanel";
 import { ImportSectionSkeleton } from "../components/ImportSectionSkeleton";
 import { ImportSectionHeader } from "../components/ImportSectionHeader";
 
@@ -216,6 +217,7 @@ export default function ImportSettingsSection() {
   const [claudeFolderPath, setClaudeFolderPath] = useState<string | null>(null);
   const [claudeDetectedFormat, setClaudeDetectedFormat] = useState<"legacy" | "v2" | "v3" | null>(null);
   const [claudeFilesFound, setClaudeFilesFound] = useState<{ conversations: boolean; projects: boolean; memories: boolean } | null>(null);
+  const [claudeImportMode, setClaudeImportMode] = useState<"chats" | "memories">("chats");
   const [claudeProjects, setClaudeProjects] = useState<ClaudeProjectPreview[]>([]);
   const [claudeConvsByProject, setClaudeConvsByProject] = useState<Record<string, ClaudeConvPreview[]>>({});
   const [claudeOrphans, setClaudeOrphans] = useState<ClaudeConvPreview[]>([]);
@@ -740,6 +742,7 @@ export default function ImportSettingsSection() {
     sliderSessionBase.current = null;
     sliderOwnedSessionBase.current = null;
     prefilledDestsRef.current = {};
+    setClaudeImportMode("chats");
   }
 
   async function pickClaudeFolder() {
@@ -2132,23 +2135,51 @@ export default function ImportSettingsSection() {
               </div>
             </div>
 
-            {claudeFilesFound.memories && (
-              claudeIncludeMemories ? (
+            {/* Segmented Mode Tabs: Chats & Projects vs Memories & Knowledge */}
+            <div className="shrink-0 flex items-center gap-2 border-b border-[var(--border-color)] pb-2 mb-1">
+              <button
+                type="button"
+                onClick={() => setClaudeImportMode("chats")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                  claudeImportMode === "chats"
+                    ? "bg-[var(--accent-color)] text-white shadow-sm"
+                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                }`}
+              >
+                <MessageSquare size={13} />
+                Chats & Projects {claudeProjects.length > 0 && `(${claudeProjects.length})`}
+              </button>
+              {claudeFilesFound.memories && (
+                <button
+                  type="button"
+                  onClick={() => setClaudeImportMode("memories")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                    claudeImportMode === "memories"
+                      ? "bg-[var(--accent-color)] text-white shadow-sm"
+                      : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                  }`}
+                >
+                  <Brain size={13} />
+                  Memories & Knowledge
+                </button>
+              )}
+            </div>
+
+            {claudeImportMode === "memories" ? (
+              <div className="flex flex-col gap-3">
                 <ClaudeAccountMemoriesPanel
                   folderPath={claudeFolderPath}
                   disabled={claudeScanning || importingClaude}
                   included={claudeIncludeMemories}
                   onToggleIncluded={setClaudeIncludeMemories}
                 />
-              ) : (
-                <ImportSectionSkeleton
-                  label="Memories"
-                  summary="Profile, preferences and project memory"
-                  onEnable={() => setClaudeIncludeMemories(true)}
-                  rows={3}
+                <ClaudeProjectMemoriesPanel
+                  folderPath={claudeFolderPath}
+                  disabled={claudeScanning || importingClaude}
                 />
-              )
-            )}
+              </div>
+            ) : (
+              <>
 
             {/* ── Per-project rows ─────────────────────────────── */}
             {claudeIncludeProjects && claudeScanning && claudeProjects.length === 0 && (
@@ -3187,6 +3218,8 @@ export default function ImportSettingsSection() {
                 </div>
               </div>
             )}
+            </>
+          )}
           </div>
         )}
       </div>

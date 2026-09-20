@@ -6,7 +6,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { message } from "@tauri-apps/plugin-dialog";
-import { Palette, Bot, ShieldCheck, HardDrive, Plus, LayoutGrid, Network, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FolderInput, ScrollText, Info, Brain, ChevronDown, GraduationCap, Search, UserCircle, SlidersHorizontal, X } from "lucide-react";
+import { Palette, Bot, ShieldCheck, HardDrive, Plus, LayoutGrid, Network, RefreshCw, GitBranch, Settings as SettingsIcon, MessageSquare, FolderInput, ScrollText, Info, Brain, ChevronDown, GraduationCap, Search, UserCircle, SlidersHorizontal, X, Database } from "lucide-react";
 import { api, type AppSettings, type AiModel, type MCPServerConfig, type GitSyncStatus, type SecurityStatus, type OllamaModel, type SystemSpecs, type ModelSpeedStat, type CoreSettings, type InferenceSettings, type AdvancedSettings, type InferenceJobSetting, type InferenceJobStatus, type BackgroundJobRunMode } from "../lib/api";
 import { resolveModelDisplayName } from "../lib/modelDisplayName";
 import { getModelGroupMeta } from "../lib/modelGroups";
@@ -47,6 +47,7 @@ import { LearningPreferencesPanel } from "../components/preferences/LearningPref
 import { SyncPreferencesPanel } from "../components/preferences/SyncPreferencesPanel";
 import { McpPreferencesPanel } from "../components/preferences/McpPreferencesPanel";
 import { DataControlsPreferences } from "../components/preferences/DataControlsPreferences";
+import { ProfilesPreferencesPanel } from "../components/preferences/ProfilesPreferencesPanel";
 import { STRUCTURED_OUTPUT_MIN_PARAMS_B, INFERENCE_JOBS_CATALOG, RUN_MODE_OPTIONS } from "../lib/inferenceJobsCatalog";
 
 const TABS: { id: PreferencesSection; label: string; Icon: React.ElementType }[] = [
@@ -61,6 +62,7 @@ const TABS: { id: PreferencesSection; label: string; Icon: React.ElementType }[]
   { id: "memory", label: "Memory", Icon: Brain },
   { id: "mcp", label: "MCP", Icon: Network },
   { id: "workspaces", label: "Workspaces", Icon: LayoutGrid },
+  { id: "profiles", label: "Profiles / Vaults", Icon: Database },
   { id: "sync", label: "Sync", Icon: GitBranch },
   { id: "backup", label: "Backup", Icon: HardDrive },
   { id: "import", label: "Import", Icon: FolderInput },
@@ -130,6 +132,7 @@ const TAB_KEYWORDS: Record<string, string[]> = {
     "Multi-device Sync", "Enable sync", "Remote URL", "Last synced", "Git",
   ],
   workspaces: ["Workspaces", "Workspace management"],
+  profiles: ["Profiles", "Vaults", "Vault", "Claude Archive", "Separate Database", "Isolated", "Switch Profile", "Archive"],
   data: [
     "Data Controls", "Data Deletion", "Granular Data Deletion", "Delete chats",
     "Delete notes", "Delete sources", "Delete flashcards", "Delete memories",
@@ -2548,6 +2551,10 @@ export default function PreferencesView() {
 
           {activeTab === "mcp" && (
             <McpPreferencesPanel mcpServers={mcpServers} onMcpServersChange={setMcpServers} />
+          )}
+
+          {activeTab === "profiles" && (
+            <ProfilesPreferencesPanel />
           )}
         </div>
       </div >

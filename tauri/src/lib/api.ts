@@ -1353,7 +1353,31 @@ export interface LinkedImportInfo {
   folder_name: string;
 }
 
+export interface AppProfile {
+  id: string;
+  name: string;
+  description: string;
+  created_at: string;
+  is_default: boolean;
+}
+
+export interface ProfilesResponse {
+  active_profile_id: string;
+  active_profile: AppProfile;
+  profiles: AppProfile[];
+}
+
 export const api = {
+  profile: {
+    list: () => invoke<ProfilesResponse>("list_profiles"),
+    create: (name: string, description?: string, switchTo?: boolean) =>
+      invoke<AppProfile>("create_profile", { name, description, switchTo }),
+    switch: (profileId: string) => invoke<void>("switch_profile", { profileId }),
+    rename: (profileId: string, name: string, description?: string) =>
+      invoke<AppProfile>("rename_profile", { profileId, name, description }),
+    delete: (profileId: string) => invoke<void>("delete_profile", { profileId }),
+  },
+
   topicSignature: {
     get: (workspaceId: string) => invoke<TopicSignature>("get_topic_signature", { workspaceId }),
     regenerate: (workspaceId: string, model?: string, ollamaUrl?: string) => invoke<TopicSignature>("regenerate_topic_signature", { workspaceId, model, ollamaUrl }),
@@ -1669,6 +1693,24 @@ export const api = {
       invoke<{ imported: number; updated: number; skipped: number }>(
         "import_claude_account_memories",
         { folderPath, selectedKeys: selectedKeys ?? null },
+      ),
+    previewClaudeProjectMemories: (folderPath: string) =>
+      invoke<{
+        total: number;
+        memories: {
+          project_uuid: string;
+          project_name: string;
+          memory: string;
+          status: "new" | "updated" | "unchanged";
+        }[];
+      }>("preview_claude_project_memories", { folderPath }),
+    importClaudeProjectMemories: (
+      folderPath: string,
+      targets: Record<string, { workspace_id: string; folder_id: string }>,
+    ) =>
+      invoke<{ imported: number; updated: number; skipped: number }>(
+        "import_claude_project_memories",
+        { folderPath, targets },
       ),
     detectClaudeFormat: (folderPath: string) =>
       invoke<{

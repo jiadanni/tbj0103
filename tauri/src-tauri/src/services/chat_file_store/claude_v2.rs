@@ -444,6 +444,37 @@ pub fn parse_v2_memories(
         });
     }
 
+    // Also parse project memory files from v3 memory_files (under projects/<uuid>/...)
+    for file in &account.memory_files {
+        let normalized = file.path.trim_start_matches('/');
+        if let Some(rest) = normalized.strip_prefix("projects/") {
+            if let Some((uuid, _filename)) = rest.split_once('/') {
+                let cleaned = super::account_memory::clean_memory_content(&file.content);
+                if cleaned.trim().is_empty() {
+                    continue;
+                }
+                memory_uuids.insert(uuid.to_string());
+                let folder_name = project_name_map
+                    .get(uuid)
+                    .cloned()
+                    .unwrap_or_else(|| format!("Unknown project ({uuid})"));
+
+                if let Some(existing) = folder_memories.iter_mut().find(|m| m.project_uuid == uuid) {
+                    if !existing.memory.contains(&cleaned) {
+                        existing.memory.push_str("\n\n");
+                        existing.memory.push_str(&cleaned);
+                    }
+                } else {
+                    folder_memories.push(ClaudeProjectMemoryPreview {
+                        project_uuid: uuid.to_string(),
+                        folder_name,
+                        memory: cleaned,
+                    });
+                }
+            }
+        }
+    }
+
     Ok((
         memory_uuids,
         ClaudeMemoryPreview {
@@ -527,7 +558,10 @@ mod tests {
             r#"{
                 "conversations_memory": "top level memory",
                 "project_memories": {"p1": "memory for p1", "p2": "   "},
-                "memory_files": [{"path": "/profile.md", "content": "hi", "updated_at": "2026-08-24T19:55:22Z"}],
+                "memory_files": [
+                    {"path": "/profile.md", "content": "- [stated] hi", "updated_at": "2026-08-24T19:55:22Z"},
+                    {"path": "/projects/p3/overview.md", "content": "---\nname: p3\n---\n- [stated] Project 3 details", "updated_at": "2026-08-24T19:55:22Z"}
+                ],
                 "account_uuid": "acct-uuid"
             }"#,
         )
@@ -535,15 +569,24 @@ mod tests {
 
         let mut names = HashMap::new();
         names.insert("p1".to_string(), "Project One".to_string());
+        names.insert("p3".to_string(), "Project Three".to_string());
 
         let (uuids, preview) = parse_v2_memories(dir.path(), &names).unwrap();
 
         assert_eq!(preview.conversations_memory, "top level memory");
-        // p2 is whitespace-only and must be skipped.
-        assert_eq!(uuids.len(), 1);
+        // p2 is whitespace-only and must be skipped. p1 and p3 are present.
+        assert_eq!(uuids.len(), 2);
         assert!(uuids.contains("p1"));
-        assert_eq!(preview.folder_memories.len(), 1);
+        assert!(uuids.contains("p3"));
+        assert_eq!(preview.folder_memories.len(), 2);
         assert_eq!(preview.folder_memories[0].folder_name, "Project One");
+        assert_eq!(preview.folder_memories[1].folder_name, "Project Three");
+        assert_eq!(preview.folder_memories[1].memory, "- Project 3 details");
+
+        // Account memories must only contain profile.md, NOT projects/p3
+        let acct_mems = parse_v2_account_memories(dir.path()).unwrap();
+        assert_eq!(acct_mems.len(), 1);
+        assert_eq!(acct_mems[0].content, "hi");
     }
 
     /// v2: a top-level memories.json holding a one-element array.
@@ -616,6 +659,7 @@ pub fn parse_v2_account_memories(
     let files: Vec<(String, String, Option<String>)> = account
         .memory_files
         .into_iter()
+        .filter(|f| !f.path.trim_start_matches('/').starts_with("projects/"))
         .map(|f| (f.path, f.content, f.updated_at))
         .collect();
     Ok(super::account_memory::parse_claude_account_memories(&files))

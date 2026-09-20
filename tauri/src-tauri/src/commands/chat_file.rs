@@ -3083,10 +3083,12 @@ pub async fn import_claude_files(
     let mut memories_updated = 0usize;
     let mut memories_skipped = 0usize;
     if !project_memory_targets.is_empty() {
-        let mem_path = folder.join("memories.json");
-        if mem_path.is_file() {
-            let mem_bytes = std::fs::read(&mem_path)
-                .map_err(|e| format!("Failed to read memories.json: {e}"))?;
+        let has_memories = if is_v2 {
+            chat_file_store::claude_v2::find_memories_source(&folder).is_some()
+        } else {
+            folder.join("memories.json").is_file()
+        };
+        if has_memories {
             let mem_links = import_links::load_memory_links(&tx, SOURCE_CLAUDE)?;
 
             let mut import_memory = |project_uuid: &str,
@@ -3094,6 +3096,16 @@ pub async fn import_claude_files(
                                      dest: &ClaudeImportDestination|
              -> Result<(), String> {
                 let hash = import_links::memory_content_hash(memory);
+
+                // Also update memory_summaries so workspace project memory is immediately active in context
+                let summary_id = uuid::Uuid::new_v4().to_string();
+                let _ = tx.execute(
+                    "INSERT INTO memory_summaries (id, scope, workspace_id, content, is_auto_generated, generated_at, edited_at)
+                     VALUES (?1, 'workspace', ?2, ?3, 0, ?4, ?4)
+                     ON CONFLICT(scope, workspace_id) DO UPDATE SET content = ?3, edited_at = ?4, is_auto_generated = 0",
+                    rusqlite::params![summary_id, dest.workspace_id, memory, now],
+                );
+
                 match mem_links.get(project_uuid) {
                     Some((_, prior_hash)) if *prior_hash == hash => {
                         memories_skipped += 1;
@@ -3136,17 +3148,20 @@ pub async fn import_claude_files(
                     }
                 }
             } else {
-                let proj_bytes = folder
-                    .join("projects.json")
-                    .is_file()
-                    .then(|| std::fs::read(folder.join("projects.json")).ok())
-                    .flatten();
-                if let Ok(preview) =
-                    chat_file_store::preview_claude_memories(&mem_bytes, proj_bytes.as_deref())
-                {
-                    for pm in &preview.folder_memories {
-                        if let Some(dest) = project_memory_targets.get(&pm.project_uuid) {
-                            import_memory(&pm.project_uuid, &pm.memory, dest)?;
+                let mem_path = folder.join("memories.json");
+                if let Ok(mem_bytes) = std::fs::read(&mem_path) {
+                    let proj_bytes = folder
+                        .join("projects.json")
+                        .is_file()
+                        .then(|| std::fs::read(folder.join("projects.json")).ok())
+                        .flatten();
+                    if let Ok(preview) =
+                        chat_file_store::preview_claude_memories(&mem_bytes, proj_bytes.as_deref())
+                    {
+                        for pm in &preview.folder_memories {
+                            if let Some(dest) = project_memory_targets.get(&pm.project_uuid) {
+                                import_memory(&pm.project_uuid, &pm.memory, dest)?;
+                            }
                         }
                     }
                 }
@@ -3486,6 +3501,184 @@ pub async fn preview_claude_projects_fast(folder_path: String) -> Result<serde_j
             "available": true,
             "folders": projects,
             "elapsed_ms": started.elapsed().as_millis() as u64,
+        }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Preview project-level memories from a Claude export.
+///
+/// Returns each project memory with its project name, full markdown content, and
+/// whether it is new, updated, or unchanged compared to stored import links.
+#[tauri::command]
+pub async fn preview_claude_project_memories(
+    db_state: State<'_, DbState>,
+    folder_path: String,
+) -> Result<serde_json::Value, String> {
+    let pool = db_state.0.clone();
+    tokio::task::spawn_blocking(move || {
+        use chat_file_store::import_links::{self, SOURCE_CLAUDE};
+
+        let folder = validate_user_path(&folder_path, true)?;
+        if !folder.is_dir() {
+            return Err("Selected path is not a folder.".to_string());
+        }
+
+        let is_v2 = folder.join("projects").is_dir();
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let links = import_links::load_memory_links(&conn, SOURCE_CLAUDE)?;
+        drop(conn);
+
+        let folder_memories = if is_v2 {
+            if chat_file_store::claude_v2::find_memories_source(&folder).is_some() {
+                let name_map = chat_file_store::claude_v2::load_v2_project_name_map(&folder);
+                let (_, preview) = chat_file_store::claude_v2::parse_v2_memories(&folder, &name_map)?;
+                preview.folder_memories
+            } else {
+                Vec::new()
+            }
+        } else {
+            let mem_path = folder.join("memories.json");
+            if mem_path.is_file() {
+                let mem_bytes = std::fs::read(&mem_path).map_err(|e| e.to_string())?;
+                let proj_bytes = folder
+                    .join("projects.json")
+                    .is_file()
+                    .then(|| std::fs::read(folder.join("projects.json")).ok())
+                    .flatten();
+                chat_file_store::preview_claude_memories(&mem_bytes, proj_bytes.as_deref())
+                    .map(|p| p.folder_memories)
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            }
+        };
+
+        let entries: Vec<serde_json::Value> = folder_memories
+            .into_iter()
+            .map(|pm| {
+                let hash = import_links::memory_content_hash(&pm.memory);
+                let status = match links.get(&pm.project_uuid) {
+                    Some((_, prior)) if *prior == hash => "unchanged",
+                    Some(_) => "updated",
+                    None => "new",
+                };
+                serde_json::json!({
+                    "project_uuid": pm.project_uuid,
+                    "project_name": pm.folder_name,
+                    "memory": pm.memory,
+                    "status": status,
+                })
+            })
+            .collect();
+
+        Ok(serde_json::json!({
+            "total": entries.len(),
+            "memories": entries,
+        }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Import project-level memories from a Claude export directly into target workspaces.
+#[tauri::command]
+pub async fn import_claude_project_memories(
+    auth: State<'_, AuthState>,
+    db_state: State<'_, DbState>,
+    folder_path: String,
+    targets: std::collections::HashMap<String, ClaudeImportDestination>,
+) -> Result<serde_json::Value, String> {
+    require_auth_for_destructive_ops(&auth, &db_state)?;
+    let pool = db_state.0.clone();
+    tokio::task::spawn_blocking(move || {
+        use chat_file_store::import_links::{self, SOURCE_CLAUDE};
+
+        let folder = validate_user_path(&folder_path, true)?;
+        if !folder.is_dir() {
+            return Err("Selected path is not a folder.".to_string());
+        }
+
+        let is_v2 = folder.join("projects").is_dir();
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        let links = import_links::load_memory_links(&tx, SOURCE_CLAUDE)?;
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let folder_memories = if is_v2 {
+            if chat_file_store::claude_v2::find_memories_source(&folder).is_some() {
+                let name_map = chat_file_store::claude_v2::load_v2_project_name_map(&folder);
+                let (_, preview) = chat_file_store::claude_v2::parse_v2_memories(&folder, &name_map)?;
+                preview.folder_memories
+            } else {
+                Vec::new()
+            }
+        } else {
+            let mem_path = folder.join("memories.json");
+            if mem_path.is_file() {
+                let mem_bytes = std::fs::read(&mem_path).map_err(|e| e.to_string())?;
+                let proj_bytes = folder
+                    .join("projects.json")
+                    .is_file()
+                    .then(|| std::fs::read(folder.join("projects.json")).ok())
+                    .flatten();
+                chat_file_store::preview_claude_memories(&mem_bytes, proj_bytes.as_deref())
+                    .map(|p| p.folder_memories)
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            }
+        };
+
+        let (mut imported, mut updated, mut skipped) = (0usize, 0usize, 0usize);
+
+        for pm in &folder_memories {
+            let Some(dest) = targets.get(&pm.project_uuid) else {
+                continue;
+            };
+            let hash = import_links::memory_content_hash(&pm.memory);
+
+            // Upsert into memory_summaries so the workspace's project memory is immediately live in AI context
+            let summary_id = uuid::Uuid::new_v4().to_string();
+            let _ = tx.execute(
+                "INSERT INTO memory_summaries (id, scope, workspace_id, content, is_auto_generated, generated_at, edited_at)
+                 VALUES (?1, 'workspace', ?2, ?3, 0, ?4, ?4)
+                 ON CONFLICT(scope, workspace_id) DO UPDATE SET content = ?3, edited_at = ?4, is_auto_generated = 0",
+                rusqlite::params![summary_id, dest.workspace_id, pm.memory, now],
+            );
+
+            match links.get(&pm.project_uuid) {
+                Some((_, prior)) if *prior == hash => skipped += 1,
+                Some((mem_id, _)) => {
+                    tx.execute(
+                        "UPDATE memories SET content = ?1, updated_at = ?2 WHERE id = ?3",
+                        rusqlite::params![pm.memory, now, mem_id],
+                    )
+                    .map_err(|e| e.to_string())?;
+                    import_links::upsert_memory_link(&tx, SOURCE_CLAUDE, &pm.project_uuid, mem_id, &hash, &now)?;
+                    updated += 1;
+                }
+                None => {
+                    let mem_id = uuid::Uuid::new_v4().to_string();
+                    tx.execute(
+                        "INSERT INTO memories (id, workspace_id, folder_id, content, memory_type, scope, is_pinned, is_active, created_at, updated_at)
+                         VALUES (?1, ?2, ?3, ?4, 'fact', 'workspace', 0, 1, ?5, ?5)",
+                        rusqlite::params![mem_id, dest.workspace_id, dest.folder_id, pm.memory, now],
+                    )
+                    .map_err(|e| e.to_string())?;
+                    import_links::upsert_memory_link(&tx, SOURCE_CLAUDE, &pm.project_uuid, &mem_id, &hash, &now)?;
+                    imported += 1;
+                }
+            }
+        }
+
+        tx.commit().map_err(|e| e.to_string())?;
+
+        Ok(serde_json::json!({
+            "imported": imported,
+            "updated": updated,
+            "skipped": skipped,
         }))
     })
     .await

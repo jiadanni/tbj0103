@@ -109,7 +109,7 @@ fn split_claude_memory_bullets(content: &str) -> Vec<String> {
 }
 
 /// Remove a leading `---` delimited YAML frontmatter block, if present.
-fn strip_frontmatter(content: &str) -> &str {
+pub fn strip_frontmatter(content: &str) -> &str {
     let trimmed = content.trim_start();
     let Some(rest) = trimmed.strip_prefix("---") else {
         return content;
@@ -119,6 +119,30 @@ fn strip_frontmatter(content: &str) -> &str {
         Some(idx) => rest[idx + 4..].trim_start_matches('\n'),
         None => content,
     }
+}
+
+/// Clean a Claude memory file's markdown body, stripping YAML frontmatter
+/// and `[stated]` / provenance tags while preserving markdown structure.
+pub fn clean_memory_content(content: &str) -> String {
+    let body = strip_frontmatter(content);
+    let mut cleaned_lines = Vec::new();
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("- ").or_else(|| trimmed.strip_prefix("* ")) {
+            let rest = match (rest.find('['), rest.find(']')) {
+                (Some(0), Some(close)) => rest[close + 1..].trim(),
+                _ => rest.trim(),
+            };
+            if !rest.is_empty() {
+                cleaned_lines.push(format!("- {rest}"));
+            }
+        } else if !trimmed.is_empty() {
+            cleaned_lines.push(trimmed.to_string());
+        } else {
+            cleaned_lines.push(String::new());
+        }
+    }
+    cleaned_lines.join("\n").trim().to_string()
 }
 
 /// Turn a memory file's path into a category and label for the preview UI.
@@ -155,14 +179,19 @@ fn titleize(raw: &str) -> String {
 ///
 /// Everything under `/preferences` is classified as a preference; the rest are
 /// facts. Files that yield no content are skipped rather than importing blanks.
+/// Project memories (`projects/*`) are filtered out and handled by project import.
 pub fn parse_claude_account_memories(
     files: &[(String, String, Option<String>)],
 ) -> Vec<ImportedMemory> {
     let mut out = Vec::new();
 
     for (path, content, updated_at) in files {
-        let (category, label) = describe_path(path);
         let normalized = path.trim_start_matches('/');
+        if normalized.starts_with("projects/") {
+            continue;
+        }
+
+        let (category, label) = describe_path(path);
         let kind = if normalized.starts_with("preferences") {
             ImportedMemoryKind::Preference
         } else {
@@ -254,6 +283,24 @@ mod tests {
         assert!(key.starts_with(ACCOUNT_KEY_PREFIX));
         // A real project uuid never contains the prefix.
         assert!(!"0199c60b-7f81-7507-8335-c9b20fb3ddfe".contains(ACCOUNT_KEY_PREFIX));
+    }
+
+    #[test]
+    fn skips_project_paths_in_account_memories() {
+        let files = vec![
+            claude_file("/projects/0199aeca-8202/overview.md", "- [stated] Daniel is an engineer\n"),
+            claude_file("/profile.md", "- [stated] User profile\n"),
+        ];
+        let mems = parse_claude_account_memories(&files);
+        assert_eq!(mems.len(), 1);
+        assert_eq!(mems[0].content, "User profile");
+    }
+
+    #[test]
+    fn cleans_memory_content_keeps_markdown_and_strips_tags() {
+        let raw = "---\nname: overview\n---\n- [stated] Bullet one\n- [stated] Bullet two\nParagraph text";
+        let cleaned = clean_memory_content(raw);
+        assert_eq!(cleaned, "- Bullet one\n- Bullet two\nParagraph text");
     }
 }
 
