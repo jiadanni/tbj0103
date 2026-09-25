@@ -196,6 +196,46 @@ vi.mock("@/lib/api", () => ({
         errors: 0,
         error_messages: [],
       })),
+      previewDeepSeekFolder: vi.fn(() => Promise.resolve({
+        conversations: [
+          {
+            uuid: "deepseek-chat-1",
+            name: "DeepSeek Chat 1",
+            message_count: 2,
+            created_at: "2025-10-17T11:14:01Z",
+            updated_at: "2025-10-17T11:14:01Z",
+            first_user_message: "dua enter mosque",
+            messages: [
+              { role: "user", content: "dua enter mosque" },
+              { role: "assistant", content: "<think>\nrecall the dua\n</think>\n\nHere is the dua." },
+            ],
+            branch_count: 1,
+          },
+          {
+            uuid: "deepseek-chat-2",
+            name: "DeepSeek Chat 2",
+            message_count: 2,
+            created_at: "2025-10-18T00:00:00Z",
+            updated_at: "2025-10-18T00:00:00Z",
+            first_user_message: "Plan a trip",
+            messages: [
+              { role: "user", content: "Plan a trip" },
+              { role: "assistant", content: "Sure." },
+            ],
+            branch_count: 0,
+          },
+        ],
+        total: 2,
+        skipped_empty: 0,
+      })),
+      importDeepSeekFolder: vi.fn(() => Promise.resolve({
+        imported_sessions: 1,
+        imported_branches: 1,
+        skipped: 0,
+        workspace_id: "workspace-1",
+        errors: 0,
+        error_messages: [],
+      })),
       detectClaudeFormat: vi.fn(() => Promise.resolve({
         format: "v2",
         files_found: { conversations: true, projects: true, memories: false },
@@ -413,6 +453,42 @@ describe("ImportSettingsSection", () => {
     expect(showMessage).toHaveBeenCalledWith(
       expect.stringContaining("1 conversation imported."),
       expect.objectContaining({ title: "ChatGPT import complete" }),
+    );
+  });
+
+  it("scans a DeepSeek export, notes branch paths, and imports the selected conversations", async () => {
+    vi.mocked(openDialog).mockResolvedValue("/imports/deepseek_data");
+
+    renderImportSettings();
+
+    expect(screen.getByText("DeepSeek")).toBeInTheDocument();
+    // Select buttons: LM Studio 0, Gemini 1, Claude 2, ChatGPT 3, DeepSeek 4.
+    fireEvent.click(screen.getAllByText("Select")[4]);
+
+    expect(await screen.findByText("DeepSeek Chat 1")).toBeInTheDocument();
+    expect(api.chatFile.previewDeepSeekFolder).toHaveBeenCalledWith("/imports/deepseek_data");
+    expect(screen.getByText(/1 other path will be imported as linked branch chats/)).toBeInTheDocument();
+
+    const row2 = screen.getByText("DeepSeek Chat 2").closest(".cursor-pointer");
+    expect(row2).not.toBeNull();
+    fireEvent.click(within(row2 as HTMLElement).getByRole("checkbox"));
+
+    fireEvent.click(screen.getByText("Import 1 conversation"));
+
+    await waitFor(() => {
+      expect(api.chatFile.importDeepSeekFolder).toHaveBeenCalledWith(
+        "/imports/deepseek_data",
+        null,
+        "deepseek_data",
+        ["deepseek-chat-1"],
+      );
+    });
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith("/chat/session-1");
+    });
+    expect(showMessage).toHaveBeenCalledWith(
+      expect.stringContaining("1 branch imported as linked branch chats."),
+      expect.objectContaining({ title: "DeepSeek import complete" }),
     );
   });
 

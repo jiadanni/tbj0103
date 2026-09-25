@@ -1661,6 +1661,40 @@ export const api = {
         workspaceName,
         selectedIds: selectedIds ?? null,
       }),
+    previewDeepSeekFolder: (folderPath: string) =>
+      invoke<{
+        conversations: {
+          uuid: string;
+          name: string;
+          message_count: number;
+          created_at: string;
+          updated_at: string;
+          first_user_message: string;
+          messages: { role: string; content: string }[];
+          branch_count: number;
+        }[];
+        total: number;
+        skipped_empty: number;
+      }>("preview_deepseek_folder", { folderPath }),
+    importDeepSeekFolder: (
+      folderPath: string,
+      workspaceId: string | null,
+      workspaceName: string | null,
+      selectedIds?: string[],
+    ) =>
+      invoke<{
+        imported_sessions: number;
+        imported_branches: number;
+        skipped: number;
+        workspace_id: string;
+        errors: number;
+        error_messages: string[];
+      }>("import_deepseek_folder", {
+        folderPath,
+        workspaceId,
+        workspaceName,
+        selectedIds: selectedIds ?? null,
+      }),
     previewClaudeProjectsFast: (folderPath: string) =>
       invoke<{
         available: boolean;

@@ -1495,6 +1495,156 @@ pub async fn import_chatgpt_folder(
     .map_err(|e| e.to_string())?
 }
 
+/// Preview a DeepSeek export folder — returns conversation summaries for selection.
+#[tauri::command]
+pub async fn preview_deepseek_folder(
+    folder_path: String,
+) -> Result<chat_file_store::deepseek::DeepSeekPreviewResponse, String> {
+    use chat_file_store::deepseek;
+    tokio::task::spawn_blocking(move || {
+        let folder = validate_user_path(&folder_path, true)?;
+        if !folder.is_dir() {
+            return Err(format!("{} is not a folder.", folder_path));
+        }
+        let path = deepseek::discover_deepseek_file(&folder)?;
+        let conversations = deepseek::load_deepseek_conversations(&path)?;
+
+        let mut previews = Vec::new();
+        let mut skipped_empty = 0usize;
+        for conv in &conversations {
+            let Ok(parsed) = deepseek::parse_deepseek_conversation(conv) else {
+                skipped_empty += 1;
+                continue;
+            };
+            let chat = parsed.primary;
+            let first_user_message = chat
+                .messages
+                .iter()
+                .find(|m| m.role == "user")
+                .map(|m| m.content.chars().take(280).collect())
+                .unwrap_or_default();
+            previews.push(deepseek::DeepSeekConversationPreview {
+                uuid: conv.id.clone(),
+                name: chat.title,
+                message_count: chat.messages.len(),
+                created_at: chat.created_at,
+                updated_at: chat.updated_at,
+                first_user_message,
+                messages: chat
+                    .messages
+                    .iter()
+                    .map(|m| deepseek::DeepSeekPreviewMessage {
+                        role: m.role.clone(),
+                        content: m.content.clone(),
+                    })
+                    .collect(),
+                branch_count: parsed.branches.len(),
+            });
+        }
+
+        let total = previews.len();
+        Ok(deepseek::DeepSeekPreviewResponse {
+            conversations: previews,
+            total,
+            skipped_empty,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Import conversations from a DeepSeek export folder into a new or existing
+/// workspace. Alternate paths through a conversation become linked branch chats.
+#[tauri::command]
+pub async fn import_deepseek_folder(
+    auth: State<'_, AuthState>,
+    folder_path: String,
+    workspace_id: Option<String>,
+    workspace_name: Option<String>,
+    selected_ids: Option<Vec<String>>,
+    chats_dir_state: State<'_, ChatsDirState>,
+    crypto: State<'_, ChatCryptoState>,
+    db_state: State<'_, DbState>,
+) -> Result<serde_json::Value, String> {
+    use chat_file_store::deepseek;
+    require_auth_for_destructive_ops(&auth, &db_state)?;
+    let chats_dir = chats_dir_state.0.clone();
+    let passphrase = crypto.0.lock().ok().and_then(|g| g.clone());
+    let pool = db_state.0.clone();
+
+    tokio::task::spawn_blocking(move || {
+        let conn = pool.get().map_err(|e| e.to_string())?;
+        let folder = validate_user_path(&folder_path, true)?;
+        if !folder.is_dir() {
+            return Err(format!("{} is not a folder.", folder_path));
+        }
+        let path = deepseek::discover_deepseek_file(&folder)?;
+        let conversations = deepseek::load_deepseek_conversations(&path)?;
+
+        let resolved_workspace_id = if let Some(wid) = workspace_id {
+            let exists: bool = conn
+                .query_row("SELECT 1 FROM workspaces WHERE id = ?1", rusqlite::params![wid], |_| Ok(true))
+                .unwrap_or(false);
+            if !exists {
+                return Err(format!("Workspace {} not found", wid));
+            }
+            wid
+        } else if let Some(wname) = workspace_name {
+            let wname_trimmed = wname.trim();
+            if wname_trimmed.is_empty() {
+                return Err("Workspace name cannot be empty".to_string());
+            }
+            let existing_id: Option<String> = conn
+                .query_row(
+                    "SELECT id FROM workspaces WHERE lower(trim(name)) = lower(trim(?1)) LIMIT 1",
+                    rusqlite::params![wname_trimmed],
+                    |row| row.get(0),
+                )
+                .ok();
+            if let Some(id) = existing_id {
+                id
+            } else {
+                let new_id = uuid::Uuid::new_v4().to_string();
+                let now = chrono::Utc::now().to_rfc3339();
+                conn.execute(
+                    "INSERT INTO workspaces (id, name, description, prompt_instructions, topic_signature, created_at, updated_at)
+                     VALUES (?1, ?2, '', '', '{}', ?3, ?3)",
+                    rusqlite::params![new_id, wname_trimmed, now],
+                )
+                .map_err(|e| e.to_string())?;
+                new_id
+            }
+        } else {
+            return Err("Either workspace_id or workspace_name must be provided".to_string());
+        };
+
+        let selected: Option<std::collections::HashSet<String>> =
+            selected_ids.map(|ids| ids.into_iter().collect());
+        let summary = deepseek::import_deepseek_conversations(
+            &conn,
+            &conversations,
+            &resolved_workspace_id,
+            selected.as_ref(),
+        )?;
+
+        // Write to disk for file-based consistency (best-effort)
+        for id in summary.session_ids.iter().chain(&summary.branch_session_ids) {
+            let _ = chat_file_store::write_session_file(&conn, &chats_dir, id, passphrase.as_deref());
+        }
+
+        Ok(serde_json::json!({
+            "imported_sessions": summary.session_ids.len(),
+            "imported_branches": summary.branch_session_ids.len(),
+            "skipped": summary.skipped,
+            "workspace_id": resolved_workspace_id,
+            "errors": summary.errors.len(),
+            "error_messages": summary.errors.iter().take(10).cloned().collect::<Vec<_>>(),
+        }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Detect the format of a Claude Desktop export folder.
 /// Returns "legacy" if `projects.json` is present, "v2" if `projects/` directory is present.
 #[tauri::command]

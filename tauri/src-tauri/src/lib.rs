@@ -620,6 +620,8 @@ pub fn run() {
             commands::chat_file::import_gemini_takeout,
             commands::chat_file::preview_chatgpt_folder,
             commands::chat_file::import_chatgpt_folder,
+            commands::chat_file::preview_deepseek_folder,
+            commands::chat_file::import_deepseek_folder,
             commands::chat_file::import_claude_files,
             commands::chat_file::preview_claude_files,
             commands::chat_file::preview_claude_projects_fast,

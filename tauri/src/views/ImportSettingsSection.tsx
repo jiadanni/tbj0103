@@ -287,6 +287,15 @@ export default function ImportSettingsSection() {
   const [chatGptDestType, setChatGptDestType] = useState<"new" | "existing">("new");
   const [chatGptWorkspaceId, setChatGptWorkspaceId] = useState<string | null>(null);
   const [chatGptNewWorkspaceName, setChatGptNewWorkspaceName] = useState("");
+  const [importingDeepSeek, setImportingDeepSeek] = useState(false);
+  const [deepSeekFolderPath, setDeepSeekFolderPath] = useState<string | null>(null);
+  const [deepSeekPreviews, setDeepSeekPreviews] = useState<(ImportConversation & { branch_count: number })[]>([]);
+  const [deepSeekSelected, setDeepSeekSelected] = useState<Set<string>>(new Set());
+  const [deepSeekScanning, setDeepSeekScanning] = useState(false);
+  const [focusedDeepSeekUuid, setFocusedDeepSeekUuid] = useState<string | null>(null);
+  const [deepSeekDestType, setDeepSeekDestType] = useState<"new" | "existing">("new");
+  const [deepSeekWorkspaceId, setDeepSeekWorkspaceId] = useState<string | null>(null);
+  const [deepSeekNewWorkspaceName, setDeepSeekNewWorkspaceName] = useState("");
 
   const [error, setError] = useState<string | null>(null);
   const [promptState, setPromptState] = useState<{ defaultValue: string } | null>(null);
@@ -702,6 +711,148 @@ export default function ImportSettingsSection() {
       await message(msg, { title: "ChatGPT import failed", kind: "error" });
     } finally {
       setImportingChatGpt(false);
+    }
+  }
+
+  function resetDeepSeekPreview() {
+    setDeepSeekFolderPath(null);
+    setDeepSeekPreviews([]);
+    setDeepSeekSelected(new Set());
+    setFocusedDeepSeekUuid(null);
+    setDeepSeekDestType("new");
+    setDeepSeekWorkspaceId(null);
+    setDeepSeekNewWorkspaceName("");
+  }
+
+  async function pickDeepSeekFolder() {
+    setError(null);
+    setDeepSeekScanning(true);
+    resetDeepSeekPreview();
+
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: "Select DeepSeek export folder",
+      });
+      const folderPath = Array.isArray(selected) ? selected[0] : selected;
+      if (!folderPath) { return; }
+
+      const result = await api.chatFile.previewDeepSeekFolder(folderPath);
+      if (result.total < 1) {
+        throw new Error("No importable conversations were found in the selected folder.");
+      }
+      setDeepSeekFolderPath(folderPath);
+      setDeepSeekPreviews(result.conversations);
+      setDeepSeekSelected(new Set(result.conversations.map((c) => c.uuid)));
+
+      const folderName = folderPath.split(/[/\\]/).filter(Boolean).pop() ?? "DeepSeek Import";
+      setDeepSeekNewWorkspaceName(folderName);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "DeepSeek scan failed";
+      setError(msg);
+      await message(msg, { title: "DeepSeek scan failed", kind: "error" });
+    } finally {
+      setDeepSeekScanning(false);
+    }
+  }
+
+  async function importFromDeepSeekFolder() {
+    if (!deepSeekFolderPath) { return; }
+    setError(null);
+    setImportingDeepSeek(true);
+
+    try {
+      const selectedIds = [...deepSeekSelected];
+      if (selectedIds.length < 1) {
+        throw new Error("Select at least one conversation to import.");
+      }
+
+      let finalWorkspaceId: string | null = null;
+      let finalWorkspaceName: string | null = null;
+
+      if (deepSeekDestType === "existing") {
+        if (!deepSeekWorkspaceId) {
+          throw new Error("Select an existing workspace to import into.");
+        }
+        finalWorkspaceId = deepSeekWorkspaceId;
+      } else {
+        const defaultName = deepSeekNewWorkspaceName.trim() || "DeepSeek Import";
+        const resolvedName = await resolveWorkspaceNameConflict(defaultName, workspaces, promptForName);
+        if (!resolvedName) {
+          setImportingDeepSeek(false);
+          return;
+        }
+        finalWorkspaceName = resolvedName;
+      }
+
+      const result = await api.chatFile.importDeepSeekFolder(
+        deepSeekFolderPath,
+        finalWorkspaceId,
+        finalWorkspaceName,
+        selectedIds,
+      );
+
+      if (result.imported_sessions < 1 && result.skipped > 0) {
+        await message(`All ${result.skipped} conversation${result.skipped === 1 ? "" : "s"} already imported — nothing new to add.`, {
+          title: "DeepSeek import",
+          kind: "info",
+        });
+        resetDeepSeekPreview();
+        return;
+      }
+      if (result.imported_sessions < 1) {
+        throw new Error(
+          result.error_messages.length > 0
+            ? `DeepSeek import failed:\n${result.error_messages.join("\n")}`
+            : "DeepSeek import completed without importing any conversations.",
+        );
+      }
+
+      const [freshWorkspaces, importedProjects, firstSession] = await Promise.all([
+        api.workspace.list(),
+        api.folder.list(result.workspace_id),
+        api.chat.listSessions(result.workspace_id, null, { limit: 1, offset: 0 }),
+      ]);
+
+      setWorkspaces(freshWorkspaces);
+      setFoldersForWorkspace(result.workspace_id, importedProjects);
+      setActiveWorkspaceId(result.workspace_id);
+      setActiveFolderId(null);
+
+      const lines = [
+        `${result.imported_sessions} conversation${result.imported_sessions === 1 ? "" : "s"} imported.`,
+      ];
+      if (result.imported_branches > 0) {
+        lines.push(`${result.imported_branches} branch${result.imported_branches === 1 ? "" : "es"} imported as linked branch chats.`);
+      }
+      if (result.skipped > 0) {
+        lines.push(`${result.skipped} already-imported conversation${result.skipped === 1 ? "" : "s"} skipped.`);
+      }
+      if (result.errors > 0) {
+        lines.push(`${result.errors} conversation${result.errors === 1 ? "" : "s"} had errors.`);
+      }
+      const wsName = freshWorkspaces.find((w) => w.id === result.workspace_id)?.name ?? (finalWorkspaceName ?? "Imported Workspace");
+      lines.push("");
+      lines.push("Where to view your imported chats:");
+      lines.push(`• Workspace "${wsName}"`);
+
+      resetDeepSeekPreview();
+
+      if (firstSession.length > 0) {
+        navigate(`/chat/${firstSession[0].id}`);
+      }
+
+      await message(lines.join("\n"), {
+        title: "DeepSeek import complete",
+        kind: result.errors > 0 ? "warning" : "info",
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "DeepSeek import failed";
+      setError(msg);
+      await message(msg, { title: "DeepSeek import failed", kind: "error" });
+    } finally {
+      setImportingDeepSeek(false);
     }
   }
 
@@ -1703,11 +1854,12 @@ export default function ImportSettingsSection() {
   const activeGemini = geminiPreviews.length > 0;
   const activeClaude = !!claudeFolderPath;
   const activeChatGpt = chatGptPreviews.length > 0;
-  const anyActive = activeLmStudio || activeGemini || activeClaude || activeChatGpt;
+  const activeDeepSeek = deepSeekPreviews.length > 0;
+  const anyActive = activeLmStudio || activeGemini || activeClaude || activeChatGpt || activeDeepSeek;
 
   const rootWorkspaces = workspaces.filter((w) => !w.parent_workspace_id);
 
-  const containerOverflowHidden = claudeFolderPath || chatGptPreviews.length > 0 || geminiPreviews.length > 0;
+  const containerOverflowHidden = claudeFolderPath || chatGptPreviews.length > 0 || deepSeekPreviews.length > 0 || geminiPreviews.length > 0;
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -1763,6 +1915,15 @@ export default function ImportSettingsSection() {
               busy: chatGptScanning || importingChatGpt,
               label: chatGptScanning ? "Scanning…" : importingChatGpt ? "Importing…" : chatGptFolderPath ? "Change" : "Select",
               onPick: () => void pickChatGptFolder(),
+            },
+            {
+              key: "deepseek",
+              name: "DeepSeek",
+              description: "Import conversations from an unzipped DeepSeek data export. Reasoning is kept, and edited or regenerated paths become linked branch chats.",
+              active: activeDeepSeek,
+              busy: deepSeekScanning || importingDeepSeek,
+              label: deepSeekScanning ? "Scanning…" : importingDeepSeek ? "Importing…" : deepSeekFolderPath ? "Change" : "Select",
+              onPick: () => void pickDeepSeekFolder(),
             },
           ];
 
@@ -2110,6 +2271,107 @@ export default function ImportSettingsSection() {
               >
                 {importingChatGpt ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
                 {importingChatGpt ? "Importing..." : `Import ${chatGptSelected.size} conversation${chatGptSelected.size !== 1 ? "s" : ""}`}
+              </button>
+            </div>
+          </section>
+        )}
+
+        {/* ── DeepSeek preview (below grid, only when a folder was scanned) ── */}
+        {deepSeekPreviews.length > 0 && (
+          <section className="flex-1 min-h-[450px] max-w-4xl surface-card rounded-xl p-3 flex flex-col gap-3 overflow-hidden">
+            <div className="shrink-0 flex flex-wrap items-center gap-4 border-b border-[var(--border-color)] pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-[var(--text-primary)]">Import Destination:</span>
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setDeepSeekDestType("new")}
+                    className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${deepSeekDestType === "new" ? "border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-[var(--accent-color)]" : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"}`}
+                  >
+                    New Workspace
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeepSeekDestType("existing")}
+                    className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${deepSeekDestType === "existing" ? "border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-[var(--accent-color)]" : "border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"}`}
+                  >
+                    Existing Workspace
+                  </button>
+                </div>
+              </div>
+
+              {deepSeekDestType === "new" ? (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-[var(--text-secondary)]">Workspace Name:</span>
+                  <input
+                    type="text"
+                    value={deepSeekNewWorkspaceName}
+                    onChange={(e) => setDeepSeekNewWorkspaceName(e.target.value)}
+                    placeholder="DeepSeek Import"
+                    className="rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] px-2.5 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] w-56"
+                  />
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-[var(--text-secondary)]">Select Workspace:</span>
+                  <div className="relative">
+                    <select
+                      value={deepSeekWorkspaceId ?? ""}
+                      onChange={(e) => setDeepSeekWorkspaceId(e.target.value || null)}
+                      className="appearance-none cursor-pointer rounded-md border border-[var(--border-color)] bg-[var(--bg-primary)] pl-2 pr-8 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)]"
+                    >
+                      <option value="">Choose a workspace…</option>
+                      {workspaces.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={12} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {(() => {
+              const branched = deepSeekPreviews.filter((c) => c.branch_count > 0 && deepSeekSelected.has(c.uuid));
+              const branchTotal = branched.reduce((sum, c) => sum + c.branch_count, 0);
+              if (branchTotal < 1) { return null; }
+              return (
+                <p className="shrink-0 text-[11px] text-[var(--text-muted)]">
+                  {branched.length} selected conversation{branched.length === 1 ? " has" : "s have"} edited or regenerated paths — the latest path is previewed, and {branchTotal} other path{branchTotal === 1 ? "" : "s"} will be imported as linked branch chats.
+                </p>
+              );
+            })()}
+
+            <ImportConversationPreview
+              conversations={deepSeekPreviews}
+              selected={deepSeekSelected}
+              onSelectionChange={setDeepSeekSelected}
+              focusedUuid={focusedDeepSeekUuid}
+              onFocusChange={setFocusedDeepSeekUuid}
+              assistantLabel="DeepSeek"
+            />
+
+            <div className="shrink-0 flex items-center justify-end gap-2">
+              <button
+                onClick={() => resetDeepSeekPreview()}
+                className="inline-flex items-center gap-1 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+              >
+                <X size={12} /> Cancel
+              </button>
+              <button
+                onClick={() => void importFromDeepSeekFolder()}
+                disabled={
+                  deepSeekSelected.size === 0 ||
+                  importingDeepSeek ||
+                  (deepSeekDestType === "existing" && !deepSeekWorkspaceId) ||
+                  (deepSeekDestType === "new" && !deepSeekNewWorkspaceName.trim())
+                }
+                className="inline-flex items-center gap-1 rounded-lg bg-[var(--accent-color)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-40"
+              >
+                {importingDeepSeek ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
+                {importingDeepSeek ? "Importing..." : `Import ${deepSeekSelected.size} conversation${deepSeekSelected.size !== 1 ? "s" : ""}`}
               </button>
             </div>
           </section>

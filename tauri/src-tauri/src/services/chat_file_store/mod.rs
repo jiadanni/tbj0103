@@ -28,6 +28,7 @@ pub mod claude_v2;
 pub mod claude_v2_backup;
 pub mod claude_v2_cluster;
 pub mod claude_v2_match;
+pub mod deepseek;
 pub mod import_links;
 
 // ── Public file-data structs ──────────────────────────────────────────────────
@@ -954,6 +955,20 @@ pub fn import_chat_data(
     workspace_id: &str,
     folder_id: &str,
 ) -> Result<String, String> {
+    import_chat_data_linked(conn, data, workspace_id, folder_id, None, None).map(|(id, _)| id)
+}
+
+/// Like [`import_chat_data`], but records branch lineage (`parent_session_id`,
+/// `branch_message_id`) and also returns the new message ids aligned with
+/// `data.messages` (an empty string marks a message skipped for its role).
+pub fn import_chat_data_linked(
+    conn: &Connection,
+    data: &ChatFileData,
+    workspace_id: &str,
+    folder_id: &str,
+    parent_session_id: Option<&str>,
+    branch_message_id: Option<&str>,
+) -> Result<(String, Vec<String>), String> {
     if data.messages.is_empty() {
         return Err("Conversation contains no supported messages.".to_string());
     }
@@ -964,7 +979,7 @@ pub fn import_chat_data(
              (id, workspace_id, folder_id, title, model_name, system_prompt,
               is_pinned, is_incognito, exclude_from_analytics, is_deleted,
               deleted_at, is_imported, parent_session_id, branch_message_id, is_unread, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 0, 0, 0, NULL, 1, NULL, NULL, 0, ?7, ?8)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 0, 0, 0, NULL, 1, ?9, ?10, 0, ?7, ?8)",
         rusqlite::params![
             session_id,
             workspace_id,
@@ -973,22 +988,27 @@ pub fn import_chat_data(
             data.model,
             data.system_prompt,
             data.created_at,
-            data.updated_at
+            data.updated_at,
+            parent_session_id,
+            branch_message_id
         ],
     )
     .map_err(|e| e.to_string())?;
 
+    let mut message_ids = Vec::with_capacity(data.messages.len());
     for msg in &data.messages {
         let role = msg.role.trim().to_lowercase();
         if !matches!(role.as_str(), "user" | "assistant" | "system") {
+            message_ids.push(String::new());
             continue;
         }
+        let message_id = uuid::Uuid::new_v4().to_string();
         conn.execute(
             "INSERT INTO messages
                  (id, session_id, role, content, model_name, tokens_used, duration_ms, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             rusqlite::params![
-                uuid::Uuid::new_v4().to_string(),
+                message_id,
                 session_id,
                 role,
                 msg.content,
@@ -999,9 +1019,10 @@ pub fn import_chat_data(
             ],
         )
         .map_err(|e| e.to_string())?;
+        message_ids.push(message_id);
     }
 
-    Ok(session_id)
+    Ok((session_id, message_ids))
 }
 
 /// Outcome of comparing an incoming `ChatFileData` against an existing chat session.
