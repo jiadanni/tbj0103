@@ -3,11 +3,14 @@
 /// Builds the full native menu and handles menu events by emitting Tauri
 /// events that the React frontend listens to.
 use tauri::{
-    menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu},
-    AppHandle, Emitter,
+    menu::{
+        AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID,
+        WINDOW_SUBMENU_ID,
+    },
+    AppHandle, Emitter, Runtime,
 };
 
-pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     // ── Aetherium (app menu) ────────────────────────────────────────────
     let about_meta = AboutMetadata {
         name: Some("Aetherium".to_string()),
@@ -107,8 +110,9 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     )?;
 
     // ── Window ──────────────────────────────────────────────────────────
-    let window_menu = Submenu::with_items(
+    let window_menu = Submenu::with_id_and_items(
         app,
+        WINDOW_SUBMENU_ID,
         "Window",
         true,
         &[
@@ -120,8 +124,9 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     )?;
 
     // ── Help ────────────────────────────────────────────────────────────
-    let help_menu = Submenu::with_items(
+    let help_menu = Submenu::with_id_and_items(
         app,
+        HELP_SUBMENU_ID,
         "Help",
         true,
         &[&MenuItem::with_id(
@@ -191,5 +196,16 @@ pub fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
             // No-op for now; could open a browser tab or in-app help page.
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_standard_menu_id_constants() {
+        assert_eq!(WINDOW_SUBMENU_ID, "__tauri_window_menu__");
+        assert_eq!(HELP_SUBMENU_ID, "__tauri_help_menu__");
     }
 }

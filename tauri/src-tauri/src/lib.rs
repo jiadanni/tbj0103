@@ -799,6 +799,20 @@ pub fn complete_db_dependent_setup(
     }
 
     if let Some(window) = app.get_webview_window("main") {
+        #[cfg(target_os = "macos")]
+        {
+            if let Ok(ns_window_ptr) = window.ns_window() {
+                let obj = ns_window_ptr as *mut objc2::runtime::AnyObject;
+                unsafe {
+                    let current: usize = objc2::msg_send![obj, collectionBehavior];
+                    const FULL_SCREEN_PRIMARY: usize = 1 << 7;
+                    const FULL_SCREEN_ALLOWS_TILING: usize = 1 << 11;
+                    let updated = current | FULL_SCREEN_PRIMARY | FULL_SCREEN_ALLOWS_TILING;
+                    let _: () = objc2::msg_send![obj, setCollectionBehavior: updated];
+                }
+            }
+        }
+
         let app_handle = app.clone();
         let main_window = window.clone();
         window.on_window_event(move |event| {
