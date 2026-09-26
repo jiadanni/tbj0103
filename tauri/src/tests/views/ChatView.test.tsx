@@ -1,7 +1,7 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { useChatStore } from "@/stores/chatStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useWorkspaceStore } from "@/stores/workspaceStore";
@@ -146,6 +146,7 @@ vi.mock("@/lib/api", () => ({
       branchSession: vi.fn(),
       addMessage: vi.fn(),
       touchSessionAccessed: vi.fn(() => Promise.resolve(undefined)),
+      getSessionById: vi.fn(() => Promise.resolve(null)),
       updateSession: vi.fn(() => Promise.resolve(undefined)),
       deleteSession: vi.fn(() => Promise.resolve(undefined)),
     },
@@ -1365,5 +1366,75 @@ describe("ChatView", () => {
     mockScopedWorkspaceId = "ws-1";
     await renderChatView();
     expect(screen.getAllByText("How does Rust ownership work?").length).toBeGreaterThan(0);
+  });
+
+  describe("routed chat from another workspace", () => {
+    function LocationProbe() {
+      return <div data-testid="location">{useLocation().pathname}</div>;
+    }
+
+    const routedTree = () => (
+      <MemoryRouter
+        initialEntries={["/chat/session-2"]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <Routes>
+          <Route path="/chat" element={<><ChatView /><LocationProbe /></>} />
+          <Route path="/chat/:sessionId" element={<><ChatView /><LocationProbe /></>} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    it("follows the chat into its workspace once, then lets the user switch away", async () => {
+      (api.chat.getSessionById as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: "session-2",
+        title: "Other Workspace Chat",
+        workspace_id: "ws-2",
+        folder_id: "folder-2",
+        is_deleted: false,
+      });
+      // Like the real scoped setter, switching moves the view's effective workspace.
+      setActiveWorkspaceId.mockImplementationOnce((workspaceId: string) => { mockScopedWorkspaceId = workspaceId; });
+
+      let rendered: ReturnType<typeof render> | undefined;
+      await act(async () => {
+        rendered = render(routedTree());
+        await flushMicrotasks();
+      });
+
+      // The routed chat pulls the view into its owning workspace.
+      await waitFor(() => expect(setActiveWorkspaceId).toHaveBeenCalledWith("ws-2"));
+      expect(setActiveFolderId).toHaveBeenCalledWith("folder-2");
+
+      // Now in ws-2. The chat isn't in the loaded page, but it still exists there, so stay.
+      await act(async () => {
+        await flushMicrotasks(8);
+      });
+      expect(api.chat.getSessionById).toHaveBeenCalledTimes(2);
+      expect(screen.getByTestId("location").textContent).toBe("/chat/session-2");
+
+      // The user switches to another workspace: no bounce back, and the route is released.
+      mockScopedWorkspaceId = "ws-3";
+      await act(async () => {
+        rendered?.rerender(routedTree());
+        await flushMicrotasks(8);
+      });
+
+      await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/chat"));
+      expect(setActiveWorkspaceId).toHaveBeenCalledTimes(1);
+      expect(api.chat.touchSessionAccessed).toHaveBeenCalledTimes(1);
+    });
+
+    it("leaves the route when the routed chat no longer exists", async () => {
+      (api.chat.getSessionById as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+      await act(async () => {
+        render(routedTree());
+        await flushMicrotasks(8);
+      });
+
+      await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/chat"));
+      expect(setActiveWorkspaceId).not.toHaveBeenCalled();
+    });
   });
 });

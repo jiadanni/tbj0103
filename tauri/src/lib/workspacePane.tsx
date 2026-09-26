@@ -132,6 +132,35 @@ export function useScopedWorkspace() {
   };
 }
 
+/**
+ * Switch the workspace the user is looking at to the one that owns a target opened from
+ * window-level UI (command palette, history, quick search). In split mode that is the
+ * active pane — the global setter would repoint the primary pane instead — and a chat
+ * target is opened in that pane, since split panes don't follow the `/chat/:id` route.
+ */
+export function focusWorkspaceForTarget(
+  workspaceId: string,
+  target: { folderId?: string | null; chatSessionId?: string | null } = {},
+) {
+  const store = useWorkspaceStore.getState();
+  if (store.splitMode) {
+    const paneId = store.activePaneId;
+    if (store.panes[paneId].workspaceId !== workspaceId) {
+      store.setPaneWorkspace(paneId, workspaceId);
+      if (target.folderId) { store.setPaneFolder(paneId, target.folderId); }
+    }
+    if (target.chatSessionId) {
+      store.setPaneView(paneId, "chat");
+      store.setPaneChatSession(paneId, target.chatSessionId);
+    }
+    return;
+  }
+  if (store.activeWorkspaceId !== workspaceId) {
+    store.setActiveWorkspaceId(workspaceId);
+    if (target.folderId) { store.setActiveFolderId(target.folderId); }
+  }
+}
+
 export function useScopedChat() {
   const pane = useWorkspacePane();
   const paneId = pane?.paneId ?? null;

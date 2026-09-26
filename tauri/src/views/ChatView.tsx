@@ -337,6 +337,9 @@ export default function ChatView() {
   type ContextSources = { memories_used: string[]; artifacts_used: string[]; summaries_used: string[]; documents_used: string[] };
   const [activeContextSources, setActiveContextSources] = useState<Record<string, ContextSources>>({});
   const [loadedSessionScopeKey, setLoadedSessionScopeKey] = useState<string | null>(null);
+  // Owning workspace of the routed session, resolved once per route id. `workspaceId: null`
+  // means the session is missing or deleted.
+  const [routeSessionLookup, setRouteSessionLookup] = useState<{ id: string; workspaceId: string | null } | null>(null);
   const [sessionSidebarDragActive, setSessionSidebarDragActive] = useState(false);
   const syncedSessionModelRef = useRef<{ sessionId: string | null; modelName: string }>({ sessionId: null, modelName: "" });
   const chatViewRef = useRef<HTMLDivElement | null>(null);
@@ -346,6 +349,8 @@ export default function ChatView() {
   const handledLocationActionKeyRef = useRef<string | null>(null);
   const currentSessionId = routeSessionId ?? activeChatId ?? null;
   const effectiveWorkspaceId = scopedWorkspaceId ?? activeWorkspaceId;
+  const effectiveWorkspaceIdRef = useRef(effectiveWorkspaceId);
+  effectiveWorkspaceIdRef.current = effectiveWorkspaceId;
   const effectiveFolderId = scopedFolderId ?? activeFolderId;
   const includeDescendants = useBubbleUpFlag();
   const sessionScopeKey = `${effectiveWorkspaceId ?? ""}::${effectiveFolderId ?? ""}`;
@@ -1245,12 +1250,37 @@ export default function ChatView() {
     );
     if (sessionStillVisible || sessionStillVisibleInSidebar) { return; }
 
-    if (activeChatId === currentSessionId) {
-      setActiveChatId(null);
+    if (routeSessionId === currentSessionId) {
+      // Wait for the route effect to resolve (and, if needed, switch to) the owning workspace.
+      if (routeSessionLookup?.id !== routeSessionId) { return; }
+
+      const leaveRoute = () => {
+        if (activeChatId === currentSessionId) { setActiveChatId(null); }
+        navigate("/chat", { replace: true });
+      };
+
+      // The user switched away from the chat's workspace, or the chat no longer exists.
+      if (routeSessionLookup.workspaceId !== effectiveWorkspaceId) {
+        leaveRoute();
+        return;
+      }
+
+      // Same workspace but not in the loaded list (e.g. past the page limit, or just deleted):
+      // re-check so a deletion still leaves the route.
+      let cancelled = false;
+      api.chat.getSessionById(routeSessionId)
+        .then((sess) => {
+          if (cancelled) { return; }
+          if (!sess || sess.is_deleted || sess.workspace_id !== effectiveWorkspaceId) { leaveRoute(); }
+        })
+        .catch(() => {
+          if (!cancelled) { leaveRoute(); }
+        });
+      return () => { cancelled = true; };
     }
 
-    if (routeSessionId === currentSessionId) {
-      navigate("/chat", { replace: true });
+    if (activeChatId === currentSessionId) {
+      setActiveChatId(null);
     }
   }, [
     activeChatId,
@@ -1259,6 +1289,7 @@ export default function ChatView() {
     loadedSessionScopeKey,
     navigate,
     routeSessionId,
+    routeSessionLookup,
     sessionScopeKey,
     sidebarSessions,
     sessions,
@@ -1408,8 +1439,29 @@ export default function ChatView() {
     if (routeSessionId) {
       setActiveChatId(routeSessionId);
       api.chat.touchSessionAccessed(routeSessionId).catch(() => { });
+
+      // Follow the routed chat into its workspace once per route id. The current workspace is
+      // read from a ref so a later manual workspace switch doesn't re-run this and bounce back.
+      let cancelled = false;
+      api.chat.getSessionById(routeSessionId)
+        .then((session) => {
+          if (cancelled) { return; }
+          const owningWorkspaceId = session && !session.is_deleted ? session.workspace_id : null;
+          if (owningWorkspaceId && owningWorkspaceId !== effectiveWorkspaceIdRef.current) {
+            setScopedWorkspaceId(owningWorkspaceId);
+            setScopedFolderId(session?.folder_id || null);
+          }
+          // Set after the workspace switch so the visibility effect never sees the resolved
+          // lookup paired with the old workspace.
+          setRouteSessionLookup({ id: routeSessionId, workspaceId: owningWorkspaceId });
+        })
+        .catch(() => {
+          if (!cancelled) { setRouteSessionLookup({ id: routeSessionId, workspaceId: null }); }
+        });
+
+      return () => { cancelled = true; };
     }
-  }, [routeSessionId, setActiveChatId]);
+  }, [routeSessionId, setActiveChatId, setScopedWorkspaceId, setScopedFolderId]);
 
   useEffect(() => {
     incognitoSessionIdsRef.current = new Set(

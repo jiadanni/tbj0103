@@ -217,16 +217,7 @@ pub fn search_sessions(
     let message_match_cond = match fts_query.as_ref() {
         Some(fts) => {
             params.push(fts);
-            format!(
-                "OR id IN (
-                    SELECT d.session_id
-                    FROM quick_search_documents_fts
-                    JOIN quick_search_documents d ON d.rowid = quick_search_documents_fts.rowid
-                    WHERE quick_search_documents_fts MATCH ?{}
-                      AND d.kind = 'message'
-                      AND d.session_id IS NOT NULL)",
-                params.len()
-            )
+            message_fts_match_cond(params.len())
         }
         None => String::new(),
     };
@@ -265,6 +256,127 @@ pub fn get_session(
                 message_count
          FROM chat_sessions WHERE id = ?1 AND workspace_id = ?2",
         rusqlite::params![id, workspace_id],
+        row_to_session,
+    );
+
+    match result {
+        Ok(session) => Ok(Some(session)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// `OR id IN (…)` clause matching sessions whose messages hit the quick-search FTS index,
+/// with the FTS query bound at parameter `?{param_idx}`.
+fn message_fts_match_cond(param_idx: usize) -> String {
+    format!(
+        "OR id IN (
+            SELECT d.session_id
+            FROM quick_search_documents_fts
+            JOIN quick_search_documents d ON d.rowid = quick_search_documents_fts.rowid
+            WHERE quick_search_documents_fts MATCH ?{param_idx}
+              AND d.kind = 'message'
+              AND d.session_id IS NOT NULL)"
+    )
+}
+
+/// Which sessions the History view shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HistoryFilter {
+    All,
+    Imported,
+    Pinned,
+}
+
+/// Sessions for the History view in a single query, newest first. `workspace_id: None`
+/// spans every visible (non-hidden) workspace. Filters run in SQL so they cover the whole
+/// history rather than a page capped before filtering.
+pub fn list_history_sessions(
+    conn: &Connection,
+    workspace_id: Option<&str>,
+    include_descendants: bool,
+    query: &str,
+    filter: HistoryFilter,
+    limit: Option<i64>,
+) -> Result<Vec<ChatSession>, String> {
+    let limit = limit.unwrap_or(1000).clamp(1, 5000);
+    let trimmed = query.trim();
+    let pattern = format!("%{}%", trimmed);
+    let fts_query = if trimmed.is_empty() {
+        None
+    } else {
+        quick_search_service::build_fts_query(trimmed)
+    };
+
+    let mut params: Vec<&dyn rusqlite::ToSql> = Vec::new();
+    // The descendants CTE binds the workspace id as ?1, so it must be the first param.
+    let (cte, ws_cond) = match &workspace_id {
+        Some(ws) => {
+            params.push(ws);
+            let (cte, cond) = workspace_filter_sql(include_descendants);
+            (cte, format!("workspace_id {cond}"))
+        }
+        None => (
+            "",
+            "workspace_id IN (SELECT id FROM workspaces WHERE is_hidden = 0)".to_string(),
+        ),
+    };
+    let filter_cond = match filter {
+        HistoryFilter::All => "",
+        HistoryFilter::Imported => "AND is_imported = 1",
+        HistoryFilter::Pinned => "AND is_pinned = 1",
+    };
+    let query_cond = if trimmed.is_empty() {
+        String::new()
+    } else {
+        params.push(&pattern);
+        let like_idx = params.len();
+        let message_match_cond = match fts_query.as_ref() {
+            Some(fts) => {
+                params.push(fts);
+                message_fts_match_cond(params.len())
+            }
+            None => String::new(),
+        };
+        format!("AND (title LIKE ?{like_idx} OR model_name LIKE ?{like_idx} {message_match_cond})")
+    };
+    params.push(&limit);
+    let limit_idx = params.len();
+
+    let sql = format!(
+        "{cte}SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned,
+                is_incognito, exclude_from_analytics, is_deleted, deleted_at,
+                last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
+                is_unread, created_at, updated_at,
+                message_count
+          FROM chat_sessions
+          WHERE {ws_cond} AND is_deleted = 0 {filter_cond} {query_cond}
+          ORDER BY updated_at DESC
+          LIMIT ?{limit_idx}"
+    );
+
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params.as_slice(), row_to_session)
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+pub fn get_session_by_id(
+    conn: &Connection,
+    id: &str,
+) -> Result<Option<ChatSession>, String> {
+    let result = conn.query_row(
+        "SELECT id, workspace_id, folder_id, title, model_name, system_prompt, is_pinned,
+                is_incognito, exclude_from_analytics, is_deleted, deleted_at,
+                last_accessed_at, last_processed_message_count, is_imported, parent_session_id, branch_message_id,
+                is_unread, created_at, updated_at,
+                message_count
+         FROM chat_sessions WHERE id = ?1",
+        rusqlite::params![id],
         row_to_session,
     );
 
@@ -1277,6 +1389,74 @@ mod tests {
         let search = search_sessions(&conn, &ws_id, None, "App", false).unwrap();
         assert_eq!(search.len(), 1);
         assert_eq!(search[0].title, "Apple");
+    }
+
+    #[test]
+    fn test_list_history_sessions_spans_workspaces_and_filters_in_sql() {
+        let pool = setup_test_db();
+        let conn = pool.get().unwrap();
+        let ws_a = setup_workspace(&conn);
+        let ws_b = setup_workspace(&conn);
+        let ws_hidden = setup_workspace(&conn);
+        workspace_service::hide(&conn, &ws_hidden).unwrap();
+
+        let make = |workspace_id: &str, title: &str| {
+            create_session(
+                &conn,
+                CreateChatSessionRequest {
+                    workspace_id: workspace_id.to_string(),
+                    folder_id: "".to_string(),
+                    title: Some(title.to_string()),
+                    model_name: None,
+                    system_prompt: None,
+                    is_incognito: None,
+                    exclude_from_analytics: None,
+                    parent_session_id: None,
+                    branch_message_id: None,
+                },
+            )
+            .unwrap()
+            .id
+        };
+        make(&ws_a, "Local Apple");
+        let imported = make(&ws_b, "Imported Banana");
+        let pinned = make(&ws_b, "Pinned Cherry");
+        make(&ws_hidden, "Hidden Apple");
+        conn.execute("UPDATE chat_sessions SET is_imported = 1 WHERE id = ?1", [&imported])
+            .unwrap();
+        conn.execute("UPDATE chat_sessions SET is_pinned = 1 WHERE id = ?1", [&pinned])
+            .unwrap();
+
+        let titles = |sessions: Vec<ChatSession>| {
+            let mut titles: Vec<String> = sessions.into_iter().map(|s| s.title).collect();
+            titles.sort();
+            titles
+        };
+
+        // All visible workspaces in one query; hidden workspaces stay out.
+        let all = list_history_sessions(&conn, None, false, "", HistoryFilter::All, None).unwrap();
+        assert_eq!(titles(all), vec!["Imported Banana", "Local Apple", "Pinned Cherry"]);
+
+        let imported_only =
+            list_history_sessions(&conn, None, false, "", HistoryFilter::Imported, None).unwrap();
+        assert_eq!(titles(imported_only), vec!["Imported Banana"]);
+
+        let pinned_only =
+            list_history_sessions(&conn, None, false, "", HistoryFilter::Pinned, None).unwrap();
+        assert_eq!(titles(pinned_only), vec!["Pinned Cherry"]);
+
+        let searched =
+            list_history_sessions(&conn, None, false, "Apple", HistoryFilter::All, None).unwrap();
+        assert_eq!(titles(searched), vec!["Local Apple"]);
+
+        let one_workspace =
+            list_history_sessions(&conn, Some(&ws_b), false, "", HistoryFilter::All, None).unwrap();
+        assert_eq!(titles(one_workspace), vec!["Imported Banana", "Pinned Cherry"]);
+
+        // Filters apply before the limit, so a filtered view isn't cut off by other rows.
+        let limited =
+            list_history_sessions(&conn, None, false, "", HistoryFilter::Imported, Some(1)).unwrap();
+        assert_eq!(titles(limited), vec!["Imported Banana"]);
     }
 
     #[test]

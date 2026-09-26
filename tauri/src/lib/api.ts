@@ -1486,7 +1486,12 @@ export const api = {
       timed("chat.searchSessions", () =>
         invoke<ChatSession[]>("search_chat_sessions", { req: { workspace_id: workspaceId, query, folder_id: folderId ?? null, include_descendants: opts?.includeDescendants } }),
       ),
+    listHistorySessions: (opts: { workspaceId?: string | null; query?: string; filter?: "all" | "imported" | "pinned"; includeDescendants?: boolean; limit?: number }) =>
+      timed("chat.listHistorySessions", () =>
+        invoke<ChatSession[]>("list_history_sessions", { req: { workspace_id: opts.workspaceId ?? null, query: opts.query ?? null, filter: opts.filter ?? null, include_descendants: opts.includeDescendants, limit: opts.limit } }),
+      ),
     getSession: (workspaceId: string, id: string) => invoke<ChatSession | null>("get_chat_session", { workspaceId, id }),
+    getSessionById: (id: string) => invoke<ChatSession | null>("get_chat_session_by_id", { id }),
     deleteSession: (workspaceId: string, id: string) => invoke<void>("delete_chat_session", { workspaceId, id }),
     updateSession: (workspaceId: string, id: string, fields: { title?: string; is_pinned?: boolean; system_prompt?: string; model_name?: string; exclude_from_analytics?: boolean; is_unread?: boolean }) =>
       invoke<void>("update_chat_session", { workspaceId, id, title: fields.title, isPinned: fields.is_pinned, systemPrompt: fields.system_prompt, modelName: fields.model_name, excludeFromAnalytics: fields.exclude_from_analytics, isUnread: fields.is_unread }),

@@ -1,5 +1,6 @@
 import type { NavigateFunction } from "react-router-dom";
 import type { QuickSearchResult } from "./api";
+import { focusWorkspaceForTarget } from "./workspacePane";
 
 /**
  * Route to the thing a quick-search result points at.
@@ -14,6 +15,16 @@ export function navigateToQuickSearchResult(
   navigate: NavigateFunction,
   target: QuickSearchResult,
 ) {
+  if (target.workspace_id) {
+    // Mirrors the session each branch of the switch below routes to.
+    const chatSessionId = target.kind === "memory"
+      ? target.source_session_id
+      : ["artifact", "message", "summary"].includes(target.kind)
+        ? target.session_id
+        : target.session_id ?? target.target_id;
+    focusWorkspaceForTarget(target.workspace_id, { folderId: target.folder_id, chatSessionId });
+  }
+
   switch (target.kind) {
     case "artifact":
       navigate(target.session_id ? `/chat/${target.session_id}` : "/chat");

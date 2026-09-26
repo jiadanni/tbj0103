@@ -363,12 +363,40 @@ export default function ImportSettingsSection() {
         }
         const freshWorkspaces = await api.workspace.list();
         setWorkspaces(freshWorkspaces);
+
+        const successfulResults = (result.results ?? []).filter((r) => r.workspace_id && (r.imported ?? 0) > 0);
+        const firstSuccess = successfulResults[0];
+        let firstSessionId: string | null = null;
+        if (firstSuccess?.workspace_id) {
+          setActiveWorkspaceId(firstSuccess.workspace_id);
+          setActiveFolderId(null);
+          const folders = await api.folder.list(firstSuccess.workspace_id);
+          setFoldersForWorkspace(firstSuccess.workspace_id, folders);
+          const sessions = await api.chat.listSessions(firstSuccess.workspace_id, null, { limit: 1, offset: 0 });
+          firstSessionId = sessions[0]?.id ?? null;
+        }
+
         const lines = [
           `${result.successful}/${result.total_folders} folders processed successfully.`,
           `${result.total_imported} total conversation${result.total_imported === 1 ? "" : "s"} imported.`,
         ];
         if (result.total_skipped > 0) { lines.push(`${result.total_skipped} duplicate${result.total_skipped === 1 ? "" : "s"} skipped.`); }
         if (result.total_errors > 0) { lines.push(`${result.total_errors} file${result.total_errors === 1 ? "" : "s"} had errors.`); }
+
+        if (successfulResults.length > 0) {
+          lines.push("");
+          lines.push("Where to view your imported chats:");
+          for (const res of successfulResults) {
+            lines.push(`• Workspace "${res.workspace_name}" (${res.imported} chat${res.imported === 1 ? "" : "s"})`);
+          }
+        }
+
+        if (firstSessionId) {
+          navigate(`/chat/${firstSessionId}`);
+        } else if (firstSuccess?.workspace_id) {
+          navigate("/chat");
+        }
+
         await message(lines.join("\n"), { title: "Multi-folder import complete", kind: result.total_errors > 0 ? "warning" : "info" });
       }
     } catch (e: unknown) {
@@ -456,6 +484,10 @@ export default function ImportSettingsSection() {
       if (result.errors > 0) {
         lines.push(`${result.errors} file${result.errors === 1 ? "" : "s"} skipped (empty or unreadable).`);
       }
+      const wsName = freshWorkspaces.find((w) => w.id === result.workspace_id)?.name ?? defaultName;
+      lines.push("");
+      lines.push("Where to view your imported chats:");
+      lines.push(`• Workspace "${wsName}"`);
 
       resetLmStudioPreview();
       navigate(`/chat/${firstSession[0].id}`);
@@ -562,6 +594,16 @@ export default function ImportSettingsSection() {
       }
       if (result.errors > 0) {
         lines.push(`${result.errors} conversation${result.errors === 1 ? "" : "s"} had errors.`);
+      }
+      const targetWs = freshWorkspaces.find((w) => w.id === result.workspace_id);
+      const targetFolder = result.folder_id ? importedProjects.find((f) => f.id === result.folder_id) : null;
+      const wsName = targetWs?.name ?? resolvedName;
+      lines.push("");
+      lines.push("Where to view your imported chats:");
+      if (targetFolder) {
+        lines.push(`• Workspace "${wsName}" > Folder "${targetFolder.name}"`);
+      } else {
+        lines.push(`• Workspace "${wsName}"`);
       }
 
       resetGeminiPreview();
@@ -694,6 +736,10 @@ export default function ImportSettingsSection() {
       if (result.errors > 0) {
         lines.push(`${result.errors} conversation${result.errors === 1 ? "" : "s"} had errors.`);
       }
+      const wsName = freshWorkspaces.find((w) => w.id === result.workspace_id)?.name ?? (finalWorkspaceName ?? "Imported Workspace");
+      lines.push("");
+      lines.push("Where to view your imported chats:");
+      lines.push(`• Workspace "${wsName}"`);
 
       resetChatGptPreview();
 
@@ -1779,10 +1825,50 @@ export default function ImportSettingsSection() {
       // Try to navigate to the first imported session.
       // Prefer orphans destination; fall back to first project mapping.
       let firstSession = null;
-      const firstTarget = orphansDestination ?? Object.values(folderMappings)[0] ?? null;
+      let firstTarget = orphansDestination ?? Object.values(folderMappings)[0] ?? null;
       if (firstTarget) {
         const sessions = await api.chat.listSessions(firstTarget.workspace_id, firstTarget.folder_id || null, { limit: 1, offset: 0 });
         firstSession = sessions[0] ?? null;
+      }
+      if (!firstSession && orphansDestination && Object.values(folderMappings).length > 0) {
+        for (const target of Object.values(folderMappings)) {
+          const sessions = await api.chat.listSessions(target.workspace_id, target.folder_id || null, { limit: 1, offset: 0 });
+          if (sessions[0]) {
+            firstSession = sessions[0];
+            firstTarget = target;
+            break;
+          }
+        }
+      }
+
+      // Several destinations often share a workspace; fetch each workspace's folders once.
+      const folderListsByWorkspace = new Map<string, ReturnType<typeof api.folder.list>>();
+      const listFoldersOnce = (workspaceId: string) => {
+        let pending = folderListsByWorkspace.get(workspaceId);
+        if (!pending) {
+          pending = api.folder.list(workspaceId);
+          folderListsByWorkspace.set(workspaceId, pending);
+        }
+        return pending;
+      };
+      const folderNameFor = async (workspaceId: string, folderId: string | null | undefined) => {
+        if (!folderId) { return ""; }
+        try {
+          return (await listFoldersOnce(workspaceId)).find((fol) => fol.id === folderId)?.name ?? "";
+        } catch {
+          return "";
+        }
+      };
+
+      if (firstTarget) {
+        setActiveWorkspaceId(firstTarget.workspace_id);
+        setActiveFolderId(firstTarget.folder_id || null);
+        try {
+          const importedFolders = await listFoldersOnce(firstTarget.workspace_id);
+          setFoldersForWorkspace(firstTarget.workspace_id, importedFolders);
+        } catch {
+          // ignore
+        }
       }
 
       // Reset state
@@ -1828,6 +1914,36 @@ export default function ImportSettingsSection() {
         lines.push(`${result.errors} item${result.errors === 1 ? "" : "s"} had errors.`);
       }
       if (lines.length === 0) { lines.push("Nothing new was imported."); }
+
+      const destinationSummaries: string[] = [];
+      if (orphansDestination && unassignedCount > 0) {
+        const orphanWs = finalFreshWs.find((w) => w.id === orphansDestination?.workspace_id);
+        const wsName = orphanWs?.name ?? "Unassigned Imports";
+        const folderName = await folderNameFor(orphansDestination.workspace_id, orphansDestination.folder_id);
+        if (folderName) {
+          destinationSummaries.push(`• Workspace "${wsName}" > Folder "${folderName}" (${unassignedCount} unassigned chat${unassignedCount === 1 ? "" : "s"})`);
+        } else {
+          destinationSummaries.push(`• Workspace "${wsName}" (${unassignedCount} unassigned chat${unassignedCount === 1 ? "" : "s"})`);
+        }
+      }
+
+      for (const [, target] of Object.entries(folderMappings)) {
+        const ws = finalFreshWs.find((w) => w.id === target.workspace_id);
+        const wsName = ws?.name ?? "Workspace";
+        const folderName = await folderNameFor(target.workspace_id, target.folder_id);
+        if (folderName) {
+          destinationSummaries.push(`• Workspace "${wsName}" > Folder "${folderName}"`);
+        } else {
+          destinationSummaries.push(`• Workspace "${wsName}"`);
+        }
+      }
+
+      if (destinationSummaries.length > 0 && (result.imported > 0 || result.linked > 0 || result.appended_sessions > 0 || result.reassigned > 0)) {
+        lines.push("");
+        lines.push("Where to view your imported chats:");
+        const uniqueSummaries = [...new Set(destinationSummaries)];
+        lines.push(...uniqueSummaries);
+      }
 
       if (firstSession) { navigate(`/chat/${firstSession.id}`); }
 

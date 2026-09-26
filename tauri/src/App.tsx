@@ -33,7 +33,6 @@ function NavigationManager() {
 /** Listens for native menu-bar events and translates them into navigation/actions. */
 function MenuEventHandler() {
   const navigate = useNavigate();
-  const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId);
   // Keep a stable ref to avoid re-subscribing on every render
   const navigateRef = useRef(navigate);
   useEffect(() => { navigateRef.current = navigate; }, [navigate]);
@@ -64,9 +63,6 @@ function MenuEventHandler() {
 
     const unlistenQuickSearch = listen<QuickSearchResult>("app:navigate-target", (event) => {
       const target = event.payload;
-      if (target.workspace_id) {
-        setActiveWorkspaceId(target.workspace_id);
-      }
       navigateToQuickSearchResult(navigateRef.current, target);
     });
 
@@ -75,7 +71,7 @@ function MenuEventHandler() {
       unlistenAction.then((fn) => fn());
       unlistenQuickSearch.then((fn) => fn());
     };
-  }, [setActiveWorkspaceId]);
+  }, []);
 
   return null;
 }

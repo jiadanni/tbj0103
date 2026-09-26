@@ -10,7 +10,6 @@ import {
   shortKind,
   useQuickSearch,
 } from "../hooks/useQuickSearch";
-import { useWorkspaceStore } from "../stores/workspaceStore";
 
 /**
  * The dashboard's "search or ask" box.
@@ -24,7 +23,6 @@ import { useWorkspaceStore } from "../stores/workspaceStore";
  */
 export default function DashboardOmnibox() {
   const navigate = useNavigate();
-  const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   // -1 is the "ask a new chat" row; 0..n-1 index into results.
@@ -64,9 +62,6 @@ export default function DashboardOmnibox() {
   function openResult(result: QuickSearchResult) {
     setIsOpen(false);
     clearQuery();
-    if (result.workspace_id) {
-      setActiveWorkspaceId(result.workspace_id);
-    }
     navigateToQuickSearchResult(navigate, result);
   }
 

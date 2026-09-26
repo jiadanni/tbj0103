@@ -19,6 +19,16 @@ pub struct SearchChatSessionsRequest {
 }
 
 #[derive(Debug, serde::Deserialize)]
+pub struct ListHistorySessionsRequest {
+    /// `None` lists across every visible workspace.
+    pub workspace_id: Option<String>,
+    pub query: Option<String>,
+    pub filter: Option<chat_service::HistoryFilter>,
+    pub include_descendants: Option<bool>,
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, serde::Deserialize)]
 pub struct GetRelatedChatsRequest {
     pub workspace_id: String,
     pub session_id: Option<String>,
@@ -90,6 +100,22 @@ pub fn search_chat_sessions(
 }
 
 #[tauri::command]
+pub fn list_history_sessions(
+    state: State<DbState>,
+    req: ListHistorySessionsRequest,
+) -> Result<Vec<ChatSession>, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    chat_service::list_history_sessions(
+        &conn,
+        req.workspace_id.as_deref(),
+        req.include_descendants.unwrap_or(false),
+        req.query.as_deref().unwrap_or(""),
+        req.filter.unwrap_or(chat_service::HistoryFilter::All),
+        req.limit,
+    )
+}
+
+#[tauri::command]
 pub fn get_chat_session(
     state: State<DbState>,
     workspace_id: String,
@@ -97,6 +123,15 @@ pub fn get_chat_session(
 ) -> Result<Option<ChatSession>, String> {
     let conn = state.0.get().map_err(|e| e.to_string())?;
     chat_service::get_session(&conn, &workspace_id, &id)
+}
+
+#[tauri::command]
+pub fn get_chat_session_by_id(
+    state: State<DbState>,
+    id: String,
+) -> Result<Option<ChatSession>, String> {
+    let conn = state.0.get().map_err(|e| e.to_string())?;
+    chat_service::get_session_by_id(&conn, &id)
 }
 
 #[tauri::command]

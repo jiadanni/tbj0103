@@ -1,12 +1,12 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { Virtuoso } from "react-virtuoso";
 import { useNavigate } from "react-router-dom";
-import { Search, Trash2, MessageSquare } from "lucide-react";
+import { Search, Trash2, MessageSquare, Download, Pin } from "lucide-react";
 import { message } from "@tauri-apps/plugin-dialog";
 import { api } from "../lib/api";
 import type { ChatSession } from "../stores/chatStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
-import { useBubbleUpFlag } from "../lib/workspacePane";
+import { focusWorkspaceForTarget, useBubbleUpFlag } from "../lib/workspacePane";
 import { Tooltip } from "../components/Tooltip";
 
 interface DateGroup {
@@ -56,25 +56,38 @@ function groupSessionsByDate(sessions: ChatSession[]): DateGroup[] {
 
 export default function HistoryView() {
   const navigate = useNavigate();
-  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const workspaces = useWorkspaceStore((s) => s.workspaces);
   const isDemoMode = useWorkspaceStore((s) => s.isDemoMode);
   const includeDescendants = useBubbleUpFlag();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
+  const [workspaceFilter, setWorkspaceFilter] = useState<string>("all");
+  const [filterType, setFilterType] = useState<"all" | "imported" | "pinned">("all");
+
+  const workspaceMap = useMemo(() => {
+    return new Map(workspaces.map((w) => [w.id, w.name]));
+  }, [workspaces]);
 
   const loadSessions = useCallback(async () => {
-    if (!activeWorkspaceId) { return; }
     setLoading(true);
     try {
-      const results = query.trim()
-        ? await api.chat.searchSessions(activeWorkspaceId, query, null, { includeDescendants })
-        : await api.chat.listSessions(activeWorkspaceId, null, { includeDescendants });
-      setSessions(results.filter((s) => !s.is_deleted));
+      // One query across workspaces; the pinned/imported filters run in SQL so they
+      // cover the full history instead of a per-workspace capped page.
+      const allWorkspaces = workspaceFilter === "all";
+      const results = await api.chat.listHistorySessions({
+        workspaceId: allWorkspaces ? null : workspaceFilter,
+        query: query.trim(),
+        filter: filterType,
+        includeDescendants: allWorkspaces ? false : includeDescendants,
+      });
+      setSessions(results);
+    } catch {
+      setSessions([]);
     } finally {
       setLoading(false);
     }
-  }, [activeWorkspaceId, query, includeDescendants]);
+  }, [workspaceFilter, query, filterType, includeDescendants]);
 
   useEffect(() => {
     const timer = setTimeout(loadSessions, query ? 150 : 0);
@@ -91,6 +104,13 @@ export default function HistoryView() {
     setSessions((prev) => prev.filter((s) => s.id !== session.id));
   }
 
+  function handleOpenSession(session: ChatSession) {
+    if (session.workspace_id) {
+      focusWorkspaceForTarget(session.workspace_id, { folderId: session.folder_id, chatSessionId: session.id });
+    }
+    navigate(`/chat/${session.id}`);
+  }
+
   const groups = groupSessionsByDate(sessions);
   const rows: HistoryRow[] = groups.flatMap((group) => [
     { type: "group" as const, label: group.label },
@@ -101,16 +121,78 @@ export default function HistoryView() {
     <div className="flex flex-col h-full bg-[var(--bg-primary)]">
       {/* Header */}
       <div className="shrink-0 px-6 pt-6 pb-4 border-b border-[var(--border-color)]">
-        <h1 className="text-xl font-semibold text-[var(--text-primary)] mb-4">History</h1>
-        <div className="relative max-w-lg">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search history…"
-            className="w-full pl-9 pr-4 py-2 text-sm rounded-xl border border-[var(--border-color)] bg-[var(--bg-input)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] transition-colors"
-          />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div>
+            <h1 className="text-xl font-semibold text-[var(--text-primary)]">History</h1>
+            <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+              Browse, search, and jump to past conversations across your workspaces.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={workspaceFilter}
+              onChange={(e) => setWorkspaceFilter(e.target.value)}
+              className="h-8 px-2.5 text-xs rounded-lg border border-[var(--border-color)] bg-[var(--bg-elevated)] text-[var(--text-primary)] outline-none focus:border-[var(--accent-color)] transition-colors"
+              title="Filter by workspace"
+            >
+              <option value="all">All Workspaces</option>
+              {workspaces.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <div className="relative flex-1 max-w-lg">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search history…"
+              className="w-full pl-9 pr-4 py-1.5 text-sm rounded-xl border border-[var(--border-color)] bg-[var(--bg-input)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-color)] transition-colors"
+            />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setFilterType("all")}
+              className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-colors ${
+                filterType === "all"
+                  ? "bg-[var(--accent-color)] text-white"
+                  : "bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-color)]"
+              }`}
+            >
+              All
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterType("imported")}
+              className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg font-medium transition-colors ${
+                filterType === "imported"
+                  ? "bg-[var(--accent-color)] text-white"
+                  : "bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-color)]"
+              }`}
+            >
+              <Download size={12} />
+              Imported
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterType("pinned")}
+              className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg font-medium transition-colors ${
+                filterType === "pinned"
+                  ? "bg-[var(--accent-color)] text-white"
+                  : "bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-color)]"
+              }`}
+            >
+              <Pin size={12} />
+              Pinned
+            </button>
+          </div>
         </div>
       </div>
 
@@ -120,7 +202,11 @@ export default function HistoryView() {
           <div className="text-sm text-[var(--text-muted)] text-center py-12">Loading…</div>
         ) : groups.length === 0 ? (
           <div className="text-sm text-[var(--text-muted)] text-center py-12">
-            {query ? "No results found." : "No chat history yet."}
+            {query
+              ? "No results found."
+              : filterType === "imported"
+                ? "No imported chat history found. When you import chats from Claude, ChatGPT, or LM Studio, they will appear here."
+                : "No chat history yet."}
           </div>
         ) : (
           <Virtuoso
@@ -140,10 +226,12 @@ export default function HistoryView() {
               }
 
               const { session } = row;
+              const wsName = workspaceMap.get(session.workspace_id);
+
               return (
                 <div className="pb-0.5">
                   <div
-                    onClick={() => navigate(`/chat/${session.id}`)}
+                    onClick={() => handleOpenSession(session)}
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left hover:bg-[var(--bg-hover)] transition-colors group cursor-pointer"
                   >
                     <MessageSquare size={15} className="shrink-0 text-[var(--text-muted)]" />
@@ -156,6 +244,11 @@ export default function HistoryView() {
                           />
                         )}
                         <span className={`truncate ${session.is_unread ? "font-semibold" : ""}`}>{session.title || "Untitled"}</span>
+                        {session.is_imported && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400 shrink-0">
+                            <Download size={10} /> Imported
+                          </span>
+                        )}
                       </div>
                       <div className="text-xs text-[var(--text-muted)] flex items-center gap-2 mt-0.5">
                         <span>
@@ -164,6 +257,11 @@ export default function HistoryView() {
                             minute: "2-digit",
                           })}
                         </span>
+                        {wsName && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-color)] text-[10px] text-[var(--text-secondary)] truncate max-w-[160px]">
+                            {wsName}
+                          </span>
+                        )}
                         {session.model_name && (
                           <span className="truncate opacity-70">{session.model_name}</span>
                         )}
@@ -187,3 +285,4 @@ export default function HistoryView() {
     </div>
   );
 }
+

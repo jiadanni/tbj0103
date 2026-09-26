@@ -2,7 +2,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState, memo, useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
-import { Plus, Trash2, ChevronDown, ChevronRight, Pencil, Check, Search, Pin, PinOff, MessageSquare, RefreshCw, Ghost, Shield, Folder as FolderIcon, FolderOpen, FolderPlus, MoreHorizontal, MoveRight, X, Loader2, Copy, ExternalLink, Save, FileText, BookOpen, BarChart2, GitBranch } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronRight, Pencil, Check, Search, Pin, PinOff, MessageSquare, RefreshCw, Ghost, Shield, Folder as FolderIcon, FolderOpen, FolderPlus, MoreHorizontal, MoveRight, X, Loader2, Copy, ExternalLink, Save, FileText, BookOpen, BarChart2, GitBranch, Download } from "lucide-react";
 import { api } from "../lib/api";
 import { useChatStore } from "../stores/chatStore";
 import { useWorkspaceStore, type Folder, type Workspace } from "../stores/workspaceStore";
@@ -195,6 +195,11 @@ export function SessionItem({
           )}
           {session.is_incognito && <Ghost size={isSplitPane ? 12 : 11} className="text-purple-400 shrink-0" />}
           {!session.is_incognito && session.exclude_from_analytics && <Shield size={isSplitPane ? 12 : 11} className="text-sky-400 shrink-0" />}
+          {session.is_imported && (
+            <Tooltip content="Imported chat" position="top">
+              <Download size={isSplitPane ? 12 : 11} className="text-amber-500/80 dark:text-amber-400/80 shrink-0" />
+            </Tooltip>
+          )}
         </div>
       )}
       <div className={`relative ml-1 shrink-0 ${isSplitPane ? "h-5 w-[42px]" : "h-5 w-[44px]"}`}>

@@ -6,6 +6,7 @@ import { useChatStore, type ChatSession } from "../stores/chatStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 import { Search, Clock, MessageSquare, FileText, Brain, Sparkles, RefreshCw } from "lucide-react";
 import { WorkspaceIcon } from "../lib/workspaceIcon";
+import { focusWorkspaceForTarget } from "../lib/workspacePane";
 import type { ChatSubView, PreferencesSection } from "./navigationItems";
 
 interface Props {
@@ -122,12 +123,18 @@ export default function CommandPalette({ workspaceId, onClose }: Props) {
   };
 
   const handleSelectSession = (session: ChatSession) => {
+    if (session.workspace_id) {
+      focusWorkspaceForTarget(session.workspace_id, { folderId: session.folder_id, chatSessionId: session.id });
+    }
     setActiveChatId(session.id);
     navigate(`/chat/${session.id}`);
     onClose();
   };
 
   const handleSelectResult = (result: QuickSearchResult) => {
+    if (result.workspace_id) {
+      focusWorkspaceForTarget(result.workspace_id, { folderId: result.folder_id, chatSessionId: result.session_id });
+    }
     if (result.kind === "conversation" || result.kind === "message") {
       if (result.session_id) {
         setActiveChatId(result.session_id);
